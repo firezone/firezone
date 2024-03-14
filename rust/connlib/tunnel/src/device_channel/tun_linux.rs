@@ -352,7 +352,7 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
 
 fn create_tun_device(dns_control_method: &Option<DnsControlMethod>) -> Result<()> {
     // TODO: Where should this go?
-    // Before creating the iface, do cleanup that nmcli needs to avoid duplicate connections
+    // Before creating the iface, do a cleanup step that nmcli needs to avoid duplicate connections
     match dns_control_method {
         Some(DnsControlMethod::NetworkManager) => cleanup_network_manager()?,
         _ => {}
@@ -445,6 +445,12 @@ impl ioctl::Request<SetTunFlagsPayload> {
     }
 }
 
+/// Chooses a non-destructive DNS control method
+///
+/// Not in use yet, but should be easy to hook in.
+/// Modifying `/etc/resolv.conf` is not automatically picked because
+/// it can't play along with any other software changing the file,
+/// and it won't revert if Firezone Client crashes.
 async fn _detect_safe_dns_method() -> Option<DnsControlMethod> {
     // If systemd-resolved is in use, it takes precedence over NetworkManager
     if let Ok(true) = tokio::fs::try_exists("/run/systemd/resolve/stub-resolv.conf").await {
@@ -462,7 +468,8 @@ async fn _detect_safe_dns_method() -> Option<DnsControlMethod> {
 
 fn cleanup_network_manager() -> Result<()> {
     // TODO: Instead of shelling out to `nmcli`, we can call NetworkManager
-    // via D-Bus.
+    // via D-Bus. There is already a `network-manager` wrapper crate that
+    // does that.
     std::process::Command::new("nmcli")
         .arg("con")
         .arg("del")
@@ -474,34 +481,45 @@ fn cleanup_network_manager() -> Result<()> {
 }
 
 async fn configure_network_manager(dns_config: &[IpAddr]) -> Result<()> {
-    let dns_ipv4 = dns_config.iter().filter(|ip| ip.is_ipv4()).collect::<Vec<_>>();
-    let dns_ipv6 = dns_config.iter().filter(|ip| ip.is_ipv6()).collect::<Vec<_>>();
+    let dns_ipv4 = dns_config
+        .iter()
+        .filter(|ip| ip.is_ipv4())
+        .collect::<Vec<_>>();
+    let dns_ipv6 = dns_config
+        .iter()
+        .filter(|ip| ip.is_ipv6())
+        .collect::<Vec<_>>();
 
-    // TODO: Since the CLI arg here is complicated, it should get a unit test
+    // TODO: Since the CLI arg here is complicated, it should get a unit test.
+    // I am not sure it would behave correctly if only IPv4 or only IPv6 servers were provided.
     let mut cmd = tokio::process::Command::new("nmcli");
-    cmd
-        .arg("con")
-        .arg("mod")
-        .arg(IFACE_NAME);
+    cmd.arg("con").arg("mod").arg(IFACE_NAME);
 
     if !dns_ipv4.is_empty() {
-        cmd
-            .arg("ipv4.dns")
-            .arg(dns_ipv4.iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
+        cmd.arg("ipv4.dns")
+            .arg(
+                dns_ipv4
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
             .arg("ipv4.dns-priority")
             .arg("-1");
     }
     if !dns_ipv6.is_empty() {
-        cmd
-            .arg("ipv6.dns")
-            .arg(dns_ipv6.iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
+        cmd.arg("ipv6.dns")
+            .arg(
+                dns_ipv6
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
             .arg("ipv6.dns-priority")
             .arg("-1");
     }
-    let status = cmd
-        .status()
-        .await
-        .map_err(|_| Error::NmcliFailed)?;
+    let status = cmd.status().await.map_err(|_| Error::NmcliFailed)?;
     if !status.success() {
         return Err(Error::NmcliFailed);
     }

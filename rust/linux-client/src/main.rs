@@ -71,7 +71,7 @@ impl Callbacks for CallbackHandler {
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
         let default_resolvers = match self.dns_control_method {
-            None => vec![[1, 1, 1, 1].into()],
+            None => get_system_default_resolvers_resolv_conf()?,
             Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf()?,
             Some(DnsControlMethod::NetworkManager) => {
                 get_system_default_resolvers_network_manager()?
@@ -123,10 +123,11 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
         .arg("show")
         .output()
         .context("Failed to run `nmcli dev show` and read output")?;
-    if !output.status.success(){
+    if !output.status.success() {
         anyhow::bail!("`nmcli dev show` returned non-zero exit code");
     }
-    let output = String::from_utf8(output.stdout).context("`nmcli dev show` output was not UTF-8")?;
+    let output =
+        String::from_utf8(output.stdout).context("`nmcli dev show` output was not UTF-8")?;
     Ok(parse_nmcli_dev_output(&output))
 }
 
@@ -261,9 +262,12 @@ IP6.ADDRESS[1]:                         ::1/128
 IP6.GATEWAY:                            --
         ";
         let actual = super::parse_nmcli_dev_output(input);
-        assert_eq!(actual, vec![
-            IpAddr::from([10, 0, 2, 3]),
-            IpAddr::from([0xfec0, 0, 0, 0, 0, 0, 0, 0x3]),
-        ]);
+        assert_eq!(
+            actual,
+            vec![
+                IpAddr::from([10, 0, 2, 3]),
+                IpAddr::from([0xfec0, 0, 0, 0, 0, 0, 0, 0x3]),
+            ]
+        );
     }
 }
