@@ -1,5 +1,4 @@
-use ip_network::{Ipv4Network, Ipv6Network};
-
+use crate::callbacks::{Cidrv4, Cidrv6};
 use crate::messages::ResourceDescription;
 use crate::{Callbacks, Error, Result};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -43,8 +42,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
 
     fn on_update_routes(
         &self,
-        routes4: Vec<Ipv4Network>,
-        routes6: Vec<Ipv6Network>,
+        routes4: Vec<Cidrv4>,
+        routes6: Vec<Cidrv6>,
     ) -> Result<Option<RawFd>> {
         let result = self
             .0

@@ -21,7 +21,7 @@ pub mod windows;
 
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
-pub use callbacks::Callbacks;
+pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
 pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;

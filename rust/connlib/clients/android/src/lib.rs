@@ -4,9 +4,9 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Error, LoginUrl, LoginUrlError, ResourceDescription, Session,
+    file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
+    ResourceDescription, Session,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
@@ -196,8 +196,8 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Ipv4Network>,
-        route_list_6: Vec<Ipv6Network>,
+        route_list_4: Vec<Cidrv4>,
+        route_list_6: Vec<Cidrv6>,
     ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
             let route_list_4 = env
