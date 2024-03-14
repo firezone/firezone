@@ -8,12 +8,14 @@ defmodule Domain.Repo.Query do
           ([Ecto.Schema.t()] -> [Ecto.Schema.t()]) | Ecto.Queryable.t() | (-> Ecto.Queryable.t())
   @type preload_funs :: [{atom(), preload_fun()} | {atom(), {preload_fun(), preload_funs()}}]
 
+  @type cursor_fields :: [
+          {binding :: atom(), :asc | :desc, field :: atom()}
+        ]
+
   @doc """
   Returns list of fields that are used for cursor based pagination.
   """
-  @callback cursor_fields() :: [
-              {binding :: atom(), :asc | :desc, field :: atom()}
-            ]
+  @callback cursor_fields() :: cursor_fields()
 
   @doc """
   Allows to define custom preloads for the schema.

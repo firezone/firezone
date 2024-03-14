@@ -58,14 +58,14 @@ defmodule Domain.Repo do
   """
   @spec fetch!(
           queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
           opts ::
             [
               {:preload, term()}
               | {:filter, Domain.Repo.Filter.filters()}
             ]
             | Keyword.t()
-        ) ::
-          Ecto.Schema.t()
+        ) :: Ecto.Schema.t() | term() | no_return()
   def fetch!(queryable, query_module, opts \\ []) do
     {preload, opts} = Keyword.pop(opts, :preload, [])
     {filter, opts} = Keyword.pop(opts, :filter, [])

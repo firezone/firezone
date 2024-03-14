@@ -15,6 +15,13 @@ defmodule Domain.Repo.Paginator do
   @max_limit 100
 
   defmodule Metadata do
+    @type t :: %__MODULE__{
+            previous_page_cursor: binary() | nil,
+            next_page_cursor: binary() | nil,
+            limit: non_neg_integer(),
+            count: non_neg_integer()
+          }
+
     defstruct previous_page_cursor: nil,
               next_page_cursor: nil,
               limit: nil,
