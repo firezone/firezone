@@ -6,6 +6,10 @@ use std::{
 
 pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
 pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
+/// Used to figure out whether we crashed on our last run or not.
+///
+/// If we did crash, we need to restore the system-wide DNS from the backup file.
+/// If we did not crash, we need to make a new backup and then overwrite `resolv.conf`
 const MAGIC_HEADER: &str = "# BEGIN Firezone DNS configuration";
 
 #[derive(Debug, thiserror::Error)]
