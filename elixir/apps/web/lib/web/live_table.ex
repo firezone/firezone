@@ -405,8 +405,7 @@ defmodule Web.LiveTable do
   defp preload_filters(query_module, hidden_filters, subject) do
     query_module
     |> Domain.Repo.Query.get_filters()
-    |> Enum.reject(fn filter -> filter.name in hidden_filters end)
-    |> Enum.reject(&is_nil(&1.title))
+    |> Enum.reject(fn filter -> is_nil(filter.title) or filter.name in hidden_filters end)
     |> Enum.map(&preload_values(&1, query_module, subject))
   end
 
