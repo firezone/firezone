@@ -8,7 +8,8 @@ use connlib_shared::{
 };
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::{net::IpAddr, path::PathBuf, str::FromStr};
+use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
+use tokio::signal::unix::SignalKind;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,7 +40,7 @@ async fn main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
-    let session = Session::connect(
+    let mut session = Session::connect(
         login,
         private_key,
         None,
@@ -49,13 +50,33 @@ async fn main() -> Result<()> {
     )
     .unwrap();
 
-    tokio::signal::ctrl_c().await?;
+    let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
+    let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
+
+    future::poll_fn(|cx| loop {
+        if sigint.poll_recv(cx).is_ready() {
+            tracing::debug!("Received SIGINT");
+
+            return Poll::Ready(());
+        }
+
+        if sighup.poll_recv(cx).is_ready() {
+            tracing::debug!("Received SIGHUP");
+
+            session.reconnect();
+            continue;
+        }
+
+        return Poll::Pending;
+    })
+    .await;
 
     if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
         etc_resolv_conf::unconfigure_dns()?;
     }
 
     session.disconnect();
+
     Ok(())
 }
 
