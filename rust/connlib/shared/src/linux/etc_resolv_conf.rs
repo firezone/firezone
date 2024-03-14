@@ -10,6 +10,7 @@ pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
 const MAGIC_HEADER: &str = "# BEGIN Firezone DNS configuration";
 
 // Wanted these args to have names so they don't get mixed up
+#[derive(Clone)]
 pub struct ResolvPaths {
     resolv: PathBuf,
     backup: PathBuf,
@@ -34,9 +35,11 @@ pub async fn configure(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 /// Revert changes Firezone made to `/etc/resolv.conf`
+///
+/// Must be sync because it's called in `Tun::drop`
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub async fn revert() -> Result<()> {
-    revert_at_paths(&ResolvPaths::default()).await
+pub fn revert() -> Result<()> {
+    revert_at_paths(&ResolvPaths::default())
 }
 
 async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
@@ -50,8 +53,13 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
         .context("Failed to read `resolv.conf`")?;
     let text = if text.starts_with(MAGIC_HEADER) {
         // The last run of Firezone crashed. Revert, re-read, and then continue.
-        revert_at_paths(paths).await?;
-        tokio::fs::read_to_string(&paths.resolv)
+        let resolv_path = &paths.resolv;
+        let paths = paths.clone();
+        tokio::task::spawn_blocking(move || {
+            revert_at_paths(&paths)
+        }).await.context("`spawn_blocking` failed while trying to run `revert_at_paths`")?
+        .context("Failed to revert `'resolv.conf`")?;
+        tokio::fs::read_to_string(resolv_path)
             .await
             .context("Failed to re-read `resolv.conf` after reverting it")?
     } else {
@@ -113,12 +121,8 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
     Ok(())
 }
 
-async fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
-    // TODO: Check that nobody else modified the file while we were running.
-    // This doesn't work in the current architecture because connlib configures
-    // the DNS but then the Client reverts it.
-    tokio::fs::copy(&paths.backup, &paths.resolv)
-        .await
+fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
+    std::fs::copy(&paths.backup, &paths.resolv)
         .context("Failed to restore backup")?;
     // Don't delete the backup file - If we lose power here, and the revert is rolled back,
     // we may want it. Filesystems are not atomic by default, and have weak ordering,
@@ -291,7 +295,7 @@ nameserver 100.100.111.2
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
 
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
 
         check_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
         // The backup file is intentionally left in place because we don't
@@ -325,13 +329,13 @@ nameserver 100.100.111.2
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
         configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
 
         write_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])?;
         configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths).await?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])?;
         check_resolv_conf(&paths.backup, &[CLOUDFLARE_DNS.into()])?;
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
 
         check_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])?;
         // Backup is preserved even after reverting in case the FS re-orders
@@ -365,7 +369,7 @@ nameserver 100.100.111.2
             .context("Second run, resolv.conf should have new sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
             .context("Second run, backup should have GOOGLE_DNS")?;
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
 
         // Second run ended
         check_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])
@@ -400,7 +404,7 @@ nameserver 100.100.111.2
             .context("Second run, resolv.conf should have new sentinel")?;
         check_resolv_conf(&paths.backup, &[CLOUDFLARE_DNS.into()])
             .context("Second run, backup should have CLOUDFLARE_DNS")?;
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
 
         // Second run ended
         check_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])
@@ -429,11 +433,11 @@ nameserver 100.100.111.2
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
 
         // Revert twice
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
         check_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
         ensure!(tokio::fs::try_exists(&paths.backup).await?);
 
-        revert_at_paths(&paths).await?;
+        revert_at_paths(&paths)?;
         check_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
         ensure!(tokio::fs::try_exists(&paths.backup).await?);
 

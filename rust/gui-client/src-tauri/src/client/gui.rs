@@ -250,11 +250,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                     .await
                 });
 
-                // Clean up
-                if let Err(error) = client::resolvers::revert().await {
-                    tracing::error!(?error, "Failed to revert DNS");
-                }
-
                 // See <https://github.com/tauri-apps/tauri/issues/8631>
                 // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
                 // because it exits the entire process without dropping anything.
@@ -451,10 +446,10 @@ struct CallbackHandler {
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
-    #[error("system DNS resolver problem: {0}")]
-    Resolvers(#[from] client::resolvers::Error),
     #[error("can't send to controller task: {0}")]
     SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 // Callbacks must all be non-blocking

@@ -1,14 +1,11 @@
 //! Module to handle Windows system-wide DNS resolvers
 
-pub(crate) use imp::{get, Error};
+pub(crate) use imp::get;
 
 #[cfg(target_os = "linux")]
 mod imp {
     use anyhow::Result;
-    use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
     use std::net::IpAddr;
-
-    pub type Error = anyhow::Error;
 
     // TODO: The code here will depend on the chosen DNS control method.
     // So that will need to be threaded in here somehow.
@@ -23,8 +20,6 @@ mod imp {
     use anyhow::Result;
     use std::net::IpAddr;
 
-    pub type Error = anyhow::Error;
-
     pub fn get() -> Result<Vec<IpAddr>> {
         unimplemented!()
     }
@@ -35,13 +30,7 @@ mod imp {
     use anyhow::Result;
     use std::net::IpAddr;
 
-    #[derive(thiserror::Error, Debug)]
-    pub enum Error {
-        #[error("can't get system DNS resolvers: {0}")]
-        CantGetResolvers(#[from] ipconfig::error::Error),
-    }
-
-    pub fn get() -> Result<Vec<IpAddr>, Error> {
+    pub fn get() -> Result<Vec<IpAddr>> {
         Ok(ipconfig::get_adapters()?
             .iter()
             .flat_map(|adapter| adapter.dns_servers())
