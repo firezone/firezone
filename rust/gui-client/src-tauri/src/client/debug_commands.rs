@@ -8,6 +8,7 @@ use anyhow::Result;
 pub enum Cmd {
     CheckForUpdates,
     Crash,
+    DnsChanges,
     Hostname,
     NetworkChanges,
 }
@@ -16,6 +17,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
         Cmd::CheckForUpdates => check_for_updates(),
         Cmd::Crash => crash(),
+        Cmd::DnsChanges => client::network_changes::run_dns_debug(),
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug(),
     }

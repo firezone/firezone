@@ -13,7 +13,7 @@ use jni::{
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
-use std::{net::IpAddr, path::Path};
+use std::{io, net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -21,6 +21,7 @@ use std::{
 };
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
+use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -358,6 +359,8 @@ enum ConnectError {
     ConnectFailed(#[from] Error),
     #[error(transparent)]
     InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
+    #[error("Unable to create tokio runtime: {0}")]
+    UnableToCreateRuntime(#[from] io::Error),
 }
 
 macro_rules! string_from_jstring {
@@ -386,7 +389,7 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
-) -> Result<Session, ConnectError> {
+) -> Result<SessionWrapper, ConnectError> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
@@ -412,15 +415,25 @@ fn connect(
         public_key.to_bytes(),
     )?;
 
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("connlib")
+        .enable_all()
+        .build()?;
+
     let session = Session::connect(
         login,
         private_key,
         Some(os_version),
         callback_handler,
         Some(MAX_PARTITION_TIME),
+        runtime.handle().clone(),
     )?;
 
-    Ok(session)
+    Ok(SessionWrapper {
+        inner: session,
+        runtime,
+    })
 }
 
 /// # Safety
@@ -439,7 +452,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
-) -> *const Session {
+) -> *const SessionWrapper {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
     };
@@ -470,6 +483,13 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     Box::into_raw(Box::new(session))
 }
 
+pub struct SessionWrapper {
+    inner: Session,
+
+    #[allow(dead_code)] // Only here so we don't drop the memory early.
+    runtime: Runtime,
+}
+
 /// # Safety
 /// Pointers must be valid
 #[allow(non_snake_case)]
@@ -477,9 +497,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut Session,
+    session: *mut SessionWrapper,
 ) {
     catch_and_throw(&mut env, |_| {
-        Box::from_raw(session).disconnect();
+        Box::from_raw(session).inner.disconnect();
     });
 }
