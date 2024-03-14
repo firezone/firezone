@@ -15,7 +15,7 @@ defmodule Domain.NameGenerator do
     content conventional cool cooperative coordinated crafty creamy creative crisp critical
     crowded cuddly cultured curious curvy cute cylindrical daring dark dazzling dear
     decent decisive dedicated deep defensive defiant delightful dense dependable
-    detailed determined devoted different diligent direct discrete disciplined discreet
+    detailed determined devoted different diligent direct discrete disciplined
     distinguished diverse dramatic dreamy durable dynamic eager earnest easy easy-going
     eclectic educated efficient elaborate electric elegant elite eloquent elusive
     eminent emotional enchanted enchanting energetic enlightened enormous enthusiastic
@@ -154,7 +154,7 @@ defmodule Domain.NameGenerator do
     tribute trust truth understanding undertaking unity update upgrade uplift
     usage use utility validity value variation variety vector venture version
     view vision vitality volume voyage warranty wave wealth welfare will
-    wisdom wit work workforce workshop world yield zone
+    wisdom work workforce workshop world yield zone
   )
 
   def generate do
