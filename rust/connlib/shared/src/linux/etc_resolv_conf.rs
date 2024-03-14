@@ -1,8 +1,5 @@
-use std::{
-    io::{self, Write},
-    net::IpAddr,
-    path::PathBuf,
-};
+use anyhow::{Context, Result};
+use std::{io::Write, net::IpAddr, path::PathBuf};
 
 pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
 pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
@@ -11,22 +8,6 @@ pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
 /// If we did crash, we need to restore the system-wide DNS from the backup file.
 /// If we did not crash, we need to make a new backup and then overwrite `resolv.conf`
 const MAGIC_HEADER: &str = "# BEGIN Firezone DNS configuration";
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Failed to parse `resolv.conf`")]
-    Parse,
-    #[error("Failed to read `resolv.conf`: {0}")]
-    Read(io::Error),
-    #[error("Failed to revert `resolv.conf`: {0}")]
-    Revert(io::Error),
-    #[error("Failed to rewrite `resolv.conf`: {0}")]
-    Rewrite(io::Error),
-    #[error("Failed to sync `resolv.conf` backup: {0}")]
-    SyncBackup(io::Error),
-    #[error("Failed to backup `resolv.conf`: {0}")]
-    WriteBackup(io::Error),
-}
 
 // Wanted these args to have names so they don't get mixed up
 pub struct ResolvPaths {
@@ -48,17 +29,17 @@ impl Default for ResolvPaths {
 /// This is async because it's called in a Tokio context and it's nice to use their
 /// `fs` module
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub async fn configure(dns_config: &[IpAddr]) -> Result<(), Error> {
+pub async fn configure(dns_config: &[IpAddr]) -> Result<()> {
     configure_at_paths(dns_config, &ResolvPaths::default()).await
 }
 
 /// Revert changes Firezone made to `/etc/resolv.conf`
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub async fn revert() -> Result<(), Error> {
+pub async fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default()).await
 }
 
-async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<(), Error> {
+async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
     if dns_config.is_empty() {
         tracing::warn!("`dns_config` is empty, leaving `/etc/resolv.conf` unchanged");
         return Ok(());
@@ -66,13 +47,13 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
 
     let text = tokio::fs::read_to_string(&paths.resolv)
         .await
-        .map_err(Error::Read)?;
+        .context("Failed to read `resolv.conf`")?;
     let text = if text.starts_with(MAGIC_HEADER) {
         // The last run of Firezone crashed. Revert, re-read, and then continue.
         revert_at_paths(paths).await?;
         tokio::fs::read_to_string(&paths.resolv)
             .await
-            .map_err(Error::Read)?
+            .context("Failed to re-read `resolv.conf` after reverting it")?
     } else {
         // The last run of Firezone reverted resolv.conf successfully,
         // or the user manually reverted it between runs.
@@ -80,7 +61,7 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
         text
     };
 
-    let parsed = resolv_conf::Config::parse(&text).map_err(|_| Error::Parse)?;
+    let parsed = resolv_conf::Config::parse(&text).context("Failed to parse `resolv.conf`")?;
 
     // Back up the original resolv.conf. Overwrite any existing backup:
     // - If we crashed, and MAGIC_HEADER is still present, we already called `revert` above.
@@ -93,11 +74,13 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
         &paths.backup,
         atomicwrites::OverwriteBehavior::AllowOverwrite,
     );
-    match backup_file.write(|f| f.write_all(text.as_bytes())) {
-        Err(atomicwrites::Error::Internal(error)) => return Err(Error::SyncBackup(error)),
-        Err(atomicwrites::Error::User(error)) => return Err(Error::WriteBackup(error)),
-        Ok(()) => {}
-    }
+    tokio::task::spawn_blocking(move || {
+        backup_file
+            .write(|f| f.write_all(text.as_bytes()))
+            .context("Failed to back up `resolv.conf`")
+    })
+    .await
+    .context("Failed to run sync file operation in a blocking task")??;
 
     let mut new_resolv_conf = parsed.clone();
     new_resolv_conf.nameservers = dns_config.iter().map(|addr| (*addr).into()).collect();
@@ -125,18 +108,18 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
 
     tokio::fs::write(&paths.resolv, new_text)
         .await
-        .map_err(Error::Rewrite)?;
+        .context("Failed to rewrite `resolv.conf`")?;
 
     Ok(())
 }
 
-async fn revert_at_paths(paths: &ResolvPaths) -> Result<(), Error> {
+async fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
     // TODO: Check that nobody else modified the file while we were running.
     // This doesn't work in the current architecture because connlib configures
     // the DNS but then the Client reverts it.
     tokio::fs::copy(&paths.backup, &paths.resolv)
         .await
-        .map_err(Error::Revert)?;
+        .context("Failed to restore backup")?;
     // Don't delete the backup file - If we lose power here, and the revert is rolled back,
     // we may want it. Filesystems are not atomic by default, and have weak ordering,
     // so we don't want to end up in a state where the backup is deleted and the revert was rolled back.

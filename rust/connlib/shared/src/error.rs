@@ -164,7 +164,7 @@ pub enum ConnlibError {
 
     #[cfg(target_os = "linux")]
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
-    ResolvConf(#[from] crate::linux::etc_resolv_conf::Error),
+    ResolvConf(anyhow::Error),
 
     #[error(transparent)]
     Snownet(#[from] snownet::Error),
