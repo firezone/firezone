@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
     tokio::signal::ctrl_c().await?;
 
     if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
-        etc_resolv_conf::unconfigure_dns()?;
+        etc_resolv_conf::revert()?;
     }
 
     session.disconnect();
