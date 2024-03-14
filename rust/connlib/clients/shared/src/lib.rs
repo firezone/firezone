@@ -30,44 +30,24 @@ const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session {
     channel: tokio::sync::mpsc::Sender<Command>,
-    _runtime: tokio::runtime::Runtime,
 }
 
 impl Session {
-    /// Starts a session in the background.
+    /// Creates a new [`Session`].
     ///
-    /// This will:
-    /// 1. Create and start a tokio runtime
-    /// 2. Connect to the control plane to the portal
-    /// 3. Start the tunnel in the background and forward control plane messages to it.
-    ///
-    /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
-    ///
-    /// On a fatal error you should call `[Session::disconnect]` and start a new one.
-    ///
-    /// * `device_id` - The cleartext device ID. connlib will obscure this with a hash internally.
-    // TODO: token should be something like SecretString but we need to think about FFI compatibility
+    /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         url: LoginUrl,
         private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CB,
         max_partition_time: Option<Duration>,
+        handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
-        // TODO: We could use tokio::runtime::current() to get the current runtime
-        // which could work with swift-rust that already runs a runtime. But IDK if that will work
-        // in all platforms, a couple of new threads shouldn't bother none.
-        // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
-        // but then platforms should know that this function is blocking.
-
         let callbacks = CallbackErrorFacade(callbacks);
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-
-        let connect_handle = runtime.spawn(connect(
+        let connect_handle = handle.spawn(connect(
             url,
             private_key,
             os_version_override,
@@ -75,12 +55,9 @@ impl Session {
             max_partition_time,
             rx,
         ));
-        runtime.spawn(connect_supervisor(connect_handle, callbacks));
+        handle.spawn(connect_supervisor(connect_handle, callbacks));
 
-        Ok(Self {
-            channel: tx,
-            _runtime: runtime,
-        })
+        Ok(Self { channel: tx })
     }
 
     /// Disconnect a [`Session`].
