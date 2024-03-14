@@ -58,7 +58,9 @@ impl Io {
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
-        buffer: &'b mut [u8],
+        ip4_buffer: &'b mut [u8],
+        ip6_bffer: &'b mut [u8],
+        device_buffer: &'b mut [u8],
     ) -> Poll<io::Result<Input<'b, impl Iterator<Item = Received<'b>>>>> {
         loop {
             // FIXME: Building the DNS response in here isn't very clean because this should only be the IO component and not do business-logic.
@@ -84,21 +86,19 @@ impl Io {
                 Poll::Pending => {}
             }
 
-            let (buf1, buf2) = buffer.split_at_mut(buffer.len() / 2); // If rustc borrow-checker would be better, we wouldn't need this.
-
             if let Some(timeout) = self.timeout.as_mut() {
                 if timeout.poll_unpin(cx).is_ready() {
                     return Poll::Ready(Ok(Input::Timeout(timeout.deadline().into())));
                 }
             }
 
-            if let Poll::Ready(network) = self.sockets.poll_recv_from(buf1, cx)? {
+            if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
                 return Poll::Ready(Ok(Input::Network(network)));
             }
 
             ready!(self.sockets.poll_send_ready(cx))?; // Packets read from the device need to be written to a socket, let's make sure the socket can take more packets.
 
-            if let Poll::Ready(packet) = self.device.poll_read(buf2, cx)? {
+            if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
                 return Poll::Ready(Ok(Input::Device(packet)));
             }
 

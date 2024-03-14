@@ -101,17 +101,16 @@ impl Sockets {
 
     pub fn poll_recv_from<'b>(
         &self,
-        buffer: &'b mut [u8],
+        ip4_buffer: &'b mut [u8],
+        ip6_buffer: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<impl Iterator<Item = Received<'b>>>> {
-        let (ip4_buf, ip6_buf) = buffer.split_at_mut(buffer.len() / 2);
-
         let mut iter = PacketIter::new();
 
         if let Some(Poll::Ready(packets)) = self
             .socket_v4
             .as_ref()
-            .map(|s| s.poll_recv_from(ip4_buf, cx))
+            .map(|s| s.poll_recv_from(ip4_buffer, cx))
         {
             iter.ip4 = Some(packets?);
         }
@@ -119,7 +118,7 @@ impl Sockets {
         if let Some(Poll::Ready(packets)) = self
             .socket_v6
             .as_ref()
-            .map(|s| s.poll_recv_from(ip6_buf, cx))
+            .map(|s| s.poll_recv_from(ip6_buffer, cx))
         {
             iter.ip6 = Some(packets?);
         }
