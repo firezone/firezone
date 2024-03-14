@@ -12,8 +12,6 @@ use snownet::{Node, Server};
 use sockets::Received;
 use std::{
     collections::HashSet,
-    fmt,
-    hash::Hash,
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -71,6 +69,22 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        let callbacks = CallbackErrorFacade(callbacks);
+
+        Ok(Self {
+            io: new_io(&callbacks)?,
+            callbacks,
+            role_state: Default::default(),
+            node: Node::new(private_key),
+            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            stats: Stats::new(Duration::from_secs(60)),
+        })
+    }
+
     pub fn reconnect(&mut self) {
         self.node.reconnect(Instant::now());
     }
@@ -212,6 +226,22 @@ impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        let callbacks = CallbackErrorFacade(callbacks);
+
+        Ok(Self {
+            io: new_io(&callbacks)?,
+            callbacks,
+            role_state: Default::default(),
+            node: Node::new(private_key),
+            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            stats: Stats::new(Duration::from_secs(60)),
+        })
+    }
+
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
         loop {
             if let Some(transmit) = self.node.poll_transmit() {
@@ -326,29 +356,6 @@ where
 
             return Poll::Pending;
         }
-    }
-}
-
-impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
-where
-    CB: Callbacks + 'static,
-    TId: Eq + Hash + Copy + fmt::Display,
-    TRoleState: Default,
-{
-    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
-
-        Ok(Self {
-            io: new_io(&callbacks)?,
-            callbacks,
-            role_state: Default::default(),
-            node: Node::new(private_key),
-            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            stats: Stats::new(Duration::from_secs(60)),
-        })
     }
 }
 
