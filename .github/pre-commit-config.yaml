@@ -49,3 +49,4 @@ repos:
     hooks:
       - id: fmt
         name: "Cargo fmt"
+        args: ['--check', '--all', '--manifest-path', 'rust/Cargo.toml']
