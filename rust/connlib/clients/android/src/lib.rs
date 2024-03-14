@@ -7,14 +7,12 @@ use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
     ResourceDescription, Session,
 };
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
-use serde::Serialize;
 use std::{io, net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -36,15 +34,6 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
     handle: file_logger::Handle,
-}
-
-impl From<IpNetwork> for Cidr {
-    fn from(val: IpNetwork) -> Cidr {
-        Cidr {
-            address: val.network_address(),
-            prefix: val.netmask(),
-        }
-    }
 }
 
 impl Clone for CallbackHandler {

@@ -19,9 +19,8 @@ mod tun;
 mod tun;
 
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use connlib_shared::error::ConnlibError;
-use connlib_shared::messages::Interface;
-use connlib_shared::{Callbacks, Cidrv4, Cidrv6, Error};
+use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
+use connlib_shared::{Cidrv4, Cidrv6};
 use ip_network::IpNetwork;
 use pnet_packet::Packet;
 use std::collections::HashSet;
