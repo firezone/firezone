@@ -10,11 +10,13 @@ use std::path::PathBuf;
 type RawFd = i32;
 
 #[derive(Serialize, Clone, Copy, Debug)]
+/// Identical to `ip_network::Ipv4Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
 pub struct Cidrv4 {
     address: Ipv4Addr,
     prefix: u8,
 }
 
+/// Identical to `ip_network::Ipv6Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
 #[derive(Serialize, Clone, Copy, Debug)]
 pub struct Cidrv6 {
     address: Ipv6Addr,
