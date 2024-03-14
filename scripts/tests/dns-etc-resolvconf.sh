@@ -40,7 +40,7 @@ echo "# Make sure it's going through the tunnel"
 client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
 
 echo "# Make sure a non-resource doesn't go through the tunnel"
-client_nslookup "github.com" | grep -v "100\\.96.\\0\\."
+client_nslookup "github.com" | ! grep "100\\.96.\\0\\."
 
 echo "# Stop the gateway and make sure the resource is inaccessible"
 docker compose stop gateway
