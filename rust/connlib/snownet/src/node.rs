@@ -144,10 +144,6 @@ where
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
-
-        for (_, agent) in self.connections.agents_mut() {
-            agent.ice_restart(IceCreds::new(), true)
-        }
     }
 
     pub fn public_key(&self) -> PublicKey {
