@@ -139,9 +139,8 @@ impl Callbacks for CallbackHandler {
         );
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) {
         self.inner.on_disconnect(error.to_string());
-        Ok(())
     }
 
     fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {

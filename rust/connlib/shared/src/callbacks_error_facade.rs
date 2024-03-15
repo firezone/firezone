@@ -1,6 +1,6 @@
 use crate::callbacks::{Cidrv4, Cidrv6};
 use crate::messages::ResourceDescription;
-use crate::{Callbacks, Error, Result};
+use crate::{Callbacks, Error};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
@@ -35,12 +35,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         self.0.on_update_resources(resource_list)
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<()> {
-        if let Err(err) = self.0.on_disconnect(error) {
-            tracing::error!(?err, "`on_disconnect` failed");
-        }
-        // There's nothing we can really do if `on_disconnect` fails.
-        Ok(())
+    fn on_disconnect(&self, error: &Error) {
+        self.0.on_disconnect(error)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {

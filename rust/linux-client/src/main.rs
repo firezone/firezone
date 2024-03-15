@@ -117,7 +117,7 @@ impl Callbacks for CallbackHandler {
         Some(resolvers)
     }
 
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!("Disconnected: {error}");
 
         std::process::exit(1);

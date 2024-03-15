@@ -261,7 +261,7 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateResources callback failed")
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) {
         self.env(|mut env| {
             let error = env
                 .new_string(serde_json::to_string(&error.to_string())?)
@@ -277,6 +277,7 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&error)],
             )
         })
+        .expect("onDisconnect callback failed")
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
