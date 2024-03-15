@@ -140,10 +140,6 @@ where
                 Poll::Pending => {}
             }
 
-            // if self.stats.poll(&self.node, cx).is_ready() {
-            //     continue;
-            // }
-
             return Poll::Pending;
         }
     }
