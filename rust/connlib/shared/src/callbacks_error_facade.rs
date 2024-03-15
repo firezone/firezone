@@ -18,15 +18,9 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>> {
-        let result = self
-            .0
+    ) -> Option<RawFd> {
+        self.0
             .on_set_interface_config(tunnel_address_v4, tunnel_address_v6, dns_addresses)
-            .map_err(|err| Error::OnSetInterfaceConfigFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
     }
 
     fn on_tunnel_ready(&self) {

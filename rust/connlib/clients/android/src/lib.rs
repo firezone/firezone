@@ -145,7 +145,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -180,6 +180,7 @@ impl Callbacks for CallbackHandler {
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
+        .expect("onSetInterfaceConfig callback failed")
     }
 
     fn on_tunnel_ready(&self) {

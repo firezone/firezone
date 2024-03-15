@@ -131,7 +131,7 @@ impl Tun {
             }
 
             if addr.sc_id == info.ctl_id {
-                callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config)?;
+                callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
                 set_non_blocking(fd)?;
 

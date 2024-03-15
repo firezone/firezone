@@ -50,13 +50,8 @@ pub trait Callbacks: Clone + Send + Sync {
     ///
     /// This should return a new `fd` if there is one.
     /// (Only happens on android for now)
-    fn on_set_interface_config(
-        &self,
-        _: Ipv4Addr,
-        _: Ipv6Addr,
-        _: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
-        Ok(None)
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<RawFd> {
+        None
     }
 
     /// Called when the tunnel is connected.

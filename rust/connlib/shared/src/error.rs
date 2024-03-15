@@ -64,8 +64,6 @@ pub enum ConnlibError {
     /// Error when reading system's interface
     #[error("Error while reading system's interface")]
     IfaceRead(std::io::Error),
-    #[error("`on_set_interface_config` failed: {0}")]
-    OnSetInterfaceConfigFailed(String),
     #[error("`on_update_resources` failed: {0}")]
     OnUpdateResourcesFailed(String),
     #[error("`on_update_routes` failed: {0}")]

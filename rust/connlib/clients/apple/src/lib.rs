@@ -104,14 +104,15 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-        Ok(None)
+
+        None
     }
 
     fn on_tunnel_ready(&self) {
