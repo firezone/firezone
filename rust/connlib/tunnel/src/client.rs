@@ -203,7 +203,7 @@ where
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
         let name = self.io.device_mut().name().to_owned();
 
-        self.callbacks.on_tunnel_ready()?;
+        self.callbacks.on_tunnel_ready();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 

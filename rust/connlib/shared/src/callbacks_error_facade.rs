@@ -29,15 +29,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         result
     }
 
-    fn on_tunnel_ready(&self) -> Result<()> {
-        let result = self
-            .0
-            .on_tunnel_ready()
-            .map_err(|err| Error::OnTunnelReadyFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
+    fn on_tunnel_ready(&self) {
+        self.0.on_tunnel_ready()
     }
 
     fn on_update_routes(

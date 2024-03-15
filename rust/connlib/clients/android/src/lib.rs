@@ -182,7 +182,7 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -192,6 +192,7 @@ impl Callbacks for CallbackHandler {
                 &[],
             )
         })
+        .expect("onTunnelReady callback failed")
     }
 
     fn on_update_routes(

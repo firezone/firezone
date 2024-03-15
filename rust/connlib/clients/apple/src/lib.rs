@@ -114,9 +114,8 @@ impl Callbacks for CallbackHandler {
         Ok(None)
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         self.inner.on_tunnel_ready();
-        Ok(())
     }
 
     fn on_update_routes(
