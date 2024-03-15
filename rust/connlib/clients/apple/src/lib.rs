@@ -97,8 +97,6 @@ pub struct CallbackHandler {
 }
 
 impl Callbacks for CallbackHandler {
-    type Error = std::convert::Infallible;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,

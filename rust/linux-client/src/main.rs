@@ -82,17 +82,7 @@ struct CallbackHandler {
     handle: Option<file_logger::Handle>,
 }
 
-#[derive(Debug, thiserror::Error)]
-enum CbError {
-    #[error(transparent)]
-    Any(#[from] anyhow::Error),
-}
-
 impl Callbacks for CallbackHandler {
-    // I spent several minutes messing with `anyhow` and couldn't figure out how to make
-    // it implement `std::error::Error`: <https://github.com/dtolnay/anyhow/issues/25>
-    type Error = CbError;
-
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
     fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
         let maybe_resolvers = match self.dns_control_method {

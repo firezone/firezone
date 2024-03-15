@@ -73,7 +73,7 @@ impl Tun {
     pub fn new(
         config: &InterfaceConfig,
         dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
@@ -145,11 +145,7 @@ impl Tun {
         Err(get_last_error())
     }
 
-    pub fn set_routes(
-        &self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<()> {
+    pub fn set_routes(&self, routes: HashSet<IpNetwork>, callbacks: &impl Callbacks) -> Result<()> {
         // This will always be None in macos
         callbacks.on_update_routes(
             routes.iter().copied().filter_map(ipv4).collect(),

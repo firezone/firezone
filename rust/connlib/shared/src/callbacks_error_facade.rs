@@ -11,8 +11,6 @@ type RawFd = i32;
 pub struct CallbackErrorFacade<CB>(pub CB);
 
 impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
-    type Error = Error;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,

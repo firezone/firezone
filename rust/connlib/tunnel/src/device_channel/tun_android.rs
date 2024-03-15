@@ -42,7 +42,7 @@ impl Tun {
     pub fn new(
         config: &InterfaceConfig,
         dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<Self> {
         let fd = callbacks
             .on_set_interface_config(config.ipv4, config.ipv6, dns_config)
@@ -63,7 +63,7 @@ impl Tun {
     pub fn set_routes(
         &mut self,
         routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<()> {
         let fd = callbacks
             .on_update_routes(

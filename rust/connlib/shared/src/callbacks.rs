@@ -1,8 +1,7 @@
 use crate::messages::ResourceDescription;
 use ip_network::{Ipv4Network, Ipv6Network};
 use serde::Serialize;
-use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
@@ -43,9 +42,6 @@ impl From<Ipv6Network> for Cidrv6 {
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
-    /// Error returned when a callback fails.
-    type Error: Debug + Display + Error;
-
     /// Called when the tunnel address is set.
     ///
     /// This should return a new `fd` if there is one.

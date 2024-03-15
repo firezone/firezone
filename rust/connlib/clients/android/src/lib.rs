@@ -138,8 +138,6 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 }
 
 impl Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,

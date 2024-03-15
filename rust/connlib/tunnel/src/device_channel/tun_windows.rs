@@ -160,7 +160,7 @@ impl Tun {
     pub fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
-        _callbacks: &impl Callbacks<Error = Error>,
+        _callbacks: &impl Callbacks,
     ) -> Result<()> {
         for new_route in new_routes.difference(&self.routes) {
             self.add_route(*new_route)?;

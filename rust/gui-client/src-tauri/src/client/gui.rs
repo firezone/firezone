@@ -444,18 +444,8 @@ struct CallbackHandler {
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
-#[derive(thiserror::Error, Debug)]
-enum CallbackError {
-    #[error("can't send to controller task: {0}")]
-    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-
 // Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::debug!("on_disconnect {error:?}");
         let _ = self.ctlr_tx.try_send(ControllerRequest::Disconnected);
