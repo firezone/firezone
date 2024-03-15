@@ -6,7 +6,7 @@ pub use connlib_shared::{
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, CallbackErrorFacade};
+use connlib_shared::get_user_agent;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
@@ -41,7 +41,6 @@ impl Session {
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
         let connect_handle = handle.spawn(connect(
