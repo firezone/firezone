@@ -3,6 +3,14 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      domain_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/domain'
+      domain_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
       api_image:
         required: false
         type: string
@@ -61,6 +69,8 @@ jobs:
       id-token: write
       pull-requests: write
     env:
+      DOMAIN_IMAGE: ${{ inputs.domain_image }}
+      DOMAIN_TAG: ${{ inputs.domain_tag }}
       API_IMAGE: ${{ inputs.api_image }}
       API_TAG: ${{ inputs.api_tag }}
       WEB_IMAGE: ${{ inputs.web_image }}
@@ -99,7 +109,7 @@ jobs:
         run: |
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin
-          docker compose up -d api web --no-build
+          docker compose up -d api web domain --no-build
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build

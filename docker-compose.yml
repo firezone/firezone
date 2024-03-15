@@ -114,7 +114,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/api}:${API_TAG:-main}
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/api}:${API_TAG:-main}
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -178,7 +178,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/domain:main
       args:
         APPLICATION_NAME: domain
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/domain}:${API_TAG:-main}
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${API_TAG:-main}
     hostname: domain.cluster.local
     ports:
       - 8081:8081/tcp
