@@ -287,7 +287,7 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
         self.env(|mut env| {
             let name = "getSystemDefaultResolvers";
             let addrs = env
@@ -298,6 +298,7 @@ impl Callbacks for CallbackHandler {
 
             Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
         })
+        .expect("getSystemDefaultResolvers callback failed")
     }
 }
 

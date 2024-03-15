@@ -144,7 +144,7 @@ impl Callbacks for CallbackHandler {
         Ok(())
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
         let resolvers_json = self.inner.get_system_default_resolvers();
         tracing::debug!(
             "get_system_default_resolvers returned: {:?}",
@@ -153,7 +153,8 @@ impl Callbacks for CallbackHandler {
 
         let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
             .expect("developer error: failed to deserialize resolvers");
-        Ok(Some(resolvers))
+
+        Some(resolvers)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {

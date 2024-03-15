@@ -177,8 +177,6 @@ where
             config.upstream_dns.clone(),
             self.callbacks
                 .get_system_default_resolvers()
-                .ok()
-                .flatten()
                 .unwrap_or_default(),
         );
 

@@ -473,8 +473,16 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.notify_controller.notify_one();
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(client::resolvers::get()?))
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
+        let resolvers = match client::resolvers::get() {
+            Ok(resolvers) => resolvers,
+            Err(e) => {
+                tracing::error!("Failed to get system default resolvers: {e}");
+                return None;
+            }
+        };
+
+        Some(resolvers)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {

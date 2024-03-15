@@ -47,12 +47,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         self.0.roll_log_file()
     }
 
-    fn get_system_default_resolvers(
-        &self,
-    ) -> std::result::Result<Option<Vec<IpAddr>>, Self::Error> {
-        self.0
-            .get_system_default_resolvers()
-            .map_err(|err| Error::GetSystemDefaultResolverFailed(err.to_string()))
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
+        self.0.get_system_default_resolvers()
     }
 
     #[cfg(target_os = "android")]

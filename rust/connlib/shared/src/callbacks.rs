@@ -81,8 +81,8 @@ pub trait Callbacks: Clone + Send + Sync {
     ///
     /// It's okay for clients to include Firezone's own DNS here, e.g. 100.100.111.1.
     /// connlib internally filters them out.
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(None)
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
+        None
     }
 
     /// Protects the socket file descriptor from routing loops.
