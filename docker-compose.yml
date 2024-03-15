@@ -99,6 +99,12 @@ services:
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
     depends_on:
       vault:
         condition: "service_healthy"
@@ -180,8 +186,6 @@ services:
         APPLICATION_NAME: domain
     image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${API_TAG:-main}
     hostname: domain.cluster.local
-    ports:
-      - 8081:8081/tcp
     environment:
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
@@ -217,6 +221,12 @@ services:
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
     depends_on:
       vault:
         condition: "service_healthy"
