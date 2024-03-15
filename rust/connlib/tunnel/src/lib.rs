@@ -8,8 +8,8 @@ use connlib_shared::{
     messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
     CallbackErrorFacade, Callbacks, Result,
 };
-use snownet::{Node, Server};
-use sockets::Received;
+use io::Io;
+use stats::Stats;
 use std::{
     collections::HashSet,
     task::{Context, Poll},
@@ -18,9 +18,6 @@ use std::{
 
 pub use client::{ClientState, Request};
 pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
-use io::Io;
-use stats::Stats;
-use utils::earliest;
 
 mod client;
 mod device_channel;
@@ -41,16 +38,15 @@ const REALM: &str = "firezone";
 #[cfg(target_os = "linux")]
 const FIREZONE_MARK: u32 = 0xfd002021;
 
-pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId>;
-pub type ClientTunnel<CB> = Tunnel<CB, ClientState, snownet::Client, GatewayId>;
+pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState>;
+pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
+pub struct Tunnel<CB: Callbacks, TRoleState> {
     pub callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
-    node: Node<TRole, TId>,
 
     io: Io,
     stats: Stats,
@@ -71,8 +67,7 @@ where
         Ok(Self {
             io: new_io(&callbacks)?,
             callbacks,
-            role_state: Default::default(),
-            node: Node::new(private_key),
+            role_state: ClientState::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -82,7 +77,7 @@ where
     }
 
     pub fn reconnect(&mut self) {
-        self.node.reconnect(Instant::now());
+        self.role_state.reconnect(Instant::now());
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
@@ -96,7 +91,7 @@ where
                 continue;
             }
 
-            if let Some(transmit) = self.node.poll_transmit() {
+            if let Some(transmit) = self.role_state.poll_transmit() {
                 self.io.send_network(transmit)?;
                 continue;
             }
@@ -106,29 +101,7 @@ where
                 continue;
             }
 
-            if let Some(event) = self.node.poll_event() {
-                match event {
-                    snownet::Event::ConnectionFailed(id) => {
-                        self.role_state.cleanup_connected_gateway(&id);
-                    }
-                    snownet::Event::SignalIceCandidate {
-                        connection,
-                        candidate,
-                    } => {
-                        return Poll::Ready(Ok(ClientEvent::SignalIceCandidate {
-                            conn_id: connection,
-                            candidate,
-                        }));
-                    }
-                    _ => {}
-                }
-
-                continue;
-            }
-
-            if let Some(timeout) =
-                earliest(self.node.poll_timeout(), self.role_state.poll_timeout())
-            {
+            if let Some(timeout) = self.role_state.poll_timeout() {
                 self.io.reset_timeout(timeout);
             }
 
@@ -140,68 +113,30 @@ where
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
-                    self.node.handle_timeout(timeout);
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some((peer_id, packet)) =
-                        self.role_state.encapsulate(packet, Instant::now())
-                    else {
+                    let Some(transmit) = self.role_state.encapsulate(packet, Instant::now()) else {
                         continue;
                     };
 
-                    if let Some(transmit) = self.node.encapsulate(
-                        peer_id,
-                        packet.as_immutable().into(),
-                        Instant::now(),
-                    )? {
-                        self.io.send_network(transmit)?;
-                    }
+                    self.io.send_network(transmit)?;
 
                     continue;
                 }
                 Poll::Ready(io::Input::Network(packets)) => {
                     for received in packets {
-                        let Received {
-                            local,
-                            from,
-                            packet,
-                        } = received;
-
-                        let (conn_id, packet) = match self.node.decapsulate(
-                            local,
-                            from,
-                            packet.as_ref(),
+                        let Some(packet) = self.role_state.decapsulate(
+                            received.local,
+                            received.from,
+                            received.packet,
                             std::time::Instant::now(),
                             self.write_buf.as_mut(),
-                        ) {
-                            Ok(Some(packet)) => packet,
-                            Ok(None) => {
-                                continue;
-                            }
-                            Err(e) => {
-                                tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
-
-                                continue;
-                            }
-                        };
-
-                        let Some(peer) = self.role_state.peers.get_mut(&conn_id) else {
-                            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-
+                        ) else {
                             continue;
                         };
 
-                        let packet = match peer.untransform(packet.into()) {
-                            Ok(packet) => packet,
-                            Err(e) => {
-                                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
-
-                                continue;
-                            }
-                        };
-
-                        self.io.device_mut().write(packet.as_immutable())?;
+                        self.io.device_mut().write(packet)?;
                     }
 
                     continue;
@@ -209,9 +144,9 @@ where
                 Poll::Pending => {}
             }
 
-            if self.stats.poll(&self.node, cx).is_ready() {
-                continue;
-            }
+            // if self.stats.poll(&self.node, cx).is_ready() {
+            //     continue;
+            // }
 
             return Poll::Pending;
         }
@@ -228,8 +163,7 @@ where
         Ok(Self {
             io: new_io(&callbacks)?,
             callbacks,
-            role_state: Default::default(),
-            node: Node::new(private_key),
+            role_state: GatewayState::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -240,34 +174,16 @@ where
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
         loop {
-            if let Some(transmit) = self.node.poll_transmit() {
+            if let Some(other) = self.role_state.poll_event() {
+                return Poll::Ready(Ok(other));
+            }
+
+            if let Some(transmit) = self.role_state.poll_transmit() {
                 self.io.send_network(transmit)?;
                 continue;
             }
 
-            if let Some(event) = self.node.poll_event() {
-                match event {
-                    snownet::Event::ConnectionFailed(id) => {
-                        self.role_state.peers.remove(&id);
-                    }
-                    snownet::Event::SignalIceCandidate {
-                        connection,
-                        candidate,
-                    } => {
-                        return Poll::Ready(Ok(GatewayEvent::SignalIceCandidate {
-                            conn_id: connection,
-                            candidate,
-                        }));
-                    }
-                    _ => {}
-                }
-
-                continue;
-            }
-
-            if let Some(timeout) =
-                earliest(self.node.poll_timeout(), self.role_state.poll_timeout())
-            {
+            if let Some(timeout) = self.role_state.poll_timeout() {
                 self.io.reset_timeout(timeout);
             }
 
@@ -279,66 +195,30 @@ where
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
-                    self.node.handle_timeout(timeout);
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
+                    let Some(transmit) = self.role_state.encapsulate(packet) else {
                         continue;
                     };
 
-                    if let Some(transmit) = self.node.encapsulate(
-                        peer_id,
-                        packet.as_immutable().into(),
-                        Instant::now(),
-                    )? {
-                        self.io.send_network(transmit)?;
-                    }
+                    self.io.send_network(transmit)?;
 
                     continue;
                 }
                 Poll::Ready(io::Input::Network(packets)) => {
                     for received in packets {
-                        let Received {
-                            local,
-                            from,
-                            packet,
-                        } = received;
-
-                        let (conn_id, packet) = match self.node.decapsulate(
-                            local,
-                            from,
-                            packet.as_ref(),
+                        let Some(packet) = self.role_state.decapsulate(
+                            received.local,
+                            received.from,
+                            received.packet,
                             std::time::Instant::now(),
                             self.write_buf.as_mut(),
-                        ) {
-                            Ok(Some(packet)) => packet,
-                            Ok(None) => {
-                                continue;
-                            }
-                            Err(e) => {
-                                tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
-
-                                continue;
-                            }
-                        };
-
-                        let Some(peer) = self.role_state.peers.get_mut(&conn_id) else {
-                            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-
+                        ) else {
                             continue;
                         };
 
-                        let packet = match peer.untransform(packet.into()) {
-                            Ok(packet) => packet,
-                            Err(e) => {
-                                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
-
-                                continue;
-                            }
-                        };
-
-                        self.io.device_mut().write(packet.as_immutable())?;
+                        self.io.device_mut().write(packet)?;
                     }
 
                     continue;
@@ -346,9 +226,9 @@ where
                 Poll::Pending => {}
             }
 
-            if self.stats.poll(&self.node, cx).is_ready() {
-                continue;
-            }
+            // if self.stats.poll(&self.node, cx).is_ready() {
+            //     continue;
+            // }
 
             return Poll::Pending;
         }

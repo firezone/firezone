@@ -1,18 +1,20 @@
-use crate::ip_packet::MutableIpPacket;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
-use crate::utils::{stun, turn};
-use crate::GatewayTunnel;
+use crate::utils::{earliest, stun, turn};
+use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
     Relay, ResourceId,
 };
-use connlib_shared::{Callbacks, Dname, Error, Result};
+use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
-use std::collections::HashSet;
+use snownet::ServerNode;
+use std::collections::{HashSet, VecDeque};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
@@ -96,7 +98,7 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        let answer = self.node.accept_connection(
+        let answer = self.role_state.node.accept_connection(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -192,7 +194,8 @@ where
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.node
+        self.role_state
+            .node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
@@ -218,31 +221,86 @@ where
 }
 
 /// [`Tunnel`] state specific to gateways.
-#[derive(Default)]
 pub struct GatewayState {
     pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
+    node: ServerNode<ClientId>,
+
     next_expiry_resources_check: Option<Instant>,
+    buffered_events: VecDeque<GatewayEvent>,
 }
 
 impl GatewayState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Option<(ClientId, MutableIpPacket<'a>)> {
+    pub(crate) fn new(private_key: StaticSecret) -> Self {
+        Self {
+            peers: Default::default(),
+            node: ServerNode::new(private_key),
+            next_expiry_resources_check: Default::default(),
+            buffered_events: VecDeque::default(),
+        }
+    }
+
+    pub(crate) fn encapsulate<'s>(
+        &'s mut self,
+        packet: MutableIpPacket<'_>,
+    ) -> Option<snownet::Transmit<'s>> {
         let dest = packet.destination();
 
         let peer = self.peers.peer_by_ip_mut(dest)?;
         let packet = peer.transform(packet)?;
 
-        Some((peer.conn_id, packet))
+        let transmit = self
+            .node
+            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .ok()??;
+
+        Some(transmit)
     }
 
-    pub fn poll_timeout(&self) -> Option<Instant> {
+    pub(crate) fn decapsulate<'b>(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+        buffer: &'b mut [u8],
+    ) -> Option<IpPacket<'b>> {
+        let (conn_id, packet) = self.node.decapsulate(
+            local,
+            from,
+            packet,
+            now,
+            buffer,
+        )
+        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .ok()??;
+
+        let Some(peer) = self.peers.get_mut(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+
+            return None;
+        };
+
+        let packet = match peer.untransform(packet.into()) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                return None;
+            }
+        };
+
+        Some(packet.into_immutable())
+    }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
         // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
-        self.next_expiry_resources_check
+        earliest(self.next_expiry_resources_check, self.node.poll_timeout())
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.node.handle_timeout(now);
+
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
                 self.peers
@@ -255,16 +313,44 @@ impl GatewayState {
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
         }
+
+        while let Some(event) = self.node.poll_event() {
+            match event {
+                snownet::Event::ConnectionFailed(id) => {
+                    self.peers.remove(&id);
+                }
+                snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                } => {
+                    self.buffered_events
+                        .push_back(GatewayEvent::SignalIceCandidate {
+                            conn_id: connection,
+                            candidate,
+                        });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+        self.node.poll_transmit()
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
+        self.buffered_events.pop_front()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand_core::OsRng;
 
     #[test]
     fn initial_poll_timeout_is_none() {
-        let state = GatewayState::default();
+        let mut state = GatewayState::new(StaticSecret::random_from_rng(OsRng));
 
         assert!(state.poll_timeout().is_none())
     }
@@ -272,7 +358,7 @@ mod tests {
     #[test]
     fn first_timeout_is_after_expire_resources_interval() {
         let start = Instant::now();
-        let mut state = GatewayState::default();
+        let mut state = GatewayState::new(StaticSecret::random_from_rng(OsRng));
 
         state.handle_timeout(start);
 
@@ -285,7 +371,7 @@ mod tests {
     #[test]
     fn does_not_advance_time_before_timeout() {
         let start = Instant::now();
-        let mut state = GatewayState::default();
+        let mut state = GatewayState::new(StaticSecret::random_from_rng(OsRng));
 
         state.handle_timeout(start);
 
