@@ -60,12 +60,8 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when the route list changes.
-    fn on_update_routes(
-        &self,
-        _: Vec<Cidrv4>,
-        _: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>, Self::Error> {
-        Ok(None)
+    fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Option<RawFd> {
+        None
     }
 
     /// Called when the resource list changes.

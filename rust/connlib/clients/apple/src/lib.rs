@@ -123,12 +123,13 @@ impl Callbacks for CallbackHandler {
         &self,
         route_list_4: Vec<Cidrv4>,
         route_list_6: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.inner.on_update_routes(
             serde_json::to_string(&route_list_4).unwrap(),
             serde_json::to_string(&route_list_6).unwrap(),
         );
-        Ok(None)
+
+        None
     }
 
     fn on_update_resources(

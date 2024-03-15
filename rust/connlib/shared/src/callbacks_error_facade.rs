@@ -27,19 +27,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         self.0.on_tunnel_ready()
     }
 
-    fn on_update_routes(
-        &self,
-        routes4: Vec<Cidrv4>,
-        routes6: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>> {
-        let result = self
-            .0
-            .on_update_routes(routes4, routes6)
-            .map_err(|err| Error::OnUpdateRoutesFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
+    fn on_update_routes(&self, routes4: Vec<Cidrv4>, routes6: Vec<Cidrv6>) -> Option<RawFd> {
+        self.0.on_update_routes(routes4, routes6)
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) -> Result<()> {

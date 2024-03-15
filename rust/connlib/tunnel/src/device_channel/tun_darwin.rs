@@ -154,7 +154,7 @@ impl Tun {
         callbacks.on_update_routes(
             routes.iter().copied().filter_map(ipv4).collect(),
             routes.iter().copied().filter_map(ipv6).collect(),
-        )?;
+        );
 
         Ok(())
     }

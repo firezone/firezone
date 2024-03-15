@@ -200,7 +200,7 @@ impl Callbacks for CallbackHandler {
         &self,
         route_list_4: Vec<Cidrv4>,
         route_list_6: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.env(|mut env| {
             let route_list_4 = env
                 .new_string(serde_json::to_string(&route_list_4)?)
@@ -226,6 +226,7 @@ impl Callbacks for CallbackHandler {
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
+        .expect("onUpdateRoutes callback failed")
     }
 
     #[cfg(target_os = "android")]
