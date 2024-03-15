@@ -9,11 +9,10 @@ use connlib_shared::{
     CallbackErrorFacade, Callbacks, Result,
 };
 use io::Io;
-use stats::Stats;
 use std::{
     collections::HashSet,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 pub use client::{ClientState, Request};
@@ -28,7 +27,6 @@ mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
-mod stats;
 mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
@@ -49,7 +47,6 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     role_state: TRoleState,
 
     io: Io,
-    stats: Stats,
 
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
@@ -72,7 +69,6 @@ where
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            stats: Stats::new(Duration::from_secs(60)),
         })
     }
 
@@ -168,7 +164,6 @@ where
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            stats: Stats::new(Duration::from_secs(60)),
         })
     }
 
@@ -225,10 +220,6 @@ where
                 }
                 Poll::Pending => {}
             }
-
-            // if self.stats.poll(&self.node, cx).is_ready() {
-            //     continue;
-            // }
 
             return Poll::Pending;
         }
