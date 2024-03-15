@@ -7,7 +7,7 @@ pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::{get_user_agent, CallbackErrorFacade};
-use firezone_tunnel::Tunnel;
+use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
 
@@ -95,7 +95,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = Tunnel::new(private_key, callbacks.clone())?;
+    let tunnel = ClientTunnel::new(private_key, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
