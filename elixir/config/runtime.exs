@@ -179,9 +179,9 @@ if config_env() == :prod do
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
 
   config :web,
-        Web.Mailer,
-        [
-          adapter: compile_config!(:outbound_email_adapter),
-          from_email: compile_config!(:outbound_email_from)
-        ] ++ compile_config!(:outbound_email_adapter_opts)
+         Web.Mailer,
+         [
+           adapter: compile_config!(:outbound_email_adapter),
+           from_email: compile_config!(:outbound_email_from)
+         ] ++ compile_config!(:outbound_email_adapter_opts)
 end
