@@ -26,10 +26,6 @@ if config_env() == :prod do
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
     gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
 
-  config :domain, Domain.Telemetry,
-    enabled: compile_config!(:telemetry_enabled),
-    id: compile_config!(:telemetry_id)
-
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
 

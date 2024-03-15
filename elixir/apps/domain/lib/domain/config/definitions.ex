@@ -121,11 +121,6 @@ defmodule Domain.Config.Definitions do
        [
          :instrumentation_client_logs_enabled,
          :instrumentation_client_logs_bucket
-       ]},
-      {"Telemetry",
-       [
-         :telemetry_enabled,
-         :telemetry_id
        ]}
     ]
   end

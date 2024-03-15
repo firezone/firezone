@@ -434,10 +434,6 @@ locals {
     },
     # Telemetry
     {
-      name  = "TELEMETRY_ENABLED"
-      value = "false"
-    },
-    {
       name  = "INSTRUMENTATION_CLIENT_LOGS_ENABLED"
       value = true
     },

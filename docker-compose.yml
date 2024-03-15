@@ -87,8 +87,6 @@ services:
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Telemetry
-      TELEMETRY_ENABLED: "false"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -151,8 +149,6 @@ services:
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Telemetry
-      TELEMETRY_ENABLED: "false"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -209,8 +205,6 @@ services:
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Telemetry
-      TELEMETRY_ENABLED: "false"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -270,8 +264,6 @@ services:
       LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Telemetry
-      TELEMETRY_ENABLED: "false"
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
       # Emails
