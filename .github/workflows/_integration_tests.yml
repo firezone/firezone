@@ -105,7 +105,7 @@ jobs:
           docker compose up -d client --no-build
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
-      
+
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
