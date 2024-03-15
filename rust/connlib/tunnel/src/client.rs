@@ -1,25 +1,29 @@
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::PacketTransformClient;
+use crate::peer::{PacketTransformClient, Peer};
 use crate::peer_store::PeerStore;
-use crate::{dns, dns::DnsQuery, Tunnel};
+use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    DnsServer, GatewayId, Interface as InterfaceConfig, IpDnsServer, ResourceDescription,
+    Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
+    IpDnsServer, Key, Offer, Relay, RequestConnection, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
-use connlib_shared::{Callbacks, Dname, IpProvider};
+use connlib_shared::{Callbacks, Dname, IpProvider, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
-use snownet::Client;
 
-use crate::ClientEvent;
+use crate::device_channel::Device;
+use crate::utils::{earliest, stun, turn};
+use crate::{ClientEvent, ClientTunnel};
+use secrecy::{ExposeSecret as _, Secret};
+use snownet::ClientNode;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -51,7 +55,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
@@ -174,7 +178,7 @@ where
         self.role_state.interface_config = Some(config.clone());
         let effective_dns_servers = effective_dns_servers(
             config.upstream_dns.clone(),
-            self.callbacks()
+            self.callbacks
                 .get_system_default_resolvers()
                 .ok()
                 .flatten()
@@ -185,7 +189,7 @@ where
         self.role_state.set_dns_mapping(dns_mapping.clone());
         self.io.set_upstream_dns_servers(dns_mapping.clone());
 
-        let callbacks = self.callbacks().clone();
+        let callbacks = self.callbacks.clone();
 
         self.io.device_mut().initialize(
             config,
@@ -223,12 +227,247 @@ where
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.node
+        self.role_state
+            .node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
+    }
+
+    /// Initiate an ice connection request.
+    ///
+    /// Given a resource id and a list of relay creates a [RequestConnection]
+    /// and prepares the tunnel to handle the connection once initiated.
+    ///
+    /// # Parameters
+    /// - `resource_id`: Id of the resource we are going to request the connection to.
+    /// - `relays`: The list of relays used for that connection.
+    ///
+    /// # Returns
+    /// A [RequestConnection] that should be sent to the gateway through the control-plane.
+    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
+    pub fn request_connection(
+        &mut self,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+        relays: Vec<Relay>,
+    ) -> connlib_shared::Result<Request> {
+        tracing::trace!("request_connection");
+
+        if let Some(connection) = self
+            .role_state
+            .attempt_to_reuse_connection(resource_id, gateway_id)?
+        {
+            // TODO: now we send reuse connections before connection is established but after
+            // response is offered.
+            // We need to consider new race conditions, such as connection failed after
+            // reuse connection is sent.
+            // Though I believe everything will work just fine like this.
+            return Ok(Request::ReuseConnection(connection));
+        }
+
+        if self.role_state.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
+        let awaiting_connection = self
+            .role_state
+            .get_awaiting_connection(&resource_id)?
+            .clone();
+
+        let offer = self.role_state.node.new_connection(
+            gateway_id,
+            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            awaiting_connection.last_intent_sent_at,
+            Instant::now(),
+        );
+
+        Ok(Request::NewConnection(RequestConnection {
+            resource_id,
+            gateway_id,
+            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+            client_payload: ClientPayload {
+                ice_parameters: Offer {
+                    username: offer.credentials.username,
+                    password: offer.credentials.password,
+                },
+                domain: awaiting_connection.domain,
+            },
+        }))
+    }
+
+    fn new_peer(
+        &mut self,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+        domain_response: Option<DomainResponse>,
+    ) -> connlib_shared::Result<()> {
+        let ips = self.role_state.create_peer_config_for_new_connection(
+            resource_id,
+            &domain_response.as_ref().map(|d| d.domain.clone()),
+        )?;
+
+        let resource_ids = HashSet::from([resource_id]);
+        let mut peer: Peer<_, PacketTransformClient, _> =
+            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
+        peer.transform.set_dns(self.role_state.dns_mapping());
+        self.role_state.peers.insert(peer, &[]);
+
+        let peer_ips = if let Some(domain_response) = domain_response {
+            self.dns_response(&resource_id, &domain_response, &gateway_id)?
+        } else {
+            ips
+        };
+
+        self.role_state
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
+        Ok(())
+    }
+
+    /// Called when a response to [ClientTunnel::request_connection] is ready.
+    ///
+    /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
+    #[tracing::instrument(level = "trace", skip(self, gateway_public_key, resource_id))]
+    pub fn received_offer_response(
+        &mut self,
+        resource_id: ResourceId,
+        rtc_ice_params: Answer,
+        domain_response: Option<DomainResponse>,
+        gateway_public_key: PublicKey,
+    ) -> connlib_shared::Result<()> {
+        tracing::trace!("received offer response");
+
+        let gateway_id = self
+            .role_state
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        self.role_state.node.accept_answer(
+            gateway_id,
+            gateway_public_key,
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: rtc_ice_params.username,
+                    password: rtc_ice_params.password,
+                },
+            },
+            Instant::now(),
+        );
+
+        self.new_peer(resource_id, gateway_id, domain_response)?;
+
+        Ok(())
+    }
+
+    fn dns_response(
+        &mut self,
+        resource_id: &ResourceId,
+        domain_response: &DomainResponse,
+        peer_id: &GatewayId,
+    ) -> connlib_shared::Result<Vec<IpNetwork>> {
+        let peer = self
+            .role_state
+            .peers
+            .get_mut(peer_id)
+            .ok_or(Error::ControlProtocolError)?;
+
+        let resource_description = self
+            .role_state
+            .resource_ids
+            .get(resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
+
+        let ResourceDescription::Dns(resource_description) = resource_description else {
+            // We should never get a domain_response for a CIDR resource!
+            return Err(Error::ControlProtocolError);
+        };
+
+        let resource_description =
+            DnsResource::from_description(&resource_description, domain_response.domain.clone());
+
+        let addrs: HashSet<_> = domain_response
+            .address
+            .iter()
+            .filter_map(|external_ip| {
+                peer.transform
+                    .get_or_assign_translation(external_ip, &mut self.role_state.ip_provider)
+            })
+            .collect();
+
+        self.role_state
+            .dns_resources_internal_ips
+            .insert(resource_description.clone(), addrs.clone());
+
+        let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
+
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::Aaaa,
+            self.io.device_mut(),
+            &resource_description,
+            &addrs,
+        );
+
+        send_dns_answer(
+            &mut self.role_state,
+            Rtype::A,
+            self.io.device_mut(),
+            &resource_description,
+            &addrs,
+        );
+
+        Ok(ips)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, resource_id))]
+    pub fn received_domain_parameters(
+        &mut self,
+        resource_id: ResourceId,
+        domain_response: DomainResponse,
+    ) -> connlib_shared::Result<()> {
+        let gateway_id = self
+            .role_state
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
+
+        self.role_state
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
+        Ok(())
     }
 }
 
-/// [`Tunnel`] state specific to clients.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Request {
+    NewConnection(RequestConnection),
+    ReuseConnection(ReuseConnection),
+}
+
+fn send_dns_answer(
+    role_state: &mut ClientState,
+    qtype: Rtype,
+    device: &Device,
+    resource_description: &DnsResource,
+    addrs: &HashSet<IpAddr>,
+) {
+    let packet = role_state
+        .deferred_dns_queries
+        .remove(&(resource_description.clone(), qtype));
+    if let Some(packet) = packet {
+        let Some(packet) = dns::create_local_answer(addrs, packet) else {
+            return;
+        };
+        if let Err(e) = device.write(packet) {
+            tracing::error!(err = ?e, "error writing packet: {e:#?}");
+        }
+    }
+}
+
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
@@ -240,6 +479,8 @@ pub struct ClientState {
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
     pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
+
+    node: ClientNode<GatewayId>,
 
     pub ip_provider: IpProvider,
 
@@ -263,11 +504,35 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
+    pub(crate) fn new(private_key: StaticSecret) -> Self {
+        Self {
+            awaiting_connection: Default::default(),
+            resources_gateways: Default::default(),
+            ip_provider: IpProvider::new(
+                IPV4_RESOURCES.parse().unwrap(),
+                IPV6_RESOURCES.parse().unwrap(),
+            ),
+            dns_resources_internal_ips: Default::default(),
+            dns_resources: Default::default(),
+            cidr_resources: IpNetworkTable::new(),
+            resource_ids: Default::default(),
+            peers: Default::default(),
+            deferred_dns_queries: Default::default(),
+            dns_mapping: Default::default(),
+            buffered_events: Default::default(),
+            interface_config: Default::default(),
+            buffered_packets: Default::default(),
+            buffered_dns_queries: Default::default(),
+            next_dns_refresh: Default::default(),
+            node: ClientNode::new(private_key),
+        }
+    }
+
+    pub(crate) fn encapsulate<'s>(
+        &'s mut self,
+        packet: MutableIpPacket<'_>,
         now: Instant,
-    ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
+    ) -> Option<snownet::Transmit<'s>> {
         let (packet, dest) = match self.handle_dns(packet, now) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
@@ -283,7 +548,49 @@ impl ClientState {
 
         let packet = peer.transform(packet)?;
 
-        Some((peer.conn_id, packet))
+        let transmit = self
+            .node
+            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .ok()??;
+
+        Some(transmit)
+    }
+
+    pub(crate) fn decapsulate<'b>(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+        buffer: &'b mut [u8],
+    ) -> Option<IpPacket<'b>> {
+        let (conn_id, packet) = self.node.decapsulate(
+            local,
+            from,
+            packet.as_ref(),
+            now,
+            buffer,
+        )
+        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .ok()??;
+
+        let Some(peer) = self.peers.get_mut(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+
+            return None;
+        };
+
+        let packet = match peer.untransform(packet.into()) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                return None;
+            }
+        };
+
+        Some(packet.into_immutable())
     }
 
     /// Attempt to handle the given packet as a DNS packet.
@@ -558,11 +865,13 @@ impl ClientState {
         self.buffered_dns_queries.pop_front()
     }
 
-    pub fn poll_timeout(&self) -> Option<Instant> {
-        self.next_dns_refresh
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        earliest(self.next_dns_refresh, self.node.poll_timeout())
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.node.handle_timeout(now);
+
         match self.next_dns_refresh {
             Some(next_dns_refresh) if now >= next_dns_refresh => {
                 let mut connections = Vec::new();
@@ -595,35 +904,36 @@ impl ClientState {
             None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
             Some(_) => {}
         }
+
+        while let Some(event) = self.node.poll_event() {
+            match event {
+                snownet::Event::ConnectionFailed(id) => {
+                    self.cleanup_connected_gateway(&id);
+                }
+                snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                } => self
+                    .buffered_events
+                    .push_back(ClientEvent::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }),
+                _ => {}
+            }
+        }
     }
 
     pub fn poll_event(&mut self) -> Option<ClientEvent> {
         self.buffered_events.pop_front()
     }
-}
 
-impl Default for ClientState {
-    fn default() -> Self {
-        Self {
-            awaiting_connection: Default::default(),
-            resources_gateways: Default::default(),
-            ip_provider: IpProvider::new(
-                IPV4_RESOURCES.parse().unwrap(),
-                IPV6_RESOURCES.parse().unwrap(),
-            ),
-            dns_resources_internal_ips: Default::default(),
-            dns_resources: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
-            resource_ids: Default::default(),
-            peers: Default::default(),
-            deferred_dns_queries: Default::default(),
-            dns_mapping: Default::default(),
-            buffered_events: Default::default(),
-            interface_config: Default::default(),
-            buffered_packets: Default::default(),
-            buffered_dns_queries: Default::default(),
-            next_dns_refresh: Default::default(),
-        }
+    pub(crate) fn reconnect(&mut self, now: Instant) {
+        self.node.reconnect(now)
+    }
+
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+        self.node.poll_transmit()
     }
 }
 
@@ -709,36 +1019,5 @@ mod tests {
     #[test]
     fn ignores_ip6_multicast_all_routers() {
         assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
-    }
-
-    #[test]
-    fn initial_poll_timeout_is_none() {
-        let state = ClientState::default();
-
-        assert!(state.poll_timeout().is_none())
-    }
-
-    #[test]
-    fn first_timeout_is_after_dns_refresh_interval() {
-        let start = Instant::now();
-        let mut state = ClientState::default();
-
-        state.handle_timeout(start);
-
-        assert_eq!(state.poll_timeout().unwrap(), start + DNS_REFRESH_INTERVAL)
-    }
-
-    #[test]
-    fn does_not_advance_time_before_timeout() {
-        let start = Instant::now();
-        let mut state = ClientState::default();
-
-        state.handle_timeout(start);
-
-        let before = state.poll_timeout().unwrap();
-        state.handle_timeout(start + DNS_REFRESH_INTERVAL / 2);
-        let after = state.poll_timeout().unwrap();
-
-        assert_eq!(before, after)
     }
 }
