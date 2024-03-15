@@ -7,6 +7,7 @@ use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
     ResourceDescription, Session,
 };
+use firezone_tunnel::Tun;
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
@@ -16,7 +17,6 @@ use secrecy::SecretString;
 use std::{io, net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
 };
 use std::{sync::OnceLock, time::Duration};
@@ -34,6 +34,7 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
     handle: file_logger::Handle,
+    new_tun_sender: tokio::sync::mpsc::Sender<Tun>,
 }
 
 impl Clone for CallbackHandler {
@@ -47,6 +48,7 @@ impl Clone for CallbackHandler {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
             handle: self.handle.clone(),
+            new_tun_sender: self.new_tun_sender.clone(),
         }
     }
 }
@@ -143,42 +145,54 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
-        self.env(|mut env| {
-            let tunnel_address_v4 =
-                env.new_string(tunnel_address_v4.to_string())
+    ) {
+        let new_fd = self
+            .env(|mut env| {
+                let tunnel_address_v4 =
+                    env.new_string(tunnel_address_v4.to_string())
+                        .map_err(|source| CallbackError::NewStringFailed {
+                            name: "tunnel_address_v4",
+                            source,
+                        })?;
+                let tunnel_address_v6 =
+                    env.new_string(tunnel_address_v6.to_string())
+                        .map_err(|source| CallbackError::NewStringFailed {
+                            name: "tunnel_address_v6",
+                            source,
+                        })?;
+                let dns_addresses = env
+                    .new_string(serde_json::to_string(&dns_addresses)?)
                     .map_err(|source| CallbackError::NewStringFailed {
-                        name: "tunnel_address_v4",
+                        name: "dns_addresses",
                         source,
                     })?;
-            let tunnel_address_v6 =
-                env.new_string(tunnel_address_v6.to_string())
-                    .map_err(|source| CallbackError::NewStringFailed {
-                        name: "tunnel_address_v6",
-                        source,
-                    })?;
-            let dns_addresses = env
-                .new_string(serde_json::to_string(&dns_addresses)?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "dns_addresses",
-                    source,
-                })?;
-            let name = "onSetInterfaceConfig";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
-                &[
-                    JValue::from(&tunnel_address_v4),
-                    JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_addresses),
-                ],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
-        })
-        .expect("onSetInterfaceConfig callback failed")
+                let name = "onSetInterfaceConfig";
+                env.call_method(
+                    &self.callback_handler,
+                    name,
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                    &[
+                        JValue::from(&tunnel_address_v4),
+                        JValue::from(&tunnel_address_v6),
+                        JValue::from(&dns_addresses),
+                    ],
+                )
+                .and_then(|val| val.i())
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            })
+            .expect("onSetInterfaceConfig callback failed");
+
+        let tun = match Tun::new(new_fd) {
+            Ok(tun) => tun,
+            Err(e) => {
+                tracing::error!("Failed to make new TUN device");
+                return;
+            }
+        };
+
+        let _ = self.new_tun_sender.try_send(tun);
+
+        // TODO: Make new `Tun` from new file descriptor and re-initialize it on the Tunnel.
     }
 
     fn on_tunnel_ready(&self) {
@@ -194,37 +208,43 @@ impl Callbacks for CallbackHandler {
         .expect("onTunnelReady callback failed")
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
-    ) -> Option<RawFd> {
-        self.env(|mut env| {
-            let route_list_4 = env
-                .new_string(serde_json::to_string(&route_list_4)?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_list_4",
-                    source,
-                })?;
-            let route_list_6 = env
-                .new_string(serde_json::to_string(&route_list_6)?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_list_6",
-                    source,
-                })?;
+    fn on_update_routes(&self, route_list_4: Vec<Cidrv4>, route_list_6: Vec<Cidrv6>) {
+        let new_fd = self
+            .env(|mut env| {
+                let route_list_4 = env
+                    .new_string(serde_json::to_string(&route_list_4)?)
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "route_list_4",
+                        source,
+                    })?;
+                let route_list_6 = env
+                    .new_string(serde_json::to_string(&route_list_6)?)
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "route_list_6",
+                        source,
+                    })?;
 
-            let name = "onUpdateRoutes";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;)I",
-                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
-        })
-        .expect("onUpdateRoutes callback failed")
+                let name = "onUpdateRoutes";
+                env.call_method(
+                    &self.callback_handler,
+                    name,
+                    "(Ljava/lang/String;Ljava/lang/String;)I",
+                    &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
+                )
+                .and_then(|val| val.i())
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            })
+            .expect("onUpdateRoutes callback failed");
+
+        let tun = match Tun::new(new_fd) {
+            Ok(tun) => tun,
+            Err(e) => {
+                tracing::error!("Failed to make new TUN device");
+                return;
+            }
+        };
+
+        let _ = self.new_tun_sender.try_send(
     }
 
     #[cfg(target_os = "android")]
@@ -400,12 +420,15 @@ fn connect(
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
 
+    let (new_tun_sender, mut new_tun_receiver) = tokio::sync::mpsc::channel(1);
+
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
 
     let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
         handle,
+        new_tun_sender,
     };
 
     let (private_key, public_key) = keypair();
@@ -431,6 +454,15 @@ fn connect(
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     )?;
+
+    {
+        let mut session = session.clone();
+        tokio::spawn(async move {
+            while let Some(tun) = new_tun_receiver.recv().await {
+                session.update_tun(tun);
+            }
+        });
+    }
 
     Ok(SessionWrapper {
         inner: session,

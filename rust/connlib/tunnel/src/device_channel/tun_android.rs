@@ -39,14 +39,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<Self> {
-        let fd = callbacks
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config)
-            .ok_or(Error::NoFd)?;
+    pub fn new(fd: RawFd) -> Result<Self> {
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };
 
@@ -60,34 +53,34 @@ impl Tun {
         self.name.as_str()
     }
 
-    pub fn set_routes(
-        &mut self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<()> {
-        let fd = callbacks
-            .on_update_routes(
-                routes.iter().copied().filter_map(ipv4).collect(),
-                routes.iter().copied().filter_map(ipv6).collect(),
-            )
-            .ok_or(Error::NoFd)?;
+    // pub fn set_routes(
+    //     &mut self,
+    //     routes: HashSet<IpNetwork>,
+    //     callbacks: &impl Callbacks,
+    // ) -> Result<()> {
+    //     let fd = callbacks
+    //         .on_update_routes(
+    //             routes.iter().copied().filter_map(ipv4).collect(),
+    //             routes.iter().copied().filter_map(ipv6).collect(),
+    //         )
+    //         .ok_or(Error::NoFd)?;
 
-        // SAFETY: we expect the callback to return a valid file descriptor
-        unsafe { self.replace_fd(fd)? };
+    //     // SAFETY: we expect the callback to return a valid file descriptor
+    //     unsafe { self.replace_fd(fd)? };
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    // SAFETY: must be called with a valid file descriptor
-    unsafe fn replace_fd(&mut self, fd: RawFd) -> Result<()> {
-        if self.fd.as_raw_fd() != fd {
-            unsafe { libc::close(self.fd.as_raw_fd()) };
-            self.fd = AsyncFd::new(fd)?;
-            self.name = interface_name(fd)?;
-        }
+    // // SAFETY: must be called with a valid file descriptor
+    // unsafe fn replace_fd(&mut self, fd: RawFd) -> Result<()> {
+    //     if self.fd.as_raw_fd() != fd {
+    //         unsafe { libc::close(self.fd.as_raw_fd()) };
+    //         self.fd = AsyncFd::new(fd)?;
+    //         self.name = interface_name(fd)?;
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 /// Retrieves the name of the interface pointed to by the provided file descriptor.

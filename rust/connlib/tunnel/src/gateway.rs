@@ -13,7 +13,7 @@ use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ServerNode;
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
@@ -47,14 +47,14 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        let callbacks = self.callbacks.clone();
-        self.io
-            .device_mut()
-            .initialize(config, vec![], &callbacks)?;
-        self.io.device_mut().set_routes(
-            HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
-            &callbacks,
-        )?;
+        // let callbacks = self.callbacks.clone();
+        // self.io
+        //     .device_mut()
+        //     .initialize(config, vec![], &callbacks)?;
+        // self.io.device_mut().set_routes(
+        //     HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
+        //     &callbacks,
+        // )?;
 
         let name = self.io.device_mut().name().to_owned();
 

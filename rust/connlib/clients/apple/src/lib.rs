@@ -4,10 +4,10 @@
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, ResourceDescription, Session,
 };
+use firezone_tunnel::Tun;
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -94,6 +94,7 @@ pub struct CallbackHandler {
     // recount. Instead, we just wrap it in an `Arc`.
     inner: Arc<ffi::CallbackHandler>,
     handle: file_logger::Handle,
+    new_tun_sender: tokio::sync::mpsc::Sender<Tun>,
 }
 
 impl Callbacks for CallbackHandler {
@@ -102,32 +103,33 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
+    ) {
+        let tun = match Tun::new() {
+            Ok(tun) => tun,
+            Err(e) => {
+                tracing::error!("Failed to create TUN device");
+                return;
+            }
+        };
+
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-
-        None
+        let _ = self.new_tun_sender.try_send(tun);
     }
 
     fn on_tunnel_ready(&self) {
         self.inner.on_tunnel_ready();
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
-    ) -> Option<RawFd> {
+    fn on_update_routes(&self, route_list_4: Vec<Cidrv4>, route_list_6: Vec<Cidrv6>) {
         self.inner.on_update_routes(
             serde_json::to_string(&route_list_4).unwrap(),
             serde_json::to_string(&route_list_6).unwrap(),
         );
-
-        None
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -193,6 +195,8 @@ impl WrappedSession {
         let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
 
+        let (new_tun_sender, mut new_tun_receiver) = tokio::sync::mpsc::channel(1);
+
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
@@ -217,11 +221,21 @@ impl WrappedSession {
             CallbackHandler {
                 inner: Arc::new(callback_handler),
                 handle,
+                new_tun_sender,
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
         )
         .map_err(|err| err.to_string())?;
+
+        {
+            let mut session = session.clone();
+            tokio::spawn(async move {
+                while let Some(tun) = new_tun_receiver.recv().await {
+                    session.update_tun(tun);
+                }
+            });
+        }
 
         Ok(Self {
             inner: session,
