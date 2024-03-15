@@ -220,7 +220,6 @@ where
     }
 }
 
-/// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
     node: ServerNode<ClientId>,

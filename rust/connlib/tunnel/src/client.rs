@@ -468,7 +468,6 @@ fn send_dns_answer(
     }
 }
 
-/// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
