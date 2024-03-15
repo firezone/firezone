@@ -325,7 +325,7 @@ where
         Ok(())
     }
 
-    /// Called when a response to [Tunnel::request_connection] is ready.
+    /// Called when a response to [ClientTunnel::request_connection] is ready.
     ///
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
     #[tracing::instrument(level = "trace", skip(self, gateway_public_key, resource_id))]
