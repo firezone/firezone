@@ -78,7 +78,7 @@ defmodule Web.Live.Groups.NewTest do
     |> form("form", group: attrs)
     |> validate_change(%{group: %{name: String.duplicate("a", 256)}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "group[name]" => ["should be at most 64 character(s)"]
+               "group[name]" => ["should be at most 255 character(s)"]
              }
     end)
     |> validate_change(%{group: %{name: ""}}, fn form, _html ->

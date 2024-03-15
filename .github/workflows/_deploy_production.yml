@@ -1,0 +1,115 @@
+name: Deploy Production
+run-name: Triggered by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
+        type: string
+        default: ${{ github.sha }}
+        required: false
+
+env:
+  # mark:automatic-version
+  VERSION: "1.0.0"
+
+jobs:
+  sanity-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Ensure CI passed for the given sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/firezone/firezone/actions/runs?head_sha=${{ inputs.tag }}&status=success" \
+            | jq -e '.workflow_runs | length > 0' || exit 1
+
+  push:
+    needs: sanity-check
+    runs-on: ubuntu-22.04
+    permissions:
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to staging registry
+        uses: ./.github/actions/gcp-docker-login
+        id: login-staging
+        with:
+          project: firezone-staging
+      - name: Login to production registry
+        uses: ./.github/actions/gcp-docker-login
+        id: login-production
+        with:
+          project: firezone-prod
+      - name: Pull and push images
+        run: |
+          set -xe
+          IMAGES=(client relay gateway api web)
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          for image in "${IMAGES[@]}"; do
+            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag }}
+            docker pull --platform linux/amd64 ${SOURCE_TAG}
+
+            echo "Retagging ${image} from ${SOURCE_TAG}"
+
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION}
+            docker tag ${SOURCE_TAG} ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION}
+
+            docker push --all-tags ${{ steps.login-production.outputs.registry }}/firezone/${image}
+          done
+
+  deploy-production:
+    needs: push
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      TF_CLOUD_ORGANIZATION: "firezone"
+      TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
+      TF_WORKSPACE: "production"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tool Versions
+        id: versions
+        uses: marocchino/tool-versions-action@v1.2.0
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.versions.outputs.terraform }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+      - name: Upload Configuration
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.2.0
+        id: apply-upload
+        with:
+          workspace: ${{ env.TF_WORKSPACE }}
+          # Subdirectory is set in the project settings:
+          # https://app.terraform.io/app/firezone/workspaces/production/settings/general
+          directory: "./"
+      - name: Create Plan Run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.2.0
+        id: apply-run
+        env:
+          TF_VAR_image_tag:
+            '"${{ env.VERSION }}-${{ inputs.tag }}"'
+        with:
+          workspace: ${{ env.TF_WORKSPACE }}
+          configuration_version:
+            ${{ steps.apply-upload.outputs.configuration_version_id }}
+      - name: Apply
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.2.0
+        if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
+        id: apply
+        with:
+          run: ${{ steps.apply-run.outputs.run_id }}
+          comment:
+            "Apply Run from GitHub Actions CI ${{ inputs.tag }}"

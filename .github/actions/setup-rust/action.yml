@@ -9,6 +9,7 @@ inputs:
     description: "Additional targets to install"
     required: false
     default: ""
+
 runs:
   using: "composite"
   steps:
@@ -37,7 +38,7 @@ runs:
       uses: Swatinem/rust-cache@v2
       with:
         save-if: ${{ github.ref_name == 'main' }}
-        key: ${{ runner.os }}-${{ runner.arch }}
+        key: ${{ runner.os }}-${{ inputs.targets }}
         workspaces: ./rust
 
     # Common to either cache backend
@@ -54,7 +55,9 @@ runs:
     - if: inputs.targets != ''
       run: rustup target add ${{ inputs.targets }}
       shell: bash
-    - if: ${{ inputs.sccache_enabled == 'true' }}
+
+    # Start sccache
+    - if: ${{ inputs.cache_backend == 'sccache' }}
       name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash

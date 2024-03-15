@@ -7,7 +7,6 @@ mod auth;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
-mod device_id;
 mod elevation;
 mod gui;
 mod known_dirs;
@@ -79,7 +78,9 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(deep_link::open(&deep_link.url))?;
+            if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
+                tracing::error!(?error, "Error in `OpenDeepLink`");
+            }
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
@@ -162,6 +163,9 @@ struct Cli {
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
+    /// Disable deep link registration and handling, for headless CI environments
+    #[arg(long, hide = true)]
+    no_deep_links: bool,
 }
 
 impl Cli {
@@ -213,6 +217,7 @@ pub enum Cmd {
 
 #[derive(Args)]
 pub struct DeepLink {
+    // TODO: Should be `Secret`?
     pub url: url::Url,
 }
 

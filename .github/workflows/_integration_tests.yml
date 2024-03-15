@@ -1,0 +1,120 @@
+name: Integration Tests
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_call:
+    inputs:
+      api_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
+      api_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      web_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
+      web_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      elixir_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
+      elixir_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      relay_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay'
+      relay_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      gateway_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway'
+      gateway_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      client_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client'
+      client_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+
+jobs:
+  integration-tests:
+    name: integration-tests-${{ matrix.test }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      API_IMAGE: ${{ inputs.api_image }}
+      API_TAG: ${{ inputs.api_tag }}
+      WEB_IMAGE: ${{ inputs.web_image }}
+      WEB_TAG: ${{ inputs.web_tag }}
+      RELAY_IMAGE: ${{ inputs.relay_image }}
+      RELAY_TAG: ${{ inputs.relay_tag }}
+      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+      GATEWAY_TAG: ${{ inputs.gateway_tag }}
+      CLIENT_IMAGE: ${{ inputs.client_image }}
+      CLIENT_TAG: ${{ inputs.client_tag }}
+      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+      ELIXIR_TAG: ${{ inputs.elixir_tag }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [
+          direct-curl-portal-restart,
+          relayed-curl-portal-restart,
+          relayed-curl-relay-restart,
+          direct-curl-portal-down,
+          relayed-curl-portal-down,
+          direct-curl-portal-relay-down,
+          dns-etc-resolvconf,
+          dns-nm,
+          systemd/dns-systemd-resolved,
+        ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
+        with:
+          project: firezone-staging
+      - name: Seed database
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+      - name: Start docker compose in the background
+        run: |
+          # Start one-by-one to avoid variability in service startup order
+          docker compose up -d dns.httpbin httpbin
+          docker compose up -d api web --no-build
+          docker compose up -d relay --no-build
+          docker compose up -d gateway --no-build
+          docker compose up -d client --no-build
+
+      - run: ./scripts/tests/${{ matrix.test }}.sh
+
+      - name: Show Client logs
+        if: "!cancelled()"
+        run: docker compose logs client
+      - name: Show Relay logs
+        if: "!cancelled()"
+        run: docker compose logs relay
+      - name: Show Gateway logs
+        if: "!cancelled()"
+        run: docker compose logs gateway
+      - name: Show API logs
+        if: "!cancelled()"
+        run: docker compose logs api

@@ -1,12 +1,18 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session};
-use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
-use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use connlib_shared::{
+    keypair,
+    linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
+    LoginUrl,
+};
+use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::{net::IpAddr, path::PathBuf, str::FromStr};
+use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
+use tokio::signal::unix::SignalKind;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
@@ -19,24 +25,58 @@ fn main() -> Result<()> {
         handle,
     };
 
-    let mut session = Session::connect(
+    // AKA "Device ID", not the Firezone slug
+    let firezone_id = match cli.firezone_id {
+        Some(id) => id,
+        None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?,
+    };
+
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
         cli.common.api_url,
-        SecretString::from(cli.common.token),
-        cli.firezone_id,
+        &SecretString::from(cli.common.token),
+        firezone_id,
         None,
+        public_key.to_bytes(),
+    )?;
+
+    let mut session = Session::connect(
+        login,
+        private_key,
         None,
         callbacks,
         max_partition_time,
+        tokio::runtime::Handle::current(),
     )
     .unwrap();
 
-    block_on_ctrl_c();
+    let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
+    let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
+
+    future::poll_fn(|cx| loop {
+        if sigint.poll_recv(cx).is_ready() {
+            tracing::debug!("Received SIGINT");
+
+            return Poll::Ready(());
+        }
+
+        if sighup.poll_recv(cx).is_ready() {
+            tracing::debug!("Received SIGHUP");
+
+            session.reconnect();
+            continue;
+        }
+
+        return Poll::Pending;
+    })
+    .await;
 
     if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
         etc_resolv_conf::unconfigure_dns()?;
     }
 
-    session.disconnect(None);
+    session.disconnect();
+
     Ok(())
 }
 
@@ -71,12 +111,10 @@ impl Callbacks for CallbackHandler {
         Ok(Some(default_resolvers))
     }
 
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
-        tracing::error!(?error, "Disconnected");
-        Ok(())
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+        tracing::error!("Disconnected: {error}");
+
+        std::process::exit(1);
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -146,8 +184,10 @@ struct Cli {
     common: CommonArgs,
 
     /// Identifier used by the portal to identify and display the device.
+    ///
+    /// AKA `device_id` in the Windows and Linux GUI clients
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
-    pub firezone_id: String,
+    pub firezone_id: Option<String>,
 
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]

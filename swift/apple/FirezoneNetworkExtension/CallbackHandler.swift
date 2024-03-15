@@ -23,10 +23,9 @@ public protocol CallbackHandlerDelegate: AnyObject {
     dnsAddresses: [String]
   )
   func onTunnelReady()
-  func onAddRoute(_: String)
-  func onRemoveRoute(_: String)
+  func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect(error: String?)
+  func onDisconnect(error: String)
 }
 
 public class CallbackHandler {
@@ -70,14 +69,9 @@ public class CallbackHandler {
     delegate?.onTunnelReady()
   }
 
-  func onAddRoute(route: RustString) {
-    logger.log("CallbackHandler.onAddRoute: \(route.toString())")
-    delegate?.onAddRoute(route.toString())
-  }
-
-  func onRemoveRoute(route: RustString) {
-    logger.log("CallbackHandler.onRemoveRoute: \(route.toString())")
-    delegate?.onRemoveRoute(route.toString())
+  func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
+    logger.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
+    delegate?.onUpdateRoutes(routeList4: routeList4.toString(), routeList6: routeList6.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {
@@ -86,13 +80,9 @@ public class CallbackHandler {
   }
 
   func onDisconnect(error: RustString) {
-    logger.log("CallbackHandler.onDisconnect: \(error.toString())")
     let error = error.toString()
-    var optionalError = Optional.some(error)
-    if error.isEmpty {
-      optionalError = Optional.none
-    }
-    delegate?.onDisconnect(error: optionalError)
+    logger.log("CallbackHandler.onDisconnect: \(error)")
+    delegate?.onDisconnect(error: error)
   }
 
   func setSystemDefaultResolvers(resolvers: [String]) {

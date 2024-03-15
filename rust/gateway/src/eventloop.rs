@@ -3,7 +3,7 @@ use crate::messages::{
     EgressMessages, IngressMessages, RejectAccess, RequestConnection,
 };
 use crate::CallbackHandler;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted, ResourceDescription},
@@ -12,7 +12,7 @@ use connlib_shared::{
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use either::Either;
-use firezone_tunnel::{Event, GatewayTunnel, ResolvedResourceDescriptionDns};
+use firezone_tunnel::{GatewayTunnel, ResolvedResourceDescriptionDns};
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;
@@ -48,11 +48,11 @@ impl Eventloop {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
-            match self.tunnel.poll_next_event(cx)? {
-                Poll::Ready(firezone_tunnel::Event::SignalIceCandidate {
+            match self.tunnel.poll_next_event(cx) {
+                Poll::Ready(Ok(firezone_tunnel::GatewayEvent::SignalIceCandidate {
                     conn_id: client,
                     candidate,
-                }) => {
+                })) => {
                     tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
 
                     self.portal.send(
@@ -65,10 +65,10 @@ impl Eventloop {
 
                     continue;
                 }
-                Poll::Ready(Event::ConnectionIntent { .. }) => {
-                    unreachable!("Not used on the gateway, split the events!")
+                Poll::Ready(Err(e)) => {
+                    tracing::warn!("Tunnel error: {e}");
+                    continue;
                 }
-                Poll::Ready(_) => continue,
                 Poll::Pending => {}
             }
 
@@ -76,7 +76,7 @@ impl Eventloop {
                 Poll::Ready((Ok(Ok(resource)), Either::Left(req))) => {
                     let ips = req.client.peer.ips();
 
-                    match self.tunnel.set_peer_connection_request(
+                    match self.tunnel.accept(
                         req.client.id,
                         req.client.peer.preshared_key,
                         req.client.payload.ice_parameters,
@@ -97,17 +97,16 @@ impl Eventloop {
                             );
 
                             // TODO: If outbound request fails, cleanup connection.
-                            continue;
                         }
                         Err(e) => {
                             let client = req.client.id;
 
                             self.tunnel.cleanup_connection(&client);
                             tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
-
-                            continue;
                         }
                     }
+
+                    continue;
                 }
                 Poll::Ready((Ok(Ok(resource)), Either::Right(req))) => {
                     let maybe_domain_response = self.tunnel.allow_access(
@@ -127,8 +126,9 @@ impl Eventloop {
                                 ),
                             }),
                         );
-                        continue;
                     }
+
+                    continue;
                 }
                 Poll::Ready((Ok(Err(dns_error)), Either::Left(req))) => {
                     tracing::debug!(client = %req.client.id, reference = %req.reference, "Failed to resolve domains as part of connection request: {dns_error}");
@@ -221,9 +221,6 @@ impl Eventloop {
                 }) => {
                     // TODO: Handle `init` message during operation.
                     continue;
-                }
-                Poll::Ready(phoenix_channel::Event::Disconnect(reason)) => {
-                    return Poll::Ready(Err(anyhow!("Disconnected by portal: {reason}")));
                 }
                 _ => {}
             }

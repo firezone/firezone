@@ -54,6 +54,7 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles, Error> {
         );
     }
     LogTracer::init()?;
+    tracing::debug!(?log_path, "Log path");
     Ok(Handles {
         logger,
         _reloader: reloader,

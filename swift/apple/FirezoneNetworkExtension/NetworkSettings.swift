@@ -1,6 +1,6 @@
 //
 //  NetworkSettings.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 
 import FirezoneKit
@@ -20,8 +20,10 @@ class NetworkSettings {
   // so just use the minimum.
   let mtu: NSNumber = 1280
 
+  public var routes4: [NEIPv4Route] = []
+  public var routes6: [NEIPv6Route] = []
+
   // Modifiable values
-  private(set) var routes: [String] = []
   private(set) var resourceDomains: [String] = []
   private(set) var matchDomains: [String] = [""]
 
@@ -35,20 +37,6 @@ class NetworkSettings {
     self.tunnelAddressIPv6 = tunnelAddressIPv6
     self.dnsAddresses = dnsAddresses
     self.hasUnappliedChanges = true
-  }
-
-  func addRoute(_ route: String) {
-    if !self.routes.contains(route) {
-      self.routes.append(route)
-      self.hasUnappliedChanges = true
-    }
-  }
-
-  func removeRoute(_ route: String) {
-    if self.routes.contains(route) {
-      self.routes.removeAll(where: { $0 == route })
-      self.hasUnappliedChanges = true
-    }
   }
 
   func setResourceDomains(_ resourceDomains: [String]) {
@@ -81,56 +69,6 @@ class NetworkSettings {
     }
 
     logger.log("NetworkSettings.apply: Applying network settings")
-
-    var tunnelIPv4Routes: [NEIPv4Route] = []
-    var tunnelIPv6Routes: [NEIPv6Route] = []
-
-    for route in routes {
-      let components = route.split(separator: "/")
-      guard components.count == 2 else {
-        logger.error("NetworkSettings.apply: Ignoring invalid route '\(route)'")
-        continue
-      }
-      let address = String(components[0])
-      let networkPrefixLengthString = String(components[1])
-      if let groupSeparator = address.first(where: { $0 == "." || $0 == ":" }) {
-        if groupSeparator == "." {  // IPv4 address
-          if IPv4Address(address) == nil {
-            logger.error(
-              "NetworkSettings.apply: Ignoring invalid IPv4 address '\(address)'")
-            continue
-          }
-          let validNetworkPrefixLength = Self.validNetworkPrefixLength(
-            fromString: networkPrefixLengthString, maximumValue: 32)
-          let ipv4SubnetMask = Self.ipv4SubnetMask(networkPrefixLength: validNetworkPrefixLength)
-          logger.log(
-            "NetworkSettings.apply: Adding IPv4 route: \(address) (subnet mask: \(ipv4SubnetMask))"
-          )
-          tunnelIPv4Routes.append(
-            NEIPv4Route(destinationAddress: address, subnetMask: ipv4SubnetMask))
-        }
-        if groupSeparator == ":" {  // IPv6 address
-          if IPv6Address(address) == nil {
-            logger.error(
-              "NetworkSettings.apply: Ignoring invalid IPv6 address '\(address)'")
-            continue
-          }
-          let validNetworkPrefixLength = Self.validNetworkPrefixLength(
-            fromString: networkPrefixLengthString, maximumValue: 128)
-          logger.log(
-            "NetworkSettings.apply: Adding IPv6 route: \(address) (prefix length: \(validNetworkPrefixLength))"
-          )
-
-          tunnelIPv6Routes.append(
-            NEIPv6Route(
-              destinationAddress: address,
-              networkPrefixLength: NSNumber(integerLiteral: validNetworkPrefixLength)))
-        }
-      } else {
-        logger.error("NetworkSettings.apply: Ignoring invalid route '\(route)'")
-      }
-    }
-
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by
@@ -140,11 +78,11 @@ class NetworkSettings {
 
     let ipv4Settings = NEIPv4Settings(
       addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
-    ipv4Settings.includedRoutes = tunnelIPv4Routes
+      ipv4Settings.includedRoutes = self.routes4
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
 
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6], networkPrefixLengths: [128])
-    ipv6Settings.includedRoutes = tunnelIPv6Routes
+      ipv6Settings.includedRoutes = self.routes6
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
 
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
@@ -177,28 +115,57 @@ class NetworkSettings {
   }
 }
 
+// For creating IPv4 routes
+enum IPv4SubnetMaskLookup {
+  static let table: [Int: String] = [
+    0: "0.0.0.0",
+    1: "128.0.0.0",
+    2: "192.0.0.0",
+    3: "224.0.0.0",
+    4: "240.0.0.0",
+    5: "248.0.0.0",
+    6: "252.0.0.0",
+    7: "254.0.0.0",
+    8: "255.0.0.0",
+    9: "255.128.0.0",
+    10: "255.192.0.0",
+    11: "255.224.0.0",
+    12: "255.240.0.0",
+    13: "255.248.0.0",
+    14: "255.252.0.0",
+    15: "255.254.0.0",
+    16: "255.255.0.0",
+    17: "255.255.128.0",
+    18: "255.255.192.0",
+    19: "255.255.224.0",
+    20: "255.255.240.0",
+    21: "255.255.248.0",
+    22: "255.255.252.0",
+    23: "255.255.254.0",
+    24: "255.255.255.0",
+    25: "255.255.255.128",
+    26: "255.255.255.192",
+    27: "255.255.255.224",
+    28: "255.255.255.240",
+    29: "255.255.255.248",
+    30: "255.255.255.252",
+    31: "255.255.255.254",
+    32: "255.255.255.255",
+  ]
+}
+
+
 extension NetworkSettings {
-  private static func validNetworkPrefixLength(fromString string: String, maximumValue: Int) -> Int
-  {
-    guard let networkPrefixLength = Int(string) else { return 0 }
-    if networkPrefixLength < 0 { return 0 }
-    if networkPrefixLength > maximumValue { return maximumValue }
-    return networkPrefixLength
-  }
+  struct Cidr: Codable {
+      let address: String
+      let prefix: Int
 
-  private static func ipv4SubnetMask(networkPrefixLength: Int) -> String {
-    precondition(networkPrefixLength >= 0 && networkPrefixLength <= 32)
-    let mask: UInt32 = 0xFFFF_FFFF
-    let maxPrefixLength = 32
-    let octets = 4
+      var asNEIPv4Route: NEIPv4Route {
+          return NEIPv4Route(destinationAddress: address, subnetMask: String(prefix))
+      }
 
-    let subnetMask = mask & (mask << (maxPrefixLength - networkPrefixLength))
-    var parts: [String] = []
-    for idx in 0...(octets - 1) {
-      let part = String(UInt32(0x0000_00FF) & (subnetMask >> ((octets - 1 - idx) * 8)), radix: 10)
-      parts.append(part)
-    }
-
-    return parts.joined(separator: ".")
+      var asNEIPv6Route: NEIPv6Route {
+          return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
+      }
   }
 }

@@ -50,9 +50,9 @@ further below.
 
 ## Configuring Client DNS upstream resolvers
 
-Upstream DNS in Client can be configured with the servers of your choosing so
-that all queries on Client devices will be forwarded to the servers you specify
-for all non-Firezone resources.
+Upstream DNS in all Clients can be configured with the servers of your choosing
+so that all queries on Client devices will be forwarded to the servers you
+specify for all non-Firezone resources.
 
 Go to `Settings` -> `DNS` and enter IPv4 and/or IPv6 servers to use as fallback
 resolvers. Firezone Clients will use these servers in the order they are defined
@@ -63,8 +63,8 @@ for any query that doesn't match a Resource the user has access to.
   DNS-over-HTTPS upstream servers are not supported yet.
 </Alert>
 
-If no custom resolvers are configured, Firezone Clients will fall back to their
-default system resolver, typically set by the DHCP server of their local
+If no custom resolvers are configured, Firezone Clients will fall back to the
+default system resolvers, typically set by the DHCP server of their local
 network.
 
 <Alert color="info">

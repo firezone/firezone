@@ -56,7 +56,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/web:main
       args:
         APPLICATION_NAME: web
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/web:${VERSION:-main}
+    image: ${WEB_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/web}:${WEB_TAG:-main}
     hostname: web.cluster.local
     ports:
       - 8080:8080/tcp
@@ -113,17 +113,16 @@ services:
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
       RUST_LOG: firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,boringtun=debug,snownet=debug,str0m=debug,info
       FIREZONE_API_URL: ws://api:8081
-      FIREZONE_ID: D0455FDE-8F65-4960-A778-B934E4E85A5F
     init: true
     build:
-      target: debug
+      target: dev
       context: rust
       dockerfile: Dockerfile
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-linux-client
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/client:${VERSION:-main}
+    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/client}:${CLIENT_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -147,14 +146,14 @@ services:
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
     build:
-      target: debug
+      target: dev
       context: rust
       dockerfile: Dockerfile
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/gateway:${VERSION:-main}
+    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -213,14 +212,14 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
     build:
-      target: debug
+      target: dev
       context: rust
       dockerfile: Dockerfile
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/relay:${VERSION:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -248,7 +247,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/api:${VERSION:-main}
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/api}:${API_TAG:-main}
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -271,7 +270,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra"
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -315,7 +314,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
       args:
         APPLICATION_NAME: api
-    image: us-east1-docker.pkg.dev/firezone-staging/firezone/elixir:${VERSION:-main}
+    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
     hostname: elixir
     environment:
       # Web Server

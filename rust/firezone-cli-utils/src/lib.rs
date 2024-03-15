@@ -5,13 +5,6 @@ use tracing_subscriber::{
 };
 use url::Url;
 
-pub fn block_on_ctrl_c() {
-    let (tx, rx) = std::sync::mpsc::channel();
-    ctrlc::set_handler(move || tx.send(()).expect("Could not send stop signal on channel."))
-        .expect("Error setting Ctrl-C handler");
-    rx.recv().expect("Could not receive ctrl-c signal");
-}
-
 pub fn setup_global_subscriber<L>(additional_layer: L)
 where
     L: Layer<Registry> + Send + Sync,

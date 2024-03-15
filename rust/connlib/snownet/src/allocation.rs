@@ -114,8 +114,6 @@ impl Allocation {
             backoff: backoff::new(now, REQUEST_TIMEOUT),
         };
 
-        tracing::debug!(%server, "Requesting new allocation");
-
         allocation.authenticate_and_queue(make_allocate_request());
 
         allocation
@@ -131,15 +129,29 @@ impl Allocation {
         .flatten()
     }
 
-    /// Refresh this allocation.
+    /// Update the credentials of this [`Allocation`].
     ///
-    /// In case refreshing the allocation fails, we will attempt to make a new one.
-    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm, now: Instant) {
-        self.update_now(now);
-
+    /// This will implicitly trigger a [`refresh`](Allocation::refresh) to ensure these credentials are valid.
+    pub fn update_credentials(
+        &mut self,
+        username: Username,
+        password: &str,
+        realm: Realm,
+        now: Instant,
+    ) {
         self.username = username;
         self.realm = realm;
         self.password = password.to_owned();
+
+        self.refresh(now);
+    }
+
+    /// Refresh this allocation.
+    ///
+    /// In case refreshing the allocation fails, we will attempt to make a new one.
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
+    pub fn refresh(&mut self, now: Instant) {
+        self.update_now(now);
 
         if !self.has_allocation() && self.allocate_in_flight() {
             tracing::debug!("Not refreshing allocation because we are already making one");
@@ -158,7 +170,7 @@ impl Allocation {
         self.authenticate_and_queue(make_refresh_request());
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server, id, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -240,8 +252,19 @@ impl Allocation {
                         tracing::warn!("Request did not contain a `CHANNEL-NUMBER`");
                         return true;
                     };
+                    let Some(peer) = original_request
+                        .get_attribute::<XorPeerAddress>()
+                        .map(|c| c.address())
+                    else {
+                        tracing::warn!("Request did not contain a `XOR-PEER-ADDRESS`");
+                        return true;
+                    };
 
                     self.channel_bindings.handle_failed_binding(channel);
+
+                    // Duplicate log here because we want to attach "channel number" and "peer".
+                    tracing::warn!(error = %error.reason_phrase(), %channel, %peer);
+                    return true;
                 }
                 REFRESH => {
                     self.invalidate_allocation();
@@ -250,10 +273,7 @@ impl Allocation {
                 _ => {}
             }
 
-            // TODO: Handle error codes such as:
-            // - Failed allocations
-
-            tracing::warn!(error = %error.reason_phrase(), "STUN request failed");
+            tracing::warn!(error = %error.reason_phrase());
 
             return true;
         }
@@ -391,6 +411,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -398,14 +419,16 @@ impl Allocation {
             .allocation_expires_at()
             .is_some_and(|expires_at| now >= expires_at)
         {
+            tracing::debug!("Allocation is expired");
+
             self.invalidate_allocation();
         }
 
-        while let Some(timed_out_request) =
+        while let Some((timed_out_request, backoff)) =
             self.sent_requests
                 .iter()
                 .find_map(|(id, (_, sent_at, backoff))| {
-                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
+                    (now.duration_since(*sent_at) >= *backoff).then_some((*id, *backoff))
                 })
         {
             let (request, _, _) = self
@@ -413,7 +436,7 @@ impl Allocation {
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out, re-sending");
+            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff:?}, re-sending");
 
             self.authenticate_and_queue(request);
         }
@@ -434,6 +457,9 @@ impl Allocation {
             .channel_bindings
             .channels_to_refresh(now, |number| {
                 self.channel_binding_in_flight_by_number(number)
+            })
+            .inspect(|(number, peer)| {
+                tracing::debug!(%number, %peer, "Channel is due for a refresh");
             })
             .map(|(number, peer)| make_channel_bind_request(peer, number))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
@@ -685,7 +711,7 @@ impl Allocation {
     /// Returns: Whether we actually queued a message.
     fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
-            tracing::warn!(
+            tracing::debug!(
                 "Unable to queue {} because we've exceeded our backoffs",
                 message.method()
             );
@@ -1986,7 +2012,7 @@ mod tests {
         }
 
         fn refresh_with_same_credentials(&mut self) {
-            self.refresh(
+            self.update_credentials(
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz",
                 Realm::new("firezone".to_owned()).unwrap(),

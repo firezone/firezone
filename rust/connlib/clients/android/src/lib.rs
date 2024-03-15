@@ -3,15 +3,17 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
-use connlib_client_shared::{file_logger, Callbacks, Error, ResourceDescription, Session};
-use ip_network::IpNetwork;
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
+    ResourceDescription, Session,
+};
 use jni::{
     objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
     strings::JNIString,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
-use std::{net::IpAddr, path::Path};
+use std::{io, net::IpAddr, path::Path};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -19,6 +21,7 @@ use std::{
 };
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
+use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -191,21 +194,31 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_add_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
+    fn on_update_routes(
+        &self,
+        route_list_4: Vec<Cidrv4>,
+        route_list_6: Vec<Cidrv6>,
+    ) -> Result<Option<RawFd>, Self::Error> {
         self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
+            let route_list_4 = env
+                .new_string(serde_json::to_string(&route_list_4)?)
                 .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
+                    name: "route_list_4",
+                    source,
+                })?;
+            let route_list_6 = env
+                .new_string(serde_json::to_string(&route_list_6)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "route_list_6",
                     source,
                 })?;
 
-            let name = "onAddRoute";
+            let name = "onUpdateRoutes";
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
+                "(Ljava/lang/String;Ljava/lang/String;)I",
+                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
             )
             .and_then(|val| val.i())
             .map(Some)
@@ -223,28 +236,6 @@ impl Callbacks for CallbackHandler {
                 "(I)V",
                 &[JValue::Int(file_descriptor)],
             )
-        })
-    }
-
-    fn on_remove_route(&self, route: IpNetwork) -> Result<Option<RawFd>, Self::Error> {
-        self.env(|mut env| {
-            let ip = env
-                .new_string(route.network_address().to_string())
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_ip",
-                    source,
-                })?;
-
-            let name = "onRemoveRoute";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;I)I",
-                &[JValue::from(&ip), JValue::Int(route.netmask().into())],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
     }
 
@@ -269,10 +260,10 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_disconnect(&self, error: Option<&Error>) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
         self.env(|mut env| {
             let error = env
-                .new_string(serde_json::to_string(&error.map(ToString::to_string))?)
+                .new_string(serde_json::to_string(&error.to_string())?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "error",
                     source,
@@ -366,6 +357,10 @@ enum ConnectError {
     GetJavaVmFailed(#[source] jni::errors::Error),
     #[error(transparent)]
     ConnectFailed(#[from] Error),
+    #[error(transparent)]
+    InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
+    #[error("Unable to create tokio runtime: {0}")]
+    UnableToCreateRuntime(#[from] io::Error),
 }
 
 macro_rules! string_from_jstring {
@@ -394,7 +389,7 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
-) -> Result<Session<CallbackHandler>, ConnectError> {
+) -> Result<SessionWrapper, ConnectError> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
@@ -411,17 +406,34 @@ fn connect(
         handle,
     };
 
-    let session = Session::connect(
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
         api_url.as_str(),
-        secret,
+        &secret,
         device_id,
         Some(device_name),
+        public_key.to_bytes(),
+    )?;
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("connlib")
+        .enable_all()
+        .build()?;
+
+    let session = Session::connect(
+        login,
+        private_key,
         Some(os_version),
         callback_handler,
         Some(MAX_PARTITION_TIME),
+        runtime.handle().clone(),
     )?;
 
-    Ok(session)
+    Ok(SessionWrapper {
+        inner: session,
+        runtime,
+    })
 }
 
 /// # Safety
@@ -440,7 +452,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
-) -> *const Session<CallbackHandler> {
+) -> *const SessionWrapper {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
     };
@@ -471,6 +483,13 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     Box::into_raw(Box::new(session))
 }
 
+pub struct SessionWrapper {
+    inner: Session,
+
+    #[allow(dead_code)] // Only here so we don't drop the memory early.
+    runtime: Runtime,
+}
+
 /// # Safety
 /// Pointers must be valid
 #[allow(non_snake_case)]
@@ -478,9 +497,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut Session<CallbackHandler>,
+    session: *mut SessionWrapper,
 ) {
     catch_and_throw(&mut env, |_| {
-        Box::from_raw(session).disconnect(None);
+        Box::from_raw(session).inner.disconnect();
     });
 }
