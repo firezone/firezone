@@ -64,8 +64,6 @@ pub enum ConnlibError {
     /// Error when reading system's interface
     #[error("Error while reading system's interface")]
     IfaceRead(std::io::Error),
-    #[error("`protect_file_descriptor` failed: {0}")]
-    ProtectFileDescriptorFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),

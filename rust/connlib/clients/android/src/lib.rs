@@ -230,7 +230,7 @@ impl Callbacks for CallbackHandler {
     }
 
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), Self::Error> {
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -240,6 +240,7 @@ impl Callbacks for CallbackHandler {
                 &[JValue::Int(file_descriptor)],
             )
         })
+        .expect("protectFileDescriptor callback failed");
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {

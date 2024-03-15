@@ -233,10 +233,10 @@ where
     #[cfg(target_os = "android")]
     {
         if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
-            callbacks.protect_file_descriptor(ip4_socket)?;
+            callbacks.protect_file_descriptor(ip4_socket);
         }
         if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
-            callbacks.protect_file_descriptor(ip6_socket)?;
+            callbacks.protect_file_descriptor(ip6_socket);
         }
     }
 
