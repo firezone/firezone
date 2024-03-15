@@ -89,7 +89,7 @@ defmodule Web.LiveTable do
         :for={filter <- @filters}
         class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 pb-4"
       >
-        <div class="w-full md:w-1/2">
+        <div class="w-full xl:w-1/2">
           <.filter live_table_id={@live_table_id} form={@form} filter={filter} />
         </div>
       </div>
