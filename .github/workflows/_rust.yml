@@ -64,6 +64,8 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
       - run: cargo test --all-features ${{ matrix.packages }}
+        env:
+          RUST_BACKTRACE: full
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>

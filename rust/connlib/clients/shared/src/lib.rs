@@ -1,11 +1,13 @@
 //! Main connlib library for clients.
 pub use connlib_shared::messages::ResourceDescription;
-pub use connlib_shared::{keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret};
+pub use connlib_shared::{
+    keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
+};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::{get_user_agent, CallbackErrorFacade};
-use firezone_tunnel::Tunnel;
+use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
 
@@ -20,58 +22,29 @@ pub use eventloop::Eventloop;
 use secrecy::Secret;
 use tokio::task::JoinHandle;
 
-/// Max interval to retry connections to the portal if it's down or the client has network
-/// connectivity changes. Set this to something short so that the end-user experiences
-/// minimal disruption to their Firezone resources when switching networks.
-const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
-
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session {
     channel: tokio::sync::mpsc::Sender<Command>,
-    _runtime: tokio::runtime::Runtime,
 }
 
 impl Session {
-    /// Starts a session in the background.
+    /// Creates a new [`Session`].
     ///
-    /// This will:
-    /// 1. Create and start a tokio runtime
-    /// 2. Connect to the control plane to the portal
-    /// 3. Start the tunnel in the background and forward control plane messages to it.
-    ///
-    /// The generic parameter `CB` should implement all the handlers and that's how errors will be surfaced.
-    ///
-    /// On a fatal error you should call `[Session::disconnect]` and start a new one.
-    ///
-    /// * `device_id` - The cleartext device ID. connlib will obscure this with a hash internally.
-    // TODO: token should be something like SecretString but we need to think about FFI compatibility
+    /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         url: LoginUrl,
         private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CB,
         max_partition_time: Option<Duration>,
+        handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
-        // TODO: We could use tokio::runtime::current() to get the current runtime
-        // which could work with swift-rust that already runs a runtime. But IDK if that will work
-        // in all platforms, a couple of new threads shouldn't bother none.
-        // Big question here however is how do we get the result? We could block here await the result and spawn a new task.
-        // but then platforms should know that this function is blocking.
-
         let callbacks = CallbackErrorFacade(callbacks);
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        // In android we get an stack-overflow due to tokio
-        // taking too much of the stack-space:
-        // See: https://github.com/firezone/firezone/issues/2227
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .thread_stack_size(3 * 1024 * 1024)
-            .enable_all()
-            .build()?;
-
-        let connect_handle = runtime.spawn(connect(
+        let connect_handle = handle.spawn(connect(
             url,
             private_key,
             os_version_override,
@@ -79,12 +52,25 @@ impl Session {
             max_partition_time,
             rx,
         ));
-        runtime.spawn(connect_supervisor(connect_handle, callbacks));
+        handle.spawn(connect_supervisor(connect_handle, callbacks));
 
-        Ok(Self {
-            channel: tx,
-            _runtime: runtime,
-        })
+        Ok(Self { channel: tx })
+    }
+
+    /// Attempts to reconnect a [`Session`].
+    ///
+    /// This can and should be called by client applications on any network state changes.
+    /// It is a signal to connlib to:
+    ///
+    /// - validate all currently used network paths to relays and peers
+    /// - ensure we are connected to the portal
+    ///
+    /// Reconnect is non-destructive and can be called several times in a row.
+    ///
+    /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
+    /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
+    pub fn reconnect(&mut self) {
+        let _ = self.channel.try_send(Command::Reconnect);
     }
 
     /// Disconnect a [`Session`].
@@ -109,7 +95,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = Tunnel::new(private_key, callbacks.clone())?;
+    let tunnel = ClientTunnel::new(private_key, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
@@ -118,7 +104,6 @@ where
         (),
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(max_partition_time)
-            .with_max_interval(MAX_RECONNECT_INTERVAL)
             .build(),
     );
 

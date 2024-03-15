@@ -19,10 +19,9 @@ mod tun;
 mod tun;
 
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use connlib_shared::error::ConnlibError;
-use connlib_shared::messages::Interface;
-use connlib_shared::{Callbacks, Error};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
+use connlib_shared::{Cidrv4, Cidrv6};
+use ip_network::IpNetwork;
 use pnet_packet::Packet;
 use std::collections::HashSet;
 use std::io;
@@ -39,18 +38,18 @@ pub struct Device {
 }
 
 #[allow(dead_code)]
-fn ipv4(ip: &IpNetwork) -> Option<&Ipv4Network> {
+fn ipv4(ip: IpNetwork) -> Option<Cidrv4> {
     match ip {
-        IpNetwork::V4(v4) => Some(v4),
+        IpNetwork::V4(v4) => Some(v4.into()),
         IpNetwork::V6(_) => None,
     }
 }
 
 #[allow(dead_code)]
-fn ipv6(ip: &IpNetwork) -> Option<&Ipv6Network> {
+fn ipv6(ip: IpNetwork) -> Option<Cidrv6> {
     match ip {
         IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6),
+        IpNetwork::V6(v6) => Some(v6.into()),
     }
 }
 
