@@ -15,11 +15,12 @@ use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
     io,
+    net::IpAddr,
     path::PathBuf,
     task::{Context, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
-use tokio::time::{Instant, Interval, MissedTickBehavior};
+use tokio::time::{Interval, MissedTickBehavior};
 use url::Url;
 
 pub struct Eventloop<C: Callbacks> {
@@ -27,7 +28,7 @@ pub struct Eventloop<C: Callbacks> {
     tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
-    rx: tokio::sync::mpsc::Receiver<Command>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
 
     connection_intents: SentConnectionIntents,
     log_upload_interval: tokio::time::Interval,
@@ -37,13 +38,14 @@ pub struct Eventloop<C: Callbacks> {
 pub enum Command {
     Stop,
     Reconnect,
+    SetDns(Vec<IpAddr>),
 }
 
 impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel<C>,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
-        rx: tokio::sync::mpsc::Receiver<Command>,
+        rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
         Self {
             tunnel,
@@ -65,6 +67,7 @@ where
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Ready(Some(Command::SetDns(dns))) => self.tunnel.set_dns(dns, Instant::now()),
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
                     self.tunnel.reconnect();
@@ -140,6 +143,9 @@ where
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
             }
+            firezone_tunnel::ClientEvent::RefreshInterfance => {
+                unreachable!("Handled internally");
+            }
         }
     }
 
@@ -180,7 +186,7 @@ where
                 resources,
             }) => {
                 if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(&interface) {
+                    if let Err(e) = self.tunnel.set_interface(interface) {
                         tracing::warn!("Failed to set interface on tunnel: {e}");
                         return;
                     }
@@ -364,7 +370,7 @@ async fn upload(_path: PathBuf, _url: Url) -> io::Result<()> {
 
 fn upload_interval() -> Interval {
     let duration = upload_interval_duration_from_env_or_default();
-    let mut interval = tokio::time::interval_at(Instant::now() + duration, duration);
+    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + duration, duration);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     interval

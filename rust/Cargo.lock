@@ -1151,6 +1151,7 @@ dependencies = [
  "chrono",
  "connlib-shared",
  "firezone-tunnel",
+ "futures-util",
  "ip_network",
  "parking_lot",
  "phoenix-channel",

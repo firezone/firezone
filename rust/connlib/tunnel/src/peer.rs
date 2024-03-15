@@ -133,6 +133,7 @@ impl PacketTransformClient {
     }
 
     pub fn set_dns(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+        self.mangled_dns_ids.clear();
         self.dns_mapping = mapping;
     }
 }
