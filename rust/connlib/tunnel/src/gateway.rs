@@ -14,12 +14,12 @@ use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::Server;
 use std::collections::HashSet;
-use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
+
+const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -46,14 +46,16 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        self.device
-            .initialize(config, vec![], &self.callbacks().clone())?;
-        self.device.set_routes(
+        let callbacks = self.callbacks().clone();
+        self.io
+            .device_mut()
+            .initialize(config, vec![], &callbacks)?;
+        self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
-            &self.callbacks,
+            &callbacks,
         )?;
 
-        let name = self.device.name().to_owned();
+        let name = self.io.device_mut().name().to_owned();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
@@ -95,7 +97,7 @@ where
             ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
         };
 
-        let answer = self.connections_state.node.accept_connection(
+        let answer = self.node.accept_connection(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -105,12 +107,8 @@ where
                 },
             },
             client,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         );
 
@@ -195,8 +193,7 @@ where
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.connections_state
-            .node
+        self.node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
@@ -222,9 +219,10 @@ where
 }
 
 /// [`Tunnel`] state specific to gateways.
+#[derive(Default)]
 pub struct GatewayState {
     pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
-    expire_interval: Interval,
+    next_expiry_resources_check: Option<Instant>,
 }
 
 impl GatewayState {
@@ -240,27 +238,62 @@ impl GatewayState {
         Some((peer.conn_id, packet))
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        ready!(self.expire_interval.poll_tick(cx));
-        self.expire_resources();
-        Poll::Ready(())
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
+        self.next_expiry_resources_check
     }
 
-    fn expire_resources(&mut self) {
-        self.peers
-            .iter_mut()
-            .for_each(|p| p.transform.expire_resources());
-        self.peers.retain(|_, p| !p.transform.is_emptied());
+    pub fn handle_timeout(&mut self, now: Instant) {
+        match self.next_expiry_resources_check {
+            Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.transform.expire_resources());
+                self.peers.retain(|_, p| !p.transform.is_emptied());
+
+                self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
+            }
+            None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
+            Some(_) => {}
+        }
     }
 }
 
-impl Default for GatewayState {
-    fn default() -> Self {
-        let mut expire_interval = interval(Duration::from_secs(1));
-        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self {
-            peers: Default::default(),
-            expire_interval,
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_poll_timeout_is_none() {
+        let state = GatewayState::default();
+
+        assert!(state.poll_timeout().is_none())
+    }
+
+    #[test]
+    fn first_timeout_is_after_expire_resources_interval() {
+        let start = Instant::now();
+        let mut state = GatewayState::default();
+
+        state.handle_timeout(start);
+
+        assert_eq!(
+            state.poll_timeout().unwrap(),
+            start + EXPIRE_RESOURCES_INTERVAL
+        )
+    }
+
+    #[test]
+    fn does_not_advance_time_before_timeout() {
+        let start = Instant::now();
+        let mut state = GatewayState::default();
+
+        state.handle_timeout(start);
+
+        let before = state.poll_timeout().unwrap();
+        state.handle_timeout(start + EXPIRE_RESOURCES_INTERVAL / 2);
+        let after = state.poll_timeout().unwrap();
+
+        assert_eq!(before, after)
     }
 }

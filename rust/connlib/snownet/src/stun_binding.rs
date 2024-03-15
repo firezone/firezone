@@ -122,6 +122,21 @@ impl StunBinding {
         true
     }
 
+    pub(crate) fn refresh(&mut self, now: Instant) {
+        self.last_now = now;
+        self.backoff.clock.now = now;
+
+        self.backoff.reset();
+        let backoff = self
+            .backoff
+            .next_backoff()
+            .expect("to have backoff right after resetting");
+
+        let (state, transmit) = new_binding_request(self.server, now, backoff);
+        self.state = state;
+        self.buffered_transmits.push_back(transmit);
+    }
+
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
         self.backoff.clock.now = now;
