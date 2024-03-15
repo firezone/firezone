@@ -144,12 +144,9 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
-  The external URL the web UI will be accessible at.
+  The external URL the UI/API will be accessible at.
 
-  Must be a valid and public FQDN for ACME SSL issuance to function.
-
-  You can add a path suffix if you want to serve firezone from a non-root path,
-  eg: `https://firezone.mycorp.com/vpn/`.
+  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
   """
   defconfig(:external_url, :string,
     default: nil,
@@ -168,7 +165,7 @@ defmodule Domain.Config.Definitions do
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
 
   @doc """
-  Internal port to listen on for the Phoenix web server.
+  Internal port to listen on for the Phoenix server for the `web` application.
   """
   defconfig(:phoenix_http_web_port, :integer,
     default: 13_000,
@@ -181,7 +178,7 @@ defmodule Domain.Config.Definitions do
   )
 
   @doc """
-  Internal port to listen on for the Phoenix api server.
+  Internal port to listen on for the Phoenix server for the `api` application.
   """
   defconfig(:phoenix_http_api_port, :integer,
     default: 13_000,
@@ -460,25 +457,6 @@ defmodule Domain.Config.Definitions do
   Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
   """
   defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
-
-  ##############################################
-  ## Telemetry
-  ##############################################
-
-  @doc """
-  Enable or disable the Firezone telemetry collection.
-
-  For more details see https://docs.firezone.dev/reference/telemetry/.
-  """
-  defconfig(:telemetry_enabled, :boolean, default: true)
-
-  defconfig(:telemetry_id, :string,
-    default: fn ->
-      :crypto.hash(:sha256, compile_config!(:external_url))
-      |> Base.url_encode64(padding: false)
-    end,
-    legacy_keys: [{:env, "TID", nil}]
-  )
 
   ##############################################
   ## Gateways
