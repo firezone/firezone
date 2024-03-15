@@ -1,6 +1,5 @@
 use crate::Binding;
 use proptest::arbitrary::any;
-use proptest::collection::vec;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
@@ -31,9 +30,10 @@ pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
 }
 
 pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, usize)> {
-    vec(any::<u8>(), 0..(u16::MAX as usize)).prop_flat_map(|vec| {
+    any::<Vec<u8>>().prop_map(|vec| {
         let len = vec.len();
-        (Just(vec), 0..len)
+
+        (vec, len)
     })
 }
 
