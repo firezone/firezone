@@ -485,7 +485,7 @@ locals {
   ]
 }
 
-module "background_jobs" {
+module "domain" {
   source     = "../../modules/elixir-app"
   project_id = module.google-cloud-project.project.project_id
 
