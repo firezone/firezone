@@ -94,7 +94,6 @@ pub struct CallbackHandler {
     // recount. Instead, we just wrap it in an `Arc`.
     inner: Arc<ffi::CallbackHandler>,
     handle: file_logger::Handle,
-    new_tun_sender: tokio::sync::mpsc::Sender<Tun>,
 }
 
 impl Callbacks for CallbackHandler {
@@ -104,21 +103,12 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
     ) {
-        let tun = match Tun::new() {
-            Ok(tun) => tun,
-            Err(e) => {
-                tracing::error!("Failed to create TUN device");
-                return;
-            }
-        };
-
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-        let _ = self.new_tun_sender.try_send(tun);
     }
 
     fn on_tunnel_ready(&self) {
@@ -195,8 +185,6 @@ impl WrappedSession {
         let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
 
-        let (new_tun_sender, mut new_tun_receiver) = tokio::sync::mpsc::channel(1);
-
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
@@ -214,28 +202,21 @@ impl WrappedSession {
             .build()
             .map_err(|e| e.to_string())?;
 
-        let session = Session::connect(
+        let mut session = Session::connect(
             login,
             private_key,
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
                 handle,
-                new_tun_sender,
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
         )
         .map_err(|err| err.to_string())?;
 
-        {
-            let mut session = session.clone();
-            tokio::spawn(async move {
-                while let Some(tun) = new_tun_receiver.recv().await {
-                    session.update_tun(tun);
-                }
-            });
-        }
+        let tun = Tun::new().map_err(|e| e.to_string())?;
+        session.update_tun(tun);
 
         Ok(Self {
             inner: session,
