@@ -242,10 +242,7 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
@@ -261,6 +258,7 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&resource_list)],
             )
         })
+        .expect("onUpdateResources callback failed")
     }
 
     fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {

@@ -31,15 +31,8 @@ impl<CB: Callbacks> Callbacks for CallbackErrorFacade<CB> {
         self.0.on_update_routes(routes4, routes6)
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) -> Result<()> {
-        let result = self
-            .0
-            .on_update_resources(resource_list)
-            .map_err(|err| Error::OnUpdateResourcesFailed(err.to_string()));
-        if let Err(err) = result.as_ref() {
-            tracing::error!(?err);
-        }
-        result
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+        self.0.on_update_resources(resource_list)
     }
 
     fn on_disconnect(&self, error: &Error) -> Result<()> {

@@ -64,8 +64,6 @@ pub enum ConnlibError {
     /// Error when reading system's interface
     #[error("Error while reading system's interface")]
     IfaceRead(std::io::Error),
-    #[error("`on_update_resources` failed: {0}")]
-    OnUpdateResourcesFailed(String),
     #[error("`get_system_default_resolvers` failed: {0}")]
     GetSystemDefaultResolverFailed(String),
     #[error("`protect_file_descriptor` failed: {0}")]

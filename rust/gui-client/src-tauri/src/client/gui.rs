@@ -467,11 +467,10 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         let _ = self.ctlr_tx.try_send(ControllerRequest::TunnelReady);
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-        Ok(())
     }
 
     fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {

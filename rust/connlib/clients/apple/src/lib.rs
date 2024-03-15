@@ -132,15 +132,11 @@ impl Callbacks for CallbackHandler {
         None
     }
 
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.inner.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),
         );
-        Ok(())
     }
 
     fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {

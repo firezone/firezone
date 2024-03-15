@@ -65,9 +65,7 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when the resource list changes.
-    fn on_update_resources(&self, _: Vec<ResourceDescription>) -> Result<(), Self::Error> {
-        Ok(())
-    }
+    fn on_update_resources(&self, _: Vec<ResourceDescription>) {}
 
     /// Called when the tunnel is disconnected.
     ///
