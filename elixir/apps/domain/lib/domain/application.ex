@@ -37,10 +37,10 @@ defmodule Domain.Application do
       Domain.Relays,
       Domain.Gateways,
       Domain.Clients,
-      Domain.Billing
+      Domain.Billing,
 
       # Observability
-      # Domain.Telemetry
+      Domain.Telemetry
     ]
   end
 end

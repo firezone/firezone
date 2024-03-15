@@ -39,6 +39,13 @@ defmodule Domain.Config.Definitions do
 
   def doc_sections do
     [
+      {"Background Jobs",
+       """
+       You need to make sure that at least one of the nodes in the cluster has background jobs enabled.
+       """,
+       [
+         :background_jobs_enabled
+       ]},
       {"WebServer",
        [
          :external_url,
@@ -124,6 +131,15 @@ defmodule Domain.Config.Definitions do
   end
 
   ##############################################
+  ## Background Jobs
+  ##############################################
+
+  @doc """
+  Enabled or disable background job workers (eg. syncing IdP directory) for the app instance.
+  """
+  defconfig(:background_jobs_enabled, :boolean, default: false)
+
+  ##############################################
   ## Web Server
   ##############################################
 
@@ -136,6 +152,7 @@ defmodule Domain.Config.Definitions do
   eg: `https://firezone.mycorp.com/vpn/`.
   """
   defconfig(:external_url, :string,
+    default: nil,
     changeset: fn changeset, key ->
       changeset
       |> Domain.Validator.validate_uri(key, require_trailing_slash: true)

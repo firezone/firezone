@@ -97,7 +97,7 @@ defmodule Domain.ConfigTest do
 
     test "raises an error when value is missing", %{account: account} do
       message = """
-      Missing required configuration value for 'external_url'.
+      Missing required configuration value for 'secret_key_base'.
 
       ## How to fix?
 
@@ -105,24 +105,19 @@ defmodule Domain.ConfigTest do
 
       You can set this configuration via environment variable by adding it to `.env` file:
 
-          EXTERNAL_URL=YOUR_VALUE
+          SECRET_KEY_BASE=YOUR_VALUE
 
 
       ## Documentation
 
-      The external URL the web UI will be accessible at.
-
-      Must be a valid and public FQDN for ACME SSL issuance to function.
-
-      You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn/`.
+      Primary secret key base for the Phoenix application.
 
 
       You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
       """
 
       assert_raise RuntimeError, message, fn ->
-        fetch_resolved_configs!(account.id, [:external_url])
+        fetch_resolved_configs!(account.id, [:secret_key_base])
       end
     end
   end
@@ -151,7 +146,7 @@ defmodule Domain.ConfigTest do
 
     test "raises an error when value is missing", %{account: account} do
       message = """
-      Missing required configuration value for 'external_url'.
+      Missing required configuration value for 'secret_key_base'.
 
       ## How to fix?
 
@@ -159,24 +154,19 @@ defmodule Domain.ConfigTest do
 
       You can set this configuration via environment variable by adding it to `.env` file:
 
-          EXTERNAL_URL=YOUR_VALUE
+          SECRET_KEY_BASE=YOUR_VALUE
 
 
       ## Documentation
 
-      The external URL the web UI will be accessible at.
-
-      Must be a valid and public FQDN for ACME SSL issuance to function.
-
-      You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn/`.
+      Primary secret key base for the Phoenix application.
 
 
       You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
       """
 
       assert_raise RuntimeError, message, fn ->
-        fetch_resolved_configs_with_sources!(account.id, [:external_url])
+        fetch_resolved_configs_with_sources!(account.id, [:secret_key_base])
       end
     end
 

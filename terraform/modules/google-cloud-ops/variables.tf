@@ -25,3 +25,7 @@ variable "api_host" {
 variable "web_host" {
   type = string
 }
+
+variable "domain_host" {
+  type = string
+}

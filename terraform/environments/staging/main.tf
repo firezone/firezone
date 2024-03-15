@@ -485,6 +485,70 @@ locals {
   ]
 }
 
+module "background_jobs" {
+  source     = "../../modules/elixir-app"
+  project_id = module.google-cloud-project.project.project_id
+
+  compute_instance_type               = "n1-standard-2"
+  compute_instance_region             = local.region
+  compute_instance_availability_zones = ["${local.region}-d"]
+
+  dns_managed_zone_name = module.google-cloud-dns.zone_name
+
+  vpc_network    = module.google-cloud-vpc.self_link
+  vpc_subnetwork = google_compute_subnetwork.apps.self_link
+
+  container_registry = module.google-artifact-registry.url
+
+  image_repo = module.google-artifact-registry.repo
+  image      = "domain"
+  image_tag  = var.image_tag
+
+  scaling_horizontal_replicas = 2
+
+  observability_log_level = "debug"
+
+  erlang_release_name   = "firezone"
+  erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
+
+  application_name    = "domain"
+  application_version = replace(var.image_tag, ".", "-")
+
+  application_ports = [
+    {
+      name     = "http"
+      protocol = "TCP"
+      port     = 4000
+
+      health_check = {
+        initial_delay_sec = 60
+
+        check_interval_sec  = 15
+        timeout_sec         = 10
+        healthy_threshold   = 1
+        unhealthy_threshold = 2
+
+        http_health_check = {
+          request_path = "/healthz"
+        }
+      }
+    }
+  ]
+
+  application_environment_variables = concat([
+    # Background Jobs
+    {
+      name  = "BACKGROUND_JOBS_ENABLED"
+      value = "true"
+    },
+  ], local.shared_application_environment_variables)
+
+  application_labels = {
+    "cluster_name"    = local.cluster.name
+    "cluster_version" = split(".", var.image_tag)[0]
+  }
+}
+
 module "web" {
   source     = "../../modules/elixir-app"
   project_id = module.google-cloud-project.project.project_id
@@ -550,6 +614,10 @@ module "web" {
     {
       name  = "API_URL_OVERRIDE"
       value = "wss://api.${local.tld}"
+    },
+    {
+      name  = "BACKGROUND_JOBS_ENABLED"
+      value = "false"
     },
   ], local.shared_application_environment_variables)
 
@@ -621,6 +689,10 @@ module "api" {
       name  = "PHOENIX_HTTP_API_PORT"
       value = "8080"
     },
+    {
+      name  = "BACKGROUND_JOBS_ENABLED"
+      value = "false"
+    },
   ], local.shared_application_environment_variables)
 
   application_labels = {
@@ -677,7 +749,7 @@ resource "google_compute_firewall" "erlang-distribution" {
   }
 
   source_ranges = [google_compute_subnetwork.apps.ip_cidr_range]
-  target_tags   = concat(module.web.target_tags, module.api.target_tags)
+  target_tags   = concat(module.web.target_tags, module.api.target_tags, module.domain.target_tags)
 }
 
 ## Allow service account to list running instances
@@ -696,8 +768,9 @@ resource "google_project_iam_custom_role" "erlang-discovery" {
 
 resource "google_project_iam_member" "application" {
   for_each = {
-    api = module.api.service_account.email
-    web = module.web.service_account.email
+    api    = module.api.service_account.email
+    web    = module.web.service_account.email
+    domain = module.domain.service_account.email
   }
 
   project = module.google-cloud-project.project.project_id
@@ -810,7 +883,7 @@ resource "google_compute_firewall" "ssh-ipv4" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = concat(module.web.target_tags, module.api.target_tags)
+  target_tags   = concat(module.web.target_tags, module.api.target_tags, module.domain.target_tags)
 }
 
 resource "google_compute_firewall" "ssh-ipv6" {
@@ -835,7 +908,7 @@ resource "google_compute_firewall" "ssh-ipv6" {
   }
 
   source_ranges = ["::/0"]
-  target_tags   = concat(module.web.target_tags, module.api.target_tags)
+  target_tags   = concat(module.web.target_tags, module.api.target_tags, module.domain.target_tags)
 }
 
 resource "google_compute_firewall" "relays-ssh-ipv4" {
@@ -900,6 +973,7 @@ module "ops" {
   slack_alerts_auth_token = var.slack_alerts_auth_token
   slack_alerts_channel    = var.slack_alerts_channel
 
-  api_host = module.api.host
-  web_host = module.web.host
+  api_host    = module.api.host
+  web_host    = module.web.host
+  domain_host = module.domain.host
 }

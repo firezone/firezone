@@ -78,6 +78,18 @@ if config_env() == :prod do
 
   config :domain, outbound_email_adapter_configured?: !!compile_config!(:outbound_email_adapter)
 
+  # Enable background jobs only on dedicated nodes
+  config :domain, Domain.Tokens.Jobs, enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.Okta.Jobs,
+    enabled: compile_config!(:background_jobs_enabled)
+
   ###############################
   ##### Web #####################
   ###############################

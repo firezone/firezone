@@ -479,6 +479,8 @@ resource "google_compute_ssl_policy" "application" {
 
 ## Create a managed SSL certificate
 resource "google_compute_managed_ssl_certificate" "default" {
+  count = var.application_dns_tld != null ? 1 : 0
+
   project = var.project_id
 
   name = "${local.application_name}-mig-lb-cert"
@@ -727,6 +729,8 @@ resource "google_compute_firewall" "egress-ipv6" {
 
 # Create DNS records for the application
 resource "google_dns_record_set" "application-ipv4" {
+  count = var.application_dns_tld != null ? 1 : 0
+
   project = var.project_id
 
   name = "${var.application_dns_tld}."
@@ -746,6 +750,8 @@ resource "google_dns_record_set" "application-ipv4" {
 }
 
 resource "google_dns_record_set" "application-ipv6" {
+  count = var.application_dns_tld != null ? 1 : 0
+
   project = var.project_id
 
   name = "${var.application_dns_tld}."

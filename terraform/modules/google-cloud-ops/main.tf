@@ -33,6 +33,47 @@ locals {
   )
 }
 
+resource "google_monitoring_uptime_check_config" "domain-https" {
+  project = var.project_id
+
+  display_name = "domain-https"
+  timeout      = "60s"
+
+  http_check {
+    port         = "443"
+    use_ssl      = true
+    validate_ssl = true
+
+    request_method = "GET"
+    path           = "/healthz"
+
+    accepted_response_status_codes {
+      status_class = "STATUS_CLASS_2XX"
+    }
+  }
+
+  monitored_resource {
+    type = "uptime_url"
+
+    labels = {
+      project_id = var.project_id
+      host       = var.domain_host
+    }
+  }
+
+  content_matchers {
+    content = "\"ok\""
+    matcher = "MATCHES_JSON_PATH"
+
+    json_path_matcher {
+      json_path    = "$.status"
+      json_matcher = "EXACT_MATCH"
+    }
+  }
+
+  checker_type = "STATIC_IP_CHECKERS"
+}
+
 resource "google_monitoring_uptime_check_config" "api-https" {
   project = var.project_id
 

@@ -82,6 +82,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image_name: domain
+            target: runtime
+            build-args: |
+              APPLICATION_NAME=domain
           - image_name: api
             target: runtime
             build-args: |

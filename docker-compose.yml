@@ -68,7 +68,7 @@ services:
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local"]}'
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@web.cluster.local"]}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
@@ -102,6 +102,180 @@ services:
     depends_on:
       vault:
         condition: "service_healthy"
+      postgres:
+        condition: "service_healthy"
+    networks:
+      - app
+
+  api:
+    build:
+      context: elixir
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
+      args:
+        APPLICATION_NAME: api
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/api}:${API_TAG:-main}
+    hostname: api.cluster.local
+    ports:
+      - 8081:8081/tcp
+    environment:
+      # Web Server
+      EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_API_PORT: "8081"
+      PHOENIX_SECURE_COOKIES: "false"
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@web.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "api.cluster.local"
+      RELEASE_NAME: "api"
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
+      # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Debugging
+      LOG_LEVEL: "debug"
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
+      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
+      # Seeds
+      STATIC_SEEDS: "true"
+    depends_on:
+      vault:
+        condition: "service_healthy"
+      postgres:
+        condition: "service_healthy"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    networks:
+      - app
+
+  domain:
+    build:
+      context: elixir
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/domain:main
+      args:
+        APPLICATION_NAME: domain
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/domain}:${API_TAG:-main}
+    hostname: domain.cluster.local
+    ports:
+      - 8081:8081/tcp
+    environment:
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "domain.cluster.local"
+      RELEASE_NAME: "domain"
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
+      # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Debugging
+      LOG_LEVEL: "debug"
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
+      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
+      # Seeds
+      STATIC_SEEDS: "true"
+    depends_on:
+      vault:
+        condition: "service_healthy"
+      postgres:
+        condition: "service_healthy"
+    networks:
+      - app
+
+  # This is a service container which allows to run mix tasks for local development
+  # without having to install Elixir and Erlang on the host machine.
+  elixir:
+    build:
+      context: elixir
+      target: compiler
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
+      args:
+        APPLICATION_NAME: api
+    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
+    hostname: elixir
+    environment:
+      # Web Server
+      EXTERNAL_URL: http://localhost:8081/
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "mix.cluster.local"
+      RELEASE_NAME: "mix"
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
+      # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Higher log level not to make seeds output too verbose
+      LOG_LEVEL: "info"
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
+      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
+      # Mix env should be set to prod to use secrets declared above,
+      # otherwise seeds will generate invalid tokens
+      MIX_ENV: "prod"
+      # Seeds
+      STATIC_SEEDS: "true"
+    depends_on:
       postgres:
         condition: "service_healthy"
     networks:
@@ -240,125 +414,6 @@ services:
       app:
         ipv4_address: 172.28.0.101
 
-  api:
-    build:
-      context: elixir
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
-      args:
-        APPLICATION_NAME: api
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/cache/api}:${API_TAG:-main}
-    hostname: api.cluster.local
-    ports:
-      - 8081:8081/tcp
-    environment:
-      # Web Server
-      EXTERNAL_URL: http://localhost:8081/
-      PHOENIX_HTTP_API_PORT: "8081"
-      PHOENIX_SECURE_COOKIES: "false"
-      # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
-      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local"]}'
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
-      RELEASE_HOSTNAME: "api.cluster.local"
-      RELEASE_NAME: "api"
-      # Database
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: firezone_dev
-      DATABASE_USER: postgres
-      DATABASE_PASSWORD: postgres
-      # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Telemetry
-      TELEMETRY_ENABLED: "false"
-      # Debugging
-      LOG_LEVEL: "debug"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
-      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
-      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
-      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
-      # Seeds
-      STATIC_SEEDS: "true"
-    depends_on:
-      vault:
-        condition: "service_healthy"
-      postgres:
-        condition: "service_healthy"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
-      start_period: 10s
-      interval: 30s
-      retries: 5
-      timeout: 5s
-    networks:
-      - app
-
-  # This is a service container which allows to run mix tasks for local development
-  # without having to install Elixir and Erlang on the host machine.
-  elixir:
-    build:
-      context: elixir
-      target: compiler
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
-      args:
-        APPLICATION_NAME: api
-    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
-    hostname: elixir
-    environment:
-      # Web Server
-      EXTERNAL_URL: http://localhost:8081/
-      # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
-      RELEASE_HOSTNAME: "mix.cluster.local"
-      RELEASE_NAME: "mix"
-      # Database
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: firezone_dev
-      DATABASE_USER: postgres
-      DATABASE_PASSWORD: postgres
-      # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta"
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      # Telemetry
-      TELEMETRY_ENABLED: "false"
-      # Higher log level not to make seeds output too verbose
-      LOG_LEVEL: "info"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
-      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
-      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
-      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
-      # Mix env should be set to prod to use secrets declared above,
-      # otherwise seeds will generate invalid tokens
-      MIX_ENV: "prod"
-      # Seeds
-      STATIC_SEEDS: "true"
-    depends_on:
-      postgres:
-        condition: "service_healthy"
-    networks:
-      - app
 
 # IPv6 is currently causing flakiness with GH actions and on our testbed.
 # Disabling until there's more time to debug.

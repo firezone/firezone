@@ -63,6 +63,15 @@ defmodule Firezone.MixProject do
 
   defp releases do
     [
+      domain: [
+        include_executables_for: [:unix],
+        validate_compile_env: true,
+        applications: [
+          domain: :permanent,
+          opentelemetry_exporter: :permanent,
+          opentelemetry: :temporary
+        ]
+      ],
       web: [
         include_executables_for: [:unix],
         validate_compile_env: true,
