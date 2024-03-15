@@ -38,13 +38,10 @@ async fn main() -> Result<()> {
     let (connection, netlink_handle, _) = new_connection()?;
     tokio::spawn(connection);
 
-    let (new_tun_sender, mut new_tun_receiver) = tokio::sync::mpsc::channel(1);
-
     let dns_control_method = get_dns_control_from_env();
     let callbacks = CallbackHandler {
         dns_control_method: dns_control_method.clone(),
         handle,
-        new_tun_sender,
         netlink_handle,
     };
 
@@ -72,6 +69,7 @@ async fn main() -> Result<()> {
         tokio::runtime::Handle::current(),
     )
     .unwrap();
+    session.update_tun(Tun::new(IFACE_NAME)?);
 
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
@@ -90,11 +88,6 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        if let Poll::Ready(Some(tun)) = new_tun_receiver.poll_recv(cx) {
-            session.update_tun(tun);
-            continue;
-        }
-
         return Poll::Pending;
     })
     .await;
@@ -108,7 +101,6 @@ async fn main() -> Result<()> {
 struct CallbackHandler {
     dns_control_method: Option<DnsControlMethod>,
     handle: Option<file_logger::Handle>,
-    new_tun_sender: tokio::sync::mpsc::Sender<Tun>,
 
     netlink_handle: Handle,
 }
