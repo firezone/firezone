@@ -305,54 +305,12 @@ where
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> connlib_shared::Result<()> {
-        tracing::trace!("received offer response");
-
-        let gateway_id = self
-            .role_state
-            .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
-
-        self.role_state.node.accept_answer(
-            gateway_id,
+        self.role_state.accept_answer(
+            rtc_ice_params,
+            resource_id,
             gateway_public_key,
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: rtc_ice_params.username,
-                    password: rtc_ice_params.password,
-                },
-            },
-            Instant::now(),
-        );
-
-        let desc = self
-            .role_state
-            .resource_ids
-            .get(&resource_id)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let ips = self
-            .role_state
-            .get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
-
-        // Tidy up state once everything succeeded.
-        self.role_state.awaiting_connection.remove(&resource_id);
-
-        let resource_ids = HashSet::from([resource_id]);
-        let mut peer: Peer<_, PacketTransformClient, _> =
-            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
-        peer.transform.set_dns(self.role_state.dns_mapping());
-        self.role_state.peers.insert(peer, &[]);
-
-        let peer_ips = if let Some(domain_response) = domain_response {
-            self.role_state
-                .dns_response(&resource_id, &domain_response, &gateway_id)?
-        } else {
-            ips
-        };
-
-        self.role_state
-            .peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+            domain_response,
+        )?;
 
         Ok(())
     }
@@ -526,6 +484,57 @@ impl ClientState {
         };
 
         Some(packet.into_immutable())
+    }
+
+    fn accept_answer(
+        &mut self,
+        answer: Answer,
+        resource_id: ResourceId,
+        gateway: PublicKey,
+        domain_response: Option<DomainResponse>,
+    ) -> connlib_shared::Result<()> {
+        let gateway_id = self
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        self.node.accept_answer(
+            gateway_id,
+            gateway,
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: answer.username,
+                    password: answer.password,
+                },
+            },
+            Instant::now(),
+        );
+
+        let desc = self
+            .resource_ids
+            .get(&resource_id)
+            .ok_or(Error::ControlProtocolError)?;
+
+        let ips = self.get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
+
+        // Tidy up state once everything succeeded.
+        self.awaiting_connection.remove(&resource_id);
+
+        let resource_ids = HashSet::from([resource_id]);
+        let mut peer: Peer<_, PacketTransformClient, _> =
+            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
+        peer.transform.set_dns(self.dns_mapping());
+        self.peers.insert(peer, &[]);
+
+        let peer_ips = if let Some(domain_response) = domain_response {
+            self.dns_response(&resource_id, &domain_response, &gateway_id)?
+        } else {
+            ips
+        };
+
+        self.peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
+        Ok(())
     }
 
     fn dns_response(
