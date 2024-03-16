@@ -458,8 +458,12 @@ extension Adapter: CallbackHandlerDelegate {
         return
       }
 
-      networkSettings.routes4 = try! JSONDecoder().decode([NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!).compactMap { $0.asNEIPv4Route }
-      networkSettings.routes6 = try! JSONDecoder().decode([NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!).compactMap { $0.asNEIPv6Route }
+      networkSettings.routes4 = try! JSONDecoder().decode(
+        [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
+      ).compactMap { $0.asNEIPv4Route }
+      networkSettings.routes6 = try! JSONDecoder().decode(
+        [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
+      ).compactMap { $0.asNEIPv6Route }
 
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
     }

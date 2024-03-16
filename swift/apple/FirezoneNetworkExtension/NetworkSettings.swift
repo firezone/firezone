@@ -78,11 +78,11 @@ class NetworkSettings {
 
     let ipv4Settings = NEIPv4Settings(
       addresses: [tunnelAddressIPv4], subnetMasks: ["255.255.255.255"])
-      ipv4Settings.includedRoutes = self.routes4
+    ipv4Settings.includedRoutes = self.routes4
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
 
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6], networkPrefixLengths: [128])
-      ipv6Settings.includedRoutes = self.routes6
+    ipv6Settings.includedRoutes = self.routes6
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
 
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
@@ -154,18 +154,18 @@ enum IPv4SubnetMaskLookup {
   ]
 }
 
-
 extension NetworkSettings {
   struct Cidr: Codable {
-      let address: String
-      let prefix: Int
+    let address: String
+    let prefix: Int
 
-      var asNEIPv4Route: NEIPv4Route {
-          return NEIPv4Route(destinationAddress: address, subnetMask: String(prefix))
-      }
+    var asNEIPv4Route: NEIPv4Route {
+      return NEIPv4Route(
+        destinationAddress: address, subnetMask: IPv4SubnetMaskLookup.table[prefix]!)
+    }
 
-      var asNEIPv6Route: NEIPv6Route {
-          return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
-      }
+    var asNEIPv6Route: NEIPv6Route {
+      return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
+    }
   }
 }
