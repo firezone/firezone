@@ -1,7 +1,7 @@
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
-use crate::utils::{earliest, stun, turn};
+use crate::utils::{earliest, turn};
 use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
@@ -108,7 +108,6 @@ where
                 },
             },
             client,
-            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         );

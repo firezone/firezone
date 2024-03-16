@@ -2,20 +2,6 @@ use crate::REALM;
 use connlib_shared::messages::Relay;
 use std::{collections::HashSet, net::SocketAddr, time::Instant};
 
-pub fn stun(relays: &[Relay], predicate: impl Fn(&SocketAddr) -> bool) -> HashSet<SocketAddr> {
-    relays
-        .iter()
-        .filter_map(|r| {
-            if let Relay::Stun(r) = r {
-                Some(r.addr)
-            } else {
-                None
-            }
-        })
-        .filter(predicate)
-        .collect()
-}
-
 pub fn turn(
     relays: &[Relay],
     predicate: impl Fn(&SocketAddr) -> bool,

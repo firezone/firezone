@@ -8,7 +8,6 @@ mod ip_packet;
 mod node;
 mod ringbuffer;
 mod stats;
-mod stun_binding;
 mod utils;
 
 pub use ip_packet::{IpPacket, MutableIpPacket};
