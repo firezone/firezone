@@ -524,46 +524,46 @@ impl ClientState {
 
         self.resources_gateways.insert(resource_id, gateway_id);
 
-        if self.peers.get(&gateway_id).is_none() {
-            if self.node.is_expecting_answer(gateway_id) {
-                return Err(Error::PendingConnection);
-            }
-
-            let offer = self.node.new_connection(
-                gateway_id,
-                allowed_stun_servers,
-                allowed_turn_servers,
-                awaiting_connection.last_intent_sent_at,
-                Instant::now(),
+        if self.peers.get(&gateway_id).is_some() {
+            self.peers.add_ips_with_resource(
+                &gateway_id,
+                &self.get_resource_ip(desc, &domain),
+                &resource_id,
             );
 
-            return Ok(Request::NewConnection(RequestConnection {
+            self.awaiting_connection.remove(&resource_id);
+
+            return Ok(Request::ReuseConnection(ReuseConnection {
                 resource_id,
                 gateway_id,
-                client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-                client_payload: ClientPayload {
-                    ice_parameters: Offer {
-                        username: offer.credentials.username,
-                        password: offer.credentials.password,
-                    },
-                    domain: awaiting_connection.domain,
-                },
+                payload: domain.clone(),
             }));
         };
 
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            &self.get_resource_ip(desc, &domain),
-            &resource_id,
+        if self.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
+        let offer = self.node.new_connection(
+            gateway_id,
+            allowed_stun_servers,
+            allowed_turn_servers,
+            awaiting_connection.last_intent_sent_at,
+            Instant::now(),
         );
 
-        self.awaiting_connection.remove(&resource_id);
-
-        Ok(Request::ReuseConnection(ReuseConnection {
+        return Ok(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
-            payload: domain.clone(),
-        }))
+            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+            client_payload: ClientPayload {
+                ice_parameters: Offer {
+                    username: offer.credentials.username,
+                    password: offer.credentials.password,
+                },
+                domain: awaiting_connection.domain,
+            },
+        }));
     }
 
     fn dns_response(
