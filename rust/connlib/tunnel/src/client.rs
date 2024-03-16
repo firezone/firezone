@@ -565,13 +565,10 @@ impl ClientState {
         self.dns_resources_internal_ips
             .insert(resource_description.clone(), addrs.clone());
 
-        let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
-
         send_dns_answer(self, Rtype::Aaaa, &resource_description, &addrs);
-
         send_dns_answer(self, Rtype::A, &resource_description, &addrs);
 
-        Ok(ips)
+        Ok(addrs.iter().copied().map(Into::into).collect())
     }
 
     /// Attempt to handle the given packet as a DNS packet.
