@@ -249,49 +249,12 @@ where
         gateway_id: GatewayId,
         relays: Vec<Relay>,
     ) -> connlib_shared::Result<Request> {
-        tracing::trace!("request_connection");
-
-        if let Some(connection) = self
-            .role_state
-            .attempt_to_reuse_connection(resource_id, gateway_id)?
-        {
-            // TODO: now we send reuse connections before connection is established but after
-            // response is offered.
-            // We need to consider new race conditions, such as connection failed after
-            // reuse connection is sent.
-            // Though I believe everything will work just fine like this.
-            return Ok(Request::ReuseConnection(connection));
-        }
-
-        if self.role_state.node.is_expecting_answer(gateway_id) {
-            return Err(Error::PendingConnection);
-        }
-
-        let awaiting_connection = self
-            .role_state
-            .get_awaiting_connection(&resource_id)?
-            .clone();
-
-        let offer = self.role_state.node.new_connection(
+        self.role_state.create_or_reuse_connection(
+            resource_id,
             gateway_id,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            awaiting_connection.last_intent_sent_at,
-            Instant::now(),
-        );
-
-        Ok(Request::NewConnection(RequestConnection {
-            resource_id,
-            gateway_id,
-            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-            client_payload: ClientPayload {
-                ice_parameters: Offer {
-                    username: offer.credentials.username,
-                    password: offer.credentials.password,
-                },
-                domain: awaiting_connection.domain,
-            },
-        }))
+        )
     }
 
     /// Called when a response to [ClientTunnel::request_connection] is ready.
@@ -531,6 +494,52 @@ impl ClientState {
             .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
+    }
+
+    fn create_or_reuse_connection(
+        &mut self,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
+    ) -> connlib_shared::Result<Request> {
+        tracing::trace!("request_connection");
+
+        if let Some(connection) = self.attempt_to_reuse_connection(resource_id, gateway_id)? {
+            // TODO: now we send reuse connections before connection is established but after
+            // response is offered.
+            // We need to consider new race conditions, such as connection failed after
+            // reuse connection is sent.
+            // Though I believe everything will work just fine like this.
+            return Ok(Request::ReuseConnection(connection));
+        }
+
+        if self.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
+        let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
+
+        let offer = self.node.new_connection(
+            gateway_id,
+            allowed_stun_servers,
+            allowed_turn_servers,
+            awaiting_connection.last_intent_sent_at,
+            Instant::now(),
+        );
+
+        Ok(Request::NewConnection(RequestConnection {
+            resource_id,
+            gateway_id,
+            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+            client_payload: ClientPayload {
+                ice_parameters: Offer {
+                    username: offer.credentials.username,
+                    password: offer.credentials.password,
+                },
+                domain: awaiting_connection.domain,
+            },
+        }))
     }
 
     fn dns_response(
