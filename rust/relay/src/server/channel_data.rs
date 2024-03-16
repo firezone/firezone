@@ -97,12 +97,12 @@ mod tests {
     #[test_strategy::proptest]
     fn channel_data_decoding(
         #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
-        #[strategy(crate::proptest::channel_payload())] payload: (Vec<u8>, usize),
+        #[strategy(crate::proptest::channel_payload())] payload: (Vec<u8>, u16),
     ) {
-        let encoded = to_bytes(channel.value(), payload.1 as u16, &payload.0);
+        let encoded = to_bytes(channel.value(), payload.1, &payload.0);
         let parsed = ChannelData::parse(&encoded).unwrap();
 
         assert_eq!(channel.value(), parsed.channel);
-        assert_eq!(&payload.0[..payload.1], parsed.data)
+        assert_eq!(&payload.0[..(payload.1 as usize)], parsed.data)
     }
 }
