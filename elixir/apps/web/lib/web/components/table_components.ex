@@ -7,19 +7,24 @@ defmodule Web.TableComponents do
   import Web.Gettext
   import Web.CoreComponents
 
+  attr :table_id, :string, required: true, doc: "id of the parent table"
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
   attr :actions, :any, required: true, doc: "action slot taken from parent component"
 
+  # LiveTable component attributes
+  attr :ordered_by, :any, default: nil, doc: "the current order for the table"
+
   def table_header(assigns) do
     ~H"""
-    <thead class="text-xs text-neutral-700 uppercase bg-neutral-50">
+    <thead id={"#{@table_id}-header"} class="text-xs text-neutral-700 uppercase bg-neutral-50">
       <tr>
         <th :for={col <- @columns} class={["px-4 py-3 font-medium", Map.get(col, :class, "")]}>
           <%= col[:label] %>
-          <.icon
-            :if={col[:sortable] == "true"}
-            name="hero-chevron-up-down-solid"
-            class="w-4 h-4 ml-1"
+          <.table_header_order_buttons
+            :if={col[:field]}
+            field={col[:field]}
+            table_id={@table_id}
+            ordered_by={@ordered_by}
           />
         </th>
         <th :if={not Enum.empty?(@actions)} class="px-4 py-3">
@@ -27,6 +32,36 @@ defmodule Web.TableComponents do
         </th>
       </tr>
     </thead>
+    """
+  end
+
+  defp table_header_order_buttons(assigns) do
+    ~H"""
+    <% {assoc_name, field_name} = @field %>
+    <% current_order =
+      if match?({^assoc_name, _, ^field_name}, @ordered_by),
+        do: elem(@ordered_by, 1) %>
+    <button
+      phx-click="order_by"
+      phx-value-table_id={@table_id}
+      phx-value-order_by={"#{assoc_name}:#{current_order || :asc}:#{field_name}"}
+    >
+      <.icon
+        name={
+          cond do
+            current_order == :asc ->
+              "hero-chevron-up-solid"
+
+            current_order == :desc ->
+              "hero-chevron-down-solid"
+
+            true ->
+              "hero-chevron-up-down-solid"
+          end
+        }
+        class="w-4 h-4 ml-1"
+      />
+    </button>
     """
   end
 
@@ -97,14 +132,17 @@ defmodule Web.TableComponents do
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :class, :string, default: nil, doc: "the class for the table"
 
   attr :row_item, :any,
     default: &Function.identity/1,
     doc: "the function for mapping each row before calling the :col and :action slots"
 
+  attr :ordered_by, :any, required: false, default: nil, doc: "the current order for the table"
+
   slot :col, required: true do
     attr :label, :string
-    attr :sortable, :string
+    attr :field, :any, doc: "the cursor field that to be used for ordering for this column"
     attr :class, :string
   end
 
@@ -119,8 +157,8 @@ defmodule Web.TableComponents do
 
     ~H"""
     <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-neutral-500" id={@id}>
-        <.table_header columns={@col} actions={@action} />
+      <table class={["w-full text-sm text-left text-neutral-500", @class]} id={@id}>
+        <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
         <tbody
           id={"#{@id}-rows"}
           phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
@@ -176,7 +214,6 @@ defmodule Web.TableComponents do
 
   slot :col, required: true do
     attr :label, :string
-    attr :sortable, :string
     attr :class, :string
   end
 
@@ -193,7 +230,7 @@ defmodule Web.TableComponents do
 
     ~H"""
     <table class="w-full text-sm text-left text-neutral-500" id={@id}>
-      <.table_header columns={@col} actions={@action} />
+      <.table_header table_id={@id} columns={@col} actions={@action} />
 
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
         <tr class="bg-neutral-100">

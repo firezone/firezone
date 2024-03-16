@@ -90,7 +90,7 @@ defmodule Domain.ClientsTest do
     end
   end
 
-  describe "fetch_client_by_id/2" do
+  describe "fetch_client_by_id/3" do
     test "returns error when UUID is invalid", %{unprivileged_subject: subject} do
       assert fetch_client_by_id("foo", subject) == {:error, :not_found}
     end
@@ -108,17 +108,17 @@ defmodule Domain.ClientsTest do
 
     test "returns client by id", %{unprivileged_actor: actor, unprivileged_subject: subject} do
       client = Fixtures.Clients.create_client(actor: actor)
-      assert fetch_client_by_id(client.id, subject) == {:ok, client}
+      assert fetch_client_by_id(client.id, subject, preload: [:online?]) == {:ok, client}
     end
 
     test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
       client = Fixtures.Clients.create_client(actor: actor)
 
-      assert {:ok, client} = fetch_client_by_id(client.id, subject)
+      assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == false
 
       assert connect_client(client) == :ok
-      assert {:ok, client} = fetch_client_by_id(client.id, subject)
+      assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == true
     end
 
@@ -133,7 +133,7 @@ defmodule Domain.ClientsTest do
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.add_permission(Clients.Authorizer.manage_clients_permission())
 
-      assert fetch_client_by_id(client.id, subject) == {:ok, client}
+      assert fetch_client_by_id(client.id, subject, preload: [:online?]) == {:ok, client}
     end
 
     test "does not returns client that belongs to another account with manage permission", %{
@@ -186,9 +186,51 @@ defmodule Domain.ClientsTest do
     end
   end
 
+  describe "fetch_client_by_id!/2" do
+    test "raises when UUID is invalid" do
+      assert_raise Ecto.Query.CastError, fn ->
+        fetch_client_by_id!("foo")
+      end
+    end
+
+    test "raises when client does not exist" do
+      assert_raise Ecto.NoResultsError, fn ->
+        fetch_client_by_id!(Ecto.UUID.generate())
+      end
+    end
+
+    test "raises when client is deleted", %{
+      unprivileged_actor: actor
+    } do
+      client =
+        Fixtures.Clients.create_client(actor: actor)
+        |> Fixtures.Clients.delete_client()
+
+      assert_raise Ecto.NoResultsError, fn ->
+        fetch_client_by_id!(client.id)
+      end
+    end
+
+    test "returns client by id", %{unprivileged_actor: actor} do
+      client = Fixtures.Clients.create_client(actor: actor)
+      assert fetch_client_by_id!(client.id, preload: [:online?]) == client
+    end
+
+    test "preloads online status", %{unprivileged_actor: actor} do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      assert client = fetch_client_by_id!(client.id, preload: [:online?])
+      assert client.online? == false
+
+      assert connect_client(client) == :ok
+      assert client = fetch_client_by_id!(client.id, preload: [:online?])
+      assert client.online? == true
+    end
+  end
+
   describe "list_clients/1" do
     test "returns empty list when there are no clients", %{admin_subject: subject} do
-      assert list_clients(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients(subject)
     end
 
     test "does not list deleted clients", %{
@@ -198,7 +240,7 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: actor)
       |> Fixtures.Clients.delete_client()
 
-      assert list_clients(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients(subject)
     end
 
     test "does not list  clients in other accounts", %{
@@ -206,7 +248,7 @@ defmodule Domain.ClientsTest do
     } do
       Fixtures.Clients.create_client()
 
-      assert list_clients(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients(subject)
     end
 
     test "shows all clients owned by a actor for unprivileged subject", %{
@@ -217,7 +259,8 @@ defmodule Domain.ClientsTest do
       client = Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: other_actor)
 
-      assert list_clients(subject) == {:ok, [client]}
+      assert {:ok, [fetched_client], _metadata} = list_clients(subject)
+      assert fetched_client.id == client.id
     end
 
     test "shows all clients for admin subject", %{
@@ -228,18 +271,18 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: admin_actor)
       Fixtures.Clients.create_client(actor: other_actor)
 
-      assert {:ok, clients} = list_clients(subject)
+      assert {:ok, clients, _metadata} = list_clients(subject)
       assert length(clients) == 2
     end
 
     test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
       Fixtures.Clients.create_client(actor: actor)
 
-      assert {:ok, [client]} = list_clients(subject)
+      assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == false
 
       assert connect_client(client) == :ok
-      assert {:ok, [client]} = list_clients(subject)
+      assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == true
     end
 
@@ -267,14 +310,14 @@ defmodule Domain.ClientsTest do
       admin_actor: actor,
       admin_subject: subject
     } do
-      assert list_clients_by_actor_id(Ecto.UUID.generate(), subject) == {:ok, []}
-      assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(Ecto.UUID.generate(), subject)
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(actor.id, subject)
       Fixtures.Clients.create_client()
-      assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(actor.id, subject)
     end
 
-    test "returns error when actor id is invalid", %{admin_subject: subject} do
-      assert list_clients_by_actor_id("foo", subject) == {:error, :not_found}
+    test "returns empty list when actor id is invalid", %{admin_subject: subject} do
+      assert {:ok, [], _metadata} = list_clients_by_actor_id("foo", subject)
     end
 
     test "does not list deleted clients", %{
@@ -285,7 +328,7 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(identity: identity)
       |> Fixtures.Clients.delete_client()
 
-      assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(actor.id, subject)
     end
 
     test "does not deleted clients for actors in other accounts", %{
@@ -295,8 +338,8 @@ defmodule Domain.ClientsTest do
       actor = Fixtures.Actors.create_actor(type: :account_user)
       Fixtures.Clients.create_client(actor: actor)
 
-      assert list_clients_by_actor_id(actor.id, unprivileged_subject) == {:ok, []}
-      assert list_clients_by_actor_id(actor.id, admin_subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(actor.id, unprivileged_subject)
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(actor.id, admin_subject)
     end
 
     test "shows only clients owned by a actor for unprivileged subject", %{
@@ -307,8 +350,10 @@ defmodule Domain.ClientsTest do
       client = Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: other_actor)
 
-      assert list_clients_by_actor_id(actor.id, subject) == {:ok, [client]}
-      assert list_clients_by_actor_id(other_actor.id, subject) == {:ok, []}
+      assert {:ok, [^client], _metadata} =
+               list_clients_by_actor_id(actor.id, subject, preload: [:online?])
+
+      assert {:ok, [], _metadata} = list_clients_by_actor_id(other_actor.id, subject)
     end
 
     test "shows all clients owned by another actor for admin subject", %{
@@ -319,8 +364,8 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: admin_actor)
       Fixtures.Clients.create_client(actor: other_actor)
 
-      assert {:ok, [_client]} = list_clients_by_actor_id(admin_actor.id, subject)
-      assert {:ok, [_client]} = list_clients_by_actor_id(other_actor.id, subject)
+      assert {:ok, [_client], _metadata} = list_clients_by_actor_id(admin_actor.id, subject)
+      assert {:ok, [_client], _metadata} = list_clients_by_actor_id(other_actor.id, subject)
     end
 
     test "returns error when subject has no permission to manage clients", %{
@@ -800,9 +845,13 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: actor)
       Fixtures.Clients.create_client(actor: actor)
 
-      assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 3
+      query =
+        Clients.Client.Query.not_deleted()
+        |> Clients.Client.Query.by_actor_id(actor.id)
+
+      assert Repo.aggregate(query, :count) == 3
       assert delete_clients_for(actor, subject) == :ok
-      assert Repo.aggregate(Clients.Client.Query.by_actor_id(actor.id), :count) == 0
+      assert Repo.aggregate(query, :count) == 0
     end
 
     test "does not remove clients that belong to another actor", %{
@@ -827,6 +876,47 @@ defmodule Domain.ClientsTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+    end
+  end
+
+  describe "connect_client/1" do
+    test "tracks client presence for account", %{account: account} do
+      client = Fixtures.Clients.create_client(account: account)
+      assert connect_client(client) == :ok
+
+      client = fetch_client_by_id!(client.id, preload: [:online?])
+      assert client.online? == true
+    end
+
+    test "tracks client presence for actor", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      assert connect_client(client) == :ok
+
+      assert broadcast_to_client(client, "test") == :ok
+
+      assert_receive "test"
+    end
+
+    test "subscribes to client events", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      assert connect_client(client) == :ok
+
+      assert disconnect_client(client) == :ok
+
+      assert_receive "disconnect"
+    end
+
+    test "subscribes to account events", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+      assert connect_client(client) == :ok
+
+      assert disconnect_account_clients(account) == :ok
+
+      assert_receive "disconnect"
     end
   end
 end
