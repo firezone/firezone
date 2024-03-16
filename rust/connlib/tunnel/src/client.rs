@@ -279,18 +279,8 @@ where
         resource_id: ResourceId,
         domain_response: DomainResponse,
     ) -> connlib_shared::Result<()> {
-        let gateway_id = self
-            .role_state
-            .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
-
-        let peer_ips = self
-            .role_state
-            .dns_response(&resource_id, &domain_response, &gateway_id)?;
-
         self.role_state
-            .peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+            .received_domain_parameters(resource_id, domain_response)?;
 
         Ok(())
     }
@@ -564,6 +554,23 @@ impl ClientState {
                 domain: awaiting_connection.domain,
             },
         }));
+    }
+
+    fn received_domain_parameters(
+        &mut self,
+        resource_id: ResourceId,
+        domain_response: DomainResponse,
+    ) -> connlib_shared::Result<()> {
+        let gateway_id = self
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
+
+        self.peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
+        Ok(())
     }
 
     fn dns_response(
