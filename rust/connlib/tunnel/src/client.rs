@@ -295,36 +295,6 @@ where
         }))
     }
 
-    fn new_peer(
-        &mut self,
-        resource_id: ResourceId,
-        gateway_id: GatewayId,
-        domain_response: Option<DomainResponse>,
-    ) -> connlib_shared::Result<()> {
-        let ips = self.role_state.create_peer_config_for_new_connection(
-            resource_id,
-            &domain_response.as_ref().map(|d| d.domain.clone()),
-        )?;
-
-        let resource_ids = HashSet::from([resource_id]);
-        let mut peer: Peer<_, PacketTransformClient, _> =
-            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
-        peer.transform.set_dns(self.role_state.dns_mapping());
-        self.role_state.peers.insert(peer, &[]);
-
-        let peer_ips = if let Some(domain_response) = domain_response {
-            self.dns_response(&resource_id, &domain_response, &gateway_id)?
-        } else {
-            ips
-        };
-
-        self.role_state
-            .peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
-
-        Ok(())
-    }
-
     /// Called when a response to [ClientTunnel::request_connection] is ready.
     ///
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
@@ -355,7 +325,26 @@ where
             Instant::now(),
         );
 
-        self.new_peer(resource_id, gateway_id, domain_response)?;
+        let ips = self.role_state.create_peer_config_for_new_connection(
+            resource_id,
+            &domain_response.as_ref().map(|d| d.domain.clone()),
+        )?;
+
+        let resource_ids = HashSet::from([resource_id]);
+        let mut peer: Peer<_, PacketTransformClient, _> =
+            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
+        peer.transform.set_dns(self.role_state.dns_mapping());
+        self.role_state.peers.insert(peer, &[]);
+
+        let peer_ips = if let Some(domain_response) = domain_response {
+            self.dns_response(&resource_id, &domain_response, &gateway_id)?
+        } else {
+            ips
+        };
+
+        self.role_state
+            .peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
     }
