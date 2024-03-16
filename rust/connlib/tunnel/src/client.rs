@@ -505,40 +505,64 @@ impl ClientState {
     ) -> connlib_shared::Result<Request> {
         tracing::trace!("request_connection");
 
-        if let Some(connection) = self.attempt_to_reuse_connection(resource_id, gateway_id)? {
-            // TODO: now we send reuse connections before connection is established but after
-            // response is offered.
-            // We need to consider new race conditions, such as connection failed after
-            // reuse connection is sent.
-            // Though I believe everything will work just fine like this.
-            return Ok(Request::ReuseConnection(connection));
+        let desc = self
+            .resource_ids
+            .get(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        let domain = self.get_awaiting_connection(&resource_id)?.domain.clone();
+
+        if self.is_connected_to(resource_id, &domain) {
+            return Err(Error::UnexpectedConnectionDetails);
         }
 
-        if self.node.is_expecting_answer(gateway_id) {
-            return Err(Error::PendingConnection);
-        }
+        self.awaiting_connection
+            .get_mut(&resource_id)
+            .ok_or(Error::UnexpectedConnectionDetails)?;
 
-        let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
+        self.resources_gateways.insert(resource_id, gateway_id);
 
-        let offer = self.node.new_connection(
-            gateway_id,
-            allowed_stun_servers,
-            allowed_turn_servers,
-            awaiting_connection.last_intent_sent_at,
-            Instant::now(),
+        if self.peers.get(&gateway_id).is_none() {
+            if self.node.is_expecting_answer(gateway_id) {
+                return Err(Error::PendingConnection);
+            }
+
+            let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
+
+            let offer = self.node.new_connection(
+                gateway_id,
+                allowed_stun_servers,
+                allowed_turn_servers,
+                awaiting_connection.last_intent_sent_at,
+                Instant::now(),
+            );
+
+            return Ok(Request::NewConnection(RequestConnection {
+                resource_id,
+                gateway_id,
+                client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+                client_payload: ClientPayload {
+                    ice_parameters: Offer {
+                        username: offer.credentials.username,
+                        password: offer.credentials.password,
+                    },
+                    domain: awaiting_connection.domain,
+                },
+            }));
+        };
+
+        self.peers.add_ips_with_resource(
+            &gateway_id,
+            &self.get_resource_ip(desc, &domain),
+            &resource_id,
         );
 
-        Ok(Request::NewConnection(RequestConnection {
+        self.awaiting_connection.remove(&resource_id);
+
+        Ok(Request::ReuseConnection(ReuseConnection {
             resource_id,
             gateway_id,
-            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-            client_payload: ClientPayload {
-                ice_parameters: Offer {
-                    username: offer.credentials.username,
-                    password: offer.credentials.password,
-                },
-                domain: awaiting_connection.domain,
-            },
+            payload: domain.clone(),
         }))
     }
 
@@ -641,44 +665,6 @@ impl ClientState {
         self.awaiting_connection
             .get(resource)
             .ok_or(Error::UnexpectedConnectionDetails)
-    }
-
-    pub(crate) fn attempt_to_reuse_connection(
-        &mut self,
-        resource: ResourceId,
-        gateway: GatewayId,
-    ) -> Result<Option<ReuseConnection>, ConnlibError> {
-        let desc = self
-            .resource_ids
-            .get(&resource)
-            .ok_or(Error::UnknownResource)?;
-
-        let domain = self.get_awaiting_connection(&resource)?.domain.clone();
-
-        if self.is_connected_to(resource, &domain) {
-            return Err(Error::UnexpectedConnectionDetails);
-        }
-
-        self.awaiting_connection
-            .get_mut(&resource)
-            .ok_or(Error::UnexpectedConnectionDetails)?;
-
-        self.resources_gateways.insert(resource, gateway);
-
-        if self.peers.get(&gateway).is_none() {
-            return Ok(None);
-        };
-
-        self.peers
-            .add_ips_with_resource(&gateway, &self.get_resource_ip(desc, &domain), &resource);
-
-        self.awaiting_connection.remove(&resource);
-
-        Ok(Some(ReuseConnection {
-            resource_id: resource,
-            gateway_id: gateway,
-            payload: domain.clone(),
-        }))
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
