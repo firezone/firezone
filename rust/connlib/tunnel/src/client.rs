@@ -15,7 +15,6 @@ use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
-use crate::device_channel::Device;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
@@ -402,7 +401,6 @@ where
         send_dns_answer(
             &mut self.role_state,
             Rtype::Aaaa,
-            self.io.device_mut(),
             &resource_description,
             &addrs,
         );
@@ -410,7 +408,6 @@ where
         send_dns_answer(
             &mut self.role_state,
             Rtype::A,
-            self.io.device_mut(),
             &resource_description,
             &addrs,
         );
@@ -448,7 +445,6 @@ pub enum Request {
 fn send_dns_answer(
     role_state: &mut ClientState,
     qtype: Rtype,
-    device: &Device,
     resource_description: &DnsResource,
     addrs: &HashSet<IpAddr>,
 ) {
@@ -459,9 +455,7 @@ fn send_dns_answer(
         let Some(packet) = dns::create_local_answer(addrs, packet) else {
             return;
         };
-        if let Err(e) = device.write(packet) {
-            tracing::error!(err = ?e, "error writing packet: {e:#?}");
-        }
+        role_state.buffered_packets.push_back(packet);
     }
 }
 
