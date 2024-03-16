@@ -222,7 +222,8 @@ variable "application_token_scopes" {
 
 variable "application_dns_tld" {
   type     = string
-  nullable = false
+  nullable = true
+  default  = null
 
   description = "DNS host which will be used to create DNS records for the application and provision SSL-certificates."
 }

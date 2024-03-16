@@ -185,7 +185,7 @@ jobs:
 
           # Start services in the same order each time for the tests
           docker compose up -d iperf3
-          docker compose up -d api web --no-build
+          docker compose up -d api web domain --no-build
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
