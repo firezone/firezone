@@ -66,25 +66,16 @@ impl Sockets {
         self.socket_v6.as_ref().map(|s| s.socket.as_raw_fd())
     }
 
-    pub fn flush(&mut self) -> io::Result<()> {
+    /// Flushes all buffered data on the sockets.
+    ///
+    /// Returns `Ready` if the socket is able to accept more data.
+    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let Some(socket) = self.socket_v4.as_mut() {
-            socket.flush()?;
+            ready!(socket.poll_flush(cx))?;
         }
 
         if let Some(socket) = self.socket_v6.as_mut() {
-            socket.flush()?;
-        }
-
-        Ok(())
-    }
-
-    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if let Some(socket) = self.socket_v4.as_mut() {
-            ready!(socket.poll_send_ready(cx))?;
-        }
-
-        if let Some(socket) = self.socket_v6.as_mut() {
-            ready!(socket.poll_send_ready(cx))?;
+            ready!(socket.poll_flush(cx))?;
         }
 
         Poll::Ready(Ok(()))
@@ -97,14 +88,14 @@ impl Sockets {
                     io::ErrorKind::NotConnected,
                     "no IPv4 socket",
                 ))?;
-                socket.try_send(transmit)?;
+                socket.send(transmit);
             }
             SocketAddr::V6(_) => {
                 let socket = self.socket_v6.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
                     "no IPv6 socket",
                 ))?;
-                socket.try_send(transmit)?;
+                socket.send(transmit);
             }
         }
 
@@ -271,47 +262,32 @@ impl Socket {
         }
     }
 
-    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        ready!(self.socket.poll_send_ready(cx)?);
+    fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.socket.try_io(Interest::WRITABLE, || {
+            self.state
+                .send((&self.socket).into(), &self.buffered_transmits)
+        }) {
+            Ok(num_sent) => {
+                self.buffered_transmits.drain(..num_sent);
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Poll::Ready(Err(e)),
+        };
+
+        // Enforce send-readiness if our buffer keeps growing.
+        //
+        // Upper layers will stop writing to the buffer if `poll_flush` returns `Pending`.
+        if self.buffered_transmits.len() > 1000 {
+            ready!(self.socket.poll_send_ready(cx)?);
+        }
 
         Poll::Ready(Ok(()))
     }
 
-    fn flush(&mut self) -> io::Result<()> {
-        let num_sent = self.socket.try_io(Interest::WRITABLE, || {
-            self.state
-                .send((&self.socket).into(), &self.buffered_transmits)
-        })?;
-
-        let remaining = self.buffered_transmits.split_off(num_sent);
-        self.buffered_transmits = remaining;
-
-        Ok(())
-    }
-
-    fn try_send(&mut self, transmit: quinn_udp::Transmit) -> io::Result<()> {
+    fn send(&mut self, transmit: quinn_udp::Transmit) {
         tracing::trace!(target: "wire", to = "network", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
 
         self.buffered_transmits.push(transmit);
-
-        let num_sent = match self.socket.try_io(Interest::WRITABLE, || {
-            self.state
-                .send((&self.socket).into(), &self.buffered_transmits)
-        }) {
-            Ok(num_sent) => num_sent,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
-            Err(e) => return Err(e),
-        };
-
-        let remaining = self.buffered_transmits.split_off(num_sent);
-        self.buffered_transmits = remaining;
-
-        assert!(
-            self.buffered_transmits.len() < 100,
-            "Using `try_io` should clear readiness flag on socket which makes us block on `poll_send_ready` and not grow the buffer indefinitely"
-        );
-
-        Ok(())
     }
 }
 

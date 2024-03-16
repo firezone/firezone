@@ -97,8 +97,7 @@ impl Io {
                 return Poll::Ready(Ok(Input::Network(network)));
             }
 
-            ready!(self.sockets.poll_send_ready(cx))?; // Packets read from the device need to be written to a socket, let's make sure the socket can take more packets.
-            self.sockets.flush()?;
+            ready!(self.sockets.poll_flush(cx))?;
 
             if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
                 return Poll::Ready(Ok(Input::Device(packet)));
