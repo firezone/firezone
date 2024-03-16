@@ -16,6 +16,12 @@ runs:
       with:
         otp-version: ${{ steps.versions.outputs.erlang }}
         elixir-version: ${{ steps.versions.outputs.elixir }}
+    - name: Setup Hex and Rebar
+      shell: bash
+      working-directory: ./elixir
+      run: |
+        mix local.hex --force
+        mix local.rebar --force
     - uses: actions/cache/restore@v4
       name: Restore Elixir Deps Cache
       id: cache

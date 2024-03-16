@@ -6,47 +6,44 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    with {:ok, providers} <-
-           Domain.Auth.list_providers_pending_token_refresh_by_adapter(:microsoft_entra) do
-      Logger.debug("Refreshing access tokens for #{length(providers)} Microsoft Entra providers")
+    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:microsoft_entra)
+    Logger.debug("Refreshing access tokens for #{length(providers)} Microsoft Entra providers")
 
-      Enum.each(providers, fn provider ->
-        Logger.debug("Refreshing access token",
-          provider_id: provider.id,
-          account_id: provider.account_id
-        )
+    Enum.each(providers, fn provider ->
+      Logger.debug("Refreshing access token",
+        provider_id: provider.id,
+        account_id: provider.account_id
+      )
 
-        case MicrosoftEntra.refresh_access_token(provider) do
-          {:ok, provider} ->
-            Logger.debug("Finished refreshing access token",
-              provider_id: provider.id,
-              account_id: provider.account_id
-            )
+      case MicrosoftEntra.refresh_access_token(provider) do
+        {:ok, provider} ->
+          Logger.debug("Finished refreshing access token",
+            provider_id: provider.id,
+            account_id: provider.account_id
+          )
 
-          {:error, reason} ->
-            Logger.error("Failed refreshing access token",
-              provider_id: provider.id,
-              account_id: provider.account_id,
-              reason: inspect(reason)
-            )
-        end
-      end)
-    end
+        {:error, reason} ->
+          Logger.error("Failed refreshing access token",
+            provider_id: provider.id,
+            account_id: provider.account_id,
+            reason: inspect(reason)
+          )
+      end
+    end)
   end
 
   every minutes(3), :sync_directory do
-    with {:ok, providers} <- Domain.Auth.list_providers_pending_sync_by_adapter(:microsoft_entra) do
-      Logger.debug("Syncing #{length(providers)} Microsoft Entra providers")
+    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:microsoft_entra)
+    Logger.debug("Syncing #{length(providers)} Microsoft Entra providers")
 
-      providers
-      |> Domain.Repo.preload(:account)
-      |> Enum.chunk_every(5)
-      |> Enum.each(fn providers ->
-        Enum.map(providers, fn provider ->
-          sync_provider_directory(provider)
-        end)
+    providers
+    |> Domain.Repo.preload(:account)
+    |> Enum.chunk_every(5)
+    |> Enum.each(fn providers ->
+      Enum.map(providers, fn provider ->
+        sync_provider_directory(provider)
       end)
-    end
+    end)
   end
 
   def sync_provider_directory(provider) do

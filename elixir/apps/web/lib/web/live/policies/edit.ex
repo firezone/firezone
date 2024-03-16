@@ -6,16 +6,16 @@ defmodule Web.Policies.Edit do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [:actor_group, :resource]
-           ),
-         nil <- policy.deleted_at do
+             preload: [:actor_group, :resource],
+             filter: [deleted?: false]
+           ) do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
 
       socket =
         assign(socket,
+          page_title: "Edit #{policy.id}",
           policy: policy,
-          form: form,
-          page_title: "Edit #{policy.id}"
+          form: form
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -66,17 +66,17 @@ defmodule Web.Policies.Edit do
     """
   end
 
-  def handle_event("validate", %{"policy" => policy_params}, socket) do
+  def handle_event("validate", %{"policy" => params}, socket) do
     changeset =
-      Policies.Policy.Changeset.update(socket.assigns.policy, policy_params)
+      Policies.Policy.Changeset.update(socket.assigns.policy, params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"policy" => policy_params}, socket) do
+  def handle_event("submit", %{"policy" => params}, socket) do
     with {:ok, policy} <-
-           Policies.update_policy(socket.assigns.policy, policy_params, socket.assigns.subject) do
+           Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
     else
       {:error, changeset} ->

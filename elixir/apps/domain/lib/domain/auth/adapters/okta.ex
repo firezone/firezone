@@ -35,15 +35,15 @@ defmodule Domain.Auth.Adapters.Okta do
   @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
-    |> Domain.Validator.trim_change(:provider_identifier)
-    |> Domain.Validator.copy_change(:provider_virtual_state, :provider_state)
+    |> Domain.Repo.Changeset.trim_change(:provider_identifier)
+    |> Domain.Repo.Changeset.copy_change(:provider_virtual_state, :provider_state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
   end
 
   @impl true
   def provider_changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> Domain.Changeset.cast_polymorphic_embed(:adapter_config,
+    |> Domain.Repo.Changeset.cast_polymorphic_embed(:adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
         Ecto.embedded_load(Okta.Settings, current_attrs, :json)

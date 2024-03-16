@@ -9,8 +9,8 @@ defmodule Domain.Auth.Adapter do
   in the UI on pre-provider basis.
 
   Setting it to `:custom` will also allow running recurrent jobs for the provider,
-  for more details see `Domain.Auth.list_providers_pending_token_refresh_by_adapter/1`
-  and `Domain.Auth.list_providers_pending_sync_by_adapter/1`.
+  for more details see `Domain.Auth.all_providers_pending_token_refresh_by_adapter!/1`
+  and `Domain.Auth.all_providers_pending_sync_by_adapter!/1`.
   """
   @type provisioner :: :manual | :just_in_time | :custom
 

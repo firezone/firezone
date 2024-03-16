@@ -33,8 +33,8 @@ defmodule Domain.Auth.Adapters.Email do
   @impl true
   def identity_changeset(%Provider{}, %Ecto.Changeset{} = changeset) do
     changeset
-    |> Domain.Validator.trim_change(:provider_identifier)
-    |> Domain.Validator.validate_email(:provider_identifier)
+    |> Domain.Repo.Changeset.trim_change(:provider_identifier)
+    |> Domain.Repo.Changeset.validate_email(:provider_identifier)
     |> Ecto.Changeset.validate_confirmation(:provider_identifier,
       required: true,
       message: "email does not match"

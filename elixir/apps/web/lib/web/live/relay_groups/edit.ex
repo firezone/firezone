@@ -4,12 +4,20 @@ defmodule Web.RelayGroups.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
-         {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject),
-         nil <- group.deleted_at do
+         {:ok, group} <-
+           Relays.fetch_group_by_id(id, socket.assigns.subject,
+             filter: [
+               deleted?: false
+             ]
+           ) do
       changeset = Relays.change_group(group)
 
       socket =
-        assign(socket, group: group, form: to_form(changeset), page_title: "Edit #{group.name}")
+        assign(socket,
+          group: group,
+          form: to_form(changeset),
+          page_title: "Edit #{group.name}"
+        )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else

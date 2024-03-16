@@ -38,6 +38,14 @@ defmodule Domain.Fixtures.Accounts do
     account
   end
 
+  def delete_account(%Accounts.Account{} = account) do
+    update_account(account, deleted_at: DateTime.utc_now())
+  end
+
+  def disable_account(%Accounts.Account{} = account) do
+    update_account(account, disabled_at: DateTime.utc_now())
+  end
+
   def update_account(account, attrs \\ %{}) do
     account
     |> Ecto.Changeset.change(attrs)

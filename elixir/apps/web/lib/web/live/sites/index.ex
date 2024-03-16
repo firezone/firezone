@@ -3,20 +3,43 @@ defmodule Web.Sites.Index do
   alias Domain.Gateways
 
   def mount(_params, _session, socket) do
-    subject = socket.assigns.subject
-
-    with {:ok, groups} <-
-           Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]]) do
+    if connected?(socket) do
       :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
+    end
 
-      socket =
-        assign(socket,
-          groups: groups,
-          page_title: "Sites"
-        )
+    socket =
+      socket
+      |> assign(page_title: "Sites")
+      |> assign_live_table("groups",
+        query_module: Gateways.Group.Query,
+        sortable_fields: [
+          {:groups, :name}
+        ],
+        callback: &handle_groups_update!/2
+      )
 
-      {:ok, socket}
+    {:ok, socket}
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_groups_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, gateways: [:online?], connections: [:resource])
+
+    with {:ok, groups, metadata} <-
+           Gateways.list_groups(socket.assigns.subject, list_opts) do
+      assign(socket,
+        groups: groups,
+        groups_metadata: metadata
+      )
     else
+      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
@@ -37,8 +60,17 @@ defmodule Web.Sites.Index do
         </.add_button>
       </:action>
       <:content>
-        <.table id="groups" rows={@groups} row_id={&"group-#{&1.id}"}>
-          <:col :let={group} label="site">
+        <.flash_group flash={@flash} />
+        <.live_table
+          id="groups"
+          rows={@groups}
+          row_id={&"group-#{&1.id}"}
+          filters={@filters_by_table_id["groups"]}
+          filter={@filter_form_by_table_id["groups"]}
+          ordered_by={@order_by_table_id["groups"]}
+          metadata={@groups_metadata}
+        >
+          <:col :let={group} field={{:groups, :name}} label="site" class="w-1/6">
             <.link navigate={~p"/#{@account}/sites/#{group}"} class={[link_style()]}>
               <%= group.name %>
             </.link>
@@ -125,18 +157,19 @@ defmodule Web.Sites.Index do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
     """
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
-    subject = socket.assigns.subject
-    {:ok, groups} = Gateways.list_groups(subject, preload: [:gateways, connections: [:resource]])
-    {:noreply, assign(socket, groups: groups)}
+    {:noreply, reload_live_table!(socket, "groups")}
   end
 end

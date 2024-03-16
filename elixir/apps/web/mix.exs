@@ -66,7 +66,7 @@ defmodule Web.MixProject do
       {:gen_smtp, "~> 1.0"},
 
       # Observability
-      {:opentelemetry_cowboy, "~> 0.2.1"},
+      {:opentelemetry_cowboy, "~> 0.3"},
       {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
       {:opentelemetry_phoenix, "~> 1.1"},
       {:nimble_options, "~> 1.0", override: true},
@@ -77,7 +77,12 @@ defmodule Web.MixProject do
       {:nimble_csv, "~> 1.2"},
 
       # Test deps
-      {:floki, ">= 0.30.0", only: :test},
+      # TODO: use Hex after a new version of Floki is released
+      {:floki,
+       only: :test,
+       override: true,
+       github: "philss/floki",
+       ref: "3d5adab58a41b020a775baca82fe15c0c364daab"},
       {:bypass, "~> 2.1", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},

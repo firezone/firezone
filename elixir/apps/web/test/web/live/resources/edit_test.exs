@@ -205,20 +205,6 @@ defmodule Web.Live.Resources.EditTest do
            |> form_validation_errors() == %{
              "resource[name]" => ["should be at most 255 character(s)"]
            }
-
-    connection_attrs =
-      for connection <- resource.connections, into: %{} do
-        {connection.gateway_group_id, %{enabled: false}}
-      end
-
-    attrs = %{name: "fooobar", connections: connection_attrs}
-
-    assert lv
-           |> form("form", resource: attrs)
-           |> render_submit()
-           |> form_validation_errors() == %{
-             "connections" => ["can't be blank"]
-           }
   end
 
   test "updates a resource on valid attrs", %{

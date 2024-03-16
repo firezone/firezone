@@ -35,9 +35,9 @@ defmodule Web.Live.Sites.NewTokenTest do
     token = Regex.run(~r/FIREZONE_TOKEN=([^& ]+)/, html) |> List.last() |> String.trim("&quot;")
 
     :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(group)
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
     context = Fixtures.Auth.build_context(type: :gateway_group)
-    assert {:ok, _group, _token} = Domain.Gateways.authenticate(token, context)
+    assert {:ok, group, token} = Domain.Gateways.authenticate(token, context)
+    gateway = Fixtures.Gateways.create_gateway(account: account, group: group, token: token)
     Domain.Gateways.connect_gateway(gateway)
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id}

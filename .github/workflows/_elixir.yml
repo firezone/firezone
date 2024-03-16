@@ -150,12 +150,14 @@ jobs:
         run: |
           git fetch --depth=1 origin ${{ github.base_ref }}
           git checkout ${{ github.base_ref }}
+          mix deps.get
           mix ecto.migrate
           mix ecto.seed
       # Then checkout current ref and rerun migrations
       - name: Run new migrations
         run: |
           git checkout ${{ github.sha }}
+          mix deps.get
           mix ecto.migrate
           mix ecto.reset
           mix ecto.migrate

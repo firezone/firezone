@@ -4,7 +4,6 @@ defmodule Web.Sites.New do
 
   def mount(_params, _session, socket) do
     changeset = Gateways.new_group()
-
     socket = assign(socket, form: to_form(changeset), page_title: "New Site")
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
@@ -49,8 +48,7 @@ defmodule Web.Sites.New do
   def handle_event("submit", %{"group" => attrs}, socket) do
     attrs = Map.put(attrs, "tokens", [%{}])
 
-    with {:ok, group} <-
-           Gateways.create_group(attrs, socket.assigns.subject) do
+    with {:ok, group} <- Gateways.create_group(attrs, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
     else
       {:error, :gateway_groups_limit_reached} ->

@@ -284,7 +284,7 @@ defmodule Web.AuthController do
     conn = fetch_cookies(conn, signed: [key])
 
     with {:ok, encoded_state} <- Map.fetch(conn.cookies, key) do
-      {:ok, :erlang.binary_to_term(encoded_state, [:safe]), conn}
+      {:ok, Plug.Crypto.non_executable_binary_to_term(encoded_state, [:safe]), conn}
     end
   end
 

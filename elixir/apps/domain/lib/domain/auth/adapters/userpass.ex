@@ -34,7 +34,7 @@ defmodule Domain.Auth.Adapters.UserPass do
   @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
-    |> Domain.Validator.trim_change(:provider_identifier)
+    |> Domain.Repo.Changeset.trim_change(:provider_identifier)
     |> validate_password()
   end
 
@@ -47,7 +47,7 @@ defmodule Domain.Auth.Adapters.UserPass do
     |> case do
       %{valid?: false} = nested_changeset ->
         {changeset, _original_type} =
-          Domain.Changeset.inject_embedded_changeset(
+          Repo.Changeset.inject_embedded_changeset(
             changeset,
             :provider_virtual_state,
             nested_changeset
@@ -58,15 +58,15 @@ defmodule Domain.Auth.Adapters.UserPass do
       %{valid?: true} = nested_changeset ->
         nested_changeset =
           nested_changeset
-          |> Domain.Validator.redact_field(:password)
-          |> Domain.Validator.redact_field(:password_confirmation)
+          |> Domain.Repo.Changeset.redact_field(:password)
+          |> Domain.Repo.Changeset.redact_field(:password_confirmation)
 
         password_hash = Ecto.Changeset.fetch_change!(nested_changeset, :password_hash)
 
         {changeset, _original_type} =
           changeset
           |> Ecto.Changeset.put_change(:provider_state, %{"password_hash" => password_hash})
-          |> Domain.Changeset.inject_embedded_changeset(:provider_virtual_state, nested_changeset)
+          |> Repo.Changeset.inject_embedded_changeset(:provider_virtual_state, nested_changeset)
 
         changeset
     end
@@ -95,8 +95,9 @@ defmodule Domain.Auth.Adapters.UserPass do
   @impl true
   def verify_secret(%Identity{} = identity, %Context{} = _context, password)
       when is_binary(password) do
-    Identity.Query.by_id(identity.id)
-    |> Repo.fetch_and_update(
+    Identity.Query.not_disabled()
+    |> Identity.Query.by_id(identity.id)
+    |> Repo.fetch_and_update(Identity.Query,
       with: fn identity ->
         password_hash = identity.provider_state["password_hash"]
 

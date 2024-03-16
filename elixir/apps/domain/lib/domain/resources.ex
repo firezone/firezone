@@ -1,11 +1,9 @@
 defmodule Domain.Resources do
-  alias Domain.{Repo, Validator, Auth, PubSub}
+  alias Domain.{Repo, Auth, PubSub}
   alias Domain.{Accounts, Gateways, Policies, Flows}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     required_permissions =
       {:one_of,
        [
@@ -14,15 +12,11 @@ defmodule Domain.Resources do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(id) do
+         true <- Repo.valid_uuid?(id) do
       Resource.Query.all()
       |> Resource.Query.by_id(id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
-        {:error, reason} -> {:error, reason}
-      end
+      |> Repo.fetch(Resource.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -32,17 +26,12 @@ defmodule Domain.Resources do
   def fetch_and_authorize_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <-
            Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()),
-         true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      Resource.Query.by_id(id)
+         true <- Repo.valid_uuid?(id) do
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(id)
       |> Resource.Query.by_account_id(subject.account.id)
       |> Resource.Query.by_authorized_actor_id(subject.actor.id)
-      |> Repo.fetch()
-      |> case do
-        {:ok, resource} -> {:ok, Repo.preload(resource, preload)}
-        {:error, reason} -> {:error, reason}
-      end
+      |> Repo.fetch(Resource.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -50,41 +39,54 @@ defmodule Domain.Resources do
   end
 
   def fetch_resource_by_id!(id) do
-    if Validator.valid_uuid?(id) do
-      Resource.Query.by_id(id)
+    if Repo.valid_uuid?(id) do
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(id)
       |> Repo.one!()
     else
       {:error, :not_found}
     end
   end
 
-  def list_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
+  def all_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <-
            Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
+      {preload, opts} = Keyword.pop(opts, :preload, [])
 
-      {:ok, resources} =
+      resources =
         Resource.Query.not_deleted()
         |> Resource.Query.by_account_id(subject.account.id)
         |> Resource.Query.by_authorized_actor_id(subject.actor.id)
         |> Resource.Query.with_at_least_one_gateway_group()
-        |> Repo.list()
+        |> Repo.all(opts)
+        |> Repo.preload(preload)
 
-      {:ok, Repo.preload(resources, preload)}
+      {:ok, resources}
     end
+  end
+
+  def all_resources!(%Auth.Subject{} = subject) do
+    Resource.Query.not_deleted()
+    |> Resource.Query.by_account_id(subject.account.id)
+    |> Authorizer.for_subject(Resource, subject)
+    |> Repo.all()
   end
 
   def list_resources(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      {:ok, resources} =
-        Resource.Query.not_deleted()
-        |> Authorizer.for_subject(Resource, subject)
-        |> Repo.list()
-
-      {:ok, Repo.preload(resources, preload)}
+      Resource.Query.not_deleted()
+      |> Authorizer.for_subject(Resource, subject)
+      |> Repo.list(Resource.Query, opts)
     end
+  end
+
+  def all_resources!(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    Resource.Query.not_deleted()
+    |> Authorizer.for_subject(Resource, subject)
+    |> Repo.all()
+    |> Repo.preload(preload)
   end
 
   def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
@@ -130,7 +132,8 @@ defmodule Domain.Resources do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
-        Resource.Query.by_id({:in, ids})
+        Resource.Query.not_deleted()
+        |> Resource.Query.by_id({:in, ids})
         |> Authorizer.for_subject(Resource, subject)
         |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
         |> Repo.peek(resources)
@@ -171,22 +174,21 @@ defmodule Domain.Resources do
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.by_id(resource.id)
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Resource.Query,
         with: fn resource ->
-          resource = Repo.preload(resource, :connections)
-          changeset = Resource.Changeset.update(resource, attrs, subject)
-
-          cb = fn _resource ->
-            if Map.has_key?(changeset.changes, :connections) do
-              {:ok, _flows} = Flows.expire_flows_for(resource, subject)
-            end
-
-            :ok = broadcast_resource_events(:update, resource)
+          resource
+          |> Repo.preload(:connections)
+          |> Resource.Changeset.update(attrs, subject)
+        end,
+        after_commit: fn resource, changeset ->
+          if Map.has_key?(changeset.changes, :connections) do
+            {:ok, _flows} = Flows.expire_flows_for(resource, subject)
           end
 
-          {changeset, execute_after_commit: cb}
+          broadcast_resource_events(:update, resource)
         end
       )
     end
@@ -194,9 +196,10 @@ defmodule Domain.Resources do
 
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.by_id(resource.id)
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Resource.Query,
         with: fn resource ->
           {_count, nil} =
             Connection.Query.by_resource_id(resource.id)

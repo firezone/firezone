@@ -3,9 +3,8 @@ defmodule Domain.Billing.Jobs do
   alias Domain.{Accounts, Billing, Actors, Clients, Gateways}
 
   every minutes(30), :check_account_limits do
-    {:ok, accounts} = Accounts.list_active_accounts()
-
-    Enum.each(accounts, fn account ->
+    Accounts.all_active_accounts!()
+    |> Enum.each(fn account ->
       if Billing.enabled?() and Billing.account_provisioned?(account) do
         []
         |> check_seats_limit(account)

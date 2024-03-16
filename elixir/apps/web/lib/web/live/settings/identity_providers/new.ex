@@ -3,13 +3,12 @@ defmodule Web.Settings.IdentityProviders.New do
   alias Domain.Auth
 
   def mount(_params, _session, socket) do
-    adapters = Auth.list_user_provisioned_provider_adapters!(socket.assigns.account)
+    adapters = Auth.all_user_provisioned_provider_adapters!(socket.assigns.account)
 
     socket =
       assign(socket,
-        form: %{},
-        adapters: adapters,
-        page_title: "New Identity Provider"
+        page_title: "New Identity Provider",
+        adapters: adapters
       )
 
     {:ok, socket}
@@ -36,7 +35,7 @@ defmodule Web.Settings.IdentityProviders.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">Choose type</h2>
-          <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
+          <.form id="identity-provider-type-form" for={%{}} phx-submit="submit">
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset>
                 <legend class="sr-only">Identity Provider Type</legend>

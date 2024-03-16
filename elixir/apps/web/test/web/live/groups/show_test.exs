@@ -227,7 +227,7 @@ defmodule Web.Live.Groups.ShowTest do
     refute html =~ "Danger Zone"
   end
 
-  test "allows editing actors", %{
+  test "shows edit button when actors table is empty", %{
     account: account,
     group: group,
     identity: identity,

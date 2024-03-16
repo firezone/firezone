@@ -3,12 +3,20 @@ defmodule Web.Sites.Edit do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject),
-         nil <- group.deleted_at do
+    with {:ok, group} <-
+           Gateways.fetch_group_by_id(id, socket.assigns.subject,
+             filter: [
+               deleted?: false
+             ]
+           ) do
       changeset = Gateways.change_group(group)
 
       socket =
-        assign(socket, group: group, form: to_form(changeset), page_title: "Edit #{group.name}")
+        assign(socket,
+          page_title: "Edit #{group.name}",
+          group: group,
+          form: to_form(changeset)
+        )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else

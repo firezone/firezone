@@ -20,14 +20,17 @@ defmodule Domain do
   def changeset do
     quote do
       import Ecto.Changeset
-      import Domain.Changeset
-      import Domain.Validator
+      import Domain.Repo.Changeset
+      import Domain.Repo, only: [valid_uuid?: 1]
     end
   end
 
   def query do
     quote do
       import Ecto.Query
+      import Domain.Repo.Query
+
+      @behaviour Domain.Repo.Query
     end
   end
 

@@ -5,19 +5,27 @@ defmodule Web.Actors.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]),
-         nil <- actor.deleted_at,
-         {:ok, groups} <- Actors.list_groups(socket.assigns.subject, preload: [:provider]) do
-      groups = Enum.filter(groups, &Actors.group_editable?/1)
+           Actors.fetch_actor_by_id(id, socket.assigns.subject,
+             preload: [:memberships],
+             filter: [
+               deleted?: false
+             ]
+           ) do
+      # TODO: unify this and dropdowns for filters
+      groups =
+        Actors.all_groups!(socket.assigns.subject,
+          preload: [:provider],
+          filter: [editable?: true]
+        )
 
       changeset = Actors.change_actor(actor)
 
       socket =
         assign(socket,
+          page_title: "Edit #{actor.name}",
           actor: actor,
           groups: groups,
-          form: to_form(changeset),
-          page_title: "Edit #{actor.name}"
+          form: to_form(changeset)
         )
 
       {:ok, socket}

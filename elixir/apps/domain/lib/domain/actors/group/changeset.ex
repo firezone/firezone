@@ -100,7 +100,7 @@ defmodule Domain.Actors.Group.Changeset do
       end)
 
     memberships =
-      Auth.list_actor_ids_by_membership_rules(account_id, rules)
+      Auth.all_actor_ids_by_membership_rules!(account_id, rules)
       |> Enum.map(fn actor_id ->
         Actors.Membership.Changeset.for_group(account_id, %Actors.Membership{}, %{
           actor_id: actor_id

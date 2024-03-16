@@ -4,13 +4,21 @@ defmodule Web.Groups.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
-           Actors.fetch_group_by_id(id, socket.assigns.subject, preload: [:memberships]),
-         nil <- group.deleted_at,
-         true <- Actors.group_editable?(group) do
+           Actors.fetch_group_by_id(id, socket.assigns.subject,
+             preload: [:memberships],
+             filter: [
+               deleted?: false,
+               editable?: true
+             ]
+           ) do
       changeset = Actors.change_group(group)
 
       socket =
-        assign(socket, group: group, form: to_form(changeset), page_title: "Edit #{group.name}")
+        assign(socket,
+          page_title: "Edit #{group.name}",
+          group: group,
+          form: to_form(changeset)
+        )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else

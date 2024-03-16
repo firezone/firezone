@@ -1,9 +1,6 @@
 defmodule Web.Resources.Components do
   use Web, :component_library
 
-  defp pretty_print_ports([]), do: ""
-  defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
-
   def map_filters_form_attrs(attrs, account) do
     attrs =
       if Domain.Accounts.traffic_filters_enabled?(account) do
@@ -75,7 +72,8 @@ defmodule Web.Resources.Components do
               type="checkbox"
               field={@forms_by_protocol[:all]}
               name={"#{@form.name}[all][enabled]"}
-              value={if Map.has_key?(@forms_by_protocol, :all), do: "true", else: "false"}
+              checked={Map.has_key?(@forms_by_protocol, :all)}
+              value="true"
               label="Permit All"
             />
           </div>
@@ -91,7 +89,8 @@ defmodule Web.Resources.Components do
               type="checkbox"
               field={@forms_by_protocol[:icmp]}
               name={"#{@form.name}[icmp][enabled]"}
-              value={Map.has_key?(@forms_by_protocol, :icmp)}
+              checked={Map.has_key?(@forms_by_protocol, :icmp)}
+              value="true"
               disabled={Map.has_key?(@forms_by_protocol, :all)}
               label="ICMP"
             />
@@ -108,7 +107,8 @@ defmodule Web.Resources.Components do
               type="checkbox"
               field={@forms_by_protocol[:tcp]}
               name={"#{@form.name}[tcp][enabled]"}
-              value={Map.has_key?(@forms_by_protocol, :tcp)}
+              checked={Map.has_key?(@forms_by_protocol, :tcp)}
+              value="true"
               disabled={Map.has_key?(@forms_by_protocol, :all)}
               label="TCP"
             />
@@ -137,7 +137,8 @@ defmodule Web.Resources.Components do
               type="checkbox"
               field={@forms_by_protocol[:udp]}
               name={"#{@form.name}[udp][enabled]"}
-              value={Map.has_key?(@forms_by_protocol, :udp)}
+              checked={Map.has_key?(@forms_by_protocol, :udp)}
+              value="true"
               disabled={Map.has_key?(@forms_by_protocol, :all)}
               label="UDP"
             />
@@ -168,6 +169,29 @@ defmodule Web.Resources.Components do
     <.input type="hidden" name={"#{@form.name}[all][enabled]"} value="true" />
     """
   end
+
+  attr :filter, :any, required: true
+
+  def filter_description(assigns) do
+    ~H"""
+    <code><%= pretty_print_filter(@filter) %></code>
+    """
+  end
+
+  defp pretty_print_filter(%{protocol: :all}),
+    do: "All Traffic Allowed"
+
+  defp pretty_print_filter(%{protocol: :icmp}),
+    do: "ICMP: Allowed"
+
+  defp pretty_print_filter(%{protocol: :tcp, ports: ports}),
+    do: "TCP: #{pretty_print_ports(ports)}"
+
+  defp pretty_print_filter(%{protocol: :udp, ports: ports}),
+    do: "UDP: #{pretty_print_ports(ports)}"
+
+  defp pretty_print_ports([]), do: "any port"
+  defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
   def map_connections_form_attrs(attrs) do
     Map.update(attrs, "connections", [], fn connections ->
@@ -216,7 +240,7 @@ defmodule Web.Resources.Components do
             <.input
               type="checkbox"
               name={"#{@form.name}[#{gateway_group.id}][enabled]"}
-              value={gateway_group.id in connected_gateway_group_ids}
+              checked={gateway_group.id in connected_gateway_group_ids}
             />
           </div>
 

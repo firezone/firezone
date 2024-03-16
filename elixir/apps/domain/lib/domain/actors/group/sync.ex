@@ -48,7 +48,8 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp fetch_and_lock_provider_groups_query(provider) do
-    Group.Query.by_account_id(provider.account_id)
+    Group.Query.not_deleted()
+    |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)
     |> Group.Query.lock()
   end
@@ -67,7 +68,8 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp delete_groups(_repo, provider, provider_identifiers_to_delete) do
-    Group.Query.by_account_id(provider.account_id)
+    Group.Query.not_deleted()
+    |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)
     |> Group.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
     |> Actors.delete_groups()

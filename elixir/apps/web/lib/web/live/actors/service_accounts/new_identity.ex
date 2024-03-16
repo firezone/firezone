@@ -4,16 +4,22 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
   alias Domain.{Auth, Actors, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, %{type: :service_account} = actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject) do
+    with {:ok, actor} <-
+           Actors.fetch_actor_by_id(id, socket.assigns.subject,
+             preload: [:memberships],
+             filter: [
+               deleted?: false,
+               types: ["service_account"]
+             ]
+           ) do
       changeset = Tokens.Token.Changeset.create(%{})
 
       socket =
         assign(socket,
+          page_title: "New Service Account Token",
           actor: actor,
           encoded_token: nil,
-          form: to_form(changeset),
-          page_title: "New Service Account Token"
+          form: to_form(changeset)
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}

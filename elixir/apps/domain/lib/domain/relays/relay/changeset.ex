@@ -1,6 +1,6 @@
 defmodule Domain.Relays.Relay.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth}
+  alias Domain.{Version, Auth, Tokens}
   alias Domain.Relays
 
   @upsert_fields ~w[ipv4 ipv6 port name
@@ -19,6 +19,7 @@ defmodule Domain.Relays.Relay.Changeset do
                               last_seen_remote_ip_location_lon
                               last_seen_version
                               last_seen_at
+                              last_used_token_id
                               updated_at]a
 
   def upsert_conflict_target(%{account_id: nil}) do
@@ -32,7 +33,7 @@ defmodule Domain.Relays.Relay.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(%Relays.Group{} = group, attrs, %Auth.Context{} = context) do
+  def upsert(%Relays.Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
     %Relays.Relay{}
     |> cast(attrs, @upsert_fields)
     |> validate_required_one_of(~w[ipv4 ipv6]a)
@@ -52,6 +53,7 @@ defmodule Domain.Relays.Relay.Changeset do
     |> put_relay_version()
     |> put_change(:account_id, group.account_id)
     |> put_change(:group_id, group.id)
+    |> put_change(:last_used_token_id, token.id)
   end
 
   def delete(%Relays.Relay{} = relay) do

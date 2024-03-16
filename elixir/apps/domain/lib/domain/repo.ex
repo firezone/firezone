@@ -3,28 +3,93 @@ defmodule Domain.Repo do
     otp_app: :domain,
     adapter: Ecto.Adapters.Postgres
 
+  alias Domain.Repo.{Paginator, Preloader, Filter}
   require Ecto.Query
 
   @doc """
-  Similar to `Ecto.Repo.one/2`, fetches a single result from the query.
+  Returns `true` when binary representation of `Ecto.UUID` is valid, otherwise - `false`.
+  """
+  def valid_uuid?(binary) when is_binary(binary),
+    do: match?(<<_::64, ?-, _::32, ?-, _::32, ?-, _::32, ?-, _::96>>, binary)
+
+  def valid_uuid?(_binary),
+    do: false
+
+  @doc """
+  Similar to `Ecto.Repo.one/2`, fetches a single result from the query
+  but supports custom preloads and filters.
 
   Returns `{:ok, schema}` or `{:error, :not_found}` if no result was found.
 
   Raises when the query returns more than one row.
   """
-  @spec fetch(queryable :: Ecto.Queryable.t(), opts :: Keyword.t()) ::
-          {:ok, Ecto.Schema.t()} | {:error, :not_found}
-  def fetch(queryable, opts \\ []) do
-    case __MODULE__.one(queryable, opts) do
+  @spec fetch(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [
+              {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+            ]
+            | Keyword.t()
+        ) ::
+          {:ok, Ecto.Schema.t()}
+          | {:error, :not_found}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
+  def fetch(queryable, query_module, opts \\ []) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
+
+    with {:ok, queryable} <- Filter.filter(queryable, query_module, filter),
+         schema when not is_nil(schema) <- __MODULE__.one(queryable, opts) do
+      {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+      schema = __MODULE__.preload(schema, ecto_preloads)
+      {:ok, schema}
+    else
       nil -> {:error, :not_found}
-      schema -> {:ok, schema}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   @doc """
-  Alias of `Ecto.Repo.one!/2` added for naming convenience.
+  Alias of `Ecto.Repo.one!/2` that supports preloads and filters.
   """
-  def fetch!(queryable, opts \\ []), do: __MODULE__.one!(queryable, opts)
+  @spec fetch!(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [
+              {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+            ]
+            | Keyword.t()
+        ) :: Ecto.Schema.t() | term() | no_return()
+  def fetch!(queryable, query_module, opts \\ []) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
+
+    {:ok, queryable} = Filter.filter(queryable, query_module, filter)
+    schema = __MODULE__.one!(queryable, opts)
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+    __MODULE__.preload(schema, ecto_preloads)
+  end
+
+  @typedoc """
+  A callback which is executed after the transaction is committed.
+
+  The callback is either a function that takes the schema as an argument or
+  a function that takes the schema and the changeset as arguments.
+
+  It must return `:ok`.
+  """
+  @type after_commit :: (term() -> :ok) | (term(), Ecto.Changeset.t() -> :ok)
+
+  @typedoc """
+  A callback which takes a schema and returns a changeset that is then used to update the schema.
+  """
+  @type changeset_fun :: (term() -> Ecto.Changeset.t())
 
   @doc """
   Uses query to fetch a single result from the database, locks it for update and
@@ -34,57 +99,152 @@ defmodule Domain.Repo do
   """
   @spec fetch_and_update(
           queryable :: Ecto.Queryable.t(),
-          [{:with, changeset_fun :: (term() -> Ecto.Changeset.t())}],
-          opts :: Keyword.t()
+          query_module :: module(),
+          opts ::
+            [
+              {:with, changeset_fun()}
+              | {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+              | {:after_callback, after_commit() | [after_commit()]}
+            ]
+            | Keyword.t()
         ) ::
           {:ok, Ecto.Schema.t()}
           | {:error, :not_found}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
           | {:error, Ecto.Changeset.t()}
           | {:error, term()}
-  def fetch_and_update(queryable, [with: changeset_fun], opts \\ [])
-      when is_function(changeset_fun, 1) do
-    transaction(fn ->
-      queryable = Ecto.Query.lock(queryable, "FOR UPDATE")
+  def fetch_and_update(queryable, query_module, opts) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
+    {after_commit, opts} = Keyword.pop(opts, :after_commit, [])
+    {changeset_fun, repo_shared_opts} = Keyword.pop!(opts, :with)
 
-      with {:ok, schema} <- fetch(queryable, opts) do
-        schema
-        |> changeset_fun.()
-        |> case do
-          {%Ecto.Changeset{} = changeset, execute_after_commit: cb} when is_function(cb, 1) ->
-            {update(changeset, mode: :savepoint), cb}
+    queryable = Ecto.Query.lock(queryable, "FOR NO KEY UPDATE")
 
-          %Ecto.Changeset{} = changeset ->
-            {update(changeset, mode: :savepoint), nil}
+    with {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
+      fn ->
+        if schema = __MODULE__.one(queryable, repo_shared_opts) do
+          case changeset_fun.(schema) do
+            %Ecto.Changeset{} = changeset ->
+              {update(changeset, mode: :savepoint), changeset}
 
-          reason ->
-            {:error, reason}
+            reason ->
+              {:error, reason}
+          end
+        else
+          {:error, :not_found}
         end
       end
-    end)
-    |> case do
-      {:ok, {{:ok, schema}, nil}} ->
-        {:ok, schema}
+      |> transaction(repo_shared_opts)
+      |> case do
+        {:ok, {{:ok, schema}, changeset}} ->
+          :ok = execute_after_commit(schema, changeset, after_commit)
+          {:ok, execute_preloads(schema, query_module, preload)}
 
-      {:ok, {{:ok, schema}, cb}} ->
-        cb.(schema)
-        {:ok, schema}
+        {:ok, {{:error, reason}, _changeset}} ->
+          {:error, reason}
 
-      {:ok, {{:error, reason}, _cb}} ->
-        {:error, reason}
+        {:ok, {:error, reason}} ->
+          {:error, reason}
 
-      {:ok, {:error, reason}} ->
-        {:error, reason}
-
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
+  defp execute_after_commit(schema, changeset, after_commit) do
+    after_commit
+    |> List.wrap()
+    |> Enum.each(fn
+      callback when is_function(callback, 1) ->
+        :ok = callback.(schema)
+
+      callback when is_function(callback, 2) ->
+        :ok = callback.(schema, changeset)
+    end)
+  end
+
+  defp execute_preloads(schema, query_module, preload) do
+    {schema, ecto_preloads} = Preloader.preload(schema, preload, query_module)
+    __MODULE__.preload(schema, ecto_preloads)
+  end
+
   @doc """
-  Similar to `Ecto.Repo.all/2`, fetches all results from the query but return a tuple.
+  Similar to `Ecto.Repo.all/2`, fetches all results from the query but returns a tuple
+  and allow to execute preloads and paginate through the results.
+
+  # Pagination
+
+  The `:page` option is used to paginate the results. Supported options:
+    * `:cursor` to fetch next or previous page. It is returned in the metadata of the previous request;
+    *`:limit` is used to limit the number of results returned, default: `50` and maximum is `100`.
+
+  The query module must implement `c:Domain.Repo.Query.cursor_fields/0` callback to define the pagination fields.
+
+  # Ordering
+
+  The `:order_by` option is used to order the results, it extend the pagination fields defined by the query module
+  and uses the same format as `t:Domain.Repo.Query.cursor_fields/0`.
+
+  # Preloading
+
+  The `:preload` option is used to preload associations. It works the same way as `Ecto.Repo.preload/2`,
+  but certain keys can be overloaded by the query module by implementing `c:Domain.Repo.preloads/0` callback.
+
+  # Filtering
+
+  The `:filter` option is used to filter the results, for more information see `Domain.Repo.Filter` moduledoc.
+
+  The query module must implement `c:Domain.Repo.Query.get_filters/0` callback to define the filters.
   """
-  def list(queryable, opts \\ []) do
-    {:ok, __MODULE__.all(queryable, opts)}
+  @spec list(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [
+              {:limit, non_neg_integer()},
+              {:order_by, Domain.Repo.Query.cursor_fields()},
+              {:filter, Domain.Repo.Filter.filters()},
+              {:preload, term()},
+              {:page,
+               [
+                 {:cursor, binary()},
+                 {:limit, non_neg_integer()}
+               ]}
+            ]
+            | Keyword.t()
+        ) ::
+          {:ok, [Ecto.Schema.t()], Paginator.Metadata.t()}
+          | {:error, :invalid_cursor}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
+          | {:error, term()}
+  def list(queryable, query_module, opts \\ []) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
+    {order_by, opts} = Keyword.pop(opts, :order_by, [])
+    {paginator_opts, opts} = Keyword.pop(opts, :page, [])
+
+    with {:ok, paginator_opts} <- Paginator.init(query_module, order_by, paginator_opts),
+         {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
+      count = __MODULE__.aggregate(queryable, :count, :id)
+
+      {results, metadata} =
+        queryable
+        |> Paginator.query(paginator_opts)
+        |> __MODULE__.all(opts)
+        |> Paginator.metadata(paginator_opts)
+
+      {results, ecto_preloads} = Preloader.preload(results, preload, query_module)
+      results = __MODULE__.preload(results, ecto_preloads)
+
+      {:ok, results, %{metadata | count: count}}
+    end
   end
 
   @doc """
@@ -111,7 +271,7 @@ defmodule Domain.Repo do
   @doc """
   Similar to `peek/2` but only returns count of assocs.
   """
-  def counts(queryable, ids) do
+  def peek_counts(queryable, ids) do
     ids = Enum.uniq(ids)
     preview = Map.new(ids, fn id -> {id, 0} end)
 

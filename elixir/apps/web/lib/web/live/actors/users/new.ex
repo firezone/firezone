@@ -4,20 +4,22 @@ defmodule Web.Actors.Users.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    with {:ok, groups} <- Actors.list_editable_groups(socket.assigns.subject, preload: :provider) do
-      changeset = Actors.new_actor()
+    groups =
+      Actors.all_groups!(socket.assigns.subject,
+        preload: :provider,
+        filter: [editable?: true]
+      )
 
-      socket =
-        assign(socket,
-          groups: groups,
-          form: to_form(changeset),
-          page_title: "New User"
-        )
+    changeset = Actors.new_actor()
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-    end
+    socket =
+      assign(socket,
+        groups: groups,
+        form: to_form(changeset),
+        page_title: "New User"
+      )
+
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do

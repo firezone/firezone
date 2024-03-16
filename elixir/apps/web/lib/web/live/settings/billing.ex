@@ -4,25 +4,26 @@ defmodule Web.Settings.Billing do
   require Logger
 
   def mount(_params, _session, socket) do
-    unless Billing.account_provisioned?(socket.assigns.account),
-      do: raise(Web.LiveErrors.NotFoundError)
+    if Billing.account_provisioned?(socket.assigns.account) do
+      admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
+      service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
+      active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
+      gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
 
-    admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
-    service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
-    active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
-    gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
+      socket =
+        assign(socket,
+          page_title: "Billing",
+          error: nil,
+          admins_count: admins_count,
+          active_users_count: active_users_count,
+          service_accounts_count: service_accounts_count,
+          gateway_groups_count: gateway_groups_count
+        )
 
-    socket =
-      assign(socket,
-        error: nil,
-        page_title: "Billing",
-        admins_count: admins_count,
-        active_users_count: active_users_count,
-        service_accounts_count: service_accounts_count,
-        gateway_groups_count: gateway_groups_count
-      )
-
-    {:ok, socket}
+      {:ok, socket}
+    else
+      raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def render(assigns) do

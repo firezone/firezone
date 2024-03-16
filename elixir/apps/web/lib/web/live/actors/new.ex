@@ -5,7 +5,6 @@ defmodule Web.Actors.New do
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
-        form: %{},
         page_title: "New Actor"
       )
 
@@ -25,7 +24,7 @@ defmodule Web.Actors.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">Choose type</h2>
-          <.form id="identity-provider-type-form" for={@form} phx-submit="submit">
+          <.form id="identity-provider-type-form" for={%{}} phx-submit="submit">
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset>
                 <legend class="sr-only">Choose Actor Type</legend>

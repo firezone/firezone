@@ -1,7 +1,7 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
-  alias Domain.{Repo, Validator, PubSub}
+  alias Domain.{Repo, PubSub}
   alias Domain.{Accounts, Auth, Tokens, Clients, Policies, Billing}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
@@ -10,10 +10,11 @@ defmodule Domain.Actors do
 
   def fetch_groups_count_grouped_by_provider_id(%Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {:ok, groups} =
-        Group.Query.group_by_provider_id()
+      groups =
+        Group.Query.not_deleted()
+        |> Group.Query.group_by_provider_id()
         |> Authorizer.for_subject(subject)
-        |> Repo.list()
+        |> Repo.all()
 
       groups =
         Enum.reduce(groups, %{}, fn %{provider_id: id, count: count}, acc ->
@@ -26,17 +27,11 @@ defmodule Domain.Actors do
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
+         true <- Repo.valid_uuid?(id) do
       Group.Query.all()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, group} -> {:ok, Repo.preload(group, preload)}
-        {:error, reason} -> {:error, reason}
-      end
+      |> Repo.fetch(Group.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
@@ -45,29 +40,28 @@ defmodule Domain.Actors do
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      {:ok, groups} =
-        Group.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      {:ok, Repo.preload(groups, preload)}
+      Group.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Group.Query, opts)
     end
+  end
+
+  def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    Group.Query.not_deleted()
+    |> Authorizer.for_subject(subject)
+    |> Repo.all()
+    |> Repo.preload(preload)
   end
 
   # TODO: this should be a filter
   def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
-      {:ok, groups} =
-        Group.Query.not_deleted()
-        |> Group.Query.editable()
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      {:ok, Repo.preload(groups, preload)}
+      Group.Query.not_deleted()
+      |> Group.Query.editable()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Group.Query, opts)
     end
   end
 
@@ -75,7 +69,8 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Group.Query.by_id({:in, ids})
+      Group.Query.not_deleted()
+      |> Group.Query.by_id({:in, ids})
       |> Group.Query.preload_few_actors_for_each_group(limit)
       |> Authorizer.for_subject(subject)
       |> Repo.peek(groups)
@@ -87,7 +82,8 @@ defmodule Domain.Actors do
       ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
-        Actor.Query.by_id({:in, ids})
+        Actor.Query.not_deleted()
+        |> Actor.Query.by_id({:in, ids})
         |> Actor.Query.preload_few_groups_for_each_actor(limit)
         |> Authorizer.for_subject(subject)
         |> Repo.peek(actors)
@@ -167,15 +163,16 @@ defmodule Domain.Actors do
 
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.by_id(group.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
-          group = Repo.preload(group, :memberships)
-          changeset = Group.Changeset.update(group, attrs)
-          after_commit_cb = fn _group -> :ok = broadcast_memberships_events(changeset) end
-          {changeset, execute_after_commit: after_commit_cb}
-        end
+          group
+          |> Repo.preload(:memberships)
+          |> Group.Changeset.update(attrs)
+        end,
+        after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
       )
     end
   end
@@ -186,7 +183,8 @@ defmodule Domain.Actors do
 
   def update_dynamic_group_memberships(account_id) do
     Repo.transaction(fn ->
-      Group.Query.by_account_id(account_id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_account_id(account_id)
       |> Group.Query.by_type({:in, [:dynamic, :managed]})
       |> Group.Query.lock()
       |> Repo.all()
@@ -207,14 +205,17 @@ defmodule Domain.Actors do
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
-    queryable = Group.Query.by_id(group.id)
+    queryable =
+      Group.Query.not_deleted()
+      |> Group.Query.by_id(group.id)
 
     case delete_groups(queryable, subject) do
       {:ok, [group]} ->
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
         {_count, memberships} =
-          Membership.Query.by_group_id(group.id)
+          Membership.Query.all()
+          |> Membership.Query.by_group_id(group.id)
           |> Membership.Query.returning_all()
           |> Repo.delete_all()
 
@@ -236,7 +237,8 @@ defmodule Domain.Actors do
 
   def delete_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
     queryable =
-      Group.Query.by_provider_id(provider.id)
+      Group.Query.not_deleted()
+      |> Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
     {_count, memberships} =
@@ -294,7 +296,7 @@ defmodule Domain.Actors do
   def group_managed?(%Group{}), do: false
 
   def group_editable?(%Group{} = group),
-    do: not group_synced?(group) and not group_managed?(group)
+    do: not group_deleted?(group) and not group_synced?(group) and not group_managed?(group)
 
   def group_deleted?(%Group{deleted_at: nil}), do: false
   def group_deleted?(%Group{}), do: true
@@ -315,68 +317,59 @@ defmodule Domain.Actors do
     |> Repo.aggregate(:count)
   end
 
-  def fetch_actors_count_by_type(type, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_type(type)
-      |> Authorizer.for_subject(subject)
-      |> Repo.aggregate(:count)
-    end
-  end
-
   def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
-         true <- Validator.valid_uuid?(id) do
-      {preload, _opts} = Keyword.pop(opts, :preload, [])
-
+         true <- Repo.valid_uuid?(id) do
       Actor.Query.all()
       |> Actor.Query.by_id(id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch()
-      |> case do
-        {:ok, actor} -> {:ok, Repo.preload(actor, preload)}
-        {:error, reason} -> {:error, reason}
-      end
+      |> Repo.fetch(Actor.Query, opts)
     else
       false -> {:error, :not_found}
       other -> other
     end
   end
 
-  def fetch_actor_by_id(id) do
-    if Validator.valid_uuid?(id) do
-      Actor.Query.by_id(id)
-      |> Repo.fetch()
+  def fetch_active_actor_by_id(id) do
+    if Repo.valid_uuid?(id) do
+      Actor.Query.not_disabled()
+      |> Actor.Query.by_id(id)
+      |> Repo.fetch(Actor.Query, [])
     else
       {:error, :not_found}
     end
   end
 
-  def fetch_actor_by_id!(id) do
-    Actor.Query.by_id(id)
-    |> Repo.fetch!()
-  end
-
-  def list_actor_group_ids(%Actor{} = actor) do
+  def all_actor_group_ids!(%Actor{} = actor) do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
-    |> Repo.list()
+    |> Repo.all()
+  end
+
+  def preload_last_seen_at(actors) do
+    actor_ids = Enum.map(actors, & &1.id)
+    last_seen_at = Auth.max_last_seen_at_by_actor_ids(actor_ids)
+
+    Enum.map(actors, fn actor ->
+      %{actor | last_seen_at: Map.get(last_seen_at, actor.id)}
+    end)
   end
 
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {:ok, actors} =
-        Actor.Query.not_deleted()
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      {:ok, Repo.preload(actors, preload)}
+      Actor.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Actor.Query, opts)
     end
   end
 
   def new_actor(attrs \\ %{memberships: []}) do
     Actor.Changeset.create(attrs)
+  end
+
+  def create_actor(%Accounts.Account{} = account, attrs) do
+    Actor.Changeset.create(account.id, attrs)
+    |> Repo.insert()
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
@@ -422,43 +415,29 @@ defmodule Domain.Actors do
     :ok
   end
 
-  def create_actor(%Accounts.Account{} = account, attrs) do
-    Actor.Changeset.create(account.id, attrs)
-    |> Repo.insert()
-  end
-
   def change_actor(%Actor{} = actor, attrs \\ %{}) do
     Actor.Changeset.update(actor, [], attrs)
   end
 
   def update_actor(%Actor{} = actor, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Actor.Query,
         with: fn actor ->
           actor = maybe_preload_not_synced_memberships(actor, attrs)
           synced_groups = list_readonly_groups(attrs)
           changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 
-          after_commit_cb = fn _group ->
-            :ok = broadcast_memberships_events(changeset)
-          end
-
           cond do
-            changeset.data.type != :account_admin_user ->
-              {changeset, execute_after_commit: after_commit_cb}
-
-            Map.get(changeset.changes, :type) == :account_admin_user ->
-              {changeset, execute_after_commit: after_commit_cb}
-
-            other_enabled_admins_exist?(actor) ->
-              {changeset, execute_after_commit: after_commit_cb}
-
-            true ->
-              :cant_remove_admin_type
+            changeset.data.type != :account_admin_user -> changeset
+            Map.get(changeset.changes, :type) == :account_admin_user -> changeset
+            other_enabled_admins_exist?(actor) -> changeset
+            true -> :cant_remove_admin_type
           end
-        end
+        end,
+        after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
       )
     end
   end
@@ -491,17 +470,19 @@ defmodule Domain.Actors do
         []
 
       group_ids ->
-        Group.Query.by_id({:in, group_ids})
+        Group.Query.not_deleted()
         |> Group.Query.not_editable()
+        |> Group.Query.by_id({:in, group_ids})
         |> Repo.all()
     end
   end
 
   def disable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Actor.Query,
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
@@ -516,17 +497,19 @@ defmodule Domain.Actors do
 
   def enable_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Actor.Changeset.enable_actor/1)
+      |> Repo.fetch_and_update(Actor.Query, with: &Actor.Changeset.enable_actor/1)
     end
   end
 
   def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_id(actor.id)
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(
+      |> Repo.fetch_and_update(Actor.Query,
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
             :ok = Auth.delete_identities_for(actor, subject)
@@ -564,8 +547,8 @@ defmodule Domain.Actors do
          account_id: account_id,
          id: id
        }) do
-    Actor.Query.by_type(:account_admin_user)
-    |> Actor.Query.not_disabled()
+    Actor.Query.not_disabled()
+    |> Actor.Query.by_type(:account_admin_user)
     |> Actor.Query.by_account_id(account_id)
     |> Actor.Query.by_id({:not, id})
     |> Actor.Query.lock()

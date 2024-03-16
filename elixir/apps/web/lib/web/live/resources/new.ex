@@ -4,25 +4,22 @@ defmodule Web.Resources.New do
   alias Domain.{Accounts, Gateways, Resources}
 
   def mount(params, _session, socket) do
-    with {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
-      changeset = Resources.new_resource(socket.assigns.account)
+    gateway_groups = Gateways.all_groups!(socket.assigns.subject)
+    changeset = Resources.new_resource(socket.assigns.account)
 
-      socket =
-        assign(
-          socket,
-          gateway_groups: gateway_groups,
-          address_description_changed?: false,
-          name_changed?: false,
-          form: to_form(changeset),
-          params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
-          page_title: "New Resource"
-        )
+    socket =
+      assign(
+        socket,
+        gateway_groups: gateway_groups,
+        address_description_changed?: false,
+        name_changed?: false,
+        form: to_form(changeset),
+        params: Map.take(params, ["site_id"]),
+        traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
+        page_title: "New Resource"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do

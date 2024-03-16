@@ -4,22 +4,22 @@ defmodule Web.Actors.ServiceAccounts.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    with {:ok, groups} <- Actors.list_editable_groups(socket.assigns.subject, preload: :provider) do
-      groups = Enum.filter(groups, &Actors.group_editable?/1)
+    groups =
+      Actors.all_groups!(socket.assigns.subject,
+        preload: :provider,
+        filter: [editable?: true]
+      )
 
-      changeset = Actors.new_actor(%{type: :service_account})
+    changeset = Actors.new_actor(%{type: :service_account})
 
-      socket =
-        assign(socket,
-          groups: groups,
-          form: to_form(changeset),
-          page_title: "New Service Account"
-        )
+    socket =
+      assign(socket,
+        groups: groups,
+        form: to_form(changeset),
+        page_title: "New Service Account"
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
