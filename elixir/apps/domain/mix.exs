@@ -60,7 +60,11 @@ defmodule Domain.MixProject do
       {:libcluster, "~> 3.3"},
 
       # Observability and Runtime debugging
+      {:bandit, "~> 1.0"},
+      {:plug, "~> 1.15"},
       {:telemetry, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
+      {:telemetry_metrics, "~> 0.6.2"},
       {:logger_json, "~> 5.1"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
