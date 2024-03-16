@@ -516,9 +516,11 @@ impl ClientState {
             return Err(Error::UnexpectedConnectionDetails);
         }
 
-        self.awaiting_connection
-            .get_mut(&resource_id)
-            .ok_or(Error::UnexpectedConnectionDetails)?;
+        let awaiting_connection = self
+            .awaiting_connection
+            .get(&resource_id)
+            .ok_or(Error::UnexpectedConnectionDetails)?
+            .clone();
 
         self.resources_gateways.insert(resource_id, gateway_id);
 
@@ -526,8 +528,6 @@ impl ClientState {
             if self.node.is_expecting_answer(gateway_id) {
                 return Err(Error::PendingConnection);
             }
-
-            let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
 
             let offer = self.node.new_connection(
                 gateway_id,
