@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use core::slice;
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket2::{SockAddr, Type};
@@ -10,7 +9,6 @@ use std::{
 use tokio::{io::Interest, net::UdpSocket};
 
 use crate::Result;
-use snownet::Transmit;
 
 pub struct Sockets {
     socket_v4: Option<Socket>,
@@ -68,35 +66,49 @@ impl Sockets {
         self.socket_v6.as_ref().map(|s| s.socket.as_raw_fd())
     }
 
-    pub fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if let Some(socket) = self.socket_v4.as_ref() {
+    pub fn flush(&mut self) -> io::Result<()> {
+        if let Some(socket) = self.socket_v4.as_mut() {
+            socket.flush()?;
+        }
+
+        if let Some(socket) = self.socket_v6.as_mut() {
+            socket.flush()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if let Some(socket) = self.socket_v4.as_mut() {
             ready!(socket.poll_send_ready(cx))?;
         }
 
-        if let Some(socket) = self.socket_v6.as_ref() {
+        if let Some(socket) = self.socket_v6.as_mut() {
             ready!(socket.poll_send_ready(cx))?;
         }
 
         Poll::Ready(Ok(()))
     }
 
-    pub fn try_send(&self, transmit: &Transmit) -> io::Result<usize> {
-        match transmit.dst {
+    pub fn try_send(&mut self, transmit: quinn_udp::Transmit) -> io::Result<()> {
+        match transmit.destination {
             SocketAddr::V4(_) => {
-                let socket = self.socket_v4.as_ref().ok_or(io::Error::new(
+                let socket = self.socket_v4.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
                     "no IPv4 socket",
                 ))?;
-                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
+                socket.try_send(transmit)?;
             }
             SocketAddr::V6(_) => {
-                let socket = self.socket_v6.as_ref().ok_or(io::Error::new(
+                let socket = self.socket_v6.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
                     "no IPv6 socket",
                 ))?;
-                Ok(socket.try_send_to(transmit.src, transmit.dst, &transmit.payload)?)
+                socket.try_send(transmit)?;
             }
         }
+
+        Ok(())
     }
 
     pub fn poll_recv_from<'b>(
@@ -179,6 +191,8 @@ struct Socket {
     state: UdpSocketState,
     port: u16,
     socket: UdpSocket,
+
+    buffered_transmits: Vec<quinn_udp::Transmit>,
 }
 
 impl Socket {
@@ -190,6 +204,7 @@ impl Socket {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
+            buffered_transmits: Vec::new(),
         })
     }
 
@@ -201,6 +216,7 @@ impl Socket {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket: tokio::net::UdpSocket::from_std(socket)?,
+            buffered_transmits: Vec::new(),
         })
     }
 
@@ -214,6 +230,7 @@ impl Socket {
             port,
             socket,
             state,
+            ..
         } = self;
 
         let bufs = &mut [IoSliceMut::new(buffer)];
@@ -254,28 +271,47 @@ impl Socket {
         }
     }
 
-    fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.socket.poll_send_ready(cx)
+    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        ready!(self.socket.poll_send_ready(cx)?);
+
+        Poll::Ready(Ok(()))
     }
 
-    fn try_send_to(
-        &self,
-        local: Option<SocketAddr>,
-        dest: SocketAddr,
-        buf: &[u8],
-    ) -> io::Result<usize> {
-        tracing::trace!(target: "wire", to = "network", src = ?local, dst = %dest, num_bytes = %buf.len());
+    fn flush(&mut self) -> io::Result<()> {
+        let num_sent = self.socket.try_io(Interest::WRITABLE, || {
+            self.state
+                .send((&self.socket).into(), &self.buffered_transmits)
+        })?;
 
-        self.state.send(
-            (&self.socket).into(),
-            &[quinn_udp::Transmit {
-                destination: dest,
-                ecn: None,
-                contents: Bytes::copy_from_slice(buf),
-                segment_size: None,
-                src_ip: local.map(|s| s.ip()),
-            }],
-        )
+        let remaining = self.buffered_transmits.split_off(num_sent);
+        self.buffered_transmits = remaining;
+
+        Ok(())
+    }
+
+    fn try_send(&mut self, transmit: quinn_udp::Transmit) -> io::Result<()> {
+        tracing::trace!(target: "wire", to = "network", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
+
+        self.buffered_transmits.push(transmit);
+
+        let num_sent = match self.socket.try_io(Interest::WRITABLE, || {
+            self.state
+                .send((&self.socket).into(), &self.buffered_transmits)
+        }) {
+            Ok(num_sent) => num_sent,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+            Err(e) => return Err(e),
+        };
+
+        let remaining = self.buffered_transmits.split_off(num_sent);
+        self.buffered_transmits = remaining;
+
+        assert!(
+            self.buffered_transmits.len() < 100,
+            "Using `try_io` should clear readiness flag on socket which makes us block on `poll_send_ready` and not grow the buffer indefinitely"
+        );
+
+        Ok(())
     }
 }
 

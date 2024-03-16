@@ -4,6 +4,7 @@ use crate::{
     ip_packet::{IpPacket, MutableIpPacket},
     sockets::{Received, Sockets},
 };
+use bytes::Bytes;
 use connlib_shared::messages::DnsServer;
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
@@ -11,7 +12,7 @@ use hickory_resolver::{
     config::{NameServerConfig, Protocol, ResolverConfig},
     TokioAsyncResolver,
 };
-use snownet::Transmit;
+use quinn_udp::Transmit;
 use std::{
     collections::HashMap,
     io,
@@ -97,6 +98,7 @@ impl Io {
             }
 
             ready!(self.sockets.poll_send_ready(cx))?; // Packets read from the device need to be written to a socket, let's make sure the socket can take more packets.
+            self.sockets.flush()?;
 
             if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
                 return Poll::Ready(Ok(Input::Device(packet)));
@@ -159,8 +161,14 @@ impl Io {
         }
     }
 
-    pub fn send_network(&self, transmit: Transmit) -> io::Result<()> {
-        self.sockets.try_send(&transmit)?;
+    pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
+        self.sockets.try_send(Transmit {
+            destination: transmit.dst,
+            ecn: None,
+            contents: Bytes::copy_from_slice(&transmit.payload),
+            segment_size: None,
+            src_ip: transmit.src.map(|s| s.ip()),
+        })?;
 
         Ok(())
     }
