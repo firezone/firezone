@@ -297,20 +297,15 @@ where
     /// Called when a response to [ClientTunnel::request_connection] is ready.
     ///
     /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
-    #[tracing::instrument(level = "trace", skip(self, gateway_public_key, resource_id))]
     pub fn received_offer_response(
         &mut self,
         resource_id: ResourceId,
-        rtc_ice_params: Answer,
+        answer: Answer,
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> connlib_shared::Result<()> {
-        self.role_state.accept_answer(
-            rtc_ice_params,
-            resource_id,
-            gateway_public_key,
-            domain_response,
-        )?;
+        self.role_state
+            .accept_answer(answer, resource_id, gateway_public_key, domain_response)?;
 
         Ok(())
     }
@@ -486,6 +481,7 @@ impl ClientState {
         Some(packet.into_immutable())
     }
 
+    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
     fn accept_answer(
         &mut self,
         answer: Answer,
