@@ -344,7 +344,8 @@ where
         self.role_state.peers.insert(peer, &[]);
 
         let peer_ips = if let Some(domain_response) = domain_response {
-            self.dns_response(&resource_id, &domain_response, &gateway_id)?
+            self.role_state
+                .dns_response(&resource_id, &domain_response, &gateway_id)?
         } else {
             ips
         };
@@ -354,65 +355,6 @@ where
             .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
-    }
-
-    fn dns_response(
-        &mut self,
-        resource_id: &ResourceId,
-        domain_response: &DomainResponse,
-        peer_id: &GatewayId,
-    ) -> connlib_shared::Result<Vec<IpNetwork>> {
-        let peer = self
-            .role_state
-            .peers
-            .get_mut(peer_id)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let resource_description = self
-            .role_state
-            .resource_ids
-            .get(resource_id)
-            .ok_or(Error::UnknownResource)?
-            .clone();
-
-        let ResourceDescription::Dns(resource_description) = resource_description else {
-            // We should never get a domain_response for a CIDR resource!
-            return Err(Error::ControlProtocolError);
-        };
-
-        let resource_description =
-            DnsResource::from_description(&resource_description, domain_response.domain.clone());
-
-        let addrs: HashSet<_> = domain_response
-            .address
-            .iter()
-            .filter_map(|external_ip| {
-                peer.transform
-                    .get_or_assign_translation(external_ip, &mut self.role_state.ip_provider)
-            })
-            .collect();
-
-        self.role_state
-            .dns_resources_internal_ips
-            .insert(resource_description.clone(), addrs.clone());
-
-        let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
-
-        send_dns_answer(
-            &mut self.role_state,
-            Rtype::Aaaa,
-            &resource_description,
-            &addrs,
-        );
-
-        send_dns_answer(
-            &mut self.role_state,
-            Rtype::A,
-            &resource_description,
-            &addrs,
-        );
-
-        Ok(ips)
     }
 
     #[tracing::instrument(level = "trace", skip(self, resource_id))]
@@ -426,7 +368,9 @@ where
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
+        let peer_ips = self
+            .role_state
+            .dns_response(&resource_id, &domain_response, &gateway_id)?;
 
         self.role_state
             .peers
@@ -582,6 +526,52 @@ impl ClientState {
         };
 
         Some(packet.into_immutable())
+    }
+
+    fn dns_response(
+        &mut self,
+        resource_id: &ResourceId,
+        domain_response: &DomainResponse,
+        peer_id: &GatewayId,
+    ) -> connlib_shared::Result<Vec<IpNetwork>> {
+        let peer = self
+            .peers
+            .get_mut(peer_id)
+            .ok_or(Error::ControlProtocolError)?;
+
+        let resource_description = self
+            .resource_ids
+            .get(resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
+
+        let ResourceDescription::Dns(resource_description) = resource_description else {
+            // We should never get a domain_response for a CIDR resource!
+            return Err(Error::ControlProtocolError);
+        };
+
+        let resource_description =
+            DnsResource::from_description(&resource_description, domain_response.domain.clone());
+
+        let addrs: HashSet<_> = domain_response
+            .address
+            .iter()
+            .filter_map(|external_ip| {
+                peer.transform
+                    .get_or_assign_translation(external_ip, &mut self.ip_provider)
+            })
+            .collect();
+
+        self.dns_resources_internal_ips
+            .insert(resource_description.clone(), addrs.clone());
+
+        let ips: Vec<IpNetwork> = addrs.iter().copied().map(Into::into).collect();
+
+        send_dns_answer(self, Rtype::Aaaa, &resource_description, &addrs);
+
+        send_dns_answer(self, Rtype::A, &resource_description, &addrs);
+
+        Ok(ips)
     }
 
     /// Attempt to handle the given packet as a DNS packet.
