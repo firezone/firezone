@@ -263,19 +263,31 @@ impl Socket {
     }
 
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.socket.try_io(Interest::WRITABLE, || {
-            self.state
-                .send((&self.socket).into(), &self.buffered_transmits)
-        }) {
-            Ok(num_sent) => {
-                self.buffered_transmits.drain(..num_sent);
-            }
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(e) => return Poll::Ready(Err(e)),
-        };
+        loop {
+            match self.socket.try_io(Interest::WRITABLE, || {
+                self.state
+                    .send((&self.socket).into(), &self.buffered_transmits)
+            }) {
+                Ok(0) => break,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(e) => return Poll::Ready(Err(e)),
+
+                Ok(num_sent) => {
+                    self.buffered_transmits.drain(..num_sent);
+
+                    // I am not sure if we'd ever send less than what is in `buffered_transmits`.
+                    // loop once more to be sure we `break` on either an empty buffer or on `WouldBlock`.
+                }
+            };
+        }
 
         // Ensure we are ready to send more data.
         ready!(self.socket.poll_send_ready(cx)?);
+
+        assert!(
+            self.buffered_transmits.is_empty(),
+            "buffer must be empty if we are ready to send more data"
+        );
 
         Poll::Ready(Ok(()))
     }
