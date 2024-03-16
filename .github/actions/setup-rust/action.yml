@@ -14,24 +14,24 @@ runs:
   using: "composite"
   steps:
     # Setup sccache, works well for most Rust components
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      id: auth
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
-        service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-        export_environment_variables: true
-        create_credentials_file: true
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      run: |
-        echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
-        echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
-      shell: bash
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      uses: mozilla-actions/sccache-action@v0.0.4
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
-      shell: bash
+    # - if: ${{ inputs.cache_backend == 'sccache' }}
+    #   id: auth
+    #   uses: google-github-actions/auth@v2
+    #   with:
+    #     workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+    #     service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+    #     export_environment_variables: true
+    #     create_credentials_file: true
+    # - if: ${{ inputs.cache_backend == 'sccache' }}
+    #   run: |
+    #     echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
+    #     echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
+    #   shell: bash
+    # - if: ${{ inputs.cache_backend == 'sccache' }}
+    #   uses: mozilla-actions/sccache-action@v0.0.4
+    # - if: ${{ inputs.cache_backend == 'sccache' }}
+    #   run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+    #   shell: bash
 
     # Setup GH actions cache, works better for Tauri clients and some libs
     - if: ${{ inputs.cache_backend == 'github' }}
@@ -57,7 +57,7 @@ runs:
       shell: bash
 
     # Start sccache
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      name: Start sccache
-      run: $SCCACHE_PATH --start-server
-      shell: bash
+    # - if: ${{ inputs.cache_backend == 'sccache' }}
+    #   name: Start sccache
+    #   run: $SCCACHE_PATH --start-server
+    #   shell: bash
