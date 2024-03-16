@@ -16,7 +16,7 @@ defmodule Domain.Jobs do
       Enum.flat_map(module.__handlers__(), fn {name, interval} ->
         handler_config = Keyword.get(config, name, [])
 
-        if Keyword.get(handler_config, :enabled, true) do
+        if Keyword.get(config, :enabled, true) and Keyword.get(handler_config, :enabled, true) do
           [
             Supervisor.child_spec(
               {Domain.Jobs.Executors.Global, {{module, name}, interval, handler_config}},

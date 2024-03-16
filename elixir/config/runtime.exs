@@ -68,6 +68,8 @@ if config_env() == :prod do
   # Enable background jobs only on dedicated nodes
   config :domain, Domain.Tokens.Jobs, enabled: compile_config!(:background_jobs_enabled)
 
+  config :domain, Elixir.Domain.Billing.Jobs, enabled: compile_config!(:background_jobs_enabled)
+
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs,
     enabled: compile_config!(:background_jobs_enabled)
 
