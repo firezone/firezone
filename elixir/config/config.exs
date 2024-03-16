@@ -199,6 +199,8 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :swoosh, :api_client, Swoosh.ApiClient.Finch
+
 config :web, Web.Mailer,
   adapter: Domain.Mailer.NoopAdapter,
   from_email: "test@firez.one"
