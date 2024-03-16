@@ -29,12 +29,16 @@ pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
     (ChannelNumber::MIN..ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
 }
 
-pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, usize)> {
-    any::<Vec<u8>>().prop_map(|vec| {
-        let len = vec.len();
+pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, u16)> {
+    any::<Vec<u8>>()
+        .prop_filter("payload does not fit into u16", |vec| {
+            vec.len() <= u16::MAX as usize
+        })
+        .prop_map(|vec| {
+            let len = vec.len();
 
-        (vec, len)
-    })
+            (vec, len as u16)
+        })
 }
 
 pub fn username_salt() -> impl Strategy<Value = String> {
