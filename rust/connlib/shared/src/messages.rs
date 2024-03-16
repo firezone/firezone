@@ -320,8 +320,6 @@ pub struct Interface {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Relay {
-    /// STUN type of relay
-    Stun(Stun),
     /// TURN type of relay
     Turn(Turn),
 }
@@ -339,13 +337,6 @@ pub struct Turn {
     // TODO: SecretString
     /// Password for the relay
     pub password: String,
-}
-
-/// Stun kind of relay
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-pub struct Stun {
-    /// Address for the relay
-    pub addr: SocketAddr,
 }
 
 #[cfg(test)]

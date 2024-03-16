@@ -8,17 +8,15 @@ pub fn turn(
 ) -> HashSet<(SocketAddr, String, String, String)> {
     relays
         .iter()
-        .filter_map(|r| {
-            if let Relay::Turn(r) = r {
-                Some((
-                    r.addr,
-                    r.username.clone(),
-                    r.password.clone(),
-                    REALM.to_string(),
-                ))
-            } else {
-                None
-            }
+        .map(|r| {
+            let Relay::Turn(r) = r;
+
+            (
+                r.addr,
+                r.username.clone(),
+                r.password.clone(),
+                REALM.to_string(),
+            )
         })
         .filter(|(socket, _, _, _)| predicate(socket))
         .collect()
