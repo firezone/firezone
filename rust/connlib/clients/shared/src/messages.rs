@@ -154,7 +154,7 @@ mod test {
 
     use connlib_shared::messages::{
         DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
-        ResourceDescriptionDns, Turn,
+        ResourceDescriptionDns, Stun, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
 
@@ -331,11 +331,17 @@ mod test {
                 gateway_remote_ip: "172.28.0.1".parse().unwrap(),
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 relays: vec![
+                    Relay::Stun(Stun {
+                        addr: "189.172.73.111:3478".parse().unwrap(),
+                    }),
                     Relay::Turn(Turn {
                         expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
                         addr: "189.172.73.111:3478".parse().unwrap(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
+                    }),
+                    Relay::Stun(Stun {
+                        addr: "[::1]:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
                         expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
