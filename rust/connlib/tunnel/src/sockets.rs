@@ -274,12 +274,8 @@ impl Socket {
             Err(e) => return Poll::Ready(Err(e)),
         };
 
-        // Enforce send-readiness if our buffer keeps growing.
-        //
-        // Upper layers will stop writing to the buffer if `poll_flush` returns `Pending`.
-        if self.buffered_transmits.len() > 1000 {
-            ready!(self.socket.poll_send_ready(cx)?);
-        }
+        // Ensure we are ready to send more data.
+        ready!(self.socket.poll_send_ready(cx)?);
 
         Poll::Ready(Ok(()))
     }
