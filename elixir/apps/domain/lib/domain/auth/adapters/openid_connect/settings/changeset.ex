@@ -32,7 +32,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
         {:error, %Jason.DecodeError{} = _error} ->
           [{:discovery_document_uri, "is invalid, unable to parse response"}]
 
-        # XXX: Do these occur with Mint?
         {:error, {404, _body}} ->
           [{:discovery_document_uri, "does not exist"}]
 

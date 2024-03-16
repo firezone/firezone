@@ -132,7 +132,7 @@ services:
 
         firezone-relay
     ports:
-      # XXX: Only 111 ports are used for local dev / testing because Docker Desktop
+      # NOTE: Only 111 ports are used for local dev / testing because Docker Desktop
       # allocates a userland proxy process for each forwarded port X_X.
       #
       # Large ranges here will bring your machine to its knees.

@@ -24,7 +24,7 @@ defmodule API.ChannelCase do
 
   setup tags do
     for presence <- @presences, pid <- presence.fetchers_pids() do
-      # XXX: If we start using Presence.fetch/2 callback we might want to
+      # TODO: If we start using Presence.fetch/2 callback we might want to
       # contribute to Phoenix.Presence a way to propagate sandbox access from
       # the parent to the task supervisor it spawns in start_link/1 every time
       # it's used. Because this would not work as is:

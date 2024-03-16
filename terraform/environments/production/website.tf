@@ -1,4 +1,3 @@
-
 resource "google_monitoring_uptime_check_config" "website-https" {
   project = module.google-cloud-project.project.project_id
 
