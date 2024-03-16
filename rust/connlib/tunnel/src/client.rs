@@ -325,10 +325,18 @@ where
             Instant::now(),
         );
 
-        let ips = self.role_state.create_peer_config_for_new_connection(
-            resource_id,
-            &domain_response.as_ref().map(|d| d.domain.clone()),
-        )?;
+        let desc = self
+            .role_state
+            .resource_ids
+            .get(&resource_id)
+            .ok_or(Error::ControlProtocolError)?;
+
+        let ips = self
+            .role_state
+            .get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
+
+        // Tidy up state once everything succeeded.
+        self.role_state.awaiting_connection.remove(&resource_id);
 
         let resource_ids = HashSet::from([resource_id]);
         let mut peer: Peer<_, PacketTransformClient, _> =
@@ -756,24 +764,6 @@ impl ClientState {
                 resource,
                 connected_gateway_ids: gateways,
             });
-    }
-
-    pub fn create_peer_config_for_new_connection(
-        &mut self,
-        resource: ResourceId,
-        domain: &Option<Dname>,
-    ) -> Result<Vec<IpNetwork>, ConnlibError> {
-        let desc = self
-            .resource_ids
-            .get(&resource)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let ips = self.get_resource_ip(desc, domain);
-
-        // Tidy up state once everything succeeded.
-        self.awaiting_connection.remove(&resource);
-
-        Ok(ips)
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
