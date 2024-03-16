@@ -5,8 +5,9 @@ module "relays" {
   project_id = module.google-cloud-project.project.project_id
 
   instances = {
-    # XXX: We may need these in the future, but for now, we don't have many
-    # (if any) Enterprise customers in these regions
+    # We may deploy more relays as more enterprise
+    # customers are onboarded from those regions
+
     # "asia-east1" = {
     #   cidr_range = "10.129.0.0/24"
     #   type     = "n1-standard-1"

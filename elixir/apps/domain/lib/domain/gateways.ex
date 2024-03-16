@@ -352,7 +352,7 @@ defmodule Domain.Gateways do
     gateways =
       connected_gateways
       |> Map.keys()
-      # XXX: This will create a pretty large query to send to Postgres,
+      # TODO: This will create a pretty large query to send to Postgres,
       # we probably want to load connected resources once when gateway connects,
       # and persist them in the memory not to query DB every time with a
       # `WHERE ... IN (...)`.

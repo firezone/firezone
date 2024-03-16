@@ -75,7 +75,7 @@ defmodule Domain.MixProject do
       {:opentelemetry_finch, "~> 0.2.0"},
 
       # Mailer deps
-      # XXX: This is a workaround for the following issue:
+      # TODO: This is a workaround for the following issue:
       # https://github.com/elixir-lang/elixir/issues/12777
       # Remove Swoosh from Domain once this is fixed.
       {:phoenix_swoosh, "~> 1.0"},

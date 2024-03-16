@@ -81,7 +81,7 @@ defmodule Domain.Network.Address.Query do
   #
   # At the same time offset will fit to bigint even for largest CIDR ranges that Firezone supports.
   #
-  # XXX: We can make this code prettier once https://github.com/elixir-ecto/ecto/commit/8f7bb2665bce30dfab18cfed01585c96495575a6 is released.
+  # TODO: We can make this code prettier once https://github.com/elixir-ecto/ecto/commit/8f7bb2665bce30dfab18cfed01585c96495575a6 is released.
   defp series_from_offset_inclusive_to_end_of_cidr(network_cidr, offset) do
     from(
       i in fragment(
