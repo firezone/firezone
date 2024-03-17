@@ -58,7 +58,7 @@ android {
         // mark:automatic-version
         versionName = "1.0.0"
         multiDexEnabled = true
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
     }
 
     signingConfigs {
@@ -151,6 +151,12 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -177,6 +183,13 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.51")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.51")
+    // Instrumented Tests
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.51")
+    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.51")
+    implementation("androidx.test:runner:1.5.2")
+    // Unit Tests
+    testImplementation("com.google.dagger:hilt-android-testing:2.51")
+    kaptTest("com.google.dagger:hilt-android-compiler:2.51")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -208,6 +221,9 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ndk")
     implementation("com.google.firebase:firebase-analytics-ktx")
+
+    // Robolectric
+    testImplementation("org.robolectric:robolectric:4.11.1")
 }
 
 cargo {
