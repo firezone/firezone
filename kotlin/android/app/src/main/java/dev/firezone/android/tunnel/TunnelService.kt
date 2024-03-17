@@ -217,7 +217,7 @@ class TunnelService : VpnService() {
                     apiUrl = config.apiUrl,
                     token = token,
                     deviceId = deviceId(),
-                    deviceName = Build.MODEL,
+                    deviceName = getDeviceName(),
                     osVersion = Build.VERSION.RELEASE,
                     logDir = getLogDir(),
                     logFilter = config.logFilter,
@@ -364,6 +364,17 @@ class TunnelService : VpnService() {
                 .build()
 
         startForeground(STATUS_NOTIFICATION_ID, notification)
+    }
+
+    private fun getDeviceName(): String {
+        val serial = Build.getSerial()
+        val serialIsUnavailable = serial == "UNKNOWN" || serial == "null" || serial.isBlank()
+        // The serial number is not always available, so we use the model name as a fallback
+        return if (serialIsUnavailable) {
+            Build.MODEL
+        } else {
+            serial
+        }
     }
 
     companion object {
