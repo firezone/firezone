@@ -124,13 +124,13 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
       {:error, reason} ->
         if remaining_retry_count == 0 do
-          Logger.error("Can not fetch list of nodes or access token: #{inspect(reason)}",
+          Logger.error("Can't fetch list of nodes or access token: #{inspect(reason)}",
             module: __MODULE__
           )
 
           {:error, reason}
         else
-          Logger.warning("Can not fetch list of nodes or access token: #{inspect(reason)}",
+          Logger.warning("Can't fetch list of nodes or access token: #{inspect(reason)}",
             module: __MODULE__
           )
 

@@ -937,21 +937,21 @@ defmodule Domain.ResourcesTest do
 
       attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
+      assert "cannot be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
 
       attrs = %{"address" => "fd00:2021:1111::/102", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR fd00:2021:1111::/107" in errors_on(changeset).address
+      assert "cannot be in the CIDR fd00:2021:1111::/107" in errors_on(changeset).address
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not contain loopback addresses" in errors_on(changeset).address
-      assert "can not contain all IPv6 addresses" in errors_on(changeset).address
+      assert "cannot contain loopback addresses" in errors_on(changeset).address
+      assert "cannot contain all IPv6 addresses" in errors_on(changeset).address
 
       attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not contain loopback addresses" in errors_on(changeset).address
-      assert "can not contain all IPv4 addresses" in errors_on(changeset).address
+      assert "cannot contain loopback addresses" in errors_on(changeset).address
+      assert "cannot contain all IPv4 addresses" in errors_on(changeset).address
     end
 
     # We allow names to be duplicate because Resources are split into Sites

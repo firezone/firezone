@@ -103,7 +103,7 @@ config :web, Web.Endpoint,
   url: [
     scheme: "http",
     host: "localhost",
-    port: 13000,
+    port: 13_000,
     path: nil
   ],
   render_errors: [
@@ -151,7 +151,7 @@ config :api, API.Endpoint,
   url: [
     scheme: "http",
     host: "localhost",
-    port: 13001,
+    port: 13_001,
     path: nil
   ],
   render_errors: [

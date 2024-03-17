@@ -399,7 +399,7 @@ defmodule Domain.RepoTest do
       refute metadata.previous_page_cursor
     end
 
-    test "page size can not be bigger than 100", %{
+    test "page size cannot be bigger than 100", %{
       query_module: query_module,
       queryable: queryable
     } do
@@ -408,7 +408,7 @@ defmodule Domain.RepoTest do
       assert metadata.limit == 100
     end
 
-    test "page size can not be less than 1", %{
+    test "page size cannot be less than 1", %{
       query_module: query_module,
       queryable: queryable
     } do

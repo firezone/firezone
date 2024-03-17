@@ -30,7 +30,7 @@ defmodule Domain.Auth do
   has access to given object. It can be done by one of `ensure_has_access_to?/2` functions
   added to domain contexts responsible for the given schema, eg. `Domain.Accounts.ensure_has_access_to/2`.
 
-  Only exception is the authentication flow where user can not contain the subject yet,
+  Only exception is the authentication flow where user cannot contain the subject yet,
   but such queries MUST be filtered by the `account_id` and use indexes to prevent
   simple DDoS attacks.
 
@@ -39,7 +39,7 @@ defmodule Domain.Auth do
   ### Color Coding
 
   The tokens are color coded using a `type` field, which means that a token issued for a browser session
-  can not be used for client calls and vice versa. Type of the token also limits permissions that will
+  cannot be used for client calls and vice versa. Type of the token also limits permissions that will
   be later added to the subject.
 
   You can find all the token types in enum value of `type` field in `Domain.Tokens.Token` schema.

@@ -50,7 +50,7 @@ defmodule Domain.GoogleCloudPlatform do
         {:error, {response.status, response.body}}
 
       {:error, reason} ->
-        Logger.error("Can not fetch instance token", reason: inspect(reason))
+        Logger.error("Can't fetch instance token", reason: inspect(reason))
         {:error, reason}
     end
   end
