@@ -131,9 +131,8 @@ impl Device {
         &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+    ) -> Poll<io::Result<impl Iterator<Item = MutableIpPacket<'b>>>> {
         use ip_packet::Packet as _;
-
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
@@ -157,7 +156,7 @@ impl Device {
 
         tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
-        Poll::Ready(Ok(packet))
+        Poll::Ready(Ok(std::iter::once(packet)))
     }
 
     #[cfg(target_family = "windows")]
@@ -191,7 +190,7 @@ impl Device {
 
         tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
-        Poll::Ready(Ok(packet))
+        Poll::Ready(Ok(std::iter::once(packet)))
     }
 
     pub(crate) fn name(&self) -> &str {

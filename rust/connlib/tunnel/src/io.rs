@@ -36,10 +36,10 @@ pub struct Io {
     >,
 }
 
-pub enum Input<'a, I> {
+pub enum Input<N, D> {
     Timeout(Instant),
-    Device(MutableIpPacket<'a>),
-    Network(I),
+    Device(D),
+    Network(N),
 }
 
 impl Io {
@@ -67,7 +67,11 @@ impl Io {
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
         device_buffer: &'b mut [u8],
-    ) -> Poll<io::Result<Input<'b, impl Iterator<Item = Received<'b>>>>> {
+    ) -> Poll<
+        io::Result<
+            Input<impl Iterator<Item = Received<'b>>, impl Iterator<Item = MutableIpPacket<'b>>>,
+        >,
+    > {
         loop {
             // FIXME: Building the DNS response in here isn't very clean because this should only be the IO component and not do business-logic.
             // But it also seems weird to pass the DNS result out if we've got the device right here.
