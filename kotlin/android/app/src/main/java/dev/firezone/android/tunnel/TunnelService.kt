@@ -175,11 +175,16 @@ class TunnelService : VpnService() {
         startId: Int,
     ): Int {
         Log.d(TAG, "onStartCommand")
-        if (intent?.getBooleanExtra("startedByUser", false) == true) {
-            startedByUser = true
-        }
+        when (intent?.action) {
+            "dev.firezone.android.tunnel.DISCONNECT" -> disconnect()
+            else -> {
+                if (intent?.getBooleanExtra("startedByUser", false) == true) {
+                    startedByUser = true
+                }
 
-        connect()
+                connect()
+            }
+        }
         return START_STICKY
     }
 
