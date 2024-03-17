@@ -60,6 +60,11 @@ class Adapter {
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
 
+  /// Used to avoid path update callback cycles on iOS
+  #if os(iOS)
+    private var gateways: [Network.NWEndpoint] = []
+  #endif
+
   /// Private queue used to synchronize access to `WireGuardAdapter` members.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
@@ -226,10 +231,11 @@ extension Adapter {
   /// - System DNS servers change, including when we set them
   /// - Routes change, including when we set them
   ///
-  /// Apple doesn't give us very much info this callback, so we don't know which of the two
+  /// Apple doesn't give us very much info in this callback, so we don't know which of the
   /// events above triggered the callback.
   ///
   /// On iOS this creates a problem:
+  ///
   /// We have no good way to get the System's default resolvers. We use a workaround which
   /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
   /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
@@ -238,6 +244,16 @@ extension Adapter {
   /// The issue is that this in itself causes a didReceivePathUpdate callback, which makes it hard to
   /// differentiate between us changing the DNS configuration and the system actually receiving new
   /// default resolvers.
+  ///
+  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
+  /// changed. This means we only call setDns when the physical network has changed, and therefore
+  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
+  /// cases most commonly:
+  /// - New DNS servers were set by DHCP
+  /// - The user manually changed the DNS servers in the system settings
+  ///
+  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
+  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
   ///
   /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
   /// doesn't suffer from this issue.
@@ -250,17 +266,6 @@ extension Adapter {
   private func didReceivePathUpdate(path: Network.NWPath) {
     if case .tunnelReady(let session) = state {
       // Only respond to path updates if the tunnel is up and functioning
-
-      logger.log("\(#function): path.availableInterfaces: \(path.availableInterfaces)")
-      logger.log("\(#function): path.gateways: \(path.gateways)")
-      logger.log("\(#function): path.isConstrained: \(path.isConstrained)")
-      logger.log("\(#function): path.isExpensive: \(path.isExpensive)")
-      logger.log("\(#function): path.localEndpoint: \(path.localEndpoint)")
-      logger.log("\(#function): path.remoteEndpoint: \(path.remoteEndpoint)")
-      logger.log("\(#function): path.supportsDNS: \(path.supportsDNS)")
-      logger.log("\(#function): path.supportsIPv4: \(path.supportsIPv4)")
-      logger.log("\(#function): path.supportsIPv6: \(path.supportsIPv6)")
-      logger.log("\(#function): path.unsatisfiedReason: \(path.unsatisfiedReason)")
 
       if path.status == .unsatisfied {
         logger.log("\(#function): Detected network change: Offline.")
@@ -279,7 +284,9 @@ extension Adapter {
         session.reconnect()
 
         // Set potentially new DNS servers
-        session.setDns(getSystemDefaultResolvers().intoRustString())
+        if shouldUpdateDns(path: path) {
+          session.setDns(getSystemDefaultResolvers().intoRustString())
+        }
 
         if packetTunnelProvider?.reasserting == true {
           packetTunnelProvider?.reasserting = false
@@ -287,6 +294,21 @@ extension Adapter {
       }
     }
   }
+
+  #if os(iOS)
+    private func shouldUpdateDns(path: Network.NWPath) -> Bool {
+      if !path.gateways.elementsEqual(gateways) {
+        gateways = path.gateways
+        return true
+      }
+
+      return false
+    }
+  #else
+    private func shouldUpdateDns(path _: Network.NWPath) -> Bool {
+      return true
+    }
+  #endif
 }
 
 // MARK: Implementing CallbackHandlerDelegate
@@ -374,7 +396,7 @@ extension Adapter: CallbackHandlerDelegate {
 
   public func getSystemDefaultResolvers() -> String {
     #if os(macOS)
-      let resolvers = SystemConfigurationResolvers(logger: self.logger).getDefaultDNSServers()
+      let resolvers = SystemConfigurationResolvers(logger: logger).getDefaultDNSServers()
     #elseif os(iOS)
       let resolvers = resetToSystemDNSGettingBindResolvers()
     #endif
@@ -396,36 +418,24 @@ extension Adapter: CallbackHandlerDelegate {
     // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
     // sentinel, which isn't helpful to us.
     private func resetToSystemDNSGettingBindResolvers() -> [String] {
-      logger.log("\(#function): Getting system default resolvers from Bind")
+      var resolvers: [String] = []
+      let semaphore = DispatchSemaphore(value: 0)
 
-      switch self.state {
-      case .startingTunnel:
-        return BindResolvers().getservers().map(BindResolvers.getnameinfo)
-      case .tunnelReady:
-        var resolvers: [String] = []
+      // Set tunnel's matchDomains to a dummy string that will never match any name
+      networkSettings.matchDomains = ["firezone-fd0020211111"]
 
-        // async / await can't be used here because this is an FFI callback
-        let semaphore = DispatchSemaphore(value: 0)
+      // Call apply to populate /etc/resolv.conf with the system's default resolvers
+      networkSettings.apply {
+        // Only now can we get the system resolvers
+        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
 
-        // Set tunnel's matchDomains to a dummy string that will never match any name
-        networkSettings.matchDomains = ["firezone-fd0020211111"]
-
-        // Call apply to populate /etc/resolv.conf with the system's default resolvers
-        networkSettings.apply {
-          // Only now can we get the system resolvers
-          resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
-
-          // Restore connlib's DNS resolvers
-          self.networkSettings.matchDomains = [""]
-          self.networkSettings.apply { semaphore.signal() }
-          semaphore.wait()
-        }
-
-        return resolvers
-      case .stoppedTunnel:
-        logger.error("\(#function): Unexpected state")
-        return []
+        // Restore connlib's DNS resolvers
+        self.networkSettings.matchDomains = [""]
+        self.networkSettings.apply { semaphore.signal() }
       }
+
+      semaphore.wait()
+      return resolvers
     }
   }
 #endif
