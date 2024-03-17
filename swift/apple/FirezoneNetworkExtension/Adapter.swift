@@ -252,6 +252,15 @@ extension Adapter {
       // Only respond to path updates if the tunnel is up and functioning
 
       logger.log("\(#function): path.availableInterfaces: \(path.availableInterfaces)")
+      logger.log("\(#function): path.gateways: \(path.gateways)")
+      logger.log("\(#function): path.isConstrained: \(path.isConstrained)")
+      logger.log("\(#function): path.isExpensive: \(path.isExpensive)")
+      logger.log("\(#function): path.localEndpoint: \(path.localEndpoint)")
+      logger.log("\(#function): path.remoteEndpoint: \(path.remoteEndpoint)")
+      logger.log("\(#function): path.supportsDNS: \(path.supportsDNS)")
+      logger.log("\(#function): path.supportsIPv4: \(path.supportsIPv4)")
+      logger.log("\(#function): path.supportsIPv6: \(path.supportsIPv6)")
+      logger.log("\(#function): path.unsatisfiedReason: \(path.unsatisfiedReason)")
 
       if path.status == .unsatisfied {
         logger.log("\(#function): Detected network change: Offline.")
@@ -265,6 +274,12 @@ extension Adapter {
         }
       } else {
         self.logger.log("\(#function): Detected network change: Online.")
+
+        // Hint to connlib we're back online
+        session.reconnect()
+
+        // Set potentially new DNS servers
+        session.setDns(getSystemDefaultResolvers().intoRustString())
 
         if packetTunnelProvider?.reasserting == true {
           packetTunnelProvider?.reasserting = false
