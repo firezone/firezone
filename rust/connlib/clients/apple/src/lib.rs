@@ -43,6 +43,9 @@ mod ffi {
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
+        fn reconnect(&mut self);
+        #[swift_bridge(swift_name = "setDns")]
+        fn set_dns(&mut self, dns_servers: String);
         fn disconnect(self);
     }
 
@@ -204,6 +207,16 @@ impl WrappedSession {
             inner: session,
             runtime,
         })
+    }
+
+    fn reconnect(&mut self) {
+        tracing::debug!("Reconnecting");
+        // self.inner.reconnect()
+    }
+
+    fn set_dns(&mut self, dns_servers: String) {
+        tracing::debug!("Setting DNS servers: {}", dns_servers);
+        // self.inner.set_dns(dns_servers)
     }
 
     fn disconnect(self) {
