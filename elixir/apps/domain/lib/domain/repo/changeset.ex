@@ -122,7 +122,7 @@ defmodule Domain.Repo.Changeset do
   def validate_does_not_end_with(%Ecto.Changeset{} = changeset, field, suffix, opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
       if String.ends_with?(value, suffix) do
-        message = Keyword.get(opts, :message, "can not end with #{inspect(suffix)}")
+        message = Keyword.get(opts, :message, "cannot end with #{inspect(suffix)}")
         [{field, message}]
       else
         []
@@ -209,7 +209,7 @@ defmodule Domain.Repo.Changeset do
         {:ok, ip_or_cidr} ->
           if Domain.Types.CIDR.contains?(cidr, ip_or_cidr) or
                Domain.Types.CIDR.contains?(ip_or_cidr, cidr) do
-            message = Keyword.get(opts, :message, "can not be in the CIDR #{cidr}")
+            message = Keyword.get(opts, :message, "cannot be in the CIDR #{cidr}")
             [{ip_or_cidr_field, message}]
           else
             []

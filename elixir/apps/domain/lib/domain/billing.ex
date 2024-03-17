@@ -312,11 +312,11 @@ defmodule Domain.Billing do
         {:error, :retry_later}
 
       {:ok, {status, body}} ->
-        :ok = Logger.error("Can not fetch Stripe customer", status: status, body: inspect(body))
+        :ok = Logger.error("Cannot fetch Stripe customer", status: status, body: inspect(body))
         {:error, :retry_later}
 
       {:error, reason} ->
-        :ok = Logger.error("Can not fetch Stripe customer", reason: inspect(reason))
+        :ok = Logger.error("Cannot fetch Stripe customer", reason: inspect(reason))
         {:error, :retry_later}
     end
   end

@@ -269,7 +269,7 @@ defmodule Domain.AccountsTest do
       assert update_account(other_account, %{}, subject) == {:error, :not_found}
     end
 
-    test "returns error when subject can not manage account", %{
+    test "returns error when subject cannot manage account", %{
       account: account,
       subject: subject
     } do
