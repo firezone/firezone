@@ -149,33 +149,17 @@ impl Device {
             return Poll::Pending;
         };
 
-        use pnet_packet::Packet as _;
-
         if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
             let mtu = ioctl::interface_mtu_by_name(tun.name())?;
             self.mtu = mtu;
             self.mtu_refreshed_at = Instant::now();
         }
 
-        let n = std::task::ready!(tun.poll_read(&mut buf[..self.mtu], cx))?;
+        let packets = std::task::ready!(tun.poll_read(buf, cx))?;
 
-        if n == 0 {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "device is closed",
-            )));
-        }
-
-        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "received bytes are not an IP packet",
-            )
-        })?;
-
-        tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
-
-        Poll::Ready(Ok(std::iter::once(packet)))
+        Poll::Ready(Ok(packets.inspect(|packet| {
+            tracing::trace!(target: "wire", from = "device", dest = %packet.destination(), bytes = %packet.packet().len());
+        })))
     }
 
     #[cfg(target_family = "windows")]

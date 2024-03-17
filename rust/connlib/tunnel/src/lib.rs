@@ -53,7 +53,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
-    device_read_buf: Box<[u8; MAX_UDP_SIZE]>,
+    device_read_buf: Box<[u8; MAX_UDP_SIZE * 10]>,
 }
 
 impl<CB> ClientTunnel<CB>
@@ -72,7 +72,7 @@ where
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MAX_UDP_SIZE * 10]),
         })
     }
 
@@ -171,7 +171,7 @@ where
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MAX_UDP_SIZE * 10]),
         })
     }
 

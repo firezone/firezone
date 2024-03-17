@@ -1,5 +1,6 @@
 use super::utils;
 use crate::device_channel::ioctl;
+use crate::ip_packet::MutableIpPacket;
 use crate::FIREZONE_MARK;
 use connlib_shared::{
     linux::{etc_resolv_conf, DnsControlMethod},
@@ -12,16 +13,17 @@ use futures_util::FutureExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
-    O_NONBLOCK, O_RDWR, S_IFCHR,
+    IFF_VNET_HDR, O_NONBLOCK, O_RDWR, S_IFCHR, TUN_F_CSUM, TUN_F_TSO4, TUN_F_TSO6, TUN_F_USO4,
+    TUN_F_USO6,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use rtnetlink::{RouteAddRequest, RuleAddRequest};
-use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::task::{Context, Poll};
+use std::{collections::HashSet, task::ready};
 use std::{
     ffi::CStr,
     fmt, fs, io,
@@ -35,7 +37,16 @@ use tokio::io::unix::AsyncFd;
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 const IFACE_NAME: &str = "tun-firezone";
+
+/// #define TUNSETOFFLOAD  _IOW('T', 202, int)
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
+
+/// #define TUNSETOFFLOAD  _IOW('T', 208, unsigned int)
+const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
+
+/// #define TUNSETVNETHDRSZ _IOW('T', 216, int)
+const TUNSETVNETHDRSZ: libc::c_ulong = 0x4004_54d8;
+
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 const DEFAULT_MTU: u32 = 1280;
@@ -78,14 +89,28 @@ impl Drop for Tun {
 
 impl Tun {
     pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
-        write(self.fd.as_raw_fd(), buf)
+        let mut with_hdr = vec![0u8; 12 + buf.len()];
+
+        with_hdr[12..].copy_from_slice(buf);
+        with_hdr[0] = 1;
+
+        write(self.fd.as_raw_fd(), &with_hdr)
     }
 
     pub fn write6(&self, buf: &[u8]) -> io::Result<usize> {
-        write(self.fd.as_raw_fd(), buf)
+        let mut with_hdr = vec![0u8; 12 + buf.len()];
+
+        with_hdr[12..].copy_from_slice(buf);
+        with_hdr[0] = 1;
+
+        write(self.fd.as_raw_fd(), &with_hdr)
     }
 
-    pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+    pub fn poll_read<'b>(
+        &mut self,
+        buf: &'b mut [u8],
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<impl Iterator<Item = MutableIpPacket<'b>>>> {
         if let Some(worker) = self.worker.as_mut() {
             match worker.poll_unpin(cx) {
                 Poll::Ready(Ok(())) => {
@@ -99,7 +124,67 @@ impl Tun {
             }
         }
 
-        utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
+        let num_bytes = ready!(utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx,))?;
+        let filled = &mut buf[..num_bytes];
+
+        let mut vnet_header_buf = [0u8; 12];
+
+        vnet_header_buf.copy_from_slice(&filled[..12]);
+        let vnet_header = dbg!(unsafe { std::mem::transmute::<_, VnetHeader>(vnet_header_buf) });
+
+        let needs_checksum_update = vnet_header.flags == 1;
+
+        let payload = &mut filled[12..];
+        let payload_len = dbg!(payload.len());
+
+        match vnet_header.gso_type {
+            0 => {
+                return Poll::Ready(Ok(Box::new(
+                    payload
+                        .chunks_mut(payload_len)
+                        .filter_map(MutableIpPacket::new)
+                        .map(move |mut p| {
+                            if needs_checksum_update {
+                                p.update_checksum();
+                            }
+
+                            p
+                        }),
+                )
+                    as Box<dyn Iterator<Item = MutableIpPacket<'b>>>))
+            }
+            1 | 3 | 4 | 5 => {
+                let header_length = vnet_header.hdr_len as usize;
+                let body_length = vnet_header.gso_size as usize;
+                let packet_length = header_length + body_length;
+
+                let (header, bodies) = payload.split_at_mut(header_length);
+
+                dbg!(bodies.len() / body_length);
+
+                let packets = bodies.chunks_mut(body_length).filter_map(move |body| {
+                    let mut packet_buffer = vec![0u8; packet_length];
+                    packet_buffer[..header_length].copy_from_slice(header);
+                    packet_buffer[header_length..].copy_from_slice(body);
+
+                    let mut packet = MutableIpPacket::owned(packet_buffer)?;
+
+                    if needs_checksum_update {
+                        packet.update_checksum();
+                    }
+
+                    Some(packet)
+                });
+
+                Poll::Ready(Ok(Box::new(packets)))
+            }
+            0x80 => {
+                unimplemented!("ECN bit handling")
+            }
+            other => {
+                unimplemented!("bad bit: {other}")
+            }
+        }
     }
 
     pub fn new(
@@ -129,6 +214,21 @@ impl Tun {
                 TUNSETIFF,
                 &mut ioctl::Request::<SetTunFlagsPayload>::new(),
             )?;
+        }
+
+        if unsafe { libc::ioctl(fd, TUNSETVNETHDRSZ as _, &12) } < 0 {
+            return Err(Error::Io(io::Error::last_os_error()));
+        }
+
+        if unsafe {
+            libc::ioctl(
+                fd,
+                TUNSETOFFLOAD as _,
+                TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6,
+            )
+        } < 0
+        {
+            return Err(Error::Io(io::Error::last_os_error()));
         }
 
         set_non_blocking(fd)?;
@@ -202,6 +302,18 @@ impl Tun {
     pub fn name(&self) -> &str {
         IFACE_NAME
     }
+}
+
+#[derive(Debug)]
+#[repr(packed)]
+struct VnetHeader {
+    flags: u8,
+    gso_type: u8,
+    hdr_len: u16,
+    gso_size: u16,
+    csum_start: u16,
+    csum_offset: u16,
+    num_buffers: u16,
 }
 
 #[tracing::instrument(level = "trace", skip(handle))]
@@ -438,7 +550,7 @@ impl ioctl::Request<SetTunFlagsPayload> {
         Self {
             name,
             payload: SetTunFlagsPayload {
-                flags: (IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE) as _,
+                flags: (IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE | IFF_VNET_HDR) as _,
             },
         }
     }

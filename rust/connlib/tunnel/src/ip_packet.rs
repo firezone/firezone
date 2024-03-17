@@ -31,10 +31,29 @@ macro_rules! swap_src_dst {
 
 impl<'a> MutableIpPacket<'a> {
     #[inline]
-    pub(crate) fn new(data: &mut [u8]) -> Option<MutableIpPacket> {
+    pub(crate) fn new(data: &'a mut [u8]) -> Option<MutableIpPacket> {
+        if data.is_empty() {
+            return None;
+        };
+
         let packet = match data[0] >> 4 {
             4 => MutableIpv4Packet::new(data)?.into(),
             6 => MutableIpv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
+    #[inline]
+    pub(crate) fn owned(data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+        if data.is_empty() {
+            return None;
+        };
+
+        let packet = match data[0] >> 4 {
+            4 => MutableIpv4Packet::owned(data)?.into(),
+            6 => MutableIpv6Packet::owned(data)?.into(),
             _ => return None,
         };
 
