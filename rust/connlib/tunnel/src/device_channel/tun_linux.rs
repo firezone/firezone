@@ -89,19 +89,41 @@ impl Drop for Tun {
 
 impl Tun {
     pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut with_hdr = vec![0u8; 12 + buf.len()];
+        let mut with_hdr = vec![0u8; 12 + dbg!(buf.len())];
 
         with_hdr[12..].copy_from_slice(buf);
         with_hdr[0] = 1;
+
+        let [a, b] = 20u16.to_le_bytes();
+        let [c, d] = 16u16.to_le_bytes();
+
+        with_hdr[6] = a;
+        with_hdr[7] = b;
+        with_hdr[8] = c;
+        with_hdr[9] = d;
+
+        // let mut p = MutableIpPacket::new(&mut with_hdr[12..]).unwrap();
+        // p.update_checksum();
 
         write(self.fd.as_raw_fd(), &with_hdr)
     }
 
     pub fn write6(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut with_hdr = vec![0u8; 12 + buf.len()];
+        let mut with_hdr = vec![0u8; 12 + dbg!(buf.len())];
 
         with_hdr[12..].copy_from_slice(buf);
         with_hdr[0] = 1;
+
+        let [a, b] = 20u16.to_le_bytes();
+        let [c, d] = 16u16.to_le_bytes();
+
+        with_hdr[6] = a;
+        with_hdr[7] = b;
+        with_hdr[8] = c;
+        with_hdr[9] = d;
+
+        // let mut p = MutableIpPacket::new(&mut with_hdr[12..]).unwrap();
+        // p.update_checksum();
 
         write(self.fd.as_raw_fd(), &with_hdr)
     }
