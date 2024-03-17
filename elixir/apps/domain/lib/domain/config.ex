@@ -1,5 +1,5 @@
 defmodule Domain.Config do
-  alias Domain.Config.{Definition, Definitions, Validator, Errors, Fetcher}
+  alias Domain.Config.{Definition, Definitions, Errors, Validator, Fetcher}
 
   def fetch_resolved_configs!(account_id, keys, opts \\ []) do
     for {key, {_source, value}} <-

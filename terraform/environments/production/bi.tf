@@ -59,7 +59,7 @@ resource "postgresql_grant" "grant_execute_on_all_functions_schema_to_metabase" 
 }
 
 module "metabase" {
-  source     = "../../modules/metabase-app"
+  source     = "../../modules/google-cloud/apps/metabase"
   project_id = module.google-cloud-project.project.project_id
 
   compute_network    = module.google-cloud-vpc.id

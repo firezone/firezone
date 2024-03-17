@@ -7,7 +7,7 @@ locals {
 module "gateways" {
   count = var.gateway_token != null ? 1 : 0
 
-  source     = "../../modules/gateway-google-cloud-compute"
+  source     = "../../modules/google-cloud/apps/gateway-region-instance-group"
   project_id = module.google-cloud-project.project.project_id
 
   compute_network    = module.google-cloud-vpc.id

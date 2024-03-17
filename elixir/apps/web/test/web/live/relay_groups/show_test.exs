@@ -139,7 +139,9 @@ defmodule Web.Live.RelayGroups.ShowTest do
     identity: identity,
     conn: conn
   } do
+    :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
     :ok = Domain.Relays.connect_relay(relay, "foo")
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
 
     {:ok, lv, _html} =
       conn
@@ -181,8 +183,6 @@ defmodule Web.Live.RelayGroups.ShowTest do
     identity: identity,
     conn: conn
   } do
-    token = Fixtures.Relays.create_token(account: account, group: group)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -192,7 +192,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
            |> element("button", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
-    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    assert Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id).deleted_at
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{

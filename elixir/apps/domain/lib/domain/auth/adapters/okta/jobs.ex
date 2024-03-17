@@ -6,57 +6,54 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
   require Logger
 
   every minutes(5), :refresh_access_tokens do
-    with {:ok, providers} <-
-           Domain.Auth.list_providers_pending_token_refresh_by_adapter(:okta) do
-      Logger.debug("Refreshing access tokens for #{length(providers)} Okta providers")
+    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:okta)
+    Logger.debug("Refreshing access tokens for #{length(providers)} Okta providers")
 
-      Enum.each(providers, fn provider ->
-        Logger.debug("Refreshing access token",
-          provider_id: provider.id,
-          account_id: provider.account_id
-        )
+    Enum.each(providers, fn provider ->
+      Logger.debug("Refreshing access token",
+        provider_id: provider.id,
+        account_id: provider.account_id
+      )
 
-        case Okta.refresh_access_token(provider) do
-          {:ok, provider} ->
-            Logger.debug("Finished refreshing access token",
-              provider_id: provider.id,
-              account_id: provider.account_id
-            )
+      case Okta.refresh_access_token(provider) do
+        {:ok, provider} ->
+          Logger.debug("Finished refreshing access token",
+            provider_id: provider.id,
+            account_id: provider.account_id
+          )
 
-          {:error, reason} ->
-            Logger.error("Failed refreshing access token",
-              provider_id: provider.id,
-              account_id: provider.account_id,
-              reason: inspect(reason)
-            )
-        end
-      end)
-    end
+        {:error, reason} ->
+          Logger.error("Failed refreshing access token",
+            provider_id: provider.id,
+            account_id: provider.account_id,
+            reason: inspect(reason)
+          )
+      end
+    end)
   end
 
   every minutes(3), :sync_directory do
-    with {:ok, providers} <- Domain.Auth.list_providers_pending_sync_by_adapter(:okta) do
-      Logger.debug("Syncing #{length(providers)} Okta providers")
+    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
+    Logger.debug("Syncing #{length(providers)} Okta providers")
 
-      providers
-      |> Domain.Repo.preload(:account)
-      |> Enum.chunk_every(5)
-      |> Enum.each(fn providers ->
-        Enum.map(providers, fn provider ->
-          if Domain.Accounts.idp_sync_enabled?(provider.account) do
-            sync_provider_directory(provider)
-          else
-            Auth.Provider.Changeset.sync_failed(
-              provider,
-              "IdP sync is not enabled in your subscription plan"
-            )
-            |> Domain.Repo.update!()
+    providers
+    |> Domain.Repo.preload(:account)
+    |> Enum.chunk_every(5)
+    |> Enum.each(fn providers ->
+      Enum.map(providers, fn provider ->
+        if Domain.Accounts.idp_sync_enabled?(provider.account) do
+          sync_provider_directory(provider)
+        else
+          Auth.Provider.Changeset.sync_failed(
+            provider,
+            "IdP sync is not enabled in your subscription plan"
+          )
+          |> Domain.Repo.update!()
 
-            :ok
-          end
-        end)
+          :ok
+        end
       end)
-    end
+    end)
   end
 
   def sync_provider_directory(provider) do

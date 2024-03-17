@@ -37,9 +37,9 @@ defmodule Web.Live.RelayGroups.NewTokenTest do
     token = Regex.run(~r/FIREZONE_TOKEN=([^& ]+)/, html) |> List.last() |> String.trim("&quot;")
 
     :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
-    relay = Fixtures.Relays.create_relay(account: account, group: group)
     context = Fixtures.Auth.build_context(type: :relay_group)
-    assert {:ok, _group, _token} = Domain.Relays.authenticate(token, context)
+    assert {:ok, group, token} = Domain.Relays.authenticate(token, context)
+    relay = Fixtures.Relays.create_relay(account: account, group: group, token: token)
     Domain.Relays.connect_relay(relay, "foo")
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _group_id}

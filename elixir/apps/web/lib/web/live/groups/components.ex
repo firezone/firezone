@@ -24,9 +24,9 @@ defmodule Web.Groups.Components do
 
     label =
       cond do
-        Actors.group_synced?(group) -> group.provider.name
-        Actors.group_managed?(group) -> nil
-        true -> nil
+        Actors.group_synced?(group) -> "Synced from #{group.provider.name}"
+        Actors.group_managed?(group) -> "Managed by Firezone"
+        true -> "Manually managed"
       end
 
     {index, label}
