@@ -96,7 +96,7 @@ defmodule Domain.Types.CIDR do
   end
 
   def contains?(%Postgrex.INET{}, %Postgrex.INET{netmask: nil}) do
-    # IPv6 and IPv4 can not contain each other
+    # IPv6 and IPv4 can't contain each other
     false
   end
 
