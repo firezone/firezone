@@ -118,12 +118,15 @@ where
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
-                Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(packet, Instant::now()) else {
-                        continue;
-                    };
+                Poll::Ready(io::Input::Device(packets)) => {
+                    for packet in packets {
+                        let Some(transmit) = self.role_state.encapsulate(packet, Instant::now())
+                        else {
+                            continue;
+                        };
 
-                    self.io.send_network(transmit)?;
+                        self.io.send_network(transmit)?;
+                    }
 
                     continue;
                 }
@@ -204,12 +207,14 @@ where
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
-                Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(packet) else {
-                        continue;
-                    };
+                Poll::Ready(io::Input::Device(packets)) => {
+                    for packet in packets {
+                        let Some(transmit) = self.role_state.encapsulate(packet) else {
+                            continue;
+                        };
 
-                    self.io.send_network(transmit)?;
+                        self.io.send_network(transmit)?;
+                    }
 
                     continue;
                 }
