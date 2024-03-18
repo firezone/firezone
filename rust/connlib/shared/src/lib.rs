@@ -25,6 +25,7 @@ pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
 pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
+use ip_network::IpNetwork;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
 use ip_network::Ipv4Network;
@@ -67,10 +68,22 @@ pub struct IpProvider {
 }
 
 impl IpProvider {
-    pub fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
+    pub fn new(
+        ipv4: Ipv4Network,
+        ipv6: Ipv6Network,
+        exclusion_v4: Option<Ipv4Network>,
+        exclusion_v6: Option<Ipv6Network>,
+    ) -> Self {
         Self {
-            ipv4: Box::new(ipv4.hosts()),
-            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
+            ipv4: Box::new(
+                ipv4.hosts()
+                    .filter(move |ip| !exclusion_v4.is_some_and(|e| e.contains(*ip))),
+            ),
+            ipv6: Box::new(
+                ipv6.subnets_with_prefix(128)
+                    .map(|ip| ip.network_address())
+                    .filter(move |ip| !exclusion_v6.is_some_and(|e| e.contains(*ip))),
+            ),
         }
     }
 

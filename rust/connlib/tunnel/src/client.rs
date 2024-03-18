@@ -511,6 +511,8 @@ impl ClientState {
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),
                 IPV6_RESOURCES.parse().unwrap(),
+                Some(DNS_SENTINELS_V4.parse().unwrap()),
+                Some(DNS_SENTINELS_V6.parse().unwrap()),
             ),
             dns_resources_internal_ips: Default::default(),
             dns_resources: Default::default(),
@@ -969,6 +971,8 @@ fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
     let mut ip_provider = IpProvider::new(
         DNS_SENTINELS_V4.parse().unwrap(),
         DNS_SENTINELS_V6.parse().unwrap(),
+        None,
+        None,
     );
 
     dns.iter()
