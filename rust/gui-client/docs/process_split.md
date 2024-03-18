@@ -1,12 +1,16 @@
 # Process split
 
-This is meant for Linux, but it will probably be very similar on Windows.
+This is meant for Linux, but it will probably be similar on Windows.
 
 ## TODO
 
-- Do we need to support CLI and GUI Clients being installed on the same system? The tunnel binary would conflict if they both try to install it. Splitting it into 3 packages would complicate downloads.
-- Clients and Gateways can't run in the same system, right? How would DNS work if they did?
-- If there is a service account token, but it's invalid, should the tunnel wait for the GUI to connect, or fail? Will the tunnel know whether a GUI is even installed?
+- Are splitting the process for just the GUI client, or for CLI too?
+
+## Decisions
+
+- The CLI and GUI client packages will have a `conflicts` tag, at least for now.
+- Eventually, Clients and Gateways will be allowed to run on the same host, so avoid conflicts there
+- If the service account token exists, we are in service mode and won't accept connections from a GUI client, even if the token is invalid.
 
 ## Binaries
 
