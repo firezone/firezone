@@ -12,16 +12,15 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
-    close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
-    IFF_VNET_HDR, O_NONBLOCK, O_RDWR, S_IFCHR, TUN_F_CSUM, TUN_F_TSO4, TUN_F_TSO6, TUN_F_USO4,
-    TUN_F_USO6,
+    close, fcntl, makedev, mknod, open, writev, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI,
+    IFF_TUN, IFF_VNET_HDR, O_NONBLOCK, O_RDWR, S_IFCHR, TUN_F_CSUM, TUN_F_TSO4, TUN_F_TSO6,
+    TUN_F_USO4, TUN_F_USO6,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use rtnetlink::{RouteAddRequest, RuleAddRequest};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::path::Path;
 use std::task::{Context, Poll};
 use std::{collections::HashSet, task::ready};
 use std::{
@@ -32,6 +31,7 @@ use std::{
         unix::fs::PermissionsExt,
     },
 };
+use std::{io::IoSlice, path::Path};
 use tokio::io::unix::AsyncFd;
 
 const IFACE_NAME: &str = "tun-firezone";
@@ -87,43 +87,55 @@ impl Drop for Tun {
 
 impl Tun {
     pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut with_hdr = vec![0u8; 12 + dbg!(buf.len())];
+        let hdr = VnetHeader {
+            flags: 0,
+            gso_type: 0,
+            hdr_len: 0,
+            gso_size: 0,
+            csum_start: 0,
+            csum_offset: 0,
+            num_buffers: 0,
+        };
 
-        with_hdr[12..].copy_from_slice(buf);
-        with_hdr[0] = 1;
+        let hdr_buf = unsafe { std::mem::transmute::<_, [u8; 12]>(hdr) };
 
-        let [a, b] = 20u16.to_le_bytes();
-        let [c, d] = 16u16.to_le_bytes();
+        let header = unsafe { std::mem::transmute(IoSlice::new(&hdr_buf)) };
+        let packet = unsafe { std::mem::transmute(IoSlice::new(buf)) };
 
-        with_hdr[6] = a;
-        with_hdr[7] = b;
-        with_hdr[8] = c;
-        with_hdr[9] = d;
+        unsafe {
+            let ret = writev(self.fd.as_raw_fd(), (&[header, packet]).as_ptr(), 2);
 
-        // let mut p = MutableIpPacket::new(&mut with_hdr[12..]).unwrap();
-        // p.update_checksum();
-
-        write(self.fd.as_raw_fd(), &with_hdr)
+            match ret {
+                -1 => Err(io::Error::last_os_error()),
+                n => Ok(n as usize),
+            }
+        }
     }
 
     pub fn write6(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut with_hdr = vec![0u8; 12 + dbg!(buf.len())];
+        let hdr = VnetHeader {
+            flags: 0,
+            gso_type: 0,
+            hdr_len: 0,
+            gso_size: 0,
+            csum_start: 0,
+            csum_offset: 0,
+            num_buffers: 0,
+        };
 
-        with_hdr[12..].copy_from_slice(buf);
-        with_hdr[0] = 1;
+        let hdr_buf = unsafe { std::mem::transmute::<_, [u8; 12]>(hdr) };
 
-        let [a, b] = 20u16.to_le_bytes();
-        let [c, d] = 16u16.to_le_bytes();
+        let header = unsafe { std::mem::transmute(IoSlice::new(&hdr_buf)) };
+        let packet = unsafe { std::mem::transmute(IoSlice::new(buf)) };
 
-        with_hdr[6] = a;
-        with_hdr[7] = b;
-        with_hdr[8] = c;
-        with_hdr[9] = d;
+        unsafe {
+            let ret = writev(self.fd.as_raw_fd(), (&[header, packet]).as_ptr(), 2);
 
-        // let mut p = MutableIpPacket::new(&mut with_hdr[12..]).unwrap();
-        // p.update_checksum();
-
-        write(self.fd.as_raw_fd(), &with_hdr)
+            match ret {
+                -1 => Err(io::Error::last_os_error()),
+                n => Ok(n as usize),
+            }
+        }
     }
 
     pub fn poll_read<'b>(
@@ -152,10 +164,13 @@ impl Tun {
         vnet_header_buf.copy_from_slice(&filled[..12]);
         let vnet_header = dbg!(unsafe { std::mem::transmute::<_, VnetHeader>(vnet_header_buf) });
 
-        let needs_checksum_update = vnet_header.flags == 1;
+        // let needs_checksum_update = vnet_header.flags == 1;
 
         let payload = &mut filled[12..];
         let payload_len = dbg!(payload.len());
+
+        let header_length = vnet_header.hdr_len as usize;
+        let body_length = vnet_header.gso_size as usize;
 
         match vnet_header.gso_type {
             0 => {
@@ -164,37 +179,52 @@ impl Tun {
                         .chunks_mut(payload_len)
                         .filter_map(MutableIpPacket::new)
                         .map(move |mut p| {
-                            if needs_checksum_update {
-                                p.update_checksum();
-                            }
+                            // p.set_len(payload_len, payload_len - ip_header_length);
+                            p.update_checksum();
+
+                            dbg!(&p);
 
                             p
                         }),
                 )
-                    as Box<dyn Iterator<Item = MutableIpPacket<'b>>>))
+                    as Box<dyn Iterator<Item = MutableIpPacket<'b>>>));
             }
             1 | 3 | 4 | 5 => {
-                let header_length = vnet_header.hdr_len as usize;
-                let body_length = vnet_header.gso_size as usize;
                 let packet_length = header_length + body_length;
+                let ip_header_length = header_length - vnet_header.csum_start as usize;
 
                 let (header, bodies) = payload.split_at_mut(header_length);
 
                 dbg!(bodies.len() / body_length);
 
-                let packets = bodies.chunks_mut(body_length).filter_map(move |body| {
-                    let mut packet_buffer = vec![0u8; packet_length];
-                    packet_buffer[..header_length].copy_from_slice(header);
-                    packet_buffer[header_length..].copy_from_slice(body);
+                let packets =
+                    bodies
+                        .chunks_mut(body_length)
+                        .enumerate()
+                        .filter_map(move |(index, body)| {
+                            let mut packet_buffer = vec![0u8; packet_length];
+                            packet_buffer[..header_length].copy_from_slice(header);
+                            packet_buffer[header_length..].copy_from_slice(body);
 
-                    let mut packet = MutableIpPacket::owned(packet_buffer)?;
+                            let mut packet = MutableIpPacket::owned(packet_buffer)?;
 
-                    if needs_checksum_update {
-                        packet.update_checksum();
-                    }
+                            // dbg!(&packet);
 
-                    Some(packet)
-                });
+                            packet.inc_ipv4_identification_by(index as u16);
+                            packet.set_len(packet_length, packet_length - ip_header_length);
+                            // packet.set_ipv4_no_fragment();
+                            packet.update_checksum();
+
+                            dbg!(&packet);
+
+                            // dbg!(packet.packet_size());
+
+                            // if needs_checksum_update {
+                            //     packet.update_checksum();
+                            // }
+
+                            Some(packet)
+                        });
 
                 Poll::Ready(Ok(Box::new(packets)))
             }
