@@ -296,6 +296,11 @@ impl Socket {
         tracing::trace!(target: "wire", to = "network", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
 
         self.buffered_transmits.push(transmit);
+
+        debug_assert!(
+            self.buffered_transmits.len() < 10_000,
+            "We are not flushing the packets for some reason"
+        );
     }
 }
 
