@@ -314,6 +314,65 @@ defmodule Domain.Repo.Changeset do
     end)
   end
 
+  def validate_fqdn(changeset, field, opts \\ []) do
+    allow_port = Keyword.get(opts, :allow_port, false)
+
+    validate_change(changeset, field, fn _current_field, value ->
+      {fqdn, port} = split_port(value)
+      fqdn_validation_errors = fqdn_validation_errors(field, fqdn)
+      port_validation_errors = port_validation_errors(field, port, allow_port)
+      fqdn_validation_errors ++ port_validation_errors
+    end)
+  end
+
+  defp fqdn_validation_errors(field, fqdn) do
+    if Regex.match?(~r/^([a-zA-Z0-9._-])+$/i, fqdn) do
+      []
+    else
+      [{field, "#{fqdn} is not a valid FQDN"}]
+    end
+  end
+
+  defp split_port(value) do
+    case String.split(value, ":", parts: 2) do
+      [prefix, port] ->
+        case Integer.parse(port) do
+          {port, ""} ->
+            {prefix, port}
+
+          _ ->
+            {value, nil}
+        end
+
+      [value] ->
+        {value, nil}
+    end
+  end
+
+  defp port_validation_errors(_field, nil, _allow?),
+    do: []
+
+  defp port_validation_errors(field, _port, false),
+    do: [{field, "setting port is not allowed"}]
+
+  defp port_validation_errors(_field, port, _allow?) when 0 < port and port <= 65_535,
+    do: []
+
+  defp port_validation_errors(field, _port, _allow?),
+    do: [{field, "port is not a number between 0 and 65535"}]
+
+  def validate_ip_type_inclusion(changeset, field, types) do
+    validate_change(changeset, field, fn _current_field, %{address: address} ->
+      type = if tuple_size(address) == 4, do: :ipv4, else: :ipv6
+
+      if type in types do
+        []
+      else
+        [{field, "is not a supported IP type"}]
+      end
+    end)
+  end
+
   # Polymorphic embeds
 
   @doc """

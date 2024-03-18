@@ -563,6 +563,18 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_sign_up_enabled, :boolean, default: true)
 
   @doc """
+  List of email domains allowed to signup from. Leave empty to allow signing up from any domain.
+  """
+  defconfig(:sign_up_whitelisted_domains, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      changeset
+      |> Ecto.Changeset.validate_required(key)
+      |> Domain.Repo.Changeset.validate_fqdn(key)
+    end
+  )
+
+  @doc """
   Boolean flag to turn IdP sync on/off for all accounts.
   """
   defconfig(:feature_idp_sync_enabled, :boolean, default: true)
