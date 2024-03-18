@@ -1,7 +1,7 @@
 use super::utils;
-use crate::device_channel::ioctl;
 use crate::ip_packet::MutableIpPacket;
 use crate::FIREZONE_MARK;
+use crate::{device_channel::ioctl, ip_packet::IpPacket};
 use connlib_shared::{
     linux::{etc_resolv_conf, DnsControlMethod},
     messages::Interface as InterfaceConfig,
@@ -87,6 +87,8 @@ impl Drop for Tun {
 
 impl Tun {
     pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
+        dbg!(IpPacket::new(buf));
+
         let hdr = VnetHeader {
             flags: 0,
             gso_type: 0,
