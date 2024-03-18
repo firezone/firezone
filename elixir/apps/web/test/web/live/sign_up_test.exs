@@ -68,21 +68,17 @@ defmodule Web.Live.SignUpTest do
     end)
   end
 
-  test "allows override to create new account and send a welcome email", %{conn: conn} do
+  test "allows whitelisted domains to create new account", %{conn: conn} do
+    whitelisted_domain = "example.com"
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-    Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_always_allowed_domains, ["example.com"])
+    Domain.Config.put_env_override(:sign_up_whitelisted_domains, [whitelisted_domain])
 
     account_name = "FooBar"
-
-    {:ok, lv, _html} = live(conn, ~p"/sign_up")
-
-    email = Fixtures.Auth.email()
 
     attrs = %{
       account: %{name: account_name},
       actor: %{name: "John Doe"},
-      email: email
+      email: Fixtures.Auth.email(whitelisted_domain)
     }
 
     Bypass.open()
@@ -92,39 +88,29 @@ defmodule Web.Live.SignUpTest do
     })
     |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
 
-    assert html =
-             lv
-             |> form("form", registration: attrs)
-             |> render_submit()
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+    html =
+      lv
+      |> form("form", registration: attrs)
+      |> render_submit()
 
     assert html =~ "Your account has been created!"
     assert html =~ account_name
-
-    account = Repo.one(Domain.Accounts.Account)
-    assert account.name == account_name
-    assert account.metadata.stripe.customer_id
-
-    provider = Repo.one(Domain.Auth.Provider)
-    assert provider.account_id == account.id
-
-    actor = Repo.one(Domain.Actors.Actor)
-    assert actor.account_id == account.id
-    assert actor.name == "John Doe"
-
-    identity = Repo.one(Domain.Auth.Identity)
-    assert identity.account_id == account.id
-    assert identity.provider_identifier == email
-
-    assert_email_sent(fn email ->
-      assert email.subject == "Welcome to Firezone"
-      assert email.text_body =~ url(~p"/#{account}")
-    end)
   end
 
-  test "prevents unauthorized email from creating new account", %{conn: conn} do
+  test "does not show account creation form when sign ups are disabled", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_always_allowed_domains, ["firezone.dev"])
+
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+    refute has_element?(lv, "form")
+  end
+
+  test "does not allow to create account from not whitelisted domain", %{conn: conn} do
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    Domain.Config.feature_flag_override(:sign_up, true)
+    Domain.Config.put_env_override(:sign_up_whitelisted_domains, ["firezone.dev"])
 
     account_name = "FooBar"
 
@@ -186,33 +172,19 @@ defmodule Web.Live.SignUpTest do
            }
   end
 
-  test "renders changeset errors on submit when sign up disabled and not on allow list", %{
+  test "renders changeset errors on submit when sign up disabled", %{
     conn: conn
   } do
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_always_allowed_domains, ["firezone.dev"])
+    Domain.Config.put_env_override(:sign_up_whitelisted_domains, ["foo.com"])
 
-    attrs = %{
-      account: %{name: "FooBar"},
-      actor: %{name: "John Doe"},
-      email: "jdoe@foo.com"
-    }
-
-    {:ok, lv, _html} = live(conn, ~p"/sign_up")
-
-    assert lv
-           |> form("form", registration: attrs)
-           |> render_submit()
-           |> form_validation_errors() == %{
-             "registration[email]" => [
-               "email domain is not allowed at this time"
-             ]
-           }
+    {:ok, _lv, html} = live(conn, ~p"/sign_up")
+    assert html =~ "Sign-ups are currently disabled."
   end
 
   test "renders sign up disabled message", %{conn: conn} do
     Domain.Config.feature_flag_override(:sign_up, false)
-    Domain.Config.put_env_override(:sign_up_always_allowed_domains, [])
+    Domain.Config.put_env_override(:sign_up_whitelisted_domains, [])
 
     {:ok, _lv, html} = live(conn, ~p"/sign_up")
 

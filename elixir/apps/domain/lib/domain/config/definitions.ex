@@ -550,23 +550,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:api_url_override, :string, default: nil)
 
   ##############################################
-  ## Sign Up
-  ##############################################
-
-  @doc """
-  String of comma separated email domains allowed to signup regardless of signup enabled state.
-  If signups are enabled, this list is ignored.
-  """
-  defconfig(:sign_up_always_allowed_domains, {:array, ",", :string},
-    changeset: fn changeset, key ->
-      changeset
-      |> Ecto.Changeset.validate_required(key)
-      |> Domain.Validator.validate_fqdn(key)
-    end,
-    default: []
-  )
-
-  ##############################################
   ## Feature Flags
   ##
   ## If feature is disabled globally it won't be available for any account,
@@ -578,6 +561,18 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn Sign-ups on/off for all accounts.
   """
   defconfig(:feature_sign_up_enabled, :boolean, default: true)
+
+  @doc """
+  List of email domains allowed to signup from. Leave empty to allow signing up from any domain.
+  """
+  defconfig(:sign_up_whitelisted_domains, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      changeset
+      |> Ecto.Changeset.validate_required(key)
+      |> Domain.Repo.Changeset.validate_fqdn(key)
+    end
+  )
 
   @doc """
   Boolean flag to turn IdP sync on/off for all accounts.

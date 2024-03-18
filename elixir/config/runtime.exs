@@ -61,7 +61,7 @@ if config_env() == :prod do
     self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
     multi_site_resources: compile_config!(:feature_multi_site_resources_enabled)
 
-  config :domain, sign_up_always_allowed_domains: compile_config!(:sign_up_always_allowed_domains)
+  config :domain, sign_up_whitelisted_domains: compile_config!(:sign_up_whitelisted_domains)
 
   config :domain, docker_registry: compile_config!(:docker_registry)
 

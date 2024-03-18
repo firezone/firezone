@@ -335,7 +335,7 @@ locals {
     },
     # Sign Up
     {
-      name  = "SIGN_UP_ALLOWED_DOMAINS"
+      name  = "SIGN_UP_WHITELISTED_DOMAINS"
       value = "firezone.dev,firez.one"
     },
   ]

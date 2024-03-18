@@ -16,12 +16,14 @@ defmodule Web.SignUp do
       embeds_one(:actor, Actors.Actor)
     end
 
-    def changeset(attrs, sign_up_enabled, allowed_domains) do
+    def changeset(attrs) do
+      whitelisted_domains = Domain.Config.get_env(:domain, :sign_up_whitelisted_domains)
+
       %Registration{}
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_required([:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
-      |> validate_email_allowed(sign_up_enabled, allowed_domains)
+      |> validate_email_allowed(whitelisted_domains)
       |> Ecto.Changeset.validate_confirmation(:email,
         required: true,
         message: "email does not match"
@@ -34,19 +36,21 @@ defmodule Web.SignUp do
       )
     end
 
-    defp validate_email_allowed(changeset, true, _allowed_domains), do: changeset
+    defp validate_email_allowed(changeset, []) do
+      changeset
+    end
 
-    defp validate_email_allowed(changeset, _sign_up_enabled, allowed_domains) do
+    defp validate_email_allowed(changeset, whitelisted_domains) do
       Ecto.Changeset.validate_change(changeset, :email, fn :email, email ->
-        if email_allowed?(email, allowed_domains),
+        if email_allowed?(email, whitelisted_domains),
           do: [],
           else: [email: "email domain is not allowed at this time"]
       end)
     end
 
-    defp email_allowed?(email, allowed_domains) do
+    defp email_allowed?(email, whitelisted_domains) do
       with [_, domain] <- String.split(email, "@", parts: 2) do
-        Enum.member?(allowed_domains, domain)
+        Enum.member?(whitelisted_domains, domain)
       else
         _ -> false
       end
@@ -56,32 +60,25 @@ defmodule Web.SignUp do
   def mount(_params, _session, socket) do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
     real_ip = Web.Auth.real_ip(socket)
-    sign_up_enabled = Config.sign_up_enabled?()
-    allowed_domains = Domain.Config.get_env(:domain, :sign_up_always_allowed_domains)
+    sign_up_enabled? = Config.sign_up_enabled?()
 
     changeset =
-      Registration.changeset(
-        %{
-          account: %{slug: "placeholder"},
-          actor: %{type: :account_admin_user}
-        },
-        sign_up_enabled,
-        allowed_domains
-      )
+      Registration.changeset(%{
+        account: %{slug: "placeholder"},
+        actor: %{type: :account_admin_user}
+      })
 
     socket =
       assign(socket,
+        page_title: "Sign Up",
         form: to_form(changeset),
         account: nil,
         provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: sign_up_enabled,
-        show_form?: sign_up_enabled or allowed_domains != [],
-        allowed_domains: allowed_domains,
+        sign_up_enabled?: sign_up_enabled?,
         account_name_changed?: false,
-        actor_name_changed?: false,
-        page_title: "Sign Up"
+        actor_name_changed?: false
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -108,14 +105,14 @@ defmodule Web.SignUp do
               </:separator>
 
               <:item>
-                <.sign_up_form :if={@account == nil && @show_form?} flash={@flash} form={@form} />
+                <.sign_up_form :if={@account == nil && @sign_up_enabled?} flash={@flash} form={@form} />
                 <.welcome
-                  :if={@account && @show_form?}
+                  :if={@account && @sign_up_enabled?}
                   account={@account}
                   provider={@provider}
                   identity={@identity}
                 />
-                <.sign_up_disabled :if={!@show_form?} />
+                <.sign_up_disabled :if={!@sign_up_enabled?} />
               </:item>
             </.intersperse_blocks>
           </div>
@@ -293,7 +290,7 @@ defmodule Web.SignUp do
       attrs
       |> maybe_put_default_account_name(account_name_changed?)
       |> maybe_put_default_actor_name(actor_name_changed?)
-      |> Registration.changeset(socket.assigns.sign_up_enabled?, socket.assigns.allowed_domains)
+      |> Registration.changeset()
       |> Map.put(:action, :validate)
 
     {:noreply,
@@ -314,10 +311,10 @@ defmodule Web.SignUp do
       |> maybe_put_default_account_name()
       |> maybe_put_default_actor_name()
       |> put_in(["actor", "type"], :account_admin_user)
-      |> Registration.changeset(socket.assigns.sign_up_enabled?, socket.assigns.allowed_domains)
+      |> Registration.changeset()
       |> Map.put(:action, :insert)
 
-    if changeset.valid? do
+    if changeset.valid? and socket.assigns.sign_up_enabled? do
       registration = Ecto.Changeset.apply_changes(changeset)
 
       case register_account(registration) do
