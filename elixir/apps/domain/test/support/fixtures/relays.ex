@@ -46,6 +46,20 @@ defmodule Domain.Fixtures.Relays do
     group
   end
 
+  def create_global_token(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {group, attrs} =
+      pop_assoc_fixture(attrs, :group, fn assoc_attrs ->
+        create_global_group(assoc_attrs)
+      end)
+
+    {:ok, token, encoded_token} = Relays.create_token(group, attrs)
+    context = Fixtures.Auth.build_context(type: :relay_group)
+    {:ok, {_account_id, _id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
+    %{token | secret_nonce: nonce, secret_fragment: secret}
+  end
+
   def create_token(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
@@ -68,10 +82,10 @@ defmodule Domain.Fixtures.Relays do
         |> Fixtures.Auth.create_subject()
       end)
 
-    {:ok, encoded_token} = Relays.create_token(group, attrs, subject)
+    {:ok, token, encoded_token} = Relays.create_token(group, attrs, subject)
     context = Fixtures.Auth.build_context(type: :relay_group)
-    {:ok, {_account_id, id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
-    %{Repo.get(Domain.Tokens.Token, id) | secret_nonce: nonce, secret_fragment: secret}
+    {:ok, {_account_id, _id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
+    %{token | secret_nonce: nonce, secret_fragment: secret}
   end
 
   def relay_attrs(attrs \\ %{}) do
@@ -98,6 +112,19 @@ defmodule Domain.Fixtures.Relays do
         |> create_group()
       end)
 
+    {token, attrs} =
+      pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
+        if group.account_id do
+          assoc_attrs
+          |> Enum.into(%{account: account, group: group})
+          |> create_token()
+        else
+          assoc_attrs
+          |> Enum.into(%{group: group})
+          |> create_global_token()
+        end
+      end)
+
     {context, attrs} =
       pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
         assoc_attrs
@@ -105,7 +132,7 @@ defmodule Domain.Fixtures.Relays do
         |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, relay} = Relays.upsert_relay(group, attrs, context)
+    {:ok, relay} = Relays.upsert_relay(group, token, attrs, context)
     %{relay | online?: false}
   end
 

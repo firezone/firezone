@@ -136,6 +136,16 @@ where
         }
     }
 
+    pub fn reconnect(&mut self, now: Instant) {
+        for binding in self.bindings.values_mut() {
+            binding.refresh(now);
+        }
+
+        for allocation in self.allocations.values_mut() {
+            allocation.refresh(now);
+        }
+    }
+
     pub fn public_key(&self) -> PublicKey {
         (&self.private_key).into()
     }
@@ -904,7 +914,7 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(server) {
-                existing.refresh(username, password, realm, now);
+                existing.update_credentials(username, password, realm, now);
                 continue;
             }
 

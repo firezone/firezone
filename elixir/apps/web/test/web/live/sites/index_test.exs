@@ -83,7 +83,9 @@ defmodule Web.Live.Sites.IndexTest do
              "resources" => resource.name
            }
 
+    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(group)
     :ok = Domain.Gateways.connect_gateway(gateway)
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
     {:ok, lv, _html} =
       conn

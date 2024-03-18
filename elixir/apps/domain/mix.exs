@@ -53,29 +53,27 @@ defmodule Domain.MixProject do
 
       # Auth-related deps
       {:plug_crypto, "~> 2.0"},
-      {:openid_connect, github: "firezone/openid_connect", branch: "master"},
+      {:openid_connect,
+       github: "firezone/openid_connect", ref: "76c1a1c9a9da3b8be7b8270306a9240d80d7696f"},
       {:argon2_elixir, "~> 4.0"},
 
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
 
       # Observability and Runtime debugging
+      {:bandit, "~> 1.0"},
+      {:plug, "~> 1.15"},
       {:telemetry, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
+      {:telemetry_metrics, "~> 0.6.2"},
       {:logger_json, "~> 5.1"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_logger_metadata, "~> 0.1.0"},
       {:opentelemetry_exporter, "~> 1.5"},
-      {:opentelemetry_ecto, "~> 1.1"},
+      {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
-
-      # Mailer deps
-      # XXX: This is a workaround for the following issue:
-      # https://github.com/elixir-lang/elixir/issues/12777
-      # Remove Swoosh from Domain once this is fixed.
-      {:phoenix_swoosh, "~> 1.0"},
-      {:hackney, "~> 1.9"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},

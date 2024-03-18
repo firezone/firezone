@@ -7,7 +7,7 @@ pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::{get_user_agent, CallbackErrorFacade};
-use firezone_tunnel::Tunnel;
+use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
 
@@ -21,11 +21,6 @@ use eventloop::Command;
 pub use eventloop::Eventloop;
 use secrecy::Secret;
 use tokio::task::JoinHandle;
-
-/// Max interval to retry connections to the portal if it's down or the client has network
-/// connectivity changes. Set this to something short so that the end-user experiences
-/// minimal disruption to their Firezone resources when switching networks.
-const MAX_RECONNECT_INTERVAL: Duration = Duration::from_secs(5);
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
@@ -62,6 +57,22 @@ impl Session {
         Ok(Self { channel: tx })
     }
 
+    /// Attempts to reconnect a [`Session`].
+    ///
+    /// This can and should be called by client applications on any network state changes.
+    /// It is a signal to connlib to:
+    ///
+    /// - validate all currently used network paths to relays and peers
+    /// - ensure we are connected to the portal
+    ///
+    /// Reconnect is non-destructive and can be called several times in a row.
+    ///
+    /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
+    /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
+    pub fn reconnect(&mut self) {
+        let _ = self.channel.try_send(Command::Reconnect);
+    }
+
     /// Disconnect a [`Session`].
     ///
     /// This consumes [`Session`] which cleans up all state associated with it.
@@ -84,7 +95,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = Tunnel::new(private_key, callbacks.clone())?;
+    let tunnel = ClientTunnel::new(private_key, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
@@ -93,7 +104,6 @@ where
         (),
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(max_partition_time)
-            .with_max_interval(MAX_RECONNECT_INTERVAL)
             .build(),
     );
 

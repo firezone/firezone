@@ -5,7 +5,7 @@ defmodule Domain.Fixtures.Auth do
   def user_password, do: "Hello w0rld!"
   def remote_ip, do: {100, 64, 100, 58}
   def user_agent, do: "iOS/12.5 (iPhone) connlib/0.7.412"
-  def email, do: "user-#{unique_integer()}@example.com"
+  def email(domain \\ "example.com"), do: "user-#{unique_integer()}@#{domain}"
 
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :email, name: name}) do
     "user-#{unique_integer()}@#{String.downcase(name)}.com"

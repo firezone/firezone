@@ -46,7 +46,11 @@ defmodule Firezone.MixProject do
 
       # Formatter doesn't track dependencies of children applications
       {:phoenix, "~> 1.7.0"},
-      {:phoenix_live_view, "~> 0.20.1"}
+      {:phoenix_live_view, "~> 0.20.1"},
+
+      # TODO: remove it after new version of Floki is released
+      {:floki,
+       override: true, github: "philss/floki", ref: "3d5adab58a41b020a775baca82fe15c0c364daab"}
     ]
   end
 
@@ -63,6 +67,15 @@ defmodule Firezone.MixProject do
 
   defp releases do
     [
+      domain: [
+        include_executables_for: [:unix],
+        validate_compile_env: true,
+        applications: [
+          domain: :permanent,
+          opentelemetry_exporter: :permanent,
+          opentelemetry: :temporary
+        ]
+      ],
       web: [
         include_executables_for: [:unix],
         validate_compile_env: true,

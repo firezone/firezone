@@ -92,7 +92,8 @@ defmodule Domain.Auth.Identity.Sync do
     provider_identifiers_to_delete = Enum.uniq(provider_identifiers_to_delete)
 
     {_count, identities} =
-      Identity.Query.by_account_id(provider.account_id)
+      Identity.Query.not_deleted()
+      |> Identity.Query.by_account_id(provider.account_id)
       |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
       |> Identity.Query.delete()
