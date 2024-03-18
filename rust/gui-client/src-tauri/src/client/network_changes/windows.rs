@@ -440,10 +440,25 @@ mod async_dns {
 
         let [key_ipv4, key_ipv6] = open_network_registry_keys()?;
 
-        rt.spawn(listen_to_dns(key_ipv4, "IPv4"));
-        rt.spawn(listen_to_dns(key_ipv6, "IPv6"));
+        let mut listener_4 = Listener::new(key_ipv4)?;
+        let mut listener_6 = Listener::new(key_ipv6)?;
 
-        rt.block_on(tokio::signal::ctrl_c())?;
+        rt.block_on(async move {
+            loop {
+                tokio::select! {
+                    _r = tokio::signal::ctrl_c() => break,
+                    r = listener_4.notified() => r?,
+                    r = listener_6.notified() => r?,
+                }
+
+                let resolvers = crate::client::resolvers::get()?;
+                tracing::info!(?resolvers);
+            }
+
+            listener_4.close()?;
+            listener_6.close()?;
+            Ok::<_, anyhow::Error>(())
+        })?;
 
         Ok(())
     }
@@ -451,9 +466,8 @@ mod async_dns {
     struct Listener {
         key: winreg::RegKey,
         notify: std::pin::Pin<Box<Notify>>,
-        // These are wrapped in an 'inner' so we can `Drop` them automatically
-        // or manually.
-        inner: Option<ListenerInner>,
+        wait_handle: Option<HANDLE>,
+        event: Option<HANDLE>,
     }
 
     impl Listener {
@@ -492,10 +506,8 @@ mod async_dns {
             let mut that = Self {
                 key,
                 notify,
-                inner: Some(ListenerInner {
-                    wait_handle,
-                    event,
-                }),
+                wait_handle: Some(wait_handle),
+                event: Some(event),
             };
             that.register_callback()?;
 
@@ -503,15 +515,22 @@ mod async_dns {
         }
 
         pub(crate) fn close(&mut self) -> Result<()> {
-            if let Some(mut inner) = self.inner.take() {
-                inner.close()?;
+            if let Some(wait_handle) = self.wait_handle.take() {
+                unsafe { UnregisterWaitEx(wait_handle, INVALID_HANDLE_VALUE) }?;
             }
+            if let Some(event) = self.event.take() {
+                unsafe { CloseHandle(event) }?;
+                tracing::debug!("Unregistered registry listener");
+            }
+
             Ok(())
         }
 
         // I'm not sure if this needs to be mut, I'm being cautious here.
         // There is no reason in practice you'd ever want to call it from two
         // threads at once.
+        //
+        // Cancel-safety: Probably. `tokio::sync::Notify` sounds cancel-safe.
         pub(crate) async fn notified(&mut self) -> Result<()> {
             // Order matters here
             // We want to return to the caller and let them check the DNS
@@ -525,13 +544,13 @@ mod async_dns {
         // Be careful with this, if you register twice before the callback fires,
         // it will probably leak something. Check the MS docs for `RegNotifyChangeKeyValue`.
         fn register_callback(&mut self) -> Result<()> {
-            let inner = self.inner.as_mut().context("Can't call `register_callback` on a `Listener` that's already been closed")?;
+            let event = self.event.context("Can't call `register_callback` on a `Listener` that's already been closed")?;
             let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags =
                 Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
             // TODO: Error handling
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, inner.event, true)
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }.ok().context("`RegNotifyChangeKeyValue` failed")?;
             Ok(())
         }
@@ -539,30 +558,7 @@ mod async_dns {
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            if self.inner.is_some() {
-                tracing::warn!("DNS change listener was not closed manually");
-            }
             self.close().expect("Should be able to drop DNS change listener");
-        }
-    }
-
-    struct ListenerInner {
-        wait_handle: HANDLE,
-        event: HANDLE,
-    }
-
-    impl Drop for ListenerInner {
-        fn drop(&mut self) {
-            self.close().expect("Should be able to drop DNS change listener");
-        }
-    }
-
-    impl ListenerInner {
-        pub(crate) fn close(&mut self) -> Result<()> {
-            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }?;
-            unsafe { CloseHandle(self.event) }?;
-            tracing::info!("Unregistered registry listener");
-            Ok(())
         }
     }
 
@@ -574,14 +570,5 @@ mod async_dns {
     unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
         let notify = &*(ctx as *const tokio::sync::Notify);
         notify.notify_one();
-    }
-
-    async fn listen_to_dns(key: winreg::RegKey, name: &str) -> Result<()> {
-        let mut listener = Listener::new(key)?;
-        tracing::info!(?name, "Listening for DNS changes");
-        loop {
-            listener.notified().await?;
-            tracing::info!(?name, "Check DNS");
-        }
     }
 }
