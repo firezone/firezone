@@ -87,6 +87,8 @@ config :domain, :enabled_features,
   self_hosted_relays: true,
   multi_site_resources: true
 
+config :domain, sign_up_whitelisted_domains: []
+
 config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
 
 config :domain, outbound_email_adapter_configured?: false
@@ -199,7 +201,9 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :swoosh, :api_client, Swoosh.ApiClient.Finch
+# TODO: This is buggy, the return value is different
+# from the one you would get with Hackney:
+# config :swoosh, :api_client, Swoosh.ApiClient.Finch
 
 config :web, Web.Mailer,
   adapter: Domain.Mailer.NoopAdapter,
