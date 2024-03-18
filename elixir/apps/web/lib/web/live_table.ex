@@ -82,7 +82,13 @@ defmodule Web.LiveTable do
 
   defp resource_filter(assigns) do
     ~H"""
-    <.form id={"#{@live_table_id}-filters"} for={@form} phx-change="filter" phx-debounce="100">
+    <.form
+      :if={@filters != []}
+      id={"#{@live_table_id}-filters"}
+      for={@form}
+      phx-change="filter"
+      phx-debounce="100"
+    >
       <.input type="hidden" name="table_id" value={@live_table_id} />
 
       <div
@@ -423,7 +429,11 @@ defmodule Web.LiveTable do
   def reload_live_table!(socket, id) do
     callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
     list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
-    callback.(socket, list_opts)
+
+    case callback.(socket, list_opts) do
+      {:error, _reason} -> push_navigate(socket, to: socket.assigns.uri)
+      socket -> socket
+    end
   end
 
   @doc """
@@ -457,31 +467,48 @@ defmodule Web.LiveTable do
       order_by: List.wrap(order_by)
     ]
 
-    socket
-    |> maybe_apply_callback(id, list_opts)
-    |> assign(
-      filter_form_by_table_id:
-        put_table_state(
-          socket,
-          id,
-          :filter_form_by_table_id,
-          filter_to_form(filter, id)
-        ),
-      order_by_table_id:
-        put_table_state(
-          socket,
-          id,
-          :order_by_table_id,
-          order_by
-        ),
-      list_opts_by_table_id:
-        put_table_state(
-          socket,
-          id,
-          :list_opts_by_table_id,
-          list_opts
+    case maybe_apply_callback(socket, id, list_opts) do
+      {:error, :invalid_cursor} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, {:unknown_filter, _metadata}} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, {:invalid_type, _metadata}} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, {:invalid_value, _metadata}} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, _reason} ->
+        raise Web.LiveErrors.NotFoundError
+
+      socket ->
+        socket
+        |> assign(
+          filter_form_by_table_id:
+            put_table_state(
+              socket,
+              id,
+              :filter_form_by_table_id,
+              filter_to_form(filter, id)
+            ),
+          order_by_table_id:
+            put_table_state(
+              socket,
+              id,
+              :order_by_table_id,
+              order_by
+            ),
+          list_opts_by_table_id:
+            put_table_state(
+              socket,
+              id,
+              :list_opts_by_table_id,
+              list_opts
+            )
         )
-    )
+    end
   end
 
   defp maybe_apply_callback(socket, id, list_opts) do
@@ -529,7 +556,8 @@ defmodule Web.LiveTable do
     ArgumentError -> []
   end
 
-  defp filter_to_form(filter, as) do
+  @doc false
+  def filter_to_form(filter, as) do
     # Note: we don't support nesting, :and or :where on the UI yet
     for {key, value} <- filter, into: %{} do
       {Atom.to_string(key), value}
