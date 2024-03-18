@@ -20,8 +20,6 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     case connlibDisconnected
     case badTunnelConfiguration
     case tokenNotFound
-    case networkSettingsApplyFailure
-    case invalidAdapterState
 
     public var description: String {
       switch self {
@@ -30,8 +28,6 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       case .connlibDisconnected: return "connlib disconnected"
       case .badTunnelConfiguration: return "bad tunnel configuration"
       case .tokenNotFound: return "token not found"
-      case .networkSettingsApplyFailure: return "network settings apply failure"
-      case .invalidAdapterState: return "invalid adapter state"
       }
     }
 
@@ -40,13 +36,9 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
       case .stopped(let reason):
         if reason == .userInitiated {
           return .signoutImmediatelySilently
-        } else if reason == .userLogout || reason == .userSwitch {
-          return .doNothing
         } else {
-          return .retryThenSignout
+          return .doNothing
         }
-      case .networkSettingsApplyFailure, .invalidAdapterState:
-        return .retryThenSignout
       case .connlibConnectFailure, .connlibDisconnected,
         .badTunnelConfiguration, .tokenNotFound:
         return .signoutImmediately
@@ -58,7 +50,6 @@ public struct TunnelShutdownEvent: Codable, CustomStringConvertible {
     case doNothing
     case signoutImmediately
     case signoutImmediatelySilently
-    case retryThenSignout
   }
 
   public let reason: TunnelShutdownEvent.Reason
