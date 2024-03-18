@@ -446,10 +446,10 @@ struct CallbackHandler {
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
-    #[error("system DNS resolver problem: {0}")]
-    Resolvers(#[from] client::resolvers::Error),
     #[error("can't send to controller task: {0}")]
     SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 // Callbacks must all be non-blocking
