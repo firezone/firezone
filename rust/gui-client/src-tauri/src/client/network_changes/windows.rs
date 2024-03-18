@@ -74,7 +74,7 @@ use windows::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
             NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
         },
-        System::{Com, Registry},
+        System::Com,
     },
 };
 
@@ -135,7 +135,7 @@ pub(crate) fn run_debug() -> Result<()> {
 /// including when connlib changes anything on the Firezone tunnel.
 /// It will often fire multiple events in quick succession.
 pub(crate) fn run_dns_debug() -> Result<()> {
-    return async_dns::run_dns_debug_async();
+    async_dns::run_debug()
 }
 
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
@@ -160,6 +160,8 @@ pub fn check_internet() -> Result<bool> {
 /// Worker thread that can be joined explicitly, and joins on Drop
 pub(crate) struct Worker {
     inner: Option<WorkerInner>,
+    // I think this is `Arc` because of the worker thread, and we need the worker thread
+    // because of COM. `Notify` only has `&self` methods so it does not need `Arc` in general.
     notify: Arc<Notify>,
 }
 
@@ -396,8 +398,9 @@ fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
 }
 
 mod async_dns {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
     use std::{ffi::c_void, ops::Deref};
+    use tokio::sync::Notify;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
@@ -431,31 +434,7 @@ mod async_dns {
         ])
     }
 
-    unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
-        let waker = &*(ctx as *const tokio::sync::Notify);
-        waker.notify_one();
-    }
-
-    pub(crate) fn run_dns_debug_async() -> Result<()> {
-        /*
-         * Open reg keys
-         * CreateEventA
-         * RegisterWaitForSingleObject
-         *
-         * RegNotifyChangeKeyValue
-         * AtomicWaker::wake
-         *
-         * UnregisterWaitEx
-         * CloseHandle
-         * Close reg keys
-         *
-         * RegNotifyChangeKeyValue notifies `event`
-         * `event` triggers `wait_handle`
-         * `wait_handle` calls back into our AtomicWaker
-         *
-         * "What you are about to see..... is considered safe."
-         */
-
+    pub(crate) fn run_debug() -> Result<()> {
         tracing_subscriber::fmt::init();
         let rt = tokio::runtime::Runtime::new()?;
 
@@ -469,46 +448,140 @@ mod async_dns {
         Ok(())
     }
 
-    async fn listen_to_dns(key: winreg::RegKey, name: &str) -> Result<()> {
-        let waker = Box::pin(tokio::sync::Notify::default());
-        let waker_ptr: *const tokio::sync::Notify = waker.deref();
-        let event = unsafe { CreateEventA(None, false, false, None) }?;
-        let mut wait_handle = HANDLE(0isize);
+    struct Listener {
+        key: winreg::RegKey,
+        notify: std::pin::Pin<Box<Notify>>,
+        // These are wrapped in an 'inner' so we can `Drop` them automatically
+        // or manually.
+        inner: Option<ListenerInner>,
+    }
 
-        // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
-        // "the thread pool".
-        // Raymond Chen, who is an authority on Windows internals, says RegisterWaitForSingleObject
-        // does multiple waits on the same worker thread internally:
-        // <https://devblogs.microsoft.com/oldnewthing/20081117-00/?p=20183>
-        // There is a different function in the CLR called `RegisterWaitForSingleObject`,
-        // so he might be talking about that.
-        // If he's not, then we're invisibly tying up two worker threads. Can't help it.
-        unsafe {
-            RegisterWaitForSingleObject(
-                &mut wait_handle,
-                event,
-                Some(callback),
-                Some(waker_ptr as *const _),
-                INFINITE,
-                WT_EXECUTEINWAITTHREAD,
-            )
-        }?;
+    impl Listener {
+        pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
+            let notify = Box::pin(Notify::default());
+            let notify_ptr: *const Notify = notify.deref();
+            let event = unsafe { CreateEventA(None, false, false, None) }?;
+            let mut wait_handle = HANDLE(0isize);
 
-        loop {
-            let key_handle = Registry::HKEY(key.raw_handle());
+            // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
+            // "the thread pool".
+            // Raymond Chen, who is an authority on Windows internals, says RegisterWaitForSingleObject
+            // does multiple waits on the same worker thread internally:
+            // <https://devblogs.microsoft.com/oldnewthing/20081117-00/?p=20183>
+            // There is a different function in the CLR called `RegisterWaitForSingleObject`,
+            // so he might be talking about that.
+            // If he's not, then we're invisibly tying up two worker threads. Can't help it.
+
+            // SAFETY: It's complicated.
+            // The callback here can cause a lot of problems. We pin the `Notify` object.
+            // We don't use an `Arc` because `Notify` already has only `&self` methods, and
+            // the callback has no way to free an `Arc`.
+            // When we call `UnregisterWaitEx` later, we wait for all callbacks to finish running
+            // before we drop the `Notify`, to avoid a dangling pointer.
+            unsafe {
+                RegisterWaitForSingleObject(
+                    &mut wait_handle,
+                    event,
+                    Some(callback),
+                    Some(notify_ptr as *const _),
+                    INFINITE,
+                    WT_EXECUTEINWAITTHREAD,
+                )
+            }?;
+
+            let mut that = Self {
+                key,
+                notify,
+                inner: Some(ListenerInner {
+                    wait_handle,
+                    event,
+                }),
+            };
+            that.register_callback()?;
+
+            Ok(that)
+        }
+
+        pub(crate) fn close(&mut self) -> Result<()> {
+            if let Some(mut inner) = self.inner.take() {
+                inner.close()?;
+            }
+            Ok(())
+        }
+
+        // I'm not sure if this needs to be mut, I'm being cautious here.
+        // There is no reason in practice you'd ever want to call it from two
+        // threads at once.
+        pub(crate) async fn notified(&mut self) -> Result<()> {
+            // Order matters here
+            // We want to return to the caller and let them check the DNS
+            // while the callback is registered.
+            self.notify.notified().await;
+            self.register_callback().context("`register_callback` failed")?;
+
+            Ok(())
+        }
+
+        // Be careful with this, if you register twice before the callback fires,
+        // it will probably leak something. Check the MS docs for `RegNotifyChangeKeyValue`.
+        fn register_callback(&mut self) -> Result<()> {
+            let inner = self.inner.as_mut().context("Can't call `register_callback` on a `Listener` that's already been closed")?;
+            let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags =
                 Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
             // TODO: Error handling
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
-            };
-
-            tracing::info!("Check {name}");
-            waker.notified().await;
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, inner.event, true)
+            }.ok().context("`RegNotifyChangeKeyValue` failed")?;
+            Ok(())
         }
+    }
 
-        unsafe { UnregisterWaitEx(wait_handle, INVALID_HANDLE_VALUE) }?;
-        unsafe { CloseHandle(event) }?;
-        // Key closed here by `Drop`
+    impl Drop for Listener {
+        fn drop(&mut self) {
+            if self.inner.is_some() {
+                tracing::warn!("DNS change listener was not closed manually");
+            }
+            self.close().expect("Should be able to drop DNS change listener");
+        }
+    }
+
+    struct ListenerInner {
+        wait_handle: HANDLE,
+        event: HANDLE,
+    }
+
+    impl Drop for ListenerInner {
+        fn drop(&mut self) {
+            self.close().expect("Should be able to drop DNS change listener");
+        }
+    }
+
+    impl ListenerInner {
+        pub(crate) fn close(&mut self) -> Result<()> {
+            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }?;
+            unsafe { CloseHandle(self.event) }?;
+            tracing::info!("Unregistered registry listener");
+            Ok(())
+        }
+    }
+
+    // SAFETY: The waker should be alive, because we only `Drop` it after waiting
+    // for any run of this callback to finish.
+    // This function runs on a worker thread in a Windows-managed thread pool where
+    // many API calls are illegal, so try not to do anything in here. Right now
+    // all we do is wake up our Tokio task.
+    unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
+        let notify = &*(ctx as *const tokio::sync::Notify);
+        notify.notify_one();
+    }
+
+    async fn listen_to_dns(key: winreg::RegKey, name: &str) -> Result<()> {
+        let mut listener = Listener::new(key)?;
+        tracing::info!(?name, "Listening for DNS changes");
+        loop {
+            listener.notified().await?;
+            tracing::info!(?name, "Check DNS");
+        }
     }
 }
