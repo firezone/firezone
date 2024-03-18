@@ -1,7 +1,20 @@
 defmodule Web.Mailer do
+  use Supervisor
   alias Swoosh.Mailer
   alias Swoosh.Email
   require Logger
+
+  def start_link(arg) do
+    Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
+  end
+
+  def init(_arg) do
+    children = [
+      {Finch, name: Swoosh.Finch}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
 
   @doc """
   Delivers an email via configured Swoosh adapter.

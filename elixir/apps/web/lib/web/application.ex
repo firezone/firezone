@@ -8,8 +8,9 @@ defmodule Web.Application do
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     children = [
-      Web.Telemetry,
-      Web.Endpoint
+      Web.Mailer,
+      Web.Endpoint,
+      Web.Telemetry
     ]
 
     opts = [strategy: :one_for_one, name: Web.Supervisor]
