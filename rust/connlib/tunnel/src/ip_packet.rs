@@ -265,6 +265,21 @@ impl<'a> From<snownet::MutableIpPacket<'a>> for MutableIpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
+    #[inline]
+    pub(crate) fn new(data: &'a [u8]) -> Option<Self> {
+        if data.is_empty() {
+            return None;
+        };
+
+        let packet = match data[0] >> 4 {
+            4 => Ipv4Packet::new(data)?.into(),
+            6 => Ipv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),
