@@ -1189,6 +1189,7 @@ dependencies = [
  "known-folders",
  "libc",
  "log",
+ "mutants",
  "os_info",
  "parking_lot",
  "phoenix-channel",
@@ -3675,6 +3676,12 @@ dependencies = [
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "mutants"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
 
 [[package]]
 name = "native-dialog"
