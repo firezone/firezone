@@ -41,13 +41,7 @@ fn connection_times_out_after_20_seconds() {
 
     let created_at = Instant::now();
 
-    let _ = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::new(),
-        Instant::now(),
-        created_at,
-    );
+    let _ = alice.new_connection(1, HashSet::new(), Instant::now(), created_at);
     alice.handle_timeout(created_at + Duration::from_secs(20));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
@@ -115,13 +109,7 @@ fn only_generate_candidate_event_after_answer() {
 
     let mut bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
-    let offer = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::new(),
-        Instant::now(),
-        Instant::now(),
-    );
+    let offer = alice.new_connection(1, HashSet::new(), Instant::now(), Instant::now());
 
     assert_eq!(
         alice.poll_event(),
@@ -129,14 +117,8 @@ fn only_generate_candidate_event_after_answer() {
         "no event to be emitted before accepting the answer"
     );
 
-    let answer = bob.accept_connection(
-        1,
-        offer,
-        alice.public_key(),
-        HashSet::new(),
-        HashSet::new(),
-        Instant::now(),
-    );
+    let answer =
+        bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), Instant::now());
 
     alice.accept_answer(1, bob.public_key(), answer, Instant::now());
 
@@ -155,7 +137,6 @@ fn second_connection_with_same_relay_reuses_allocation() {
 
     let _ = alice.new_connection(
         1,
-        HashSet::new(),
         HashSet::from([relay("user1", "pass1", "realm1")]),
         Instant::now(),
         Instant::now(),
@@ -167,7 +148,6 @@ fn second_connection_with_same_relay_reuses_allocation() {
 
     let _ = alice.new_connection(
         2,
-        HashSet::new(),
         HashSet::from([relay("user1", "pass1", "realm1")]),
         Instant::now(),
         Instant::now(),
@@ -184,16 +164,9 @@ fn alice_and_bob() -> (ClientNode<u64>, ServerNode<u64>) {
 }
 
 fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Instant) -> Answer {
-    let offer = alice.new_connection(1, HashSet::new(), HashSet::new(), Instant::now(), now);
+    let offer = alice.new_connection(1, HashSet::new(), Instant::now(), now);
 
-    bob.accept_connection(
-        1,
-        offer,
-        alice.public_key(),
-        HashSet::new(),
-        HashSet::new(),
-        now,
-    )
+    bob.accept_connection(1, offer, alice.public_key(), HashSet::new(), now)
 }
 
 fn relay(username: &str, pass: &str, realm: &str) -> (SocketAddr, String, String, String) {
@@ -358,21 +331,14 @@ fn handshake(client: &mut TestNode, server: &mut TestNode) {
     let client_node = &mut client.node.as_client_mut().unwrap();
     let server_node = &mut server.node.as_server_mut().unwrap();
 
-    let offer = client.span.in_scope(|| {
-        client_node.new_connection(
-            1,
-            HashSet::default(),
-            HashSet::default(),
-            client.time,
-            client.time,
-        )
-    });
+    let offer = client
+        .span
+        .in_scope(|| client_node.new_connection(1, HashSet::default(), client.time, client.time));
     let answer = server.span.in_scope(|| {
         server_node.accept_connection(
             1,
             offer,
             client_node.public_key(),
-            HashSet::default(),
             HashSet::default(),
             server.time,
         )

@@ -16,7 +16,7 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
 use crate::device_channel::Device;
-use crate::utils::{earliest, stun, turn};
+use crate::utils::{earliest, turn};
 use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ClientNode;
@@ -275,7 +275,6 @@ where
 
         let offer = self.role_state.node.new_connection(
             gateway_id,
-            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             awaiting_connection.last_intent_sent_at,
             Instant::now(),

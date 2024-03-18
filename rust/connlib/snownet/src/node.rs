@@ -22,7 +22,6 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 use crate::allocation::{Allocation, Socket};
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::stun_binding::StunBinding;
 use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
@@ -82,7 +81,6 @@ pub struct Node<T, TId> {
 
     next_rate_limiter_reset: Option<Instant>,
 
-    bindings: HashMap<SocketAddr, StunBinding>,
     allocations: HashMap<SocketAddr, Allocation>,
 
     connections: Connections<TId>,
@@ -129,7 +127,6 @@ where
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
-            bindings: HashMap::default(),
             allocations: HashMap::default(),
             connections: Default::default(),
             stats: Default::default(),
@@ -137,10 +134,6 @@ where
     }
 
     pub fn reconnect(&mut self, now: Instant) {
-        for binding in self.bindings.values_mut() {
-            binding.refresh(now);
-        }
-
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
@@ -269,11 +262,6 @@ where
     ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
-        match self.bindings_try_handle(from, local, packet, now) {
-            ControlFlow::Continue(()) => {}
-            ControlFlow::Break(()) => return Ok(None),
-        }
-
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
@@ -375,9 +363,6 @@ where
         for (_, c) in self.connections.iter_established_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
-        for b in self.bindings.values_mut() {
-            connection_timeout = earliest(connection_timeout, b.poll_timeout());
-        }
         for a in self.allocations.values_mut() {
             connection_timeout = earliest(connection_timeout, a.poll_timeout());
         }
@@ -412,10 +397,6 @@ where
             connection.handle_timeout(id, now);
         }
 
-        for binding in self.bindings.values_mut() {
-            binding.handle_timeout(now);
-        }
-
         for allocation in self.allocations.values_mut() {
             allocation.handle_timeout(now);
         }
@@ -433,14 +414,6 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        for binding in self.bindings.values_mut() {
-            if let Some(transmit) = binding.poll_transmit() {
-                self.stats.stun_bytes_to_relays += transmit.payload.len();
-
-                return Some(transmit);
-            }
-        }
-
         for allocation in self.allocations.values_mut() {
             if let Some(transmit) = allocation.poll_transmit() {
                 self.stats.stun_bytes_to_relays += transmit.payload.len();
@@ -459,7 +432,6 @@ where
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
-        allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<SocketAddr>,
         intent_sent_at: Instant,
         now: Instant,
@@ -481,7 +453,6 @@ where
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
-            stun_servers: allowed_stun_servers,
             turn_servers: allowed_turn_servers,
             next_timer_update: now,
             peer_socket: None,
@@ -515,27 +486,6 @@ where
         }
 
         Ok(())
-    }
-
-    #[must_use]
-    fn bindings_try_handle(
-        &mut self,
-        from: SocketAddr,
-        local: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-    ) -> ControlFlow<()> {
-        let Some(binding) = self.bindings.get_mut(&from) else {
-            return ControlFlow::Continue(());
-        };
-
-        let handled = binding.handle_input(from, local, packet, now);
-
-        if !handled {
-            tracing::debug!("Packet was a STUN message but not accepted");
-        }
-
-        ControlFlow::Break(())
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
@@ -663,9 +613,6 @@ where
     }
 
     fn bindings_and_allocations_drain_events(&mut self) {
-        let binding_events = self.bindings.iter_mut().flat_map(|(server, binding)| {
-            iter::from_fn(|| binding.poll_event().map(|e| (*server, e)))
-        });
         let allocation_events = self
             .allocations
             .iter_mut()
@@ -673,7 +620,7 @@ where
                 iter::from_fn(|| allocation.poll_event().map(|e| (*server, e)))
             });
 
-        for (server, event) in binding_events.chain(allocation_events) {
+        for (server, event) in allocation_events {
             match event {
                 CandidateEvent::New(candidate) => {
                     add_local_candidate_to_all(
@@ -707,7 +654,6 @@ where
     pub fn new_connection(
         &mut self,
         id: TId,
-        allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
         intent_sent_at: Instant,
         now: Instant,
@@ -720,7 +666,6 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers, now);
         self.upsert_turn_servers(&allowed_turn_servers, now);
 
         let allowed_turn_servers = allowed_turn_servers
@@ -746,7 +691,6 @@ where
         let initial_connection = InitialConnection {
             agent,
             session_key,
-            stun_servers: allowed_stun_servers,
             turn_servers: allowed_turn_servers,
             created_at: now,
             intent_sent_at,
@@ -781,18 +725,12 @@ where
             pass: answer.credentials.password,
         });
 
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &initial.stun_servers,
-            &initial.turn_servers,
-        );
+        self.seed_agent_with_local_candidates(id, &mut agent, &initial.turn_servers);
 
         let connection = self.init_connection(
             agent,
             remote,
             *initial.session_key.expose_secret(),
-            initial.stun_servers,
             initial.turn_servers,
             initial.intent_sent_at,
             now,
@@ -822,7 +760,6 @@ where
         id: TId,
         offer: Offer,
         remote: PublicKey,
-        allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
         now: Instant,
     ) -> Answer {
@@ -835,7 +772,6 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        self.upsert_stun_servers(&allowed_stun_servers, now);
         self.upsert_turn_servers(&allowed_turn_servers, now);
 
         let allowed_turn_servers = allowed_turn_servers
@@ -857,18 +793,12 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &allowed_stun_servers,
-            &allowed_turn_servers,
-        );
+        self.seed_agent_with_local_candidates(id, &mut agent, &allowed_turn_servers);
 
         let connection = self.init_connection(
             agent,
             remote,
             *offer.session_key.expose_secret(),
-            allowed_stun_servers,
             allowed_turn_servers,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
@@ -887,17 +817,6 @@ impl<T, TId> Node<T, TId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
-    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
-        for server in servers {
-            if !self.bindings.contains_key(server) {
-                tracing::info!(address = %server, "Adding new STUN server");
-
-                self.bindings
-                    .insert(*server, StunBinding::new(*server, now));
-            }
-        }
-    }
-
     fn upsert_turn_servers(
         &mut self,
         servers: &HashSet<(SocketAddr, String, String, String)>,
@@ -931,26 +850,10 @@ where
         &mut self,
         connection: TId,
         agent: &mut IceAgent,
-        allowed_stun_servers: &HashSet<SocketAddr>,
         allowed_turn_servers: &HashSet<SocketAddr>,
     ) {
         for candidate in self.host_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
-        for candidate in self.bindings.iter().filter_map(|(server, binding)| {
-            let candidate = allowed_stun_servers
-                .contains(server)
-                .then(|| binding.candidate())??;
-
-            Some(candidate)
-        }) {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
         }
 
         for candidate in self
@@ -1107,21 +1010,19 @@ fn add_local_candidate_to_all<TId>(
     let initial_connections = connections
         .initial
         .iter_mut()
-        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
+        .map(|(id, c)| (*id, &c.turn_servers, &mut c.agent));
     let established_connections = connections
         .established
         .iter_mut()
-        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
+        .map(|(id, c)| (*id, &c.turn_servers, &mut c.agent));
 
-    for (id, allowed_stun, allowed_turn, agent) in
-        initial_connections.chain(established_connections)
-    {
+    for (id, allowed_turn, agent) in initial_connections.chain(established_connections) {
         let _span = info_span!("connection", %id).entered();
 
         match candidate.kind() {
             CandidateKind::ServerReflexive => {
-                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
-                    tracing::debug!(%server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
+                if !allowed_turn.contains(&server) {
+                    tracing::debug!(%server, ?allowed_turn, "Not adding srflx candidate");
                     continue;
                 }
             }
@@ -1225,7 +1126,6 @@ pub(crate) enum CandidateEvent {
 struct InitialConnection {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
-    stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
 
     created_at: Instant,
@@ -1264,7 +1164,6 @@ struct Connection {
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
-    stun_servers: HashSet<SocketAddr>,
     turn_servers: HashSet<SocketAddr>,
 
     stats: ConnectionStats,

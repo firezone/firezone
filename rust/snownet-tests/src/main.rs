@@ -39,12 +39,6 @@ async fn main() -> Result<()> {
         .ip
         .to_std();
 
-    let stun_server = std::env::var("STUN_SERVER")
-        .ok()
-        .map(|a| a.parse::<IpAddr>())
-        .transpose()
-        .context("Failed to parse `STUN_SERVER`")?
-        .map(|ip| SocketAddr::new(ip, 3478));
     let turn_server = std::env::var("TURN_SERVER")
         .ok()
         .map(|a| a.parse::<IpAddr>())
@@ -80,7 +74,6 @@ async fn main() -> Result<()> {
 
             let offer = pool.new_connection(
                 1,
-                stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
                 Instant::now(),
                 Instant::now(),
@@ -179,7 +172,6 @@ async fn main() -> Result<()> {
                     },
                 },
                 offer.public_key.into(),
-                stun_server.into_iter().collect(),
                 turn_server.into_iter().collect(),
                 Instant::now(),
             );
