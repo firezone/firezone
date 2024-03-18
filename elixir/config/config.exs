@@ -201,9 +201,7 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# TODO: This is buggy, the return value is different
-# from the one you would get with Hackney:
-# config :swoosh, :api_client, Swoosh.ApiClient.Finch
+config :swoosh, :api_client, Swoosh.ApiClient.Finch
 
 config :web, Web.Mailer,
   adapter: Domain.Mailer.NoopAdapter,
