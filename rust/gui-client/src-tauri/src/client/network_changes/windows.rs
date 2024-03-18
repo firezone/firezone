@@ -536,7 +536,8 @@ mod async_dns {
             // We want to return to the caller and let them check the DNS
             // while the callback is registered.
             self.notify.notified().await;
-            self.register_callback().context("`register_callback` failed")?;
+            self.register_callback()
+                .context("`register_callback` failed")?;
 
             Ok(())
         }
@@ -544,21 +545,26 @@ mod async_dns {
         // Be careful with this, if you register twice before the callback fires,
         // it will probably leak something. Check the MS docs for `RegNotifyChangeKeyValue`.
         fn register_callback(&mut self) -> Result<()> {
-            let event = self.event.context("Can't call `register_callback` on a `Listener` that's already been closed")?;
+            let event = self.event.context(
+                "Can't call `register_callback` on a `Listener` that's already been closed",
+            )?;
             let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags =
                 Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
             // TODO: Error handling
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
-            }.ok().context("`RegNotifyChangeKeyValue` failed")?;
+            }
+            .ok()
+            .context("`RegNotifyChangeKeyValue` failed")?;
             Ok(())
         }
     }
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            self.close().expect("Should be able to drop DNS change listener");
+            self.close()
+                .expect("Should be able to drop DNS change listener");
         }
     }
 
