@@ -230,13 +230,13 @@ defmodule Web.Live.Resources.NewTest do
     identity: identity,
     conn: conn
   } do
-    resource = Fixtures.Resources.create_resource(account: account)
-    [connection | _] = resource.connections
+    Fixtures.Resources.create_resource(account: account)
 
     attrs = %{
+      name: "foo",
       address: "foobar.com",
       address_description: "http://foobar.com:3000/",
-      connections: %{connection.gateway_group_id => %{enabled: false}}
+      connections: %{}
     }
 
     {:ok, lv, _html} =

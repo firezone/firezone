@@ -66,30 +66,24 @@ impl Managed {
 }
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error(r#"Couldn't show clickable notification titled "{0}""#)]
-    ClickableNotification(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
-    #[error("Can't show log filter error dialog: {0}")]
-    LogFilterErrorDialog(native_dialog::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
-    #[error(r#"Couldn't show notification titled "{0}""#)]
-    Notification(String),
-    #[error(transparent)]
-    Tauri(#[from] tauri::Error),
-    #[error("tokio::runtime::Runtime::new failed: {0}")]
-    TokioRuntimeNew(std::io::Error),
 
     // `client.rs` provides a more user-friendly message when showing the error dialog box
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
+///
+/// Still uses `thiserror` so we can catch the deep_link `CantListen` error
 pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
@@ -106,7 +100,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                     )
                     .set_type(native_dialog::MessageType::Error)
                     .show_alert()
-                    .map_err(Error::LogFilterErrorDialog)?;
+                    .context("Can't show log filter error dialog")?;
 
                 AdvancedSettings {
                     log_filter: AdvancedSettings::default().log_filter,
@@ -134,7 +128,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     };
 
     // Needed for the deep link server
-    let rt = tokio::runtime::Runtime::new().map_err(Error::TokioRuntimeNew)?;
+    let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
@@ -150,6 +144,11 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         }
     });
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let server = deep_link::Server::new()?;
+
     if let Some(client::Cmd::SmokeTest) = &cli.command {
         let ctlr_tx = ctlr_tx.clone();
         tokio::spawn(async move {
@@ -160,15 +159,13 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new()?;
-
-    // We know now we're the only instance on the computer, so register our exe
-    // to handle deep links
-    deep_link::register()?;
-    tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+    tracing::debug!(cli.no_deep_links);
+    if !cli.no_deep_links {
+        // The single-instance check is done, so register our exe
+        // to handle deep links
+        deep_link::register().context("Failed to register deep link handler")?;
+        tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+    }
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
@@ -288,7 +285,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
                     return Err(Error::WebViewNotInstalled);
                 }
-                error => Err(error)?,
+                error => Err(anyhow::Error::from(error).context("Tauri error"))?,
             }
         }
     };
@@ -393,11 +390,20 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
-        if let Ok(url) = server.accept().await {
-            ctlr_tx
-                .send(ControllerRequest::SchemeRequest(url))
-                .await
-                .ok();
+        match server.accept().await {
+            Ok(bytes) => {
+                let url = SecretString::from_str(
+                    std::str::from_utf8(bytes.expose_secret())
+                        .context("Incoming deep link was not valid UTF-8")?,
+                )
+                .context("Impossible: can't wrap String into SecretString")?;
+                // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
+                ctlr_tx
+                    .send(ControllerRequest::SchemeRequest(url))
+                    .await
+                    .ok();
+            }
+            Err(error) => tracing::error!(?error, "error while accepting deep link"),
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new()?;
@@ -440,10 +446,10 @@ struct CallbackHandler {
 
 #[derive(thiserror::Error, Debug)]
 enum CallbackError {
-    #[error("system DNS resolver problem: {0}")]
-    Resolvers(#[from] client::resolvers::Error),
     #[error("can't send to controller task: {0}")]
     SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 // Callbacks must all be non-blocking
@@ -541,6 +547,7 @@ impl Controller {
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
+            tokio::runtime::Handle::current(),
         )?;
 
         self.session = Some(Session {
@@ -645,7 +652,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
+                    os::open_url(&self.app, &url)?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
@@ -729,7 +736,7 @@ impl Controller {
     fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
         self.tunnel_ready = false;
-        if let Some(mut session) = self.session.take() {
+        if let Some(session) = self.session.take() {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.

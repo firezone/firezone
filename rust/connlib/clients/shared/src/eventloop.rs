@@ -7,14 +7,13 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayId, GatewayResponse, ResourceAccepted, ResourceId},
+    messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
-    convert::Infallible,
     io,
     path::PathBuf,
     task::{Context, Poll},
@@ -28,14 +27,23 @@ pub struct Eventloop<C: Callbacks> {
     tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    rx: tokio::sync::mpsc::Receiver<Command>,
+
     connection_intents: SentConnectionIntents,
     log_upload_interval: tokio::time::Interval,
+}
+
+/// Commands that can be sent to the [`Eventloop`].
+pub enum Command {
+    Stop,
+    Reconnect,
 }
 
 impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel<C>,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        rx: tokio::sync::mpsc::Receiver<Command>,
     ) -> Self {
         Self {
             tunnel,
@@ -43,6 +51,7 @@ impl<C: Callbacks> Eventloop<C> {
             tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
             log_upload_interval: upload_interval(),
+            rx,
         }
     }
 }
@@ -52,18 +61,26 @@ where
     C: Callbacks + 'static,
 {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
-    pub fn poll(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Infallible, phoenix_channel::Error>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
+            match self.rx.poll_recv(cx) {
+                Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Ready(Some(Command::Reconnect)) => {
+                    self.portal.reconnect();
+                    self.tunnel.reconnect();
+
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::error!("Tunnel failed: {e}");
+                    tracing::warn!("Tunnel error: {e}");
                     continue;
                 }
                 Poll::Pending => {}
@@ -87,9 +104,9 @@ where
         }
     }
 
-    fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
+    fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::Event::SignalIceCandidate {
+            firezone_tunnel::ClientEvent::SignalIceCandidate {
                 conn_id: gateway,
                 candidate,
             } => {
@@ -103,7 +120,7 @@ where
                     }),
                 );
             }
-            firezone_tunnel::Event::ConnectionIntent {
+            firezone_tunnel::ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
                 resource,
                 ..
@@ -117,16 +134,11 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::Event::RefreshResources { connections } => {
+            firezone_tunnel::ClientEvent::RefreshResources { connections } => {
                 for connection in connections {
                     self.portal
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
-            }
-            firezone_tunnel::Event::SendPacket { .. }
-            | firezone_tunnel::Event::StopPeer { .. }
-            | firezone_tunnel::Event::DeviceConfigUpdated => {
-                unreachable!("Handled internally")
             }
         }
     }
@@ -267,7 +279,7 @@ where
                 };
             }
             ReplyMessages::SignedLogUrl(url) => {
-                let Some(path) = self.tunnel.callbacks().roll_log_file() else {
+                let Some(path) = self.tunnel.callbacks.roll_log_file() else {
                     return;
                 };
 

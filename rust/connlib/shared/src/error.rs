@@ -100,11 +100,14 @@ pub enum ConnlibError {
     #[error("No MTU found")]
     NoMtu,
     /// A panic occurred.
-    #[error("Panicked: {0}")]
+    #[error("Connlib panicked: {0}")]
     Panic(String),
+    /// The task was cancelled
+    #[error("Connlib task was cancelled")]
+    Cancelled,
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload(Option<String>),
+    PanicNonStringPayload,
     /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,
@@ -161,23 +164,19 @@ pub enum ConnlibError {
 
     #[cfg(target_os = "linux")]
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
-    ResolvConf(#[from] crate::linux::etc_resolv_conf::Error),
+    ResolvConf(anyhow::Error),
 
     #[error(transparent)]
     Snownet(#[from] snownet::Error),
     #[error("Detected non-allowed packet in channel")]
     UnallowedPacket,
-    #[error("No available ipv4 socket")]
-    NoIpv4,
-    #[error("No available ipv6 socket")]
-    NoIpv6,
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
     ResolvectlFailed,
 
-    #[error("connection to the portal failed")]
-    PortalConnectionFailed,
+    #[error("connection to the portal failed: {0}")]
+    PortalConnectionFailed(phoenix_channel::Error),
 }
 
 impl ConnlibError {

@@ -80,7 +80,9 @@ If the client stops running while signed in, then the token may be stored in Win
 
 # Resetting state
 
-This is a list of all the on-disk state that you need to delete / reset to test a first-time install / first-time run of the Firezone client.
+This is a list of all the on-disk state that you need to delete / reset to test a first-time install / first-time run of the Firezone GUI client.
+
+## Windows
 
 - Dir `%LOCALAPPDATA%/dev.firezone.client/` (Config, logs, webview cache, wintun.dll etc.)
 - Dir `%PROGRAMDATA%/dev.firezone.client/` (Device ID file)
@@ -88,6 +90,10 @@ This is a list of all the on-disk state that you need to delete / reset to test 
 - Registry key `Computer\HKEY_CURRENT_USER\Software\Classes\firezone-fd0020211111` (Deep link association)
 - Registry key `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c}` (IP address and DNS server for our tunnel interface)
 - Windows Credential Manager, "Windows Credentials", "Generic Credentials", `dev.firezone.client/token`
+
+## Linux
+
+- Dir `$HOME/.local/share/applications` (.desktop file for deep links. This dir may not even exist by default on distros like Debian)
 
 # Token storage
 

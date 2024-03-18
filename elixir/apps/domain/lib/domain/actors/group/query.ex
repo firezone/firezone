@@ -10,15 +10,15 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
-  def not_editable(queryable \\ not_deleted()) do
+  def not_editable(queryable) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
   end
 
-  def editable(queryable \\ not_deleted()) do
+  def editable(queryable) do
     where(queryable, [groups: groups], is_nil(groups.provider_id) and groups.type == :static)
   end
 
-  def by_id(queryable \\ not_deleted(), id)
+  def by_id(queryable, id)
 
   def by_id(queryable, {:in, ids}) do
     where(queryable, [groups: groups], groups.id in ^ids)
@@ -28,7 +28,7 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.id == ^id)
   end
 
-  def by_type(queryable \\ not_deleted(), type)
+  def by_type(queryable, type)
 
   def by_type(queryable, {:in, types}) do
     where(queryable, [groups: groups], groups.type in ^types)
@@ -38,15 +38,15 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.type == ^type)
   end
 
-  def by_account_id(queryable \\ not_deleted(), account_id) do
+  def by_account_id(queryable, account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
 
-  def by_provider_id(queryable \\ not_deleted(), provider_id) do
+  def by_provider_id(queryable, provider_id) do
     where(queryable, [groups: groups], groups.provider_id == ^provider_id)
   end
 
-  def by_provider_identifier(queryable \\ not_deleted(), provider_identifier)
+  def by_provider_identifier(queryable, provider_identifier)
 
   def by_provider_identifier(queryable, {:in, provider_identifiers}) do
     where(queryable, [groups: groups], groups.provider_identifier in ^provider_identifiers)
@@ -56,7 +56,7 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 
-  def delete(queryable \\ not_deleted()) do
+  def delete(queryable) do
     queryable
     |> Ecto.Query.select([groups: groups], groups)
     |> Ecto.Query.update([groups: groups],
@@ -66,7 +66,7 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
-  def group_by_provider_id(queryable \\ not_deleted()) do
+  def group_by_provider_id(queryable) do
     queryable
     |> group_by([groups: groups], groups.provider_id)
     |> where([groups: groups], not is_nil(groups.provider_id))
@@ -76,7 +76,7 @@ defmodule Domain.Actors.Group.Query do
     })
   end
 
-  def preload_few_actors_for_each_group(queryable \\ not_deleted(), limit) do
+  def preload_few_actors_for_each_group(queryable, limit) do
     queryable
     |> with_joined_memberships(limit)
     |> with_joined_actors()
@@ -123,7 +123,7 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
-  def with_joined_actors(queryable \\ not_deleted()) do
+  def with_joined_actors(queryable) do
     join(
       queryable,
       :left,
@@ -134,7 +134,66 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
-  def lock(queryable \\ not_deleted()) do
+  def lock(queryable) do
     lock(queryable, "FOR UPDATE")
+  end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields,
+    do: [
+      {:groups, :asc, :inserted_at},
+      {:groups, :asc, :id}
+    ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :name,
+        title: "Name",
+        type: {:string, :websearch},
+        fun: &filter_by_name_fts/2
+      },
+      %Domain.Repo.Filter{
+        name: :provider_id,
+        title: "Provider",
+        type: {:string, :uuid},
+        values: &Domain.Auth.all_third_party_providers!/1,
+        fun: &filter_by_provider_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :deleted?,
+        type: :boolean,
+        fun: &filter_deleted/1
+      },
+      %Domain.Repo.Filter{
+        name: :editable?,
+        type: :boolean,
+        fun: &filter_editable/1
+      }
+    ]
+
+  def filter_by_name_fts(queryable, name) do
+    {queryable, dynamic([groups: groups], fulltext_search(groups.name, ^name))}
+  end
+
+  def filter_by_provider_id(queryable, provider_id) do
+    {queryable, dynamic([groups: groups], groups.provider_id == ^provider_id)}
+  end
+
+  def filter_deleted(queryable) do
+    {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
+  end
+
+  def filter_editable(queryable) do
+    {queryable,
+     dynamic(
+       [groups: groups],
+       is_nil(groups.provider_id) and
+         is_nil(groups.deleted_at) and
+         groups.type == :static
+     )}
   end
 end

@@ -18,15 +18,6 @@ if config_env() == :prod do
     ssl_opts: compile_config!(:database_ssl_opts),
     parameters: compile_config!(:database_parameters)
 
-  external_url = compile_config!(:external_url)
-
-  %{
-    scheme: external_url_scheme,
-    host: external_url_host,
-    port: external_url_port,
-    path: external_url_path
-  } = URI.parse(external_url)
-
   config :domain, Domain.Tokens,
     key_base: compile_config!(:tokens_key_base),
     salt: compile_config!(:tokens_salt)
@@ -34,10 +25,6 @@ if config_env() == :prod do
   config :domain, Domain.Gateways,
     gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
     gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
-
-  config :domain, Domain.Telemetry,
-    enabled: compile_config!(:telemetry_enabled),
-    id: compile_config!(:telemetry_id)
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
@@ -74,74 +61,99 @@ if config_env() == :prod do
     self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
     multi_site_resources: compile_config!(:feature_multi_site_resources_enabled)
 
+  config :domain, sign_up_whitelisted_domains: compile_config!(:sign_up_whitelisted_domains)
+
   config :domain, docker_registry: compile_config!(:docker_registry)
 
   config :domain, outbound_email_adapter_configured?: !!compile_config!(:outbound_email_adapter)
 
-  ###############################
-  ##### Web #####################
-  ###############################
+  # Enable background jobs only on dedicated nodes
+  config :domain, Domain.Tokens.Jobs, enabled: compile_config!(:background_jobs_enabled)
 
-  config :web, Web.Endpoint,
-    http: [
-      ip: compile_config!(:phoenix_listen_address).address,
-      port: compile_config!(:phoenix_http_web_port),
-      protocol_options: compile_config!(:phoenix_http_protocol_options)
-    ],
-    url: [
+  config :domain, Elixir.Domain.Billing.Jobs, enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.Okta.Jobs,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  if external_url = compile_config!(:external_url) do
+    %{
       scheme: external_url_scheme,
       host: external_url_host,
       port: external_url_port,
       path: external_url_path
-    ],
-    secret_key_base: compile_config!(:secret_key_base),
-    check_origin: [
-      "#{external_url_scheme}://#{external_url_host}:#{external_url_port}",
-      "#{external_url_scheme}://*.#{external_url_host}:#{external_url_port}",
-      "#{external_url_scheme}://#{external_url_host}",
-      "#{external_url_scheme}://*.#{external_url_host}"
-    ],
-    live_view: [
-      signing_salt: compile_config!(:live_view_signing_salt)
-    ]
+    } = URI.parse(external_url)
 
-  config :web,
-    external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
-    private_clients: compile_config!(:phoenix_private_clients)
+    ###############################
+    ##### Web #####################
+    ###############################
 
-  config :web,
-    cookie_secure: compile_config!(:phoenix_secure_cookies),
-    cookie_signing_salt: compile_config!(:cookie_signing_salt),
-    cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
+    config :web, Web.Endpoint,
+      http: [
+        ip: compile_config!(:phoenix_listen_address).address,
+        port: compile_config!(:phoenix_http_web_port),
+        protocol_options: compile_config!(:phoenix_http_protocol_options)
+      ],
+      url: [
+        scheme: external_url_scheme,
+        host: external_url_host,
+        port: external_url_port,
+        path: external_url_path
+      ],
+      secret_key_base: compile_config!(:secret_key_base),
+      check_origin: [
+        "#{external_url_scheme}://#{external_url_host}:#{external_url_port}",
+        "#{external_url_scheme}://*.#{external_url_host}:#{external_url_port}",
+        "#{external_url_scheme}://#{external_url_host}",
+        "#{external_url_scheme}://*.#{external_url_host}"
+      ],
+      live_view: [
+        signing_salt: compile_config!(:live_view_signing_salt)
+      ]
 
-  config :web, api_url_override: compile_config!(:api_url_override)
+    config :web,
+      external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
+      private_clients: compile_config!(:phoenix_private_clients)
 
-  ###############################
-  ##### API #####################
-  ###############################
+    config :web,
+      cookie_secure: compile_config!(:phoenix_secure_cookies),
+      cookie_signing_salt: compile_config!(:cookie_signing_salt),
+      cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
-  config :api, API.Endpoint,
-    http: [
-      ip: compile_config!(:phoenix_listen_address).address,
-      port: compile_config!(:phoenix_http_api_port),
-      protocol_options: compile_config!(:phoenix_http_protocol_options)
-    ],
-    url: [
-      scheme: external_url_scheme,
-      host: external_url_host,
-      port: external_url_port,
-      path: external_url_path
-    ],
-    secret_key_base: compile_config!(:secret_key_base)
+    config :web, api_url_override: compile_config!(:api_url_override)
 
-  config :api,
-    cookie_secure: compile_config!(:phoenix_secure_cookies),
-    cookie_signing_salt: compile_config!(:cookie_signing_salt),
-    cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
+    ###############################
+    ##### API #####################
+    ###############################
 
-  config :api,
-    external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
-    private_clients: compile_config!(:phoenix_private_clients)
+    config :api, API.Endpoint,
+      http: [
+        ip: compile_config!(:phoenix_listen_address).address,
+        port: compile_config!(:phoenix_http_api_port),
+        protocol_options: compile_config!(:phoenix_http_protocol_options)
+      ],
+      url: [
+        scheme: external_url_scheme,
+        host: external_url_host,
+        port: external_url_port,
+        path: external_url_path
+      ],
+      secret_key_base: compile_config!(:secret_key_base)
+
+    config :api,
+      cookie_secure: compile_config!(:phoenix_secure_cookies),
+      cookie_signing_salt: compile_config!(:cookie_signing_salt),
+      cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
+
+    config :api,
+      external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
+      private_clients: compile_config!(:phoenix_private_clients)
+  end
 
   ###############################
   ##### Third-party configs #####

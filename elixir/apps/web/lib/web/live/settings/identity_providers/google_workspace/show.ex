@@ -154,7 +154,6 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
           Delete Identity Provider
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end

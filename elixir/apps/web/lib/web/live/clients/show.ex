@@ -7,24 +7,55 @@ defmodule Web.Clients.Show do
     with {:ok, client} <-
            Clients.fetch_client_by_id(id, socket.assigns.subject,
              preload: [:actor, last_used_token: [identity: [:provider]]]
-           ),
-         {:ok, flows} <-
-           Flows.list_flows_for(client, socket.assigns.subject,
-             preload: [gateway: [:group], policy: [:resource, :actor_group]]
            ) do
-      :ok = Clients.subscribe_to_clients_presence_in_account(client.account_id)
+      if connected?(socket) do
+        :ok = Clients.subscribe_to_clients_presence_in_account(client.account_id)
+      end
 
       socket =
         assign(
           socket,
           client: client,
-          flows: flows,
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           page_title: "Client #{client.name}"
+        )
+        |> assign_live_table("flows",
+          query_module: Flows.Flow.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_flows_update!/2
         )
 
       {:ok, socket}
     else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_flows_update!(socket, list_opts) do
+    list_opts =
+      Keyword.put(list_opts, :preload,
+        client: [:actor],
+        gateway: [:group],
+        policy: [:actor_group, :resource]
+      )
+
+    with {:ok, flows, metadata} <-
+           Flows.list_flows_for(socket.assigns.client, socket.assigns.subject, list_opts) do
+      assign(socket,
+        flows: flows,
+        flows_metadata: metadata
+      )
+    else
+      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
@@ -136,7 +167,15 @@ defmodule Web.Clients.Show do
         Attempts by the actor using this client to access resources.
       </:help>
       <:content>
-        <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+        <.live_table
+          id="flows"
+          rows={@flows}
+          row_id={&"flows-#{&1.id}"}
+          filters={@filters_by_table_id["flows"]}
+          filter={@filter_form_by_table_id["flows"]}
+          ordered_by={@order_by_table_id["flows"]}
+          metadata={@flows_metadata}
+        >
           <:col :let={flow} label="AUTHORIZED AT">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
@@ -165,7 +204,7 @@ defmodule Web.Clients.Show do
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
     """
@@ -191,4 +230,7 @@ defmodule Web.Clients.Show do
 
     {:noreply, socket}
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end

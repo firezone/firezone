@@ -49,6 +49,8 @@ defmodule Web.FormComponents do
     include: ~w(autocomplete cols disabled form list max maxlength min minlength
                 pattern placeholder readonly required rows size step)
 
+  attr :class, :string, default: "", doc: "the custom classes to be added to the input"
+
   slot :inner_block
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
@@ -78,8 +80,18 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <label class="flex items-center gap-2 text-neutral-900">
-        <input type="radio" id={@id} name={@name} value={@value} checked={@checked} class={~w[
-          w-4 h-4 border-neutral-300]} {@rest} />
+        <input
+          type="radio"
+          id={@id}
+          name={@name}
+          value={@value}
+          checked={@checked}
+          class={[
+            "w-4 h-4 border-neutral-300",
+            @class
+          ]}
+          {@rest}
+        />
         <%= @label %>
         <%= if @inner_block, do: render_slot(@inner_block) %>
       </label>
@@ -87,23 +99,29 @@ defmodule Web.FormComponents do
     """
   end
 
-  def input(%{type: "checkbox", value: value} = assigns) do
+  def input(%{type: "checkbox"} = assigns) do
     assigns =
-      assign_new(assigns, :checked, fn -> Phoenix.HTML.Form.normalize_value("checkbox", value) end)
+      assigns
+      |> assign_new(:checked, fn ->
+        Phoenix.HTML.Form.normalize_value("checkbox", assigns.value)
+      end)
+      |> assign_new(:value, fn ->
+        "true"
+      end)
 
     ~H"""
     <div phx-feedback-for={@name}>
       <label class="flex items-center gap-4 text-sm leading-6 text-zinc-600">
-        <input type="hidden" name={@name} value="false" />
         <input
           type="checkbox"
           id={@id}
           name={@name}
-          value="true"
+          value={@value}
           checked={@checked}
           class={[
             "rounded border-zinc-300 text-zinc-900",
-            "checked:bg-accent-500 checked:hover:bg-accent-500"
+            "checked:bg-accent-500 checked:hover:bg-accent-500",
+            @class
           ]}
           {@rest}
         />
@@ -118,9 +136,17 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
-      <select id={@id} name={@name} class={~w[
-          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
-          block w-full p-2.5]} multiple={@multiple} {@rest}>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          "text-sm bg-neutral-50",
+          "border border-neutral-300 text-neutral-900 rounded",
+          "block w-full p-2.5"
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
         <option :if={@prompt} value=""><%= @prompt %></option>
 
         <%= for {label, options} <- @options do %>
@@ -142,9 +168,17 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
-      <select id={@id} name={@name} class={~w[
-          bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded
-          block w-full p-2.5]} multiple={@multiple} {@rest}>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          "text-sm bg-neutral-50",
+          "border border-neutral-300 text-neutral-900 rounded",
+          "block w-full p-2.5"
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
@@ -317,40 +351,6 @@ defmodule Web.FormComponents do
   end
 
   ### Buttons ###
-
-  @doc """
-  Render a button group.
-  """
-  slot :first, required: true, doc: "First button"
-  slot :middle, required: false, doc: "Middle button(s)"
-  slot :last, required: true, doc: "Last button"
-
-  def button_group(assigns) do
-    ~H"""
-    <div class="inline-flex rounded-md shadow-sm" role="group">
-      <button type="button" class={~w[
-          px-4 py-2 text-sm text-neutral-900 bg-white border border-neutral-200
-          rounded-l hover:bg-neutral-100 hover:text-accent-700
-        ]}>
-        <%= render_slot(@first) %>
-      </button>
-      <%= for middle <- @middle do %>
-        <button type="button" class={~w[
-            px-4 py-2 text-sm text-neutral-900 bg-white border-t border-b
-            border-neutral-200 hover:bg-neutral-100 hover:text-accent-700
-          ]}>
-          <%= render_slot(middle) %>
-        </button>
-      <% end %>
-      <button type="button" class={~w[
-          px-4 py-2 text-sm text-neutral-900 bg-white border border-neutral-200
-          rounded-r hover:bg-neutral-100 hover:text-accent-700
-        ]}>
-        <%= render_slot(@last) %>
-      </button>
-    </div>
-    """
-  end
 
   @doc """
   Base button type to be used directly or by the specialized button types above. e.g. edit_button, delete_button, etc.
