@@ -124,13 +124,13 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
       {:error, reason} ->
         if remaining_retry_count == 0 do
-          Logger.error("Can not fetch list of nodes or access token: #{inspect(reason)}",
+          Logger.error("Can't fetch list of nodes or access token: #{inspect(reason)}",
             module: __MODULE__
           )
 
           {:error, reason}
         else
-          Logger.warning("Can not fetch list of nodes or access token: #{inspect(reason)}",
+          Logger.warning("Can't fetch list of nodes or access token: #{inspect(reason)}",
             module: __MODULE__
           )
 
@@ -163,9 +163,11 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
           release_name = Map.fetch!(labels, node_name_label)
           zone = String.split(zone, "/") |> List.last()
           node_name = :"#{release_name}@#{name}.#{zone}.c.#{project_id}.internal"
-          Logger.debug("Found node: #{inspect(node_name)}", module: __MODULE__)
+
           node_name
         end)
+
+      Logger.debug("Found #{length(nodes)}", module: __MODULE__, nodes: Enum.join(nodes, ", "))
 
       {:ok, nodes}
     end

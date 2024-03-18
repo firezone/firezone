@@ -279,7 +279,7 @@ where
                 };
             }
             ReplyMessages::SignedLogUrl(url) => {
-                let Some(path) = self.tunnel.callbacks().roll_log_file() else {
+                let Some(path) = self.tunnel.callbacks.roll_log_file() else {
                     return;
                 };
 

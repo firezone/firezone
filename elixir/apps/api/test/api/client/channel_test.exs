@@ -474,6 +474,7 @@ defmodule API.Client.ChannelTest do
     end
 
     test "returns a signed URL which can be used to upload the logs", %{
+      account: account,
       socket: socket,
       client: client
     } do
@@ -481,8 +482,7 @@ defmodule API.Client.ChannelTest do
       GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
       GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
 
-      {:ok, actor} = Domain.Actors.fetch_actor_by_id(client.actor_id)
-      {:ok, account} = Domain.Accounts.fetch_account_by_id(actor.account_id)
+      actor = Repo.get(Domain.Actors.Actor, client.actor_id)
 
       actor_name =
         actor.name

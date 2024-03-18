@@ -3,6 +3,9 @@ run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   workflow_dispatch:
     inputs:
+      confirmation:
+        description: "Are you SURE you want to deploy all changes from the selected commit to production?"
+        type: boolean
       tag:
         description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
         type: string
@@ -30,6 +33,7 @@ jobs:
       # client_tag: "latest"
 
   deploy-production:
+    if: ${{ inputs.confirmation }}
     needs: compatibility-tests
     secrets: inherit
     uses: ./.github/workflows/_deploy_production.yml

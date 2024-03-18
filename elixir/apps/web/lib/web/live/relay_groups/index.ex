@@ -3,21 +3,46 @@ defmodule Web.RelayGroups.Index do
   alias Domain.{Accounts, Relays}
 
   def mount(_params, _session, socket) do
-    subject = socket.assigns.subject
-
-    with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
-         {:ok, groups} <- Relays.list_groups(subject, preload: [:relays]) do
-      :ok = Relays.subscribe_to_relays_presence_in_account(socket.assigns.account)
+    if Accounts.self_hosted_relays_enabled?(socket.assigns.account) do
+      if connected?(socket) do
+        :ok = Relays.subscribe_to_relays_presence_in_account(socket.assigns.account)
+      end
 
       socket =
-        assign(socket,
-          groups: groups,
-          page_title: "Relays"
+        socket
+        |> assign(page_title: "Relays")
+        |> assign_live_table("groups",
+          query_module: Relays.Group.Query,
+          sortable_fields: [],
+          limit: 5,
+          callback: &handle_groups_update!/2
         )
 
       {:ok, socket}
     else
-      _other -> raise Web.LiveErrors.NotFoundError
+      raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_groups_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, relays: [:online?])
+
+    with {:ok, groups, metadata} <- Relays.list_groups(socket.assigns.subject, list_opts) do
+      assign(socket,
+        groups: groups,
+        groups_metadata: metadata
+      )
+    else
+      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -35,7 +60,6 @@ defmodule Web.RelayGroups.Index do
       </:action>
       <:content>
         <div class="bg-white overflow-hidden">
-          <!--<.resource_filter />-->
           <.table_with_groups
             id="groups"
             groups={@groups}
@@ -102,54 +126,18 @@ defmodule Web.RelayGroups.Index do
               </div>
             </:empty>
           </.table_with_groups>
-          <!--<.paginator page={3} total_pages={100} collection_base_path={~p"/#{@account}/relay_groups"} />-->
+
+          <.paginator id="relays" metadata={@groups_metadata} />
         </div>
       </:content>
     </.section>
     """
   end
 
-  def resource_filter(assigns) do
-    ~H"""
-    <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
-      <div class="w-full md:w-1/2">
-        <form class="flex items-center">
-          <label for="simple-search" class="sr-only">Search</label>
-          <div class="relative w-full">
-            <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-            </div>
-            <input
-              type="text"
-              id="simple-search"
-              class={[
-                "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-                "block w-full pl-10 p-2"
-              ]}
-              placeholder="Search"
-              required=""
-            />
-          </div>
-        </form>
-      </div>
-      <.button_group>
-        <:first>
-          All
-        </:first>
-        <:middle>
-          Online
-        </:middle>
-        <:last>
-          Deleted
-        </:last>
-      </.button_group>
-    </div>
-    """
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "presences:" <> _rest}, socket) do
+    {:noreply, reload_live_table!(socket, "groups")}
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{topic: "presences:" <> _rest}, socket) do
-    subject = socket.assigns.subject
-    {:ok, groups} = Relays.list_groups(subject, preload: [:relays])
-    {:noreply, assign(socket, groups: groups)}
-  end
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end
