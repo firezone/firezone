@@ -41,7 +41,7 @@ backoff = "0.4"
 http-health-check = { workspace = true }
 
 [dev-dependencies]
-redis = { version = "0.25.0", default-features = false, features = ["tokio-comp"] }
+redis = { version = "0.25.2", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 
 [[test]]
