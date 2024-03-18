@@ -35,3 +35,17 @@ impl Worker {
         futures::future::pending().await
     }
 }
+
+pub(crate) struct DnsListener {}
+
+impl DnsListener {
+    pub(crate) fn new() -> Result<Self> {
+        Ok(Self {})
+    }
+    pub(crate) fn close(&mut self) -> Result<()> {
+        Ok(())
+    }
+    pub(crate) async fn notified(&mut self) -> Result<()> {
+        futures::future::pending().await
+    }
+}
