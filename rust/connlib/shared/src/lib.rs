@@ -25,7 +25,6 @@ pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
 pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
-use ip_network::IpNetwork;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
 use ip_network::Ipv4Network;
