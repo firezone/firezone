@@ -71,10 +71,6 @@ async fn main() -> Result<()> {
     })
     .await;
 
-    if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
-        etc_resolv_conf::unconfigure_dns()?;
-    }
-
     session.disconnect();
 
     Ok(())

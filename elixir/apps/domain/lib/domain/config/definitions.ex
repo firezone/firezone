@@ -39,6 +39,13 @@ defmodule Domain.Config.Definitions do
 
   def doc_sections do
     [
+      {"Background Jobs",
+       """
+       You need to make sure that at least one of the nodes in the cluster has background jobs enabled.
+       """,
+       [
+         :background_jobs_enabled
+       ]},
       {"WebServer",
        [
          :external_url,
@@ -114,32 +121,34 @@ defmodule Domain.Config.Definitions do
        [
          :instrumentation_client_logs_enabled,
          :instrumentation_client_logs_bucket
-       ]},
-      {"Telemetry",
-       [
-         :telemetry_enabled,
-         :telemetry_id
        ]}
     ]
   end
+
+  ##############################################
+  ## Background Jobs
+  ##############################################
+
+  @doc """
+  Enabled or disable background job workers (eg. syncing IdP directory) for the app instance.
+  """
+  defconfig(:background_jobs_enabled, :boolean, default: false)
 
   ##############################################
   ## Web Server
   ##############################################
 
   @doc """
-  The external URL the web UI will be accessible at.
+  The external URL the UI/API will be accessible at.
 
-  Must be a valid and public FQDN for ACME SSL issuance to function.
-
-  You can add a path suffix if you want to serve firezone from a non-root path,
-  eg: `https://firezone.mycorp.com/vpn/`.
+  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
   """
   defconfig(:external_url, :string,
+    default: nil,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Validator.validate_uri(key, require_trailing_slash: true)
-      |> Domain.Validator.normalize_url(key)
+      |> Domain.Repo.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Domain.Repo.Changeset.normalize_url(key)
     end
   )
 
@@ -151,7 +160,7 @@ defmodule Domain.Config.Definitions do
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
 
   @doc """
-  Internal port to listen on for the Phoenix web server.
+  Internal port to listen on for the Phoenix server for the `web` application.
   """
   defconfig(:phoenix_http_web_port, :integer,
     default: 13_000,
@@ -164,7 +173,7 @@ defmodule Domain.Config.Definitions do
   )
 
   @doc """
-  Internal port to listen on for the Phoenix api server.
+  Internal port to listen on for the Phoenix server for the `api` application.
   """
   defconfig(:phoenix_http_api_port, :integer,
     default: 13_000,
@@ -361,7 +370,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:tokens_key_base, :string,
     sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
+    changeset: &Domain.Repo.Changeset.validate_base64/2
   )
 
   @doc """
@@ -369,7 +378,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:tokens_salt, :string,
     sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
+    changeset: &Domain.Repo.Changeset.validate_base64/2
   )
 
   @doc """
@@ -377,7 +386,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:secret_key_base, :string,
     sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
+    changeset: &Domain.Repo.Changeset.validate_base64/2
   )
 
   @doc """
@@ -385,7 +394,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:live_view_signing_salt, :string,
     sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
+    changeset: &Domain.Repo.Changeset.validate_base64/2
   )
 
   @doc """
@@ -393,7 +402,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:cookie_signing_salt, :string,
     sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
+    changeset: &Domain.Repo.Changeset.validate_base64/2
   )
 
   @doc """
@@ -401,7 +410,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:cookie_encryption_salt, :string,
     sensitive: true,
-    changeset: &Domain.Validator.validate_base64/2
+    changeset: &Domain.Repo.Changeset.validate_base64/2
   )
 
   ##############################################
@@ -445,25 +454,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
 
   ##############################################
-  ## Telemetry
-  ##############################################
-
-  @doc """
-  Enable or disable the Firezone telemetry collection.
-
-  For more details see https://docs.firezone.dev/reference/telemetry/.
-  """
-  defconfig(:telemetry_enabled, :boolean, default: true)
-
-  defconfig(:telemetry_id, :string,
-    default: fn ->
-      :crypto.hash(:sha256, compile_config!(:external_url))
-      |> Base.url_encode64(padding: false)
-    end,
-    legacy_keys: [{:env, "TID", nil}]
-  )
-
-  ##############################################
   ## Gateways
   ##############################################
 
@@ -494,8 +484,8 @@ defmodule Domain.Config.Definitions do
     sensitive: true,
     changeset: fn changeset, key ->
       changeset
-      |> Domain.Validator.trim_change(key)
-      |> Domain.Validator.validate_email(key)
+      |> Domain.Repo.Changeset.trim_change(key)
+      |> Domain.Repo.Changeset.validate_email(key)
     end
   )
 
@@ -571,6 +561,18 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn Sign-ups on/off for all accounts.
   """
   defconfig(:feature_sign_up_enabled, :boolean, default: true)
+
+  @doc """
+  List of email domains allowed to signup from. Leave empty to allow signing up from any domain.
+  """
+  defconfig(:sign_up_whitelisted_domains, {:array, ",", :string},
+    default: [],
+    changeset: fn changeset, key ->
+      changeset
+      |> Ecto.Changeset.validate_required(key)
+      |> Domain.Repo.Changeset.validate_fqdn(key)
+    end
+  )
 
   @doc """
   Boolean flag to turn IdP sync on/off for all accounts.

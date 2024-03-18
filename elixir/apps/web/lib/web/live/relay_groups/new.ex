@@ -6,8 +6,14 @@ defmodule Web.RelayGroups.New do
     with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account) do
       changeset = Relays.new_group()
 
-      {:ok, assign(socket, form: to_form(changeset, page_title: "New Relay Group")),
-       temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      socket =
+        socket
+        |> assign(
+          page_title: "New Relay Group",
+          form: to_form(changeset)
+        )
+
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -57,8 +63,7 @@ defmodule Web.RelayGroups.New do
   def handle_event("submit", %{"group" => attrs}, socket) do
     attrs = Map.put(attrs, "tokens", [%{}])
 
-    with {:ok, group} <-
-           Relays.create_group(attrs, socket.assigns.subject) do
+    with {:ok, group} <- Relays.create_group(attrs, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/relay_groups/#{group}")}
     else
       {:error, changeset} ->
