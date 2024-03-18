@@ -804,8 +804,6 @@ async fn run_controller(
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
     }
 
-    // It's okay to have this before `com_worker` is constructed, because
-    // `com_worker` will always notify when it's constructed anyway.
     let mut have_internet =
         network_changes::check_internet().context("Failed initial check for internet")?;
     tracing::info!(?have_internet);
