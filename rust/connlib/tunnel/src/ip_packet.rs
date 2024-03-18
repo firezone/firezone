@@ -87,6 +87,15 @@ impl<'a> MutableIpPacket<'a> {
         self.set_ipv4_checksum();
     }
 
+    pub(crate) fn inc_ipv4_identification_by(&mut self, offset: u16) {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => {
+                i.set_identification(i.get_identification() + offset)
+            }
+            MutableIpPacket::MutableIpv6Packet(_) => {}
+        }
+    }
+
     pub(crate) fn set_ipv4_checksum(&mut self) {
         if let Self::MutableIpv4Packet(p) = self {
             p.set_checksum(ipv4::checksum(&p.to_immutable()));
@@ -217,6 +226,15 @@ impl<'a> MutableIpPacket<'a> {
         match self {
             Self::MutableIpv4Packet(p) => p.set_total_length(total_len as u16),
             Self::MutableIpv6Packet(p) => p.set_payload_length(payload_len as u16),
+        }
+    }
+}
+
+impl PacketSize for MutableIpPacket<'_> {
+    fn packet_size(&self) -> usize {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => i.packet_size(),
+            MutableIpPacket::MutableIpv6Packet(i) => i.packet_size(),
         }
     }
 }
