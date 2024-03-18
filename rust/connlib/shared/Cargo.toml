@@ -9,7 +9,7 @@ edition = "2021"
 mock = []
 
 [dependencies]
-anyhow = "1.0.80"
+anyhow = "1.0.81"
 # Will be needed to safely modify `/etc/resolv.conf`
 atomicwrites = "0.4.3"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
