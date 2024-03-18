@@ -33,3 +33,7 @@ impl Worker {
         futures::future::pending().await
     }
 }
+
+pub(crate) struct DnsListener {
+
+}

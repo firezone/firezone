@@ -804,12 +804,14 @@ async fn run_controller(
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
     }
 
+    let mut com_worker =
+        network_changes::Worker::new().context("Failed to listen for network changes")?;
+
     let mut have_internet =
         network_changes::check_internet().context("Failed initial check for internet")?;
     tracing::info!(?have_internet);
 
-    let mut com_worker =
-        network_changes::Worker::new().context("Failed to listen for network changes")?;
+    let mut dns_listener = network_changes::DnsListener::new()?;
 
     loop {
         tokio::select! {
@@ -823,6 +825,12 @@ async fn run_controller(
                     // TODO: Stop / start / restart connlib as needed here
                     tracing::info!(?have_internet);
                 }
+            },
+            r = dns_listener.notified() => {
+                r?;
+                let resolvers = crate::client::resolvers::get()?;
+                // TODO: Tell connlib
+                tracing::info!(?resolvers);
             },
             req = rx.recv() => {
                 let Some(req) = req else {
@@ -841,8 +849,12 @@ async fn run_controller(
                         tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }
                 }
-            }
+            },
         }
+    }
+
+    if let Err(error) = dns_listener.close() {
+        tracing::error!(?error, "dns_listener");
     }
 
     if let Err(error) = com_worker.close() {

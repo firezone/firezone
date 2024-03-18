@@ -78,6 +78,8 @@ use windows::{
     },
 };
 
+pub(crate) use async_dns::CombinedListener as DnsListener;
+
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
     #[error("Couldn't initialize COM: {0}")]
@@ -463,6 +465,39 @@ mod async_dns {
         Ok(())
     }
 
+    pub(crate) struct CombinedListener {
+        listener_4: Listener,
+        listener_6: Listener,
+    }
+
+    impl CombinedListener {
+        pub(crate) fn new() -> Result<Self> {
+            let [key_ipv4, key_ipv6] = open_network_registry_keys()?;
+            let listener_4 = Listener::new(key_ipv4)?;
+            let listener_6 = Listener::new(key_ipv6)?;
+
+            Ok(Self {
+                listener_4,
+                listener_6,
+            })
+        }
+
+        pub(crate) fn close(&mut self) -> Result<()> {
+            self.listener_4.close()?;
+            self.listener_6.close()?;
+            tracing::debug!("Unregistered registry listener");
+            Ok(())
+        }
+
+        pub(crate) async fn notified(&mut self) -> Result<()> {
+            tokio::select! {
+                r = self.listener_4.notified() => r?,
+                r = self.listener_6.notified() => r?,
+            }
+            Ok(())
+        }
+    }
+
     struct Listener {
         key: winreg::RegKey,
         notify: std::pin::Pin<Box<Notify>>,
@@ -520,7 +555,6 @@ mod async_dns {
             }
             if let Some(event) = self.event.take() {
                 unsafe { CloseHandle(event) }?;
-                tracing::debug!("Unregistered registry listener");
             }
 
             Ok(())
@@ -551,7 +585,6 @@ mod async_dns {
             let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags =
                 Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
-            // TODO: Error handling
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }
