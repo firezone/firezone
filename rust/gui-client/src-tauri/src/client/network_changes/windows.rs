@@ -1,5 +1,13 @@
 //! A module for getting callbacks from Windows when we gain / lose Internet connectivity
 //!
+//! # Use
+//!
+//! - Call `check_internet`
+//! - Inside a Tokio context, construct a `Worker`
+//! - Await `Worker::notified`
+//! - Call `check_internet` again
+//! - Loop
+//!
 //! # Changes detected / not detected
 //!
 //! Tested manually one time each, with `RUST_LOG=info cargo run -p firezone-gui-client -- debug network-changes`
@@ -127,43 +135,7 @@ pub(crate) fn run_debug() -> Result<()> {
 /// including when connlib changes anything on the Firezone tunnel.
 /// It will often fire multiple events in quick succession.
 pub(crate) fn run_dns_debug() -> Result<()> {
-    tracing_subscriber::fmt::init();
-    tracing::info!("Listening for network events...");
-
-    // TODO: Use WaitForMultipleObjects or whatever to async await both IPv4 and IPv6 DNS changes
-
-    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-    let path = std::path::Path::new("SYSTEM")
-        .join("CurrentControlSet")
-        .join("Services")
-        .join("Tcpip")
-        .join("Parameters")
-        .join("Interfaces");
-    let key = hklm.open_subkey_with_flags(path, winreg::enums::KEY_NOTIFY)?;
-    let key_handle = Registry::HKEY(key.raw_handle());
-    let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
-
-    loop {
-        // SAFETY: No buffers or pointers involved, just the handle to the reg key.
-        unsafe {
-            Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, None, false);
-        }
-
-        // TODO: It's possible we could miss an event here:
-        //
-        // - We call `RegNotifyChangeKeyValue`
-        // - Some un-important change happens and spuriously wake up
-        // - We notify connlib
-        // - Connlib does nothing since the change didn't matter
-        // - An important change happens but our thread hasn't looped over yet
-        // - We call `RegNotifyChangeKeyValue` again, having missed the second change
-        //
-        // Switching to async may offer a way to close this gap, since we can re-register
-        // the notify before notifying connlib. Then the second change should cause us to
-        // immediately re-notify connlib.
-
-        tracing::info!("Something changed.");
-    }
+    return async_dns::run_dns_debug_async();
 }
 
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
@@ -372,7 +344,7 @@ impl<'a> Listener<'a> {
         Ok(this)
     }
 
-    /// Like `drop` but you can catch errors
+    /// Like `drop`, but you can catch errors
     ///
     /// Unregisters the network change callbacks
     pub fn close(&mut self) -> Result<(), Error> {
@@ -421,4 +393,122 @@ fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
     // so Windows shouldn't store the pointers.
     unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
     Ok((apt_type, apt_qualifier))
+}
+
+mod async_dns {
+    use anyhow::Result;
+    use std::{ffi::c_void, ops::Deref};
+    use windows::Win32::{
+        Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
+        System::Registry,
+        System::Threading::{
+            CreateEventA, RegisterWaitForSingleObject, UnregisterWaitEx, INFINITE,
+            WT_EXECUTEINWAITTHREAD,
+        },
+    };
+
+    /// Opens and returns the IPv4 and IPv6 registry keys
+    ///
+    /// `HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Services/Tcpip[6]/Parameters/Interfaces`
+    fn open_network_registry_keys() -> Result<[winreg::RegKey; 2]> {
+        let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+        let path_4 = std::path::Path::new("SYSTEM")
+            .join("CurrentControlSet")
+            .join("Services")
+            .join("Tcpip")
+            .join("Parameters")
+            .join("Interfaces");
+        let path_6 = std::path::Path::new("SYSTEM")
+            .join("CurrentControlSet")
+            .join("Services")
+            .join("Tcpip6")
+            .join("Parameters")
+            .join("Interfaces");
+        let flags = winreg::enums::KEY_NOTIFY;
+        Ok([
+            hklm.open_subkey_with_flags(path_4, flags)?,
+            hklm.open_subkey_with_flags(path_6, flags)?,
+        ])
+    }
+
+    unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
+        let waker = &*(ctx as *const tokio::sync::Notify);
+        waker.notify_one();
+    }
+
+    pub(crate) fn run_dns_debug_async() -> Result<()> {
+        /*
+         * Open reg keys
+         * CreateEventA
+         * RegisterWaitForSingleObject
+         *
+         * RegNotifyChangeKeyValue
+         * AtomicWaker::wake
+         *
+         * UnregisterWaitEx
+         * CloseHandle
+         * Close reg keys
+         *
+         * RegNotifyChangeKeyValue notifies `event`
+         * `event` triggers `wait_handle`
+         * `wait_handle` calls back into our AtomicWaker
+         *
+         * "What you are about to see..... is considered safe."
+         */
+
+        tracing_subscriber::fmt::init();
+        let rt = tokio::runtime::Runtime::new()?;
+
+        let [key_ipv4, key_ipv6] = open_network_registry_keys()?;
+
+        rt.spawn(listen_to_dns(key_ipv4, "IPv4"));
+        rt.spawn(listen_to_dns(key_ipv6, "IPv6"));
+
+        rt.block_on(tokio::signal::ctrl_c())?;
+
+        Ok(())
+    }
+
+    async fn listen_to_dns(key: winreg::RegKey, name: &str) -> Result<()> {
+        let waker = Box::pin(tokio::sync::Notify::default());
+        let waker_ptr: *const tokio::sync::Notify = waker.deref();
+        let event = unsafe { CreateEventA(None, false, false, None) }?;
+        let mut wait_handle = HANDLE(0isize);
+
+        // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
+        // "the thread pool".
+        // Raymond Chen, who is an authority on Windows internals, says RegisterWaitForSingleObject
+        // does multiple waits on the same worker thread internally:
+        // <https://devblogs.microsoft.com/oldnewthing/20081117-00/?p=20183>
+        // There is a different function in the CLR called `RegisterWaitForSingleObject`,
+        // so he might be talking about that.
+        // If he's not, then we're invisibly tying up two worker threads. Can't help it.
+        unsafe {
+            RegisterWaitForSingleObject(
+                &mut wait_handle,
+                event,
+                Some(callback),
+                Some(waker_ptr as *const _),
+                INFINITE,
+                WT_EXECUTEINWAITTHREAD,
+            )
+        }?;
+
+        loop {
+            let key_handle = Registry::HKEY(key.raw_handle());
+            let notify_flags =
+                Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
+            // TODO: Error handling
+            unsafe {
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
+            };
+
+            tracing::info!("Check {name}");
+            waker.notified().await;
+        }
+
+        unsafe { UnregisterWaitEx(wait_handle, INVALID_HANDLE_VALUE) }?;
+        unsafe { CloseHandle(event) }?;
+        // Key closed here by `Drop`
+    }
 }
