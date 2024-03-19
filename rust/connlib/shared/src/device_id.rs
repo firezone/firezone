@@ -2,6 +2,12 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
 
+pub struct DeviceId {
+    /// True iff the device ID was not found on disk and we had to generate it, meaning this is the app's first run since installing.
+    pub is_first_time: bool,
+    pub id: String,
+}
+
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
@@ -10,7 +16,7 @@ use std::io::Write;
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub fn get() -> Result<String> {
+pub fn get() -> Result<DeviceId> {
     let dir = imp::path().context("Failed to compute path for firezone-id file")?;
     let path = dir.join("firezone-id.json");
 
@@ -19,9 +25,12 @@ pub fn get() -> Result<String> {
         .ok()
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
-        let device_id = j.device_id();
-        tracing::debug!(?device_id, "Loaded device ID from disk");
-        return Ok(device_id);
+        let id = j.device_id();
+        tracing::debug!(?id, "Loaded device ID from disk");
+        return Ok(DeviceId {
+            is_first_time: false,
+            id,
+        });
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
@@ -39,9 +48,12 @@ pub fn get() -> Result<String> {
     file.write(|f| f.write_all(content.as_bytes()))
         .context("Failed to write firezone-id file")?;
 
-    let device_id = j.device_id();
-    tracing::debug!(?device_id, "Saved device ID to disk");
-    Ok(j.device_id())
+    let id = j.device_id();
+    tracing::debug!(?id, "Saved device ID to disk");
+    Ok(DeviceId {
+        is_first_time: true,
+        id,
+    })
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
