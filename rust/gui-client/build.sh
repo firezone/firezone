@@ -12,4 +12,4 @@ pnpm tsc
 pnpm tailwindcss -i src/input.css -o src/output.css
 
 # Compile Rust and bundle
-cargo deb -p firezone-gui-client --profile release
+cargo deb -p firezone-gui-client --profile release-linux

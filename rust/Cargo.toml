@@ -61,11 +61,9 @@ strip = true
 debug = "full"
 split-debuginfo = "packed"
 
+# Used by `gui-client`
 [profile.release.package.firezone-gui-client]
-# Generate debug symbols for the crash handler to use, even if the exe itself is optimized
+inherits = "release"
 debug = "full"
-# Split out debug info from the exe. This is already default on Windows.
-# https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 split-debuginfo = "packed"
-# Since we have separate symbol files, strip the debuginfo from the exe itself
-strip = "symbols"
+strip = "none"
