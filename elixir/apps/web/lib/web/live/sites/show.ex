@@ -283,16 +283,10 @@ defmodule Web.Sites.Show do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id} = event,
+        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
         socket
       ) do
-    rendered_gateway_ids = Enum.map(socket.assigns.gateways, & &1.id)
-
-    if presence_updates_any_id?(event, rendered_gateway_ids) do
-      {:noreply, reload_live_table!(socket, "gateways")}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, reload_live_table!(socket, "gateways")}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
