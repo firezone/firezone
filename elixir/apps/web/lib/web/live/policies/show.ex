@@ -45,16 +45,11 @@ defmodule Web.Policies.Show do
 
     with {:ok, flows, metadata} <-
            Flows.list_flows_for(socket.assigns.policy, socket.assigns.subject, list_opts) do
-      assign(socket,
-        flows: flows,
-        flows_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 

@@ -36,16 +36,11 @@ defmodule Web.Settings.IdentityProviders.Index do
 
   def handle_providers_update!(socket, list_opts) do
     with {:ok, providers, metadata} <- Auth.list_providers(socket.assigns.subject, list_opts) do
-      assign(socket,
-        providers: providers,
-        providers_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         providers: providers,
+         providers_metadata: metadata
+       )}
     end
   end
 

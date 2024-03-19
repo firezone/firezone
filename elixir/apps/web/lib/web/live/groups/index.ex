@@ -26,20 +26,14 @@ defmodule Web.Groups.Index do
   def handle_groups_update!(socket, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:provider, created_by_identity: [:actor]])
 
-    with {:ok, groups, metadata} <- Actors.list_groups(socket.assigns.subject, list_opts) do
-      {:ok, group_actors} = Actors.peek_group_actors(groups, 3, socket.assigns.subject)
-
-      assign(socket,
-        groups: groups,
-        groups_metadata: metadata,
-        group_actors: group_actors
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    with {:ok, groups, metadata} <- Actors.list_groups(socket.assigns.subject, list_opts),
+         {:ok, group_actors} <- Actors.peek_group_actors(groups, 3, socket.assigns.subject) do
+      {:ok,
+       assign(socket,
+         groups: groups,
+         groups_metadata: metadata,
+         group_actors: group_actors
+       )}
     end
   end
 
