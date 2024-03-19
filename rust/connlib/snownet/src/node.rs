@@ -144,6 +144,8 @@ where
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
+
+        self.bindings_and_allocations_drain_events();
     }
 
     pub fn public_key(&self) -> PublicKey {

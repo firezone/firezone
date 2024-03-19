@@ -961,12 +961,10 @@ impl ChannelBindings {
     }
 
     fn handle_failed_binding(&mut self, c: u16) {
-        let Some(channel) = self.inner.remove(&c) else {
+        if self.inner.remove(&c).is_none() {
             debug_assert!(false, "No channel binding for {c}");
             return;
         };
-
-        debug_assert!(!channel.bound, "Channel should not yet be bound")
     }
 
     fn set_confirmed(&mut self, c: u16, now: Instant) -> bool {
