@@ -44,7 +44,7 @@ defmodule Web.SignUp do
       Ecto.Changeset.validate_change(changeset, :email, fn :email, email ->
         if email_allowed?(email, whitelisted_domains),
           do: [],
-          else: [email: "email domain is not allowed at this time"]
+          else: [email: "this email domain is not allowed at this time"]
       end)
     end
 
