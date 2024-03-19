@@ -28,7 +28,7 @@ class NetworkSettings {
   private(set) var matchDomains: [String] = [""]
 
   // To keep track of modifications
-  private(set) var hasUnappliedChanges: Bool
+  public var hasUnappliedChanges: Bool
 
   init(
     tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]

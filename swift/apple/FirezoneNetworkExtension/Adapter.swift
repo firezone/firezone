@@ -460,6 +460,7 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes6 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
       ).compactMap { $0.asNEIPv6Route }
+      networkSettings.hasUnappliedChanges = true
 
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
     }
