@@ -68,7 +68,7 @@ public final class AppStore: ObservableObject {
     let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)
     let tunnelStore = TunnelStore(logger: logger)
     let authStore = AuthStore(tunnelStore: tunnelStore, logger: logger)
-    let settingsViewModel = SettingsViewModel(authStore: authStore, logger: logger)
+    let settingsViewModel = SettingsViewModel(authStore: authStore, tunnelStore: tunnelStore, logger: logger)
 
     self.authStore = authStore
     self.tunnelStore = tunnelStore
@@ -88,17 +88,5 @@ public final class AppStore: ObservableObject {
         }
         .store(in: &cancellables)
     #endif
-
-  }
-
-  private func signOutAndStopTunnel() {
-    Task {
-      do {
-        try await self.tunnelStore.stop()
-        await self.authStore.signOut()
-      } catch {
-        logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
-      }
-    }
   }
 }

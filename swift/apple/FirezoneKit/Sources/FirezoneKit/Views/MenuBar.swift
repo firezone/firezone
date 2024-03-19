@@ -33,6 +33,7 @@
     private var connectingAnimationTimer: Timer?
 
     private var appStore: AppStore
+    private var tunnelStore: TunnelStore
     private var settingsViewModel: SettingsViewModel
     private var loginStatus: AuthStore.LoginStatus = .signedOut
     private var tunnelStatus: NEVPNStatus = .invalid
@@ -42,6 +43,7 @@
       self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
       self.appStore = appStore
+      self.tunnelStore = appStore.tunnelStore
       self.settingsViewModel = appStore.settingsViewModel
 
       self.logger = appStore.logger
@@ -67,7 +69,7 @@
         }
         .store(in: &cancellables)
 
-      appStore.tunnelStore.$status
+      tunnelStore.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
           self?.tunnelStatus = status
@@ -77,7 +79,7 @@
         }
         .store(in: &cancellables)
 
-      appStore.tunnelStore.$resources
+      tunnelStore.$resources
         .receive(on: mainQueue)
         .sink { [weak self] resources in
           guard let self = self else { return }
@@ -225,7 +227,7 @@
     @objc private func quitButtonTapped() {
       Task {
         do {
-          try await appStore.tunnelStore.stop()
+          try await tunnelStore.stop()
         } catch {
           logger.error("\(#function): Error stopping tunnel: \(error)")
         }
@@ -372,11 +374,11 @@
     }
 
     private func handleMenuVisibilityOrStatusChanged() {
-      let status = appStore.tunnelStore.status
+      let status = tunnelStore.status
       if isMenuVisible && status == .connected {
-        appStore.tunnelStore.beginUpdatingResources()
+        tunnelStore.beginUpdatingResources()
       } else {
-        appStore.tunnelStore.endUpdatingResources()
+        tunnelStore.endUpdatingResources()
       }
     }
 

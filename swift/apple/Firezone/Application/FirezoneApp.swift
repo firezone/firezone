@@ -23,6 +23,7 @@ struct FirezoneApp: App {
   init() {
     let appStore = AppStore()
     self._appStore = StateObject(wrappedValue: appStore)
+    let tunnelStore = appStore.tunnelStore
 
     #if os(macOS)
       self._askPermissionViewModel =
@@ -47,7 +48,7 @@ struct FirezoneApp: App {
       }
     #else
       WindowGroup(
-        "Welcome to Firezone",
+        "Firezone (VPN Permission)",
         id: AppStore.WindowDefinition.askPermission.identifier
       ) {
         AskPermissionView(model: askPermissionViewModel)
