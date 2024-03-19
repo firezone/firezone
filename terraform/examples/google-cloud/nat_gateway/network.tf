@@ -87,7 +87,8 @@ resource "google_compute_firewall" "gateways-egress-ipv6" {
 # and administration of the gateways. Since they're not publicly accessible,
 # you need to tunnel through IAP:
 #
-#   gcloud compute ssh --tunnel-through-iap --project <PROJECT_ID> --zone <ZONE> gateway-0
+#   gcloud compute instances list --project <PROJECT_ID>
+#   gcloud compute ssh --tunnel-through-iap --project <PROJECT_ID> gateway-XXXX
 resource "google_compute_firewall" "ssh-rule" {
   name    = "allow-gateways-ssh"
   network = google_compute_network.firezone.id
