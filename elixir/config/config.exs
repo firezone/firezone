@@ -102,6 +102,7 @@ config :web, generators: [binary_id: true, context_app: :domain]
 config :web, client_handler: "firezone-fd0020211111://"
 
 config :web, Web.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
   url: [
     scheme: "http",
     host: "localhost",
@@ -150,6 +151,7 @@ config :api, ecto_repos: [Domain.Repo]
 config :api, generators: [binary_id: true, context_app: :domain]
 
 config :api, API.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
   url: [
     scheme: "http",
     host: "localhost",
