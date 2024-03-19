@@ -90,11 +90,12 @@ public final class AuthStore: ObservableObject {
   }
 
   private var authBaseURL: URL {
-    if let advancedSettings = self.tunnelStore.advancedSettings(),
-      let url = URL(string: advancedSettings.authBaseURLString)
-    {
+    let advancedSettings = self.tunnelStore.advancedSettings()
+
+    if let url = URL(string: advancedSettings.authBaseURLString) {
       return url
     }
+
     return URL(string: AdvancedSettings.defaultValue.authBaseURLString)!
   }
 
