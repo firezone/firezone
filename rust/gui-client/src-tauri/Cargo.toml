@@ -2,13 +2,9 @@
 name = "firezone-gui-client"
 # mark:automatic-version
 version = "1.0.0"
-authors = ["Firezone, Inc."]
 description = "Firezone"
 edition = "2021"
-license = "Apache-2.0"
-
-[package.metadata.deb]
-name = "firezone"
+default-run = "firezone-gui-client"
 
 [build-dependencies]
 anyhow = { version = "1.0" }
