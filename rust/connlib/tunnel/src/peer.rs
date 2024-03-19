@@ -5,12 +5,12 @@ use std::time::Instant;
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{DnsServer, ResourceId};
-use connlib_shared::IpProvider;
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 
+use crate::client::IpProvider;
 use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
