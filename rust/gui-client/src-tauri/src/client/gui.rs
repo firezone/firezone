@@ -448,12 +448,16 @@ struct CallbackHandler {
 impl connlib_client_shared::Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::debug!("on_disconnect {error:?}");
-        let _ = self.ctlr_tx.try_send(ControllerRequest::Disconnected);
+        self.ctlr_tx
+            .try_send(ControllerRequest::Disconnected)
+            .expect("controller channel failed");
     }
 
     fn on_tunnel_ready(&self) {
         tracing::info!("on_tunnel_ready");
-        let _ = self.ctlr_tx.try_send(ControllerRequest::TunnelReady);
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
