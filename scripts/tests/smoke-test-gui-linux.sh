@@ -64,8 +64,10 @@ function crash_test() {
 
 function get_stacktrace() {
     SYMS_PATH="../target/debug/firezone-gui-client.syms"
-    cargo install --locked dump_syms minidump-stackwalk
-    dump_syms ../tareget/debug/firezone-gui-client ../target/debug/firezone-gui-client.dwp --output "$SYMS_PATH"
+    cargo install --quiet --locked dump_syms minidump-stackwalk
+    # The dwp doesn't actually do anything if the exe already has all the debug info
+    # Getting this to coordinate between Linux and Windows is tricky
+    dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
     ls -lash ../target/debug
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
