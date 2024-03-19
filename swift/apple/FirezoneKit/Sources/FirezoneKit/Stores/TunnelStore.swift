@@ -51,36 +51,27 @@ public final class TunnelStore: ObservableObject {
 
     Task {
       await initializeTunnel()
+      setupTunnelObservers()
     }
   }
 
   func initializeTunnel() async {
-    do {
-      let managers = try await NETunnelProviderManager.loadAllFromPreferences()
-      logger.log("\(#function): \(managers.count) tunnel managers found")
-      if let tunnel = managers.first {
-        logger.log("\(#function): Tunnel already exists")
-        if let protocolConfig = (tunnel.protocolConfiguration as? NETunnelProviderProtocol) {
-          logger.log(
-            "  serverAddress = \(protocolConfig.serverAddress ?? "")"
-          )
-          logger.log(
-            "  providerConfig = \(protocolConfig.providerConfiguration ?? [:])"
-          )
-          logger.log(
-            "  passwordReference = \(String(describing: protocolConfig.passwordReference))"
-          )
-        }
-        self.tunnel = tunnel
-        self.tunnelAuthStatus = tunnel.authStatus()
-        self.status = tunnel.connection.status
-      } else {
-        self.tunnelAuthStatus = .noTunnelFound
+    // loadAllFromPreferences() returns list of tunnel configurations we created. Since our bundle ID
+    // can change (by us), find the one that's current and ignore the others.
+    let managers = try! await NETunnelProviderManager.loadAllFromPreferences()
+    logger.log("\(#function): \(managers.count) tunnel managers found")
+    for manager in managers {
+      if let protocolConfig = (manager.protocolConfiguration as? NETunnelProviderProtocol),
+         protocolConfig.providerBundleIdentifier == NETunnelProviderManager.bundleIdentifier() {
+        self.tunnel = manager
+        self.tunnelAuthStatus = manager.authStatus()
+        self.status = manager.connection.status
+
+        // Stop looking for our tunnel
+        break
       }
-      setupTunnelObservers()
-      logger.log("\(#function): TunnelStore initialized")
-    } catch {
-      logger.error("Error (\(#function)): \(error)")
+
+      self.tunnelAuthStatus = .noTunnelFound
     }
   }
 
@@ -89,7 +80,7 @@ public final class TunnelStore: ObservableObject {
       return
     }
     let tunnel = NETunnelProviderManager()
-    tunnel.localizedDescription = NETunnelProviderManager.firezoneNetworkExtensionDescription()
+    tunnel.localizedDescription = NETunnelProviderManager.bundleDescription()
     tunnel.protocolConfiguration = basicProviderProtocol()
     try await tunnel.saveToPreferences()
     logger.log("\(#function): Tunnel created")
@@ -140,8 +131,7 @@ public final class TunnelStore: ObservableObject {
 
   func basicProviderProtocol() -> NETunnelProviderProtocol {
     let protocolConfiguration = NETunnelProviderProtocol()
-    protocolConfiguration.providerBundleIdentifier =
-      NETunnelProviderManager.firezoneNetworkExtensionBundleIdentifier()
+    protocolConfiguration.providerBundleIdentifier = NETunnelProviderManager.bundleIdentifier()
     protocolConfiguration.serverAddress = AdvancedSettings.defaultValue.apiURLString
     protocolConfiguration.providerConfiguration = [
       TunnelProviderKeys.keyConnlibLogFilter:
@@ -490,22 +480,22 @@ extension NETunnelProviderManager {
     // to even sign out, we need saveToPreferences() to succeed.
     if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
       protocolConfiguration.providerBundleIdentifier =
-        Self.firezoneNetworkExtensionBundleIdentifier()
+        Self.bundleIdentifier()
       if protocolConfiguration.serverAddress?.isEmpty ?? true {
         protocolConfiguration.serverAddress = "unknown-server"
       }
     } else {
       let protocolConfiguration = NETunnelProviderProtocol()
       protocolConfiguration.providerBundleIdentifier =
-        Self.firezoneNetworkExtensionBundleIdentifier()
+        Self.bundleIdentifier()
       protocolConfiguration.serverAddress = "unknown-server"
     }
     if localizedDescription?.isEmpty ?? true {
-      localizedDescription = Self.firezoneNetworkExtensionDescription()
+      localizedDescription = Self.bundleDescription()
     }
   }
 
-  static func firezoneNetworkExtensionBundleIdentifier() -> String? {
+  static func bundleIdentifier() -> String? {
     #if DEBUG
       Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
     #else
@@ -513,7 +503,7 @@ extension NETunnelProviderManager {
     #endif
   }
 
-  static func firezoneNetworkExtensionDescription() -> String {
+  static func bundleDescription() -> String {
     #if DEBUG
       "Firezone (Debug)"
     #else

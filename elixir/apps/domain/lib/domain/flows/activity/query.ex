@@ -21,6 +21,10 @@ defmodule Domain.Flows.Activity.Query do
     where(queryable, [activities: activities], activities.window_ended_at > ^datetime)
   end
 
+  def first(queryable) do
+    limit(queryable, 1)
+  end
+
   # Pagination
 
   @impl Domain.Repo.Query

@@ -429,7 +429,7 @@ defmodule Domain.FlowsTest do
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
+      {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://127.0.0.1:80")
 
       activity = %{
         window_started_at: DateTime.add(now, -1, :minute),
@@ -437,6 +437,7 @@ defmodule Domain.FlowsTest do
         destination: destination,
         rx_bytes: 100,
         tx_bytes: 200,
+        connectivity_type: :direct,
         flow_id: flow.id,
         account_id: account.id
       }
@@ -477,6 +478,69 @@ defmodule Domain.FlowsTest do
       assert upsert_activities([activity]) == {:ok, 0}
 
       assert Repo.one(Flows.Activity)
+    end
+  end
+
+  describe "fetch_last_activity_for/3" do
+    setup %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      %{flow: flow}
+    end
+
+    test "returns error when flow has no activities", %{subject: subject, flow: flow} do
+      assert fetch_last_activity_for(flow, subject) == {:error, :not_found}
+    end
+
+    test "returns last activity for a flow", %{subject: subject, flow: flow} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      thirty_minutes_ago = DateTime.add(now, -30, :minute)
+      five_minutes_ago = DateTime.add(now, -5, :minute)
+      four_minutes_ago = DateTime.add(now, -4, :minute)
+
+      Fixtures.Flows.create_activity(
+        flow: flow,
+        window_started_at: thirty_minutes_ago,
+        window_ended_at: five_minutes_ago
+      )
+
+      activity =
+        Fixtures.Flows.create_activity(
+          flow: flow,
+          window_started_at: five_minutes_ago,
+          window_ended_at: four_minutes_ago
+        )
+
+      assert {:ok, fetched_activity} = fetch_last_activity_for(flow, subject)
+      assert fetched_activity.id == activity.id
+    end
+
+    test "returns error when subject has no permission to view flows", %{
+      flow: flow,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_last_activity_for(flow, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Flows.Authorizer.manage_flows_permission()]}}
     end
   end
 
