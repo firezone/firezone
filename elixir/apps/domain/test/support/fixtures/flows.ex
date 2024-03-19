@@ -91,7 +91,7 @@ defmodule Domain.Fixtures.Flows do
   def activity_attrs(attrs \\ %{}) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     unique_ipv4 = :inet.ntoa(unique_ipv4())
-    {:ok, destination} = Domain.Types.IPPort.cast("#{unique_ipv4}:80")
+    {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://#{unique_ipv4}:80")
 
     Enum.into(attrs, %{
       window_started_at: DateTime.add(now, -1, :minute),

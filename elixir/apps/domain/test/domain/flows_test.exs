@@ -429,7 +429,7 @@ defmodule Domain.FlowsTest do
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
+      {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://127.0.0.1:80")
 
       activity = %{
         window_started_at: DateTime.add(now, -1, :minute),
