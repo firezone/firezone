@@ -62,7 +62,7 @@ strip = true
 debug = "full"
 split-debuginfo = "packed"
 
-[profile.release.firezone-gui-client]
+[profile.release.package.firezone-gui-client]
 inherits = "release"
 debug = "full"
 split-debuginfo = "packed"
