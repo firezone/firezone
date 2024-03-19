@@ -21,7 +21,6 @@ public final class SettingsViewModel: ObservableObject {
   @Published var advancedSettings: AdvancedSettings
 
   let logger: AppLogger
-  public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
   public init(authStore: AuthStore, logger: AppLogger) {
@@ -387,7 +386,8 @@ public struct SettingsView: View {
               Button(
                 "Reset to Defaults",
                 action: {
-                  self.resetToDefaults()
+                  self.model.advancedSettings = AdvancedSettings.defaultValue
+                  self.model.advancedSettings.isSavedToDisk = false
                 }
               )
               .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
@@ -454,7 +454,8 @@ public struct SettingsView: View {
                 Button(
                   "Reset to Defaults",
                   action: {
-                    self.restoreAdvancedSettingsToDefaults()
+                    self.model.advancedSettings = AdvancedSettings.defaultValue
+                    self.model.advancedSettings.isSavedToDisk = false
                   }
                 )
                 .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
@@ -584,11 +585,6 @@ public struct SettingsView: View {
   func loadSettings() {
     model.loadSettings()
     dismiss()
-  }
-
-  func resetToDefaults() {
-    model.advancedSettings = AdvancedSettings.defaultValue
-    model.saveAdvancedSettings()
   }
 
   #if os(macOS)
