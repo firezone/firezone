@@ -72,7 +72,7 @@ public final class AskPermissionViewModel: ObservableObject {
   func grantPermissionButtonTapped() {
     Task {
       do {
-        try await self.tunnelStore.createTunnel()
+        try await self.tunnelStore.createManager()
       } catch {
         #if os(macOS)
           DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) {

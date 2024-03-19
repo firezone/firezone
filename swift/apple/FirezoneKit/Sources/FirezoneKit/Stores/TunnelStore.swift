@@ -24,7 +24,7 @@ public struct TunnelProviderKeys {
 }
 
 public final class TunnelStore: ObservableObject {
-  @Published private var tunnel: NETunnelProviderManager?
+  @Published private var manager: NETunnelProviderManager?
   @Published private(set) var tunnelAuthStatus: TunnelAuthStatus?
 
   @Published private(set) var status: NEVPNStatus {
@@ -37,18 +37,26 @@ public final class TunnelStore: ObservableObject {
     didSet(oldValue) { oldValue?.invalidate() }
   }
 
-  private var protocolConfiguration: NETunnelProviderProtocol?
+  private var protocolConfiguration: NETunnelProviderProtocol
   private let logger: AppLogger
   private var tunnelObservingTasks: [Task<Void, Never>] = []
   private var startTunnelContinuation: CheckedContinuation<(), Error>?
   private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
+  #if DEBUG
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
+    private let bundleDescription = "Firezone (Debug)"
+  #else
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+    private let bundleDescription = "Firezone"
+  #endif
+
   public init(logger: AppLogger) {
     self.logger = logger
     self.status = .invalid
-    self.protocolConfiguration = nil
-    self.tunnel = nil
+    self.protocolConfiguration = NETunnelProviderProtocol()
+    self.manager = nil
     self.tunnelAuthStatus = .noTunnelFound
 
     Task {
@@ -58,10 +66,10 @@ public final class TunnelStore: ObservableObject {
       logger.log("\(#function): \(managers.count) tunnel managers found")
       for manager in managers {
         if let protocolConfiguration = (manager.protocolConfiguration as? NETunnelProviderProtocol),
-           protocolConfiguration.providerBundleIdentifier == NETunnelProviderManager.bundleIdentifier() {
+           protocolConfiguration.providerBundleIdentifier == bundleIdentifier {
           self.protocolConfiguration = protocolConfiguration
-          self.tunnel = manager
-          self.tunnelAuthStatus = manager.authStatus()
+          self.manager = manager
+          self.tunnelAuthStatus = authStatus()
           self.status = manager.connection.status
 
           // Stop looking for our tunnel
@@ -72,66 +80,85 @@ public final class TunnelStore: ObservableObject {
     }
   }
 
-  func initializeTunnel() async {
+  private func authStatus() -> TunnelAuthStatus {
+    let authBaseURL: URL? = {
+      if let urlString = protocolConfiguration.providerConfiguration?[TunnelProviderKeys.keyAuthBaseURLString] as? String {
+        return URL(string: urlString)
+      }
+      return nil
+    }()
 
+    if let authBaseURL = authBaseURL,
+    let tokenRef = protocolConfiguration.passwordReference {
+      return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
+    } else {
+      return .signedOut
+    }
   }
 
-  func createTunnel() async throws {
-    guard self.tunnel == nil else {
+  func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
+    var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
+
+    switch authStatus {
+    case .noTunnelFound:
+      return
+
+    case .signedOut:
+      protocolConfiguration.passwordReference = nil
+      break
+    case .signedIn(let authBaseURL, let tokenReference):
+      providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
+      protocolConfiguration.passwordReference = tokenReference
+    }
+
+    protocolConfiguration.providerConfiguration = providerConfig
+    sanitizeProtocolConfiguration()
+    try await manager?.saveToPreferences()
+  }
+
+  func sanitizeProtocolConfiguration() {
+    protocolConfiguration.serverAddress = advancedSettings().apiURLString
+    protocolConfiguration.providerBundleIdentifier = bundleIdentifier
+    manager?.localizedDescription = bundleDescription
+  }
+
+  func createManager() async throws {
+    guard self.manager == nil else {
       return
     }
-    let tunnel = NETunnelProviderManager()
-    tunnel.localizedDescription = NETunnelProviderManager.bundleDescription()
-    tunnel.protocolConfiguration = basicProviderProtocol()
-    try await tunnel.saveToPreferences()
+    let manager = NETunnelProviderManager()
+    manager.localizedDescription = bundleDescription
+    manager.protocolConfiguration = basicProviderProtocol()
+    try await manager.saveToPreferences()
     logger.log("\(#function): Tunnel created")
-    self.tunnel = tunnel
-    self.tunnelAuthStatus = tunnel.authStatus()
-  }
-
-  func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
-    logger.log("TunnelStore.\(#function) \(tunnelAuthStatus)")
-    guard let tunnel = tunnel else {
-      fatalError("No tunnel yet. Can't save auth status.")
-    }
-
-    if [.connected, .connecting].contains(tunnel.connection.status) {
-      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
-    }
-
-    try await tunnel.loadFromPreferences()
-    try await tunnel.saveAuthStatus(tunnelAuthStatus)
-    self.tunnelAuthStatus = tunnelAuthStatus
+    self.manager = manager
+    self.tunnelAuthStatus = authStatus()
   }
 
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
     logger.log("TunnelStore.\(#function) \(advancedSettings)")
-    guard let tunnel = tunnel else {
+    guard let manager = manager else {
       fatalError("No tunnel yet. Can't save advanced settings.")
     }
 
-    let tunnelStatus = tunnel.connection.status
-    if tunnelStatus == .connected || tunnelStatus == .connecting {
+    if [.connected, .connecting].contains(manager.connection.status) {
       throw TunnelStoreError.cannotSaveToTunnelWhenConnected
     }
 
-    try await tunnel.loadFromPreferences()
-    try await tunnel.saveAdvancedSettings(advancedSettings)
-    self.tunnelAuthStatus = tunnel.authStatus()
+    try await manager.loadFromPreferences()
+    protocolConfiguration.providerConfiguration?[TunnelProviderKeys.keyAuthBaseURLString] =
+      advancedSettings.authBaseURLString
+    protocolConfiguration.providerConfiguration?[TunnelProviderKeys.keyConnlibLogFilter] =
+      advancedSettings.connlibLogFilterString
+    sanitizeProtocolConfiguration()
+    try await manager.saveToPreferences()
+
+    self.tunnelAuthStatus = authStatus()
   }
 
-  func advancedSettings() -> AdvancedSettings? {
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
-      return nil
-    }
-
-    return tunnel.advancedSettings()
-  }
-
-  func basicProviderProtocol() -> NETunnelProviderProtocol {
+  private func basicProviderProtocol() -> NETunnelProviderProtocol {
     let protocolConfiguration = NETunnelProviderProtocol()
-    protocolConfiguration.providerBundleIdentifier = NETunnelProviderManager.bundleIdentifier()
+    protocolConfiguration.providerBundleIdentifier = bundleIdentifier
     protocolConfiguration.serverAddress = AdvancedSettings.defaultValue.apiURLString
     protocolConfiguration.providerConfiguration = [
       TunnelProviderKeys.keyConnlibLogFilter:
@@ -141,26 +168,27 @@ public final class TunnelStore: ObservableObject {
   }
 
   func start() async throws {
-    guard let tunnel = tunnel else {
+    guard let manager = manager else {
       logger.log("\(#function): No tunnel created yet")
       return
     }
 
     logger.log("\(#function)")
 
-    if tunnel.connection.status == .connected || tunnel.connection.status == .connecting {
+
+    if [.connected, .connecting].contains(manager.connection.status) {
       return
     }
 
-    if tunnel.advancedSettings().connlibLogFilterString.isEmpty {
-      tunnel.setConnlibLogFilter(AdvancedSettings.defaultValue.connlibLogFilterString)
+    if advancedSettings().connlibLogFilterString.isEmpty {
+      setConnlibLogFilter(AdvancedSettings.defaultValue.connlibLogFilterString)
     }
 
-    tunnel.isEnabled = true
-    try await tunnel.saveToPreferences()
-    try await tunnel.loadFromPreferences()
+    manager.isEnabled = true
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
 
-    let session = castToSession(tunnel.connection)
+    let session = castToSession(manager.connection)
     do {
       try session.startTunnel()
     } catch {
@@ -172,7 +200,7 @@ public final class TunnelStore: ObservableObject {
   }
 
   func stop() async throws {
-    guard let tunnel = tunnel else {
+    guard let manager = manager else {
       logger.log("\(#function): No tunnel created yet")
       return
     }
@@ -183,9 +211,8 @@ public final class TunnelStore: ObservableObject {
 
     logger.log("\(#function)")
 
-    let status = tunnel.connection.status
-    if status == .connected || status == .connecting {
-      let session = castToSession(tunnel.connection)
+    if [.connected, .connecting].contains(manager.connection.status) {
+      let session = castToSession(manager.connection)
       session.stopTunnel()
       try await withCheckedThrowingContinuation { continuation in
         self.stopTunnelContinuation = continuation
@@ -194,13 +221,12 @@ public final class TunnelStore: ObservableObject {
   }
 
   func signOut() async throws -> Keychain.PersistentRef? {
-    guard let tunnel = tunnel else {
+    guard let manager = manager else {
       logger.log("\(#function): No tunnel created yet")
       return nil
     }
 
-    let tunnelStatus = tunnel.connection.status
-    if tunnelStatus == .connected || tunnelStatus == .connecting {
+    if [.connected, .connecting].contains(manager.connection.status) {
       throw TunnelStoreError.cannotSignOutWhenConnected
     }
 
@@ -242,12 +268,12 @@ public final class TunnelStore: ObservableObject {
   }
 
   private func updateResources() {
-    guard let tunnel = tunnel else {
+    guard let manager = manager else {
       logger.log("\(#function): No tunnel created yet")
       return
     }
 
-    let session = castToSession(tunnel.connection)
+    let session = castToSession(manager.connection)
     guard session.status == .connected else {
       self.resources = DisplayableResources()
       return
@@ -264,6 +290,35 @@ public final class TunnelStore: ObservableObject {
     } catch {
       logger.error("Error: sendProviderMessage: \(error)")
     }
+  }
+
+  func advancedSettings() -> AdvancedSettings {
+    let defaultValue = AdvancedSettings.defaultValue
+    let apiURLString = protocolConfiguration.serverAddress ?? defaultValue.apiURLString
+    var authBaseURLString = defaultValue.authBaseURLString
+    var logFilter = defaultValue.connlibLogFilterString
+    if let providerConfig = protocolConfiguration.providerConfiguration {
+      if let authBaseURLStringInProviderConfig =
+        (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String)
+      {
+        authBaseURLString = authBaseURLStringInProviderConfig
+      }
+      if let logFilterInProviderConfig =
+        (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String)
+      {
+        logFilter = logFilterInProviderConfig
+      }
+    }
+
+    return AdvancedSettings(
+      authBaseURLString: authBaseURLString,
+      apiURLString: apiURLString,
+      connlibLogFilterString: logFilter
+    )
+  }
+
+  private func setConnlibLogFilter(_ logFiler: String) {
+      protocolConfiguration.providerConfiguration?[TunnelProviderKeys.keyConnlibLogFilter] = logFiler
   }
 
   private func setupTunnelObservers() {
@@ -317,12 +372,12 @@ public final class TunnelStore: ObservableObject {
 
   func removeProfile() async throws {
     logger.log("\(#function)")
-    guard let tunnel = tunnel else {
+    guard let manager = manager else {
       logger.log("\(#function): No tunnel created yet")
       return
     }
 
-    try await tunnel.removeFromPreferences()
+    try await manager.removeFromPreferences()
   }
 }
 
@@ -358,130 +413,5 @@ extension NEVPNStatus: CustomStringConvertible {
     case .reasserting: return "No network connectivity"
     @unknown default: return "Unknown"
     }
-  }
-}
-
-extension NETunnelProviderManager {
-  func authStatus() -> TunnelAuthStatus {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfig = protocolConfiguration.providerConfiguration
-    {
-      let authBaseURL: URL? = {
-        guard let urlString = providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String
-        else {
-          return nil
-        }
-        return URL(string: urlString)
-      }()
-      let tokenRef = protocolConfiguration.passwordReference
-      if let authBaseURL = authBaseURL {
-        if let tokenRef = tokenRef {
-          return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
-        } else {
-          return .signedOut
-        }
-      } else {
-        return .signedOut
-      }
-    }
-    return .signedOut
-  }
-
-  func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
-
-      switch authStatus {
-      case .noTunnelFound:
-        return
-
-      case .signedOut:
-        protocolConfiguration.passwordReference = nil
-        break
-      case .signedIn(let authBaseURL, let tokenReference):
-        providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
-        protocolConfiguration.passwordReference = tokenReference
-      }
-
-      protocolConfiguration.providerConfiguration = providerConfig
-      sanitizeProtocolConfiguration()
-      try await saveToPreferences()
-    }
-  }
-
-  func advancedSettings() -> AdvancedSettings {
-    let defaultValue = AdvancedSettings.defaultValue
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      let apiURLString = protocolConfiguration.serverAddress ?? defaultValue.apiURLString
-      var authBaseURLString = defaultValue.authBaseURLString
-      var logFilter = defaultValue.connlibLogFilterString
-      if let providerConfig = protocolConfiguration.providerConfiguration {
-        if let authBaseURLStringInProviderConfig =
-          (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String)
-        {
-          authBaseURLString = authBaseURLStringInProviderConfig
-        }
-        if let logFilterInProviderConfig =
-          (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String)
-        {
-          logFilter = logFilterInProviderConfig
-        }
-      }
-
-      return AdvancedSettings(
-        authBaseURLString: authBaseURLString,
-        apiURLString: apiURLString,
-        connlibLogFilterString: logFilter
-      )
-    }
-
-    return defaultValue
-  }
-
-  func setConnlibLogFilter(_ logFiler: String) {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfiguration = protocolConfiguration.providerConfiguration
-    {
-      var providerConfig = providerConfiguration
-      providerConfig[TunnelProviderKeys.keyConnlibLogFilter] = logFiler
-      protocolConfiguration.providerConfiguration = providerConfig
-    }
-  }
-
-  func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
-    let protocolConfiguration = protocolConfiguration as! NETunnelProviderProtocol
-    var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
-
-    providerConfig[TunnelProviderKeys.keyAuthBaseURLString] =
-      advancedSettings.authBaseURLString
-    providerConfig[TunnelProviderKeys.keyConnlibLogFilter] =
-      advancedSettings.connlibLogFilterString
-
-    protocolConfiguration.providerConfiguration = providerConfig
-    sanitizeProtocolConfiguration()
-    try await saveToPreferences()
-  }
-
-  func sanitizeProtocolConfiguration() {
-    let protocolConfiguration = protocolConfiguration as! NETunnelProviderProtocol
-    protocolConfiguration.serverAddress = advancedSettings().apiURLString
-    protocolConfiguration.providerBundleIdentifier = Self.bundleIdentifier()
-    localizedDescription = Self.bundleDescription()
-  }
-
-  static func bundleIdentifier() -> String? {
-    #if DEBUG
-      Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
-    #else
-      Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
-    #endif
-  }
-
-  static func bundleDescription() -> String {
-    #if DEBUG
-      "Firezone (Debug)"
-    #else
-      "Firezone"
-    #endif
   }
 }
