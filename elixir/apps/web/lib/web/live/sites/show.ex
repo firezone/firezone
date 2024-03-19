@@ -74,7 +74,7 @@ defmodule Web.Sites.Show do
   def handle_resources_update!(socket, list_opts) do
     with {:ok, resources, metadata} <-
            Resources.list_resources(socket.assigns.subject, list_opts),
-         {:ok, resource_actor_groups_peek} =
+         {:ok, resource_actor_groups_peek} <-
            Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
       {:ok,
        assign(socket,

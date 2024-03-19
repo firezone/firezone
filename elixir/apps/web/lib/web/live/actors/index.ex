@@ -27,7 +27,7 @@ defmodule Web.Actors.Index do
     list_opts = Keyword.put(list_opts, :preload, [:last_seen_at, identities: :provider])
 
     with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts),
-         {:ok, actor_groups} = Actors.peek_actor_groups(actors, 3, socket.assigns.subject) do
+         {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject) do
       {:ok,
        assign(socket,
          actors: actors,
