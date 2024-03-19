@@ -188,7 +188,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
-    tracing::debug!("Building Tauri app instance...");
+    tracing::debug!("Setting up Tauri app instance...");
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -229,6 +229,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         })
         .setup(move |app| {
+            tracing::debug!("Entered Tauri's `setup`");
             assert_eq!(
                 BUNDLE_ID,
                 app.handle().config().tauri.bundle.identifier,
@@ -275,8 +276,9 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             });
 
             Ok(())
-        })
-        .build(tauri::generate_context!());
+        });
+    tracing::debug!("Building Tauri app...");
+    let app = app.build(tauri::generate_context!());
 
     let app = match app {
         Ok(x) => x,
