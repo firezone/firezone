@@ -1,6 +1,11 @@
+data "google_compute_zones" "in_region" {
+  project = var.project_id
+  region  = var.compute_region
+}
+
 locals {
   application_name    = var.application_name != null ? var.application_name : var.image
-  application_version = var.application_version != null ? var.application_version : var.image_tag
+  application_version = var.application_version != null ? var.application_version : replace(var.image_tag, ".", "-")
 
   application_labels = merge({
     managed_by  = "terraform"
@@ -11,7 +16,7 @@ locals {
 
   google_health_check_ip_ranges = [
     "130.211.0.0/22",
-    "35.191.0.0/16"
+    "35.191.0.0/16",
   ]
 
   environment_variables = concat([
@@ -52,6 +57,8 @@ locals {
       value = "1"
     }
   ], var.application_environment_variables)
+
+  compute_region_zones = length(var.compute_instance_availability_zones) == 0 ? data.google_compute_zones.in_region.names : var.compute_instance_availability_zones
 }
 
 # Fetch most recent COS image
@@ -96,14 +103,22 @@ resource "google_compute_instance_template" "application" {
 
     stack_type = "IPV4_IPV6"
 
-    ipv6_access_config {
-      network_tier = "PREMIUM"
-      # Ephimerical IP address
+    dynamic "ipv6_access_config" {
+      for_each = var.compute_provision_public_ipv6_address == true ? [true] : []
+
+      content {
+        network_tier = "PREMIUM"
+        # Ephimerical IP address
+      }
     }
 
-    access_config {
-      network_tier = "PREMIUM"
-      # Ephimerical IP address
+    dynamic "access_config" {
+      for_each = var.compute_provision_public_ipv4_address == true ? [true] : []
+
+      content {
+        network_tier = "PREMIUM"
+        # Ephimerical IP address
+      }
     }
   }
 
@@ -165,33 +180,33 @@ resource "google_compute_instance_template" "application" {
   }
 }
 
-# # Create health checks for the application ports
-# resource "google_compute_health_check" "port" {
-#   project = var.project_id
+# Create health check
+resource "google_compute_health_check" "port" {
+  project = var.project_id
 
-#   name = "${local.application_name}-${var.health_check.name}"
+  name = "${local.application_name}-${var.health_check.name}"
 
-#   check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
-#   timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
-#   healthy_threshold   = var.health_check.healthy_threshold != null ? var.health_check.healthy_threshold : 2
-#   unhealthy_threshold = var.health_check.unhealthy_threshold != null ? var.health_check.unhealthy_threshold : 2
+  check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
+  timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
+  healthy_threshold   = var.health_check.healthy_threshold != null ? var.health_check.healthy_threshold : 2
+  unhealthy_threshold = var.health_check.unhealthy_threshold != null ? var.health_check.unhealthy_threshold : 2
 
-#   log_config {
-#     enable = false
-#   }
+  log_config {
+    enable = false
+  }
 
-#   http_health_check {
-#     port = var.health_check.port
+  http_health_check {
+    port = var.health_check.port
 
-#     host         = var.health_check.http_health_check.host
-#     request_path = var.health_check.http_health_check.request_path
-#     response     = var.health_check.http_health_check.response
-#   }
+    host         = var.health_check.http_health_check.host
+    request_path = var.health_check.http_health_check.request_path
+    response     = var.health_check.http_health_check.response
+  }
 
-#   lifecycle {
-#     create_before_destroy = true
-#   }
-# }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
 
 # Use template to deploy zonal instance group
 resource "google_compute_region_instance_group_manager" "application" {
@@ -202,7 +217,7 @@ resource "google_compute_region_instance_group_manager" "application" {
   base_instance_name = local.application_name
 
   region                    = var.compute_region
-  distribution_policy_zones = var.compute_instance_availability_zones
+  distribution_policy_zones = local.compute_region_zones
 
   target_size = var.compute_instance_replicas
 
@@ -214,23 +229,18 @@ resource "google_compute_region_instance_group_manager" "application" {
     instance_template = google_compute_instance_template.application.self_link
   }
 
-  # named_port {
-  #   name = "stun"
-  #   port = 3478
-  # }
+  auto_healing_policies {
+    initial_delay_sec = var.health_check.initial_delay_sec
 
-  # auto_healing_policies {
-  #   initial_delay_sec = var.health_check.initial_delay_sec
-
-  #   health_check = google_compute_health_check.port.self_link
-  # }
+    health_check = google_compute_health_check.port.self_link
+  }
 
   update_policy {
     type           = "PROACTIVE"
     minimal_action = "REPLACE"
 
-    max_unavailable_fixed = 1
-    max_surge_fixed       = max(1, var.compute_instance_replicas - 1)
+    max_unavailable_fixed = max(1, length(local.compute_region_zones))
+    max_surge_fixed       = max(1, var.compute_instance_replicas - 1) + length(local.compute_region_zones)
   }
 
   timeouts {
@@ -244,18 +254,18 @@ resource "google_compute_region_instance_group_manager" "application" {
   ]
 }
 
-# ## Open metrics port for the health checks
-# resource "google_compute_firewall" "http-health-checks" {
-#   project = var.project_id
+## Open HTTP port for the health checks
+resource "google_compute_firewall" "http-health-checks" {
+  project = var.project_id
 
-#   name    = "${local.application_name}-healthcheck"
-#   network = var.compute_network
+  name    = "${local.application_name}-healthcheck"
+  network = var.compute_network
 
-#   source_ranges = local.google_health_check_ip_ranges
-#   target_tags   = ["app-${local.application_name}"]
+  source_ranges = local.google_health_check_ip_ranges
+  target_tags   = local.application_tags
 
-#   allow {
-#     protocol = var.health_check.protocol
-#     ports    = [var.health_check.port]
-#   }
-# }
+  allow {
+    protocol = var.health_check.protocol
+    ports    = [var.health_check.port]
+  }
+}
