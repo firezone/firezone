@@ -6,403 +6,246 @@
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
     messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Error, Result,
+    CallbackErrorFacade, Callbacks, Result,
 };
-use device_channel::Device;
-use futures_util::{future::BoxFuture, task::AtomicWaker, FutureExt};
-use peer::PacketTransform;
-use peer_store::PeerStore;
-use pnet_packet::Packet;
-use snownet::{Node, Server};
-use sockets::{Received, Sockets};
+use io::Io;
 use std::{
     collections::HashSet,
-    fmt,
-    hash::Hash,
-    io,
-    task::{ready, Context, Poll},
-    time::{Duration, Instant},
+    task::{Context, Poll},
+    time::Instant,
 };
 
-pub use client::ClientState;
-pub use control_protocol::{gateway::ResolvedResourceDescriptionDns, Request};
-pub use gateway::GatewayState;
-use ip_packet::IpPacket;
+pub use client::{ClientState, Request};
+pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
 
 mod client;
-mod control_protocol;
 mod device_channel;
 mod dns;
 mod gateway;
+mod io;
 mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
+mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
 const REALM: &str = "firezone";
 
 #[cfg(target_os = "linux")]
 const FIREZONE_MARK: u32 = 0xfd002021;
 
-pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState, Server, ClientId>;
-pub type ClientTunnel<CB> = Tunnel<CB, ClientState, snownet::Client, GatewayId>;
+pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState>;
+pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
-pub struct Tunnel<CB: Callbacks, TRoleState, TRole, TId> {
-    callbacks: CallbackErrorFacade<CB>,
+pub struct Tunnel<CB: Callbacks, TRoleState> {
+    pub callbacks: CallbackErrorFacade<CB>,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
 
-    device: Option<Device>,
-    no_device_waker: AtomicWaker,
+    io: Io,
 
-    connections_state: ConnectionState<TRole, TId>,
-
-    read_buf: [u8; MAX_UDP_SIZE],
+    write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
+    ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
+    device_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 }
 
-impl<CB> Tunnel<CB, ClientState, snownet::Client, GatewayId>
+impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<GatewayId>>> {
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
-        match self.role_state.poll_next_event(cx) {
-            Poll::Ready(Event::SendPacket(packet)) => {
-                device.write(packet)?;
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
-        }
-
-        match self.connections_state.poll_next_event(cx) {
-            Poll::Ready(Event::StopPeer(id)) => {
-                self.role_state.cleanup_connected_gateway(&id);
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
-        }
-
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {}
-        }
-
-        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-        match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet, Instant::now())
-                else {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                };
-
-                self.connections_state.send(peer_id, packet.as_immutable());
-
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
-                self.no_device_waker.register(cx.waker());
-                return Poll::Pending;
-            }
-            Poll::Pending => {}
-        }
-
-        Poll::Pending
-    }
-}
-
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
-where
-    CB: Callbacks + 'static,
-{
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<Event<ClientId>>> {
-        match self.role_state.poll(cx) {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {}
-        }
-
-        let Some(device) = self.device.as_mut() else {
-            self.no_device_waker.register(cx.waker());
-            return Poll::Pending;
-        };
-
-        match self.connections_state.poll_next_event(cx) {
-            Poll::Ready(Event::StopPeer(id)) => {
-                self.role_state.peers.remove(&id);
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(other) => return Poll::Ready(Ok(other)),
-            _ => (),
-        }
-
-        match self
-            .connections_state
-            .poll_sockets(device, &mut self.role_state.peers, cx)?
-        {
-            Poll::Ready(()) => {
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending => {}
-        }
-
-        ready!(self.connections_state.sockets.poll_send_ready(cx))?; // Ensure socket is ready before we read from device.
-
-        match device.poll_read(&mut self.read_buf, cx)? {
-            Poll::Ready(Some(packet)) => {
-                let Some((peer_id, packet)) = self.role_state.encapsulate(packet) else {
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                };
-
-                self.connections_state.send(peer_id, packet.as_immutable());
-
-                cx.waker().wake_by_ref();
-            }
-            Poll::Ready(None) => {
-                tracing::info!("Device stopped");
-                self.device = None;
-
-                self.no_device_waker.register(cx.waker());
-                return Poll::Pending;
-            }
-            Poll::Pending => {
-                // device not ready for reading, moving on ..
-            }
-        }
-
-        Poll::Pending
-    }
-}
-
-impl<CB, TRoleState, TRole, TId> Tunnel<CB, TRoleState, TRole, TId>
-where
-    CB: Callbacks + 'static,
-    TId: Eq + Hash + Copy + fmt::Display,
-    TRoleState: Default,
-{
-    /// Creates a new tunnel.
-    ///
-    /// # Parameters
-    /// - `private_key`: wireguard's private key.
-    /// -  `control_signaler`: this is used to send SDP from the tunnel to the control plane.
-    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
         let callbacks = CallbackErrorFacade(callbacks);
-        let connections_state = ConnectionState::new(private_key)?;
-
-        // TODO: Eventually, this should move into the `connlib-client-android` crate.
-        #[cfg(target_os = "android")]
-        {
-            if let Some(ip4_socket) = connections_state.sockets.ip4_socket_fd() {
-                callbacks.protect_file_descriptor(ip4_socket)?;
-            }
-            if let Some(ip6_socket) = connections_state.sockets.ip6_socket_fd() {
-                callbacks.protect_file_descriptor(ip6_socket)?;
-            }
-        }
 
         Ok(Self {
-            device: Default::default(),
+            io: new_io(&callbacks)?,
             callbacks,
-            role_state: Default::default(),
-            no_device_waker: Default::default(),
-            connections_state,
-            read_buf: [0u8; MAX_UDP_SIZE],
+            role_state: ClientState::new(private_key),
+            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
         })
     }
 
-    pub fn callbacks(&self) -> &CallbackErrorFacade<CB> {
-        &self.callbacks
-    }
-}
-
-struct ConnectionState<TRole, TId> {
-    pub node: Node<TRole, TId>,
-    write_buf: Box<[u8; MAX_UDP_SIZE]>,
-    connection_pool_timeout: BoxFuture<'static, std::time::Instant>,
-    stats_timer: tokio::time::Interval,
-    sockets: Sockets,
-}
-
-impl<TRole, TId> ConnectionState<TRole, TId>
-where
-    TId: Eq + Hash + Copy + fmt::Display,
-{
-    fn new(private_key: StaticSecret) -> Result<Self> {
-        Ok(ConnectionState {
-            node: Node::new(private_key, std::time::Instant::now()),
-            write_buf: Box::new([0; MAX_UDP_SIZE]),
-            connection_pool_timeout: sleep_until(std::time::Instant::now()).boxed(),
-            sockets: Sockets::new()?,
-            stats_timer: tokio::time::interval(Duration::from_secs(60)),
-        })
+    pub fn reconnect(&mut self) {
+        self.role_state.reconnect(Instant::now());
     }
 
-    fn send(&mut self, id: TId, packet: IpPacket) {
-        let to = packet.destination();
-
-        if let Err(e) = self.try_send(id, packet) {
-            tracing::warn!(%to, %id, "Failed to send packet: {e}");
-        }
-    }
-
-    fn try_send(&mut self, id: TId, packet: IpPacket) -> Result<()> {
-        // TODO: handle NotConnected
-        let Some(transmit) = self.node.encapsulate(id, packet.into())? else {
-            return Ok(());
-        };
-
-        self.sockets.try_send(&transmit)?;
-
-        Ok(())
-    }
-
-    // TODO: passing the peer_store looks weird, we can just remove ConnectionState and move everything into Tunnel, there's no Mutexes any longer that justify this separation
-    fn poll_sockets<TTransform, TResource>(
-        &mut self,
-        device: &mut Device,
-        peer_store: &mut PeerStore<TId, TTransform, TResource>,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<()>>
-    where
-        TTransform: PacketTransform,
-        TResource: Clone,
-    {
-        let received = match ready!(self.sockets.poll_recv_from(cx)) {
-            Ok(received) => received,
-            Err(e) => {
-                tracing::warn!("Failed to read socket: {e}");
-
-                cx.waker().wake_by_ref(); // Immediately schedule a new wake-up.
-                return Poll::Pending;
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
+        loop {
+            if let Some(other) = self.role_state.poll_event() {
+                return Poll::Ready(Ok(other));
             }
-        };
 
-        for received in received {
-            let Received {
-                local,
-                from,
-                packet,
-            } = received;
-
-            let (conn_id, packet) = match self.node.decapsulate(
-                local,
-                from,
-                packet.as_ref(),
-                std::time::Instant::now(),
-                self.write_buf.as_mut(),
-            ) {
-                Ok(Some(packet)) => packet,
-                Ok(None) => {
-                    continue;
-                }
-                Err(e) => {
-                    tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}");
-
-                    continue;
-                }
-            };
-
-            tracing::trace!(target: "wire", %local, %from, bytes = %packet.packet().len(), "read new packet");
-
-            let Some(peer) = peer_store.get_mut(&conn_id) else {
-                tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
-
+            if let Some(packet) = self.role_state.poll_packets() {
+                self.io.send_device(packet)?;
                 continue;
-            };
+            }
 
-            let packet = match peer.untransform(packet.into()) {
-                Ok(packet) => packet,
-                Err(e) => {
-                    tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+            if let Some(transmit) = self.role_state.poll_transmit() {
+                self.io.send_network(transmit)?;
+                continue;
+            }
+
+            if let Some(dns_query) = self.role_state.poll_dns_queries() {
+                self.io.perform_dns_query(dns_query);
+                continue;
+            }
+
+            if let Some(timeout) = self.role_state.poll_timeout() {
+                self.io.reset_timeout(timeout);
+            }
+
+            match self.io.poll(
+                cx,
+                self.ip4_read_buf.as_mut(),
+                self.ip6_read_buf.as_mut(),
+                self.device_read_buf.as_mut(),
+            )? {
+                Poll::Ready(io::Input::Timeout(timeout)) => {
+                    self.role_state.handle_timeout(timeout);
+                    continue;
+                }
+                Poll::Ready(io::Input::Device(packet)) => {
+                    let Some(transmit) = self.role_state.encapsulate(packet, Instant::now()) else {
+                        continue;
+                    };
+
+                    self.io.send_network(transmit)?;
 
                     continue;
                 }
-            };
+                Poll::Ready(io::Input::Network(packets)) => {
+                    for received in packets {
+                        let Some(packet) = self.role_state.decapsulate(
+                            received.local,
+                            received.from,
+                            received.packet,
+                            std::time::Instant::now(),
+                            self.write_buf.as_mut(),
+                        ) else {
+                            continue;
+                        };
 
-            device.write(packet.as_immutable())?;
-        }
+                        self.io.device_mut().write(packet)?;
+                    }
 
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<TId>> {
-        if self.stats_timer.poll_tick(cx).is_ready() {
-            let (node_stats, conn_stats) = self.node.stats();
-
-            tracing::debug!(target: "connlib::stats", "{node_stats:?}");
-
-            for (id, stats) in conn_stats {
-                tracing::debug!(target: "connlib::stats", %id, "{stats:?}");
+                    continue;
+                }
+                Poll::Pending => {}
             }
 
-            cx.waker().wake_by_ref();
+            return Poll::Pending;
         }
-
-        if let Err(e) = ready!(self.sockets.poll_send_ready(cx)) {
-            tracing::warn!("Failed to poll sockets for readiness: {e}");
-        };
-
-        while let Some(transmit) = self.node.poll_transmit() {
-            if let Err(e) = self.sockets.try_send(&transmit) {
-                tracing::warn!(src = ?transmit.src, dst = %transmit.dst, "Failed to send UDP packet: {e}");
-            }
-        }
-
-        match self.node.poll_event() {
-            Some(snownet::Event::SignalIceCandidate {
-                connection,
-                candidate,
-            }) => {
-                return Poll::Ready(Event::SignalIceCandidate {
-                    conn_id: connection,
-                    candidate,
-                });
-            }
-            Some(snownet::Event::ConnectionFailed(id)) => {
-                return Poll::Ready(Event::StopPeer(id));
-            }
-            _ => {}
-        }
-
-        if let Poll::Ready(instant) = self.connection_pool_timeout.poll_unpin(cx) {
-            self.node.handle_timeout(instant);
-            if let Some(timeout) = self.node.poll_timeout() {
-                self.connection_pool_timeout = sleep_until(timeout).boxed();
-            }
-
-            cx.waker().wake_by_ref();
-        }
-
-        Poll::Pending
     }
 }
 
-pub enum Event<TId> {
+impl<CB> GatewayTunnel<CB>
+where
+    CB: Callbacks + 'static,
+{
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+        let callbacks = CallbackErrorFacade(callbacks);
+
+        Ok(Self {
+            io: new_io(&callbacks)?,
+            callbacks,
+            role_state: GatewayState::new(private_key),
+            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+        })
+    }
+
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
+        loop {
+            if let Some(other) = self.role_state.poll_event() {
+                return Poll::Ready(Ok(other));
+            }
+
+            if let Some(transmit) = self.role_state.poll_transmit() {
+                self.io.send_network(transmit)?;
+                continue;
+            }
+
+            if let Some(timeout) = self.role_state.poll_timeout() {
+                self.io.reset_timeout(timeout);
+            }
+
+            match self.io.poll(
+                cx,
+                self.ip4_read_buf.as_mut(),
+                self.ip6_read_buf.as_mut(),
+                self.device_read_buf.as_mut(),
+            )? {
+                Poll::Ready(io::Input::Timeout(timeout)) => {
+                    self.role_state.handle_timeout(timeout);
+                    continue;
+                }
+                Poll::Ready(io::Input::Device(packet)) => {
+                    let Some(transmit) = self.role_state.encapsulate(packet) else {
+                        continue;
+                    };
+
+                    self.io.send_network(transmit)?;
+
+                    continue;
+                }
+                Poll::Ready(io::Input::Network(packets)) => {
+                    for received in packets {
+                        let Some(packet) = self.role_state.decapsulate(
+                            received.local,
+                            received.from,
+                            received.packet,
+                            std::time::Instant::now(),
+                            self.write_buf.as_mut(),
+                        ) else {
+                            continue;
+                        };
+
+                        self.io.device_mut().write(packet)?;
+                    }
+
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        }
+    }
+}
+
+#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+fn new_io<CB>(callbacks: &CallbackErrorFacade<CB>) -> Result<Io>
+where
+    CB: Callbacks,
+{
+    let io = Io::new()?;
+
+    // TODO: Eventually, this should move into the `connlib-client-android` crate.
+    #[cfg(target_os = "android")]
+    {
+        if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
+            callbacks.protect_file_descriptor(ip4_socket)?;
+        }
+        if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
+            callbacks.protect_file_descriptor(ip6_socket)?;
+        }
+    }
+
+    Ok(io)
+}
+
+pub enum ClientEvent {
     SignalIceCandidate {
-        conn_id: TId,
+        conn_id: GatewayId,
         candidate: String,
     },
     ConnectionIntent {
@@ -412,12 +255,11 @@ pub enum Event<TId> {
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
-    SendPacket(IpPacket<'static>),
-    StopPeer(TId),
 }
 
-async fn sleep_until(deadline: Instant) -> Instant {
-    tokio::time::sleep_until(deadline.into()).await;
-
-    deadline
+pub enum GatewayEvent {
+    SignalIceCandidate {
+        conn_id: ClientId,
+        candidate: String,
+    },
 }

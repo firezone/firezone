@@ -21,9 +21,9 @@ use tokio_tungstenite::{
     tungstenite::{self, handshake::client::Request},
 };
 use tungstenite::Message;
-use url::Url;
 
 use crate::{get_user_agent, Error, Result};
+use phoenix_channel::LoginUrl;
 
 const CHANNEL_SIZE: usize = 1_000;
 const HEARTBEAT: Duration = Duration::from_secs(30);
@@ -31,22 +31,6 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(35);
 
 pub type Reference = String;
 
-// TODO: Refactor this PhoenixChannel to use the top-level phoenix-channel crate instead.
-// See https://github.com/firezone/firezone/issues/2158
-pub struct SecureUrl {
-    pub inner: Url,
-}
-impl SecureUrl {
-    pub fn from_url(url: Url) -> Self {
-        Self { inner: url }
-    }
-}
-impl secrecy::Zeroize for SecureUrl {
-    fn zeroize(&mut self) {
-        let placeholder = Url::parse("http://a.com").expect("placeholder URL to be valid");
-        let _ = std::mem::replace(&mut self.inner, placeholder);
-    }
-}
 /// Main struct to interact with the control-protocol channel.
 ///
 /// After creating a new `PhoenixChannel` using [PhoenixChannel::new] you need to
@@ -63,7 +47,7 @@ impl secrecy::Zeroize for SecureUrl {
 /// The future returned by [PhoenixChannel::start] will finish when the websocket closes (by an error), meaning that if you
 /// `await` it, it will block until you use `close` in a [PhoenixSender], the portal close the connection or something goes wrong.
 pub struct PhoenixChannel<F, I, R, M> {
-    secret_url: Secret<SecureUrl>,
+    secret_url: Secret<LoginUrl>,
     os_version_override: Option<String>,
     handler: F,
     sender: Sender<Message>,
@@ -73,21 +57,12 @@ pub struct PhoenixChannel<F, I, R, M> {
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
 fn make_request(
-    secret_url: &Secret<SecureUrl>,
+    secret_url: &Secret<LoginUrl>,
     os_version_override: Option<String>,
 ) -> Result<Request> {
     use secrecy::ExposeSecret;
 
-    let host = secret_url
-        .expose_secret()
-        .inner
-        .host()
-        .ok_or(Error::UriError)?;
-    let host = if let Some(port) = secret_url.expose_secret().inner.port() {
-        format!("{host}:{port}")
-    } else {
-        host.to_string()
-    };
+    let host = secret_url.expose_secret().host();
 
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
@@ -101,7 +76,7 @@ fn make_request(
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", get_user_agent(os_version_override))
-        .uri(secret_url.expose_secret().inner.as_str())
+        .uri(secret_url.expose_secret().inner().as_ref())
         .body(())?;
     Ok(req)
 }
@@ -282,7 +257,7 @@ where
     ///
     /// For more info see [struct-level docs][PhoenixChannel].
     pub fn new(
-        secret_url: Secret<SecureUrl>,
+        secret_url: Secret<LoginUrl>,
         os_version_override: Option<String>,
         handler: F,
     ) -> Self {

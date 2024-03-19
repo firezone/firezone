@@ -17,9 +17,9 @@ defmodule Domain.InstrumentationTest do
       GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
       GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
 
-      client = Fixtures.Clients.create_client()
-      {:ok, actor} = Domain.Actors.fetch_actor_by_id(client.actor_id)
-      {:ok, account} = Domain.Accounts.fetch_account_by_id(actor.account_id)
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
 
       actor_name =
         actor.name

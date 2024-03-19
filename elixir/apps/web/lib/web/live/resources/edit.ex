@@ -5,9 +5,13 @@ defmodule Web.Resources.Edit do
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
-           Resources.fetch_resource_by_id(id, socket.assigns.subject, preload: :gateway_groups),
-         nil <- resource.deleted_at,
-         {:ok, gateway_groups} <- Gateways.list_groups(socket.assigns.subject) do
+           Resources.fetch_resource_by_id(id, socket.assigns.subject,
+             preload: :gateway_groups,
+             filter: [
+               deleted?: false
+             ]
+           ) do
+      gateway_groups = Gateways.all_groups!(socket.assigns.subject)
       form = Resources.change_resource(resource, socket.assigns.subject) |> to_form()
 
       socket =

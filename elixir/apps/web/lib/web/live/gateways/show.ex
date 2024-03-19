@@ -4,14 +4,16 @@ defmodule Web.Gateways.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
-           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: :group) do
-      :ok = Gateways.subscribe_to_gateways_presence_in_group(gateway.group)
+           Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: [:group, :online?]) do
+      if connected?(socket) do
+        :ok = Gateways.subscribe_to_gateways_presence_in_group(gateway.group)
+      end
 
       socket =
-        assign(
-          socket,
-          gateway: gateway,
-          page_title: "Gateway #{gateway.name}"
+        socket
+        |> assign(
+          page_title: "Gateway #{gateway.name}",
+          gateway: gateway
         )
 
       {:ok, socket}
@@ -27,7 +29,7 @@ defmodule Web.Gateways.Show do
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
         <%= @gateway.group.name %>
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}?#gateways"}>
+      <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}/gateways"}>
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
@@ -113,7 +115,6 @@ defmodule Web.Gateways.Show do
           Delete Gateway
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end

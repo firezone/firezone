@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
 import android.app.ActivityManager
@@ -120,28 +120,18 @@ class TunnelService : VpnService() {
                 return true
             }
 
-            override fun onAddRoute(
-                addr: String,
-                prefix: Int,
+            override fun onUpdateRoutes(
+                routes4JSON: String,
+                routes6JSON: String,
             ): Int {
-                Log.d(TAG, "onAddRoute: $addr/$prefix")
-                Firebase.crashlytics.log("onAddRoute: $addr/$prefix")
+                Log.d(TAG, "onUpdateRoutes: $routes4JSON, $routes6JSON")
+                Firebase.crashlytics.log("onUpdateRoutes: $routes4JSON, $routes6JSON")
+                val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
+                val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
-                val route = Cidr(addr, prefix)
-                tunnelRoutes.add(route)
-
-                return buildVpnService()
-            }
-
-            override fun onRemoveRoute(
-                addr: String,
-                prefix: Int,
-            ): Int {
-                Log.d(TAG, "onRemoveRoute: $addr/$prefix")
-                Firebase.crashlytics.log("onRemoveRoute: $addr/$prefix")
-
-                val route = Cidr(addr, prefix)
-                tunnelRoutes.remove(route)
+                tunnelRoutes.clear()
+                tunnelRoutes.addAll(routes4)
+                tunnelRoutes.addAll(routes6)
 
                 return buildVpnService()
             }
@@ -154,16 +144,6 @@ class TunnelService : VpnService() {
                 return found.map {
                     it.address
                 }.toTypedArray()
-            }
-
-            // Something called disconnect() already, so assume it was user or system initiated.
-            override fun onDisconnect(): Boolean {
-                Log.d(TAG, "onDisconnect")
-                Firebase.crashlytics.log("onDisconnect")
-
-                shutdown()
-
-                return true
             }
 
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
@@ -211,6 +191,8 @@ class TunnelService : VpnService() {
         connlibSessionPtr!!.let {
             ConnlibSession.disconnect(it)
         }
+
+        shutdown()
     }
 
     private fun shutdown() {
@@ -329,32 +311,31 @@ class TunnelService : VpnService() {
             Firebase.crashlytics.log("IPv6 Address: $tunnelIpv6Address")
             addAddress(tunnelIpv6Address!!, 128)
 
-            appRestrictions.getString("allowedApplications")?.let {
-                if (it.isNotBlank()) {
-                    Firebase.crashlytics.log("Allowed applications: $it")
-                    it.split(",").forEach { p ->
-                        if (p.isNotBlank()) {
-                            addAllowedApplication(p.trim())
-                        }
-                    }
-                }
-            }
-
-            appRestrictions.getString("disallowedApplications")?.let {
-                if (it.isNotBlank()) {
-                    Firebase.crashlytics.log("Disallowed applications: $it")
-                    it.split(",").forEach { p ->
-                        if (p.isNotBlank()) {
-                            addDisallowedApplication(p.trim())
-                        }
-                    }
-                }
-            }
+            updateAllowedDisallowedApplications("allowedApplications", ::addAllowedApplication)
+            updateAllowedDisallowedApplications("disallowedApplications", ::addDisallowedApplication)
 
             setSession(SESSION_NAME)
             setMtu(MTU)
         }.establish()!!.let {
             return it.detachFd()
+        }
+    }
+
+    private fun updateAllowedDisallowedApplications(
+        key: String,
+        allowOrDisallow: (String) -> Unit,
+    ) {
+        val applications = appRestrictions.getString(key)
+        Log.d(TAG, "$key: $applications")
+        Firebase.crashlytics.log("$key: $applications")
+        applications?.let {
+            if (it.isNotBlank()) {
+                it.split(",").forEach { p ->
+                    if (p.isNotBlank()) {
+                        allowOrDisallow(p.trim())
+                    }
+                }
+            }
         }
     }
 

@@ -3,20 +3,42 @@ defmodule Web.Policies.Index do
   alias Domain.Policies
 
   def mount(_params, _session, socket) do
-    with {:ok, socket} <- load_policies_with_assocs(socket) do
+    if connected?(socket) do
       :ok = Policies.subscribe_to_events_for_account(socket.assigns.account)
-      {:ok, assign(socket, page_title: "Policies")}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
     end
+
+    socket =
+      socket
+      |> assign(page_title: "Policies")
+      |> assign_live_table("policies",
+        query_module: Policies.Policy.Query,
+        sortable_fields: [],
+        hide_filters: [:resource_id, :actor_group_id],
+        callback: &handle_policies_update!/2
+      )
+
+    {:ok, socket}
   end
 
-  defp load_policies_with_assocs(socket) do
-    with {:ok, policies} <-
-           Policies.list_policies(socket.assigns.subject,
-             preload: [actor_group: [:provider], resource: []]
-           ) do
-      {:ok, assign(socket, policies: policies)}
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_policies_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
+
+    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+      assign(socket,
+        policies: policies,
+        policies_metadata: metadata
+      )
+    else
+      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -34,7 +56,16 @@ defmodule Web.Policies.Index do
         </.add_button>
       </:action>
       <:content>
-        <.table id="policies" rows={@policies} row_id={&"policies-#{&1.id}"}>
+        <.flash_group flash={@flash} />
+        <.live_table
+          id="policies"
+          rows={@policies}
+          row_id={&"policies-#{&1.id}"}
+          filters={@filters_by_table_id["policies"]}
+          filter={@filter_form_by_table_id["policies"]}
+          ordered_by={@order_by_table_id["policies"]}
+          metadata={@policies_metadata}
+        >
           <:col :let={policy} label="ID">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
               <%= policy.id %>
@@ -70,23 +101,34 @@ defmodule Web.Policies.Index do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
     """
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   def handle_info({:create_policy, _policy_id}, socket) do
-    {:ok, socket} = load_policies_with_assocs(socket)
     {:noreply, socket}
   end
 
-  def handle_info({_action, policy_id}, socket) do
+  def handle_info({:delete_policy, policy_id}, socket) do
     if Enum.find(socket.assigns.policies, fn policy -> policy.id == policy_id end) do
-      {:ok, socket} = load_policies_with_assocs(socket)
-      {:noreply, socket}
+      policies =
+        Enum.filter(socket.assigns.policies, fn
+          policy -> policy.id != policy_id
+        end)
+
+      {:noreply, assign(socket, policies: policies)}
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_info({_action, _policy_id}, socket) do
+    socket = reload_live_table!(socket, "policies")
+    {:noreply, socket}
   end
 end

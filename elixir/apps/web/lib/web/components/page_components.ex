@@ -14,22 +14,23 @@ defmodule Web.PageComponents do
 
   def section(assigns) do
     ~H"""
-    <div class="mb-6 bg-white overflow-hidden shadow mx-5 rounded border px-6 pb-6">
+    <div class={[
+      "mb-6 bg-white overflow-hidden shadow mx-5 rounded border px-6",
+      @content != [] && "pb-6"
+    ]}>
       <.header>
         <:title>
           <%= render_slot(@title) %>
         </:title>
 
-        <:actions :if={not Enum.empty?(@action)}>
-          <%= for action <- @action do %>
-            <%= render_slot(action) %>
-          <% end %>
+        <:actions :for={action <- @action} :if={not Enum.empty?(@action)}>
+          <%= render_slot(action) %>
         </:actions>
-      </.header>
 
-      <p :for={help <- @help} class="px-1 pb-3">
-        <%= render_slot(help) %>
-      </p>
+        <:help :for={help <- @help} :if={not Enum.empty?(@help)}>
+          <%= render_slot(help) %>
+        </:help>
+      </.header>
 
       <section :for={content <- @content} class="section-body">
         <div :if={Map.get(content, :flash)} class="mb-4">

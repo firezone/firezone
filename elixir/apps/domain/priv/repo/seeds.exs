@@ -21,6 +21,18 @@ end
     slug: "firezone"
   })
 
+account
+|> Ecto.Changeset.change(
+  features: %{
+    flow_activities: true,
+    multi_site_resources: true,
+    traffic_filters: true,
+    self_hosted_relays: true,
+    idp_sync: true
+  }
+)
+|> Repo.update!()
+
 account =
   maybe_repo_update.(account,
     id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0",
@@ -317,6 +329,13 @@ IO.puts("")
 
 IO.puts("Created Actor Groups: ")
 
+for _i <- 1..300 do
+  Actors.create_group(
+    %{name: Domain.Accounts.generate_unique_slug(), type: :static},
+    admin_subject
+  )
+end
+
 {:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
 {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
 {:ok, synced_group} = Actors.create_group(%{name: "Synced Group", type: :static}, admin_subject)
@@ -400,6 +419,7 @@ relay_context = %Auth.Context{
 {:ok, global_relay} =
   Relays.upsert_relay(
     global_relay_group,
+    global_relay_group_token,
     %{
       ipv4: {189, 172, 72, 111},
       ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
@@ -411,6 +431,7 @@ for i <- 1..5 do
   {:ok, _global_relay} =
     Relays.upsert_relay(
       global_relay_group,
+      global_relay_group_token,
       %{
         ipv4: {189, 172, 72, 111 + i},
         ipv6: {0, 0, 0, 0, 0, 0, 0, i}
@@ -455,6 +476,7 @@ IO.puts("")
 {:ok, relay} =
   Relays.upsert_relay(
     relay_group,
+    relay_group_token,
     %{
       ipv4: {189, 172, 73, 111},
       ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
@@ -470,6 +492,7 @@ for i <- 1..5 do
   {:ok, _relay} =
     Relays.upsert_relay(
       relay_group,
+      relay_group_token,
       %{
         ipv4: {189, 172, 73, 111 + i},
         ipv6: {0, 0, 0, 0, 0, 0, 0, i}
@@ -524,6 +547,7 @@ IO.puts("")
 {:ok, gateway1} =
   Gateways.upsert_gateway(
     gateway_group,
+    gateway_group_token,
     %{
       external_id: Ecto.UUID.generate(),
       name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
@@ -539,6 +563,7 @@ IO.puts("")
 {:ok, gateway2} =
   Gateways.upsert_gateway(
     gateway_group,
+    gateway_group_token,
     %{
       external_id: Ecto.UUID.generate(),
       name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
@@ -555,6 +580,7 @@ for i <- 1..10 do
   {:ok, _gateway} =
     Gateways.upsert_gateway(
       gateway_group,
+      gateway_group_token,
       %{
         external_id: Ecto.UUID.generate(),
         name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",

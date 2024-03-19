@@ -14,10 +14,10 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
            Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
       {:ok,
        assign(socket,
+         page_title: "Identity Provider #{provider.name}",
          provider: provider,
          identities_count_by_provider_id: identities_count_by_provider_id,
-         groups_count_by_provider_id: groups_count_by_provider_id,
-         page_title: "Identity Provider #{provider.name}"
+         groups_count_by_provider_id: groups_count_by_provider_id
        )}
     else
       _ -> raise Web.LiveErrors.NotFoundError
@@ -172,7 +172,6 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
           Delete Identity Provider
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end

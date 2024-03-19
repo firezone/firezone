@@ -307,7 +307,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("#actors")
+      |> element("#identities")
       |> render()
       |> table_to_map()
       |> with_table_row(

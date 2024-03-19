@@ -18,7 +18,7 @@ defmodule Domain.ResourcesTest do
     }
   end
 
-  describe "fetch_resource_by_id/2" do
+  describe "fetch_resource_by_id/3" do
     test "returns error when resource does not exist", %{subject: subject} do
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
     end
@@ -105,7 +105,7 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "fetch_and_authorize_resource_by_id/2" do
+  describe "fetch_and_authorize_resource_by_id/3" do
     test "returns error when resource does not exist", %{subject: subject} do
       assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error, :not_found}
@@ -318,9 +318,9 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "list_authorized_resources/1" do
+  describe "all_authorized_resources/1" do
     test "returns empty list when there are no resources", %{subject: subject} do
-      assert list_authorized_resources(subject) == {:ok, []}
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "returns empty list when there are no authorized resources", %{
@@ -328,7 +328,7 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       Fixtures.Resources.create_resource(account: account)
-      assert list_authorized_resources(subject) == {:ok, []}
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "does not list deleted resources", %{
@@ -355,7 +355,7 @@ defmodule Domain.ResourcesTest do
 
       resource |> Ecto.Changeset.change(deleted_at: DateTime.utc_now()) |> Repo.update!()
 
-      assert list_authorized_resources(subject) == {:ok, []}
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "does not list resources authorized by disabled policy", %{
@@ -376,7 +376,7 @@ defmodule Domain.ResourcesTest do
 
       {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
 
-      assert list_authorized_resources(subject) == {:ok, []}
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "returns authorized resources for account user subject", %{
@@ -404,7 +404,7 @@ defmodule Domain.ResourcesTest do
       Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
-      assert {:ok, []} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
 
       actor_group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
@@ -416,7 +416,7 @@ defmodule Domain.ResourcesTest do
           resource: resource1
         )
 
-      assert {:ok, resources} = list_authorized_resources(subject)
+      assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 1
       assert hd(resources).authorized_by_policy.id == policy.id
 
@@ -427,7 +427,7 @@ defmodule Domain.ResourcesTest do
           resource: resource2
         )
 
-      assert {:ok, resources2} = list_authorized_resources(subject)
+      assert {:ok, resources2} = all_authorized_resources(subject)
       assert length(resources2) == 2
 
       assert hd(resources2 -- resources).authorized_by_policy.id == policy2.id
@@ -458,7 +458,7 @@ defmodule Domain.ResourcesTest do
       Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
-      assert {:ok, []} = list_authorized_resources(subject)
+      assert {:ok, []} = all_authorized_resources(subject)
 
       actor_group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
@@ -470,7 +470,7 @@ defmodule Domain.ResourcesTest do
           resource: resource1
         )
 
-      assert {:ok, resources} = list_authorized_resources(subject)
+      assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 1
       assert hd(resources).authorized_by_policy.id == policy.id
 
@@ -480,7 +480,7 @@ defmodule Domain.ResourcesTest do
         resource: resource2
       )
 
-      assert {:ok, resources} = list_authorized_resources(subject)
+      assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 2
     end
 
@@ -507,10 +507,10 @@ defmodule Domain.ResourcesTest do
         resource: resource
       )
 
-      assert {:ok, [_resource]} = list_authorized_resources(subject)
+      assert {:ok, [_resource]} = all_authorized_resources(subject)
 
       Fixtures.Gateways.delete_group(gateway_group)
-      assert list_authorized_resources(subject) == {:ok, []}
+      assert {:ok, []} = all_authorized_resources(subject)
     end
 
     test "returns error when subject has no permission to manage resources", %{
@@ -518,7 +518,7 @@ defmodule Domain.ResourcesTest do
     } do
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert list_authorized_resources(subject) ==
+      assert all_authorized_resources(subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
@@ -526,16 +526,16 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "list_resources/1" do
+  describe "list_resources/2" do
     test "returns empty list when there are no resources", %{subject: subject} do
-      assert list_resources(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_resources(subject)
     end
 
     test "does not list resources from other accounts", %{
       subject: subject
     } do
       Fixtures.Resources.create_resource()
-      assert list_resources(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_resources(subject)
     end
 
     test "does not list deleted resources", %{
@@ -545,7 +545,7 @@ defmodule Domain.ResourcesTest do
       Fixtures.Resources.create_resource(account: account)
       |> delete_resource(subject)
 
-      assert list_resources(subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_resources(subject)
     end
 
     test "returns all resources for account admin subject", %{
@@ -556,7 +556,7 @@ defmodule Domain.ResourcesTest do
       Fixtures.Resources.create_resource(account: account)
       Fixtures.Resources.create_resource()
 
-      assert {:ok, resources} = list_resources(subject)
+      assert {:ok, resources, _metadata} = list_resources(subject)
       assert length(resources) == 2
     end
 
@@ -571,6 +571,83 @@ defmodule Domain.ResourcesTest do
                  reason: :missing_permissions,
                  missing_permissions: [
                    Resources.Authorizer.manage_resources_permission()
+                 ]}}
+    end
+  end
+
+  describe "count_resources_for_gateway/2" do
+    test "returns zero when there are no resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 0}
+    end
+
+    test "does not count resources that are not associated to the gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      Fixtures.Resources.create_resource(account: account)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
+    end
+
+    test "does not count deleted resources associated to gateway", %{
+      account: account,
+      subject: subject
+    } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+      |> delete_resource(subject)
+
+      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
+    end
+
+    test "returns error when subject has no permission to manage resources",
+         %{
+           account: account,
+           subject: subject
+         } do
+      group = Fixtures.Gateways.create_group(account: account, subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert count_resources_for_gateway(gateway, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Resources.Authorizer.manage_resources_permission(),
+                      Resources.Authorizer.view_available_resources_permission()
+                    ]}
                  ]}}
     end
   end
@@ -806,88 +883,12 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "count_resources_for_gateway/2" do
-    test "returns zero when there are no resources associated to gateway", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      assert count_resources_for_gateway(gateway, subject) == {:ok, 0}
-    end
-
-    test "does not count resources that are not associated to the gateway", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-
-      Fixtures.Resources.create_resource(account: account)
-
-      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
-    end
-
-    test "does not count deleted resources associated to gateway", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-      |> delete_resource(subject)
-
-      assert count_resources_for_gateway(gateway, subject) == {:ok, 1}
-    end
-
-    test "returns error when subject has no permission to manage resources",
-         %{
-           account: account,
-           subject: subject
-         } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      Fixtures.Resources.create_resource(
-        account: account,
-        connections: [%{gateway_group_id: group.id}]
-      )
-
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert count_resources_for_gateway(gateway, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [
-                   {:one_of,
-                    [
-                      Resources.Authorizer.manage_resources_permission(),
-                      Resources.Authorizer.view_available_resources_permission()
-                    ]}
-                 ]}}
-    end
-  end
-
   describe "create_resource/2" do
     test "returns changeset error on empty attrs", %{subject: subject} do
       assert {:error, changeset} = create_resource(%{}, subject)
 
       assert errors_on(changeset) == %{
+               name: ["can't be blank"],
                address: ["can't be blank"],
                address_description: ["can't be blank"],
                type: ["can't be blank"],
@@ -936,21 +937,21 @@ defmodule Domain.ResourcesTest do
 
       attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
+      assert "cannot be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
 
       attrs = %{"address" => "fd00:2021:1111::/102", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not be in the CIDR fd00:2021:1111::/107" in errors_on(changeset).address
+      assert "cannot be in the CIDR fd00:2021:1111::/107" in errors_on(changeset).address
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not contain loopback addresses" in errors_on(changeset).address
-      assert "can not contain all IPv6 addresses" in errors_on(changeset).address
+      assert "cannot contain loopback addresses" in errors_on(changeset).address
+      assert "cannot contain all IPv6 addresses" in errors_on(changeset).address
 
       attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "can not contain loopback addresses" in errors_on(changeset).address
-      assert "can not contain all IPv4 addresses" in errors_on(changeset).address
+      assert "cannot contain loopback addresses" in errors_on(changeset).address
+      assert "cannot contain all IPv4 addresses" in errors_on(changeset).address
     end
 
     # We allow names to be duplicate because Resources are split into Sites

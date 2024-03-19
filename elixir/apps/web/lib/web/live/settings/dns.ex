@@ -3,21 +3,24 @@ defmodule Web.Settings.DNS do
   alias Domain.Accounts
 
   def mount(_params, _session, socket) do
-    account = Accounts.fetch_account_by_id!(socket.assigns.account.id)
+    with {:ok, account} <-
+           Accounts.fetch_account_by_id(socket.assigns.account.id, socket.assigns.subject) do
+      form =
+        Accounts.change_account(account, %{})
+        |> maybe_append_empty_embed()
+        |> to_form()
 
-    form =
-      Accounts.change_account(account, %{})
-      |> maybe_append_empty_embed()
-      |> to_form()
+      socket =
+        assign(socket,
+          page_title: "DNS",
+          account: account,
+          form: form
+        )
 
-    socket =
-      assign(socket,
-        account: account,
-        form: form,
-        page_title: "DNS"
-      )
-
-    {:ok, socket}
+      {:ok, socket}
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def render(assigns) do
@@ -39,7 +42,7 @@ defmodule Web.Settings.DNS do
           resolver will be used.
         </p>
         <p class="ml-4 mb-4 text-neutral-600">
-          <.website_link href="/kb/administer/dns">
+          <.website_link href="/kb/deploy/dns">
             Read more about configuring DNS in Firezone.
           </.website_link>
         </p>
@@ -195,15 +198,14 @@ defmodule Web.Settings.DNS do
   end
 
   defp dns_options do
-    options = [
+    supported_dns_protocols = Enum.map(Accounts.Config.supported_dns_protocols(), &to_string/1)
+
+    [
       [key: "IP", value: "ip_port"],
       [key: "DNS over TLS", value: "dns_over_tls"],
       [key: "DNS over HTTPS", value: "dns_over_https"]
     ]
-
-    supported_dns_protocols = Enum.map(Accounts.Config.supported_dns_protocols(), &to_string/1)
-
-    Enum.map(options, fn option ->
+    |> Enum.map(fn option ->
       case option[:value] in supported_dns_protocols do
         true -> option
         false -> option ++ [disabled: true]

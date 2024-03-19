@@ -13,6 +13,7 @@ members = [
   "phoenix-channel",
   "relay",
   "gui-client/src-tauri",
+  "http-health-check",
 ]
 
 resolver = "2"
@@ -45,14 +46,12 @@ firezone-relay = { path = "relay"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
+http-health-check = { path = "http-health-check"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
-str0m = { git = "https://github.com/firezone/str0m", branch = "reduce-ice-timeout" }
-
-[patch."https://github.com/quinn-rs/quinn"]
-# waiting for https://github.com/quinn-rs/quinn/pull/1758
-quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main" }
+str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.22" }
 
 [profile.release]
 strip = true

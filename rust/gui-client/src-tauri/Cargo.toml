@@ -14,7 +14,7 @@ arboard = { version = "3.3.2", default-features = false }
 anyhow = { version = "1.0" }
 arc-swap = "1.7.0"
 chrono = { workspace = true }
-clap = { version = "4.4", features = ["derive",  "env"] }
+clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
@@ -31,7 +31,7 @@ minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
-reqwest = { version = "0.11.22", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.11.25", default-features = false, features = ["stream", "rustls-tls"] }
 ring = "0.17"
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
@@ -84,6 +84,8 @@ features = [
   "Win32_System_JobObjects",
   # Needed to check process ID of named pipe clients
   "Win32_System_Pipes",
+  # Needed to listen for system DNS changes
+  "Win32_System_Registry",
   "Win32_System_Threading",
   # For deep_link module
   "Win32_System_SystemServices",

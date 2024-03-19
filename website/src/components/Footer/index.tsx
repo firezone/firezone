@@ -186,7 +186,7 @@ export default function Footer() {
         <hr className="my-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
         <div className="flex grid sm:grid-cols-3">
           <div className="text-xs text-neutral-900">
-            © 2023{" "}
+            © 2024{" "}
             <Link href="/" className="hover:underline">
               Firezone, Inc.
             </Link>{" "}

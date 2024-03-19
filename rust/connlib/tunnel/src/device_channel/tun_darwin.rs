@@ -1,3 +1,4 @@
+use crate::device_channel::{ipv4, ipv6};
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use libc::{
@@ -8,6 +9,7 @@ use libc::{
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
+    collections::HashSet,
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
@@ -143,24 +145,18 @@ impl Tun {
         Err(get_last_error())
     }
 
-    pub fn add_route(
+    pub fn set_routes(
         &self,
-        route: IpNetwork,
+        routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
+    ) -> Result<()> {
         // This will always be None in macos
-        callbacks.on_add_route(route)?;
-        Ok(None)
-    }
+        callbacks.on_update_routes(
+            routes.iter().copied().filter_map(ipv4).collect(),
+            routes.iter().copied().filter_map(ipv6).collect(),
+        )?;
 
-    pub fn remove_route(
-        &self,
-        route: IpNetwork,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Option<Self>> {
-        // This will always be None in macos
-        callbacks.on_remove_route(route)?;
-        Ok(None)
+        Ok(())
     }
 
     pub fn name(&self) -> &str {

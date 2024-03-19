@@ -31,6 +31,8 @@ defmodule Web.HomeHTML do
 
             <.separator :if={@accounts != []} />
 
+            <.flash kind={:error} flash={@flash} />
+
             <.form :let={f} for={%{}} action={~p"/?#{@params}"} class="space-y-4 lg:space-y-6">
               <.input
                 field={f[:account_id_or_slug]}

@@ -1,6 +1,6 @@
 //
 //  AuthStore.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -83,9 +83,6 @@ public final class AuthStore: ObservableObject {
           if status == .disconnected {
             self.handleTunnelDisconnectionEvent()
           }
-          if status == .connected {
-            self.resetReconnectionAttemptsRemaining()
-          }
           self.status = status
         }
       }
@@ -104,7 +101,14 @@ public final class AuthStore: ObservableObject {
   private func upateLoginStatus() {
     Task {
       logger.log("\(#function): Tunnel auth status is \(self.tunnelStore.tunnelAuthStatus)")
-      let loginStatus = await self.getLoginStatus(from: self.tunnelStore.tunnelAuthStatus)
+      let tunnelAuthStatus = tunnelStore.tunnelAuthStatus
+      let loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
+      if tunnelAuthStatus != self.tunnelStore.tunnelAuthStatus {
+        // The tunnel auth status has changed while we were getting the
+        // login status, so this login status is not to be used.
+        logger.log("\(#function): Ignoring login status \(loginStatus) that's no longer valid.")
+        return
+      }
       logger.log("\(#function): Corresponding login status is \(loginStatus)")
       await MainActor.run {
         self.loginStatus = loginStatus
@@ -162,8 +166,6 @@ public final class AuthStore: ObservableObject {
     } catch {
       logger.error("\(#function): Error signing out: \(error)")
     }
-
-    resetReconnectionAttemptsRemaining()
   }
 
   public func cancelSignIn() {
@@ -213,37 +215,11 @@ public final class AuthStore: ObservableObject {
         Task {
           await self.signOut()
         }
-      case .retryThenSignout:
-        self.retryStartTunnel()
       case .doNothing:
         break
       }
     } else {
       self.logger.log("\(#function): Tunnel shutdown event not found")
-      self.retryStartTunnel()
-    }
-  }
-
-  func retryStartTunnel() {
-    // Try to reconnect, but don't try more than 3 times at a time.
-    // If this gets called the third time, sign out.
-    let shouldReconnect = (self.reconnectionAttemptsRemaining > 0)
-    self.reconnectionAttemptsRemaining = self.reconnectionAttemptsRemaining - 1
-    if shouldReconnect {
-      self.logger.log(
-        "\(#function): Will try every second to reconnect (\(self.reconnectionAttemptsRemaining) attempts after this)"
-      )
-      DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(self.reconnectDelaySecs)) {
-        self.logger.log("\(#function): Trying to reconnect")
-        self.startTunnel()
-      }
-    } else {
-      Task {
-        await self.signOut()
-      }
-      #if os(macOS)
-        SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, authStore: self)
-      #endif
     }
   }
 
@@ -269,10 +245,6 @@ public final class AuthStore: ObservableObject {
     case .uninitialized:
       break
     }
-  }
-
-  func resetReconnectionAttemptsRemaining() {
-    self.reconnectionAttemptsRemaining = Self.maxReconnectionAttemptCount
   }
 
   func tunnelAuthStatus(for authBaseURL: URL) async -> TunnelAuthStatus {

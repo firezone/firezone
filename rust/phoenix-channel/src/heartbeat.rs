@@ -92,7 +92,7 @@ mod tests {
         let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
 
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::new(1));
+        heartbeat.set_id(OutboundRequestId::for_test(1));
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
         assert!(result.is_err());
@@ -103,8 +103,8 @@ mod tests {
         let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
 
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::new(1));
-        heartbeat.maybe_handle_reply(OutboundRequestId::new(1));
+        heartbeat.set_id(OutboundRequestId::for_test(1));
+        heartbeat.maybe_handle_reply(OutboundRequestId::for_test(1));
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
         assert!(result.is_ok());

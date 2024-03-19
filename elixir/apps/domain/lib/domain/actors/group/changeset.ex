@@ -57,7 +57,7 @@ defmodule Domain.Actors.Group.Changeset do
   defp changeset(changeset) do
     changeset
     |> trim_change(:name)
-    |> validate_length(:name, min: 1, max: 64)
+    |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
   end
 
@@ -100,7 +100,7 @@ defmodule Domain.Actors.Group.Changeset do
       end)
 
     memberships =
-      Auth.list_actor_ids_by_membership_rules(account_id, rules)
+      Auth.all_actor_ids_by_membership_rules!(account_id, rules)
       |> Enum.map(fn actor_id ->
         Actors.Membership.Changeset.for_group(account_id, %Actors.Membership{}, %{
           actor_id: actor_id
