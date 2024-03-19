@@ -1,7 +1,7 @@
 defmodule Domain.Types.IPPort do
   @behaviour Ecto.Type
 
-  defstruct [:type, :address, :port]
+  defstruct [:address_type, :address, :port]
 
   def type, do: :string
 
@@ -17,7 +17,7 @@ defmodule Domain.Types.IPPort do
     with {:ok, {binary_address, binary_port}} <- parse_binary(binary),
          {:ok, address} <- cast_address(binary_address),
          {:ok, port} <- cast_port(binary_port) do
-      {:ok, %__MODULE__{type: type(address), address: address, port: port}}
+      {:ok, %__MODULE__{address_type: type(address), address: address, port: port}}
     else
       _error -> {:error, message: "is invalid"}
     end
@@ -79,12 +79,12 @@ defmodule Domain.Types.IPPort do
     ip |> :inet.ntoa() |> List.to_string()
   end
 
-  def to_string(%__MODULE__{type: :ipv4, address: ip, port: port}) do
+  def to_string(%__MODULE__{address_type: :ipv4, address: ip, port: port}) do
     ip = ip |> :inet.ntoa() |> List.to_string()
     "#{ip}:#{port}"
   end
 
-  def to_string(%__MODULE__{type: :ipv6, address: ip, port: port}) do
+  def to_string(%__MODULE__{address_type: :ipv6, address: ip, port: port}) do
     ip = ip |> :inet.ntoa() |> List.to_string()
     "[#{ip}]:#{port}"
   end

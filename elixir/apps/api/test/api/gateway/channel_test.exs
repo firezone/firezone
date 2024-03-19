@@ -820,7 +820,7 @@ defmodule API.Gateway.ChannelTest do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       one_minute_ago = DateTime.add(now, -1, :minute)
 
-      {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
+      {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://127.0.0.1:80")
 
       attrs = %{
         "started_at" => DateTime.to_unix(one_minute_ago),
@@ -829,6 +829,7 @@ defmodule API.Gateway.ChannelTest do
           %{
             "flow_id" => flow.id,
             "destination" => destination,
+            "connectivity_type" => "direct",
             "rx_bytes" => 100,
             "tx_bytes" => 200
           }

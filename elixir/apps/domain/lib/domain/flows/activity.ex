@@ -5,9 +5,11 @@ defmodule Domain.Flows.Activity do
     field :window_started_at, :utc_datetime
     field :window_ended_at, :utc_datetime
 
-    field :destination, Domain.Types.IPPort
+    field :destination, Domain.Types.ProtocolIPPort
     field :rx_bytes, :integer
     field :tx_bytes, :integer
+
+    field :connectivity_type, Ecto.Enum, values: [:relayed, :direct]
 
     belongs_to :flow, Domain.Flows.Flow
     belongs_to :account, Domain.Accounts.Account

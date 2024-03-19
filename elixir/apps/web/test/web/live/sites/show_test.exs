@@ -197,7 +197,7 @@ defmodule Web.Live.Sites.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources")
+      |> live(~p"/#{account}/sites/#{group}")
 
     resource_rows =
       lv
@@ -208,7 +208,6 @@ defmodule Web.Live.Sites.ShowTest do
     Enum.each(resource_rows, fn row ->
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
-      assert row["sites"] =~ group.name
       assert row["authorized groups"] == "None, create a Policy to grant access."
     end)
   end
@@ -245,7 +244,7 @@ defmodule Web.Live.Sites.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources")
+      |> live(~p"/#{account}/sites/#{group}")
 
     resource_rows =
       lv
@@ -267,7 +266,7 @@ defmodule Web.Live.Sites.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources")
+      |> live(~p"/#{account}/sites/#{group}")
 
     resource_rows =
       lv
