@@ -29,7 +29,8 @@ struct FirezoneApp: App {
         StateObject(
           wrappedValue: AskPermissionViewModel(
             tunnelStore: appStore.tunnelStore,
-            sessionNotificationHelper: SessionNotificationHelper(logger: appStore.logger, authStore: appStore.authStore)
+            sessionNotificationHelper: SessionNotificationHelper(
+              logger: appStore.logger, tunnelStore: appStore.tunnelStore)
           )
         )
       appDelegate.appStore = appStore
@@ -47,7 +48,7 @@ struct FirezoneApp: App {
       }
     #else
       WindowGroup(
-        "Firezone (VPN Permission)",
+        "Welcome to Firezone",
         id: AppStore.WindowDefinition.askPermission.identifier
       ) {
         AskPermissionView(model: askPermissionViewModel)
@@ -98,7 +99,7 @@ struct FirezoneApp: App {
     }
 
     func applicationWillTerminate(_: Notification) {
-      self.appStore?.authStore.cancelSignIn()
+      self.appStore?.tunnelStore.cancelSignIn()
     }
   }
 #endif

@@ -26,52 +26,34 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     logger.log("\(#function)")
 
-    guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
-      logger.error("\(#function): serverAddress is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "serverAddress is missing")
+    guard let apiURL = protocolConfiguration.serverAddress,
+      let tokenRef = protocolConfiguration.passwordReference,
+      let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
+        .providerConfiguration as? [String: String],
+      let logFilter = providerConfiguration[TunnelStoreKeys.logFilter]
+    else {
+      //      self.handleTunnelShutdown(
+      //        dueTo: .badTunnelConfiguration,
+      //        errorMessage: "\(#function): protocolConfiguration is missing fields")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
-      return
-    }
-
-    guard let tokenRef = protocolConfiguration.passwordReference else {
-      logger.error("\(#function): passwordReference is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "passwordReference is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
-      return
-    }
-
-    let providerConfig = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
-
-    guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
-    else {
-      logger.error("\(#function): connlibLogFilter is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "connlibLogFilter is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("connlibLogFilter"))
       return
     }
 
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
-        logger.error("\(#function): Token not found in keychain")
-        self.handleTunnelShutdown(
-          dueTo: .tokenNotFound,
-          errorMessage: "Token not found in keychain")
+        //        self.handleTunnelShutdown(
+        //          dueTo: .tokenNotFound,
+        //          errorMessage: "Token not found in keychain")
         completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
         return
       }
 
       let adapter = Adapter(
-        controlPlaneURLString: controlPlaneURLString, token: token, logFilter: connlibLogFilter,
+        apiURL: apiURL,
+        token: token,
+        logFilter: logFilter,
         packetTunnelProvider: self)
       self.adapter = adapter
       do {
@@ -108,15 +90,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
-    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
-
-    #if os(iOS)
-      if reason.action == .signoutImmediately {
-        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
-      }
-    #endif
-  }
+  //  func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
+  //    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
+  //
+  //    #if os(iOS)
+  //      if reason.action == .signoutImmediately {
+  //        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
+  //      }
+  //    #endif
+  //  }
 }
 
 extension NEProviderStopReason: CustomStringConvertible {

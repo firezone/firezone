@@ -211,7 +211,7 @@ impl WrappedSession {
 
     fn reconnect(&mut self) {
         tracing::debug!("Reconnecting");
-        // self.inner.reconnect()
+        self.inner.reconnect()
     }
 
     fn set_dns(&mut self, dns_servers: String) {

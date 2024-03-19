@@ -79,19 +79,19 @@ class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
-  private var controlPlaneURLString: String
+  private var apiURL: String
   private var token: String
 
   private let logFilter: String
   private let connlibLogFolderPath: String
 
   init(
-    controlPlaneURLString: String,
+    apiURL: String,
     token: String,
     logFilter: String,
     packetTunnelProvider: PacketTunnelProvider
   ) {
-    self.controlPlaneURLString = controlPlaneURLString
+    self.apiURL = apiURL
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler(logger: packetTunnelProvider.logger)
@@ -138,9 +138,9 @@ class Adapter {
 
       self.logger.log("Adapter.start: Starting connlib")
       do {
-        self.state = .startingTunnel(
-          session: try WrappedSession.connect(
-            controlPlaneURLString,
+        let session =
+          try WrappedSession.connect(
+            apiURL,
             token,
             DeviceMetadata.getOrCreateFirezoneId(logger: self.logger),
             DeviceMetadata.getDeviceName(),
@@ -148,14 +148,14 @@ class Adapter {
             connlibLogFolderPath,
             logFilter,
             callbackHandler
-          ),
-          onStarted: completionHandler
-        )
+          )
+        self.state = .startingTunnel(session: session, onStarted: completionHandler)
+        session.setDns(getSystemDefaultResolvers().intoRustString())
       } catch let error {
         logger.error("\(#function): Adapter.start: Error: \(error)")
-        packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .connlibConnectFailure,
-          errorMessage: error.localizedDescription)
+        //        packetTunnelProvider?.handleTunnelShutdown(
+        //          dueTo: .connlibConnectFailure,
+        //          errorMessage: error.localizedDescription)
         state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
       }
@@ -179,6 +179,10 @@ class Adapter {
 
       networkMonitor?.cancel()
       networkMonitor = nil
+
+      //      packetTunnelProvider?.handleTunnelShutdown(
+      //        dueTo: .stopped(reason),
+      //        errorMessage: "\(reason)")
 
       switch state {
       case .stoppedTunnel:
@@ -285,7 +289,10 @@ extension Adapter {
 
         // Set potentially new DNS servers
         if shouldUpdateDns(path: path) {
-          session.setDns(getSystemDefaultResolvers().intoRustString())
+          // Spawn a new thread to avoid blocking the UI
+          Task {
+            session.setDns(getSystemDefaultResolvers().intoRustString())
+          }
         }
 
         if packetTunnelProvider?.reasserting == true {
@@ -320,17 +327,17 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.log("Adapter.onSetInterfaceConfig")
+      logger.log("Adapter.onSetInterfaceConfig: \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
 
       switch state {
       case .startingTunnel(let session, let onStarted):
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
+        networkSettings.apply()
         state = .tunnelReady(session: session)
         onStarted?(nil)
         beginPathMonitoring()
-        networkSettings.apply()
       case .tunnelReady(session: _):
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
@@ -355,7 +362,6 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes6 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
       ).compactMap { $0.asNEIPv6Route }
-      networkSettings.hasUnappliedChanges = true
 
       networkSettings.apply()
     }
@@ -384,9 +390,9 @@ extension Adapter: CallbackHandlerDelegate {
       // Unexpected disconnect initiated by connlib. Typically for 401s.
       logger.error(
         "Connlib disconnected with unrecoverable error: \(error)")
-      packetTunnelProvider?.handleTunnelShutdown(
-        dueTo: .connlibDisconnected,
-        errorMessage: error)
+      // packetTunnelProvider?.handleTunnelShutdown(
+      //   dueTo: .connlibDisconnected,
+      //   errorMessage: error)
       // TODO: Define more connlib error types across the FFI so we can switch on them
       // more granularly, and not just sign the user out every time this is called.
       packetTunnelProvider?.cancelTunnelWithError(
@@ -398,7 +404,13 @@ extension Adapter: CallbackHandlerDelegate {
     #if os(macOS)
       let resolvers = SystemConfigurationResolvers(logger: logger).getDefaultDNSServers()
     #elseif os(iOS)
-      let resolvers = resetToSystemDNSGettingBindResolvers()
+      let resolvers = 
+        if case .tunnelReady = state {
+          resetToSystemDNSGettingBindResolvers()
+        } else {
+          // NetworkSettings isn't applied yet, so we can grab them directly
+          BindResolvers().getservers().map(BindResolvers.getnameinfo)
+        }
     #endif
 
     logger.log("\(#function): \(resolvers)")
