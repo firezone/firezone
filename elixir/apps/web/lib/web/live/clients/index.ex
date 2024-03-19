@@ -30,16 +30,11 @@ defmodule Web.Clients.Index do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
     with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
-      assign(socket,
-        clients: clients,
-        clients_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         clients: clients,
+         clients_metadata: metadata
+       )}
     end
   end
 
