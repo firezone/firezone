@@ -176,7 +176,7 @@ class TunnelService : VpnService() {
     ): Int {
         Log.d(TAG, "onStartCommand")
         when (intent?.action) {
-            "dev.firezone.android.tunnel.DISCONNECT" -> disconnect()
+            "dev.firezone.android.tunnel.action.DISCONNECT" -> disconnect()
             else -> {
                 if (intent?.getBooleanExtra("startedByUser", false) == true) {
                     startedByUser = true
