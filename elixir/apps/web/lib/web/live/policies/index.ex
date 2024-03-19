@@ -29,16 +29,11 @@ defmodule Web.Policies.Index do
     list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
 
     with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
-      assign(socket,
-        policies: policies,
-        policies_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         policies: policies,
+         policies_metadata: metadata
+       )}
     end
   end
 

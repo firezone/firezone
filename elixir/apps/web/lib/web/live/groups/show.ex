@@ -50,16 +50,11 @@ defmodule Web.Groups.Show do
     list_opts = Keyword.put(list_opts, :preload, [:last_seen_at, identities: :provider])
 
     with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts) do
-      assign(socket,
-        actors: actors,
-        actors_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         actors: actors,
+         actors_metadata: metadata
+       )}
     end
   end
 
@@ -67,16 +62,11 @@ defmodule Web.Groups.Show do
     list_opts = Keyword.put(list_opts, :preload, :resource)
 
     with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
-      assign(socket,
-        policies: policies,
-        policies_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         policies: policies,
+         policies_metadata: metadata
+       )}
     end
   end
 
