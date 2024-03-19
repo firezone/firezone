@@ -47,7 +47,7 @@ struct FirezoneApp: App {
       }
     #else
       WindowGroup(
-        "Firezone (VPN Permission)",
+        "Welcome to Firezone",
         id: AppStore.WindowDefinition.askPermission.identifier
       ) {
         AskPermissionView(model: askPermissionViewModel)
