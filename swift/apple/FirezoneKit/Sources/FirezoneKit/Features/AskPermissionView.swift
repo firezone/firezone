@@ -34,7 +34,7 @@ public final class AskPermissionViewModel: ObservableObject {
     self.sessionNotificationHelper = sessionNotificationHelper
 
     tunnelStore.$tunnelAuthStatus
-      .filter { $0.isInitialized }
+      .filter { $0 != nil }
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }
 
