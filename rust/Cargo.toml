@@ -57,6 +57,7 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 strip = true
 
 # Override build settings just for the GUI client, so we get a pdb/dwp
+# Cargo ignores profile settings if they're not in the workspace's Cargo.toml
 [profile.dev.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
