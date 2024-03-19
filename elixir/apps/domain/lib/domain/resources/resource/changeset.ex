@@ -57,7 +57,7 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:address, min: 1, max: 253)
     |> validate_does_not_end_with(:address, "localhost",
-      message: "localhost can not be used, please add a DNS alias to /etc/hosts instead"
+      message: "localhost cannot be used, please add a DNS alias to /etc/hosts instead"
     )
     |> validate_format(:address, ~r/^([*?]\.)?[\p{L}0-9-]{1,63}(\.[\p{L}0-9-]{1,63})*$/iu)
   end
@@ -66,10 +66,10 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_and_normalize_cidr(:address)
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
-      message: "can not contain all IPv4 addresses"
+      message: "cannot contain all IPv4 addresses"
     )
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
-      message: "can not contain loopback addresses"
+      message: "cannot contain loopback addresses"
     )
     |> validate_not_in_cidr(
       :address,
@@ -77,7 +77,7 @@ defmodule Domain.Resources.Resource.Changeset do
         address: {0, 0, 0, 0, 0, 0, 0, 0},
         netmask: 128
       },
-      message: "can not contain all IPv6 addresses"
+      message: "cannot contain all IPv6 addresses"
     )
     |> validate_not_in_cidr(
       :address,
@@ -85,7 +85,7 @@ defmodule Domain.Resources.Resource.Changeset do
         address: {0, 0, 0, 0, 0, 0, 0, 1},
         netmask: 128
       },
-      message: "can not contain loopback addresses"
+      message: "cannot contain loopback addresses"
     )
     |> validate_address_is_not_in_private_range()
   end
@@ -94,10 +94,10 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_and_normalize_ip(:address)
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
-      message: "can not contain all IPv4 addresses"
+      message: "cannot contain all IPv4 addresses"
     )
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
-      message: "can not contain loopback addresses"
+      message: "cannot contain loopback addresses"
     )
     |> validate_not_in_cidr(
       :address,
@@ -105,7 +105,7 @@ defmodule Domain.Resources.Resource.Changeset do
         address: {0, 0, 0, 0, 0, 0, 0, 0},
         netmask: 128
       },
-      message: "can not contain all IPv6 addresses"
+      message: "cannot contain all IPv6 addresses"
     )
     |> validate_not_in_cidr(
       :address,
@@ -113,7 +113,7 @@ defmodule Domain.Resources.Resource.Changeset do
         address: {0, 0, 0, 0, 0, 0, 0, 1},
         netmask: 128
       },
-      message: "can not contain loopback addresses"
+      message: "cannot contain loopback addresses"
     )
     |> validate_address_is_not_in_private_range()
   end

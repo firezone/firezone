@@ -331,8 +331,13 @@ locals {
     },
     {
       name  = "FEATURE_SIGN_UP_ENABLED"
-      value = false
-    }
+      value = true
+    },
+    # Sign Up
+    {
+      name  = "SIGN_UP_WHITELISTED_DOMAINS"
+      value = "firezone.dev,firez.one"
+    },
   ]
 }
 
