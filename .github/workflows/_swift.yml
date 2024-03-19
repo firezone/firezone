@@ -113,6 +113,7 @@ jobs:
           if [ "${{ matrix.platform }}" = "iOS" ]; then
             # Build archive
             xcodebuild archive \
+              -skipMacroValidation \
               -archivePath $RUNNER_TEMP/Firezone.xcarchive \
               -configuration Release \
               -scheme Firezone \
@@ -130,6 +131,7 @@ jobs:
           elif [ "${{ matrix.platform }}" = "macOS" ]; then
             # Build app bundle
             xcodebuild build \
+              -skipMacroValidation \
               -configuration Release \
               -scheme Firezone \
               -sdk ${{ matrix.sdk }} \
