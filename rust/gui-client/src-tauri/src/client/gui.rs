@@ -188,6 +188,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
+    tracing::debug!("Building Tauri app instance...");
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -776,6 +777,7 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
+    tracing::debug!("Reading / generating device ID...");
     let device_id =
         connlib_shared::device_id::get().context("Failed to read / create device ID")?;
 
