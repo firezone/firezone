@@ -407,7 +407,7 @@ defmodule Web.LiveTableTest do
                    {:actors, :name}
                  ],
                  callback: fn socket, list_opts ->
-                   %{socket | private: %{list_opts: list_opts}}
+                   {:ok, %{socket | private: %{list_opts: list_opts}}}
                  end
                )
 
@@ -440,7 +440,7 @@ defmodule Web.LiveTableTest do
                  hide_filters: [:email],
                  limit: 11,
                  callback: fn socket, list_opts ->
-                   %{socket | private: %{list_opts: list_opts}}
+                   {:ok, %{socket | private: %{list_opts: list_opts}}}
                  end
                )
     end
@@ -460,7 +460,7 @@ defmodule Web.LiveTableTest do
             {:actors, :name}
           ],
           callback: fn socket, list_opts ->
-            %{socket | private: %{list_opts: list_opts}}
+            {:ok, %{socket | private: %{list_opts: list_opts}}}
           end
         )
 
@@ -507,7 +507,7 @@ defmodule Web.LiveTableTest do
           ],
           callback: fn socket, list_opts ->
             send(test_pid, {:callback, socket, list_opts})
-            %{socket | private: %{list_opts: list_opts}}
+            {:ok, %{socket | private: %{list_opts: list_opts}}}
           end
         )
 
@@ -612,7 +612,7 @@ defmodule Web.LiveTableTest do
             {:actors, :name}
           ],
           callback: fn socket, list_opts ->
-            %{socket | private: %{list_opts: list_opts}}
+            {:ok, %{socket | private: %{list_opts: list_opts}}}
           end
         )
 
@@ -655,7 +655,7 @@ defmodule Web.LiveTableTest do
             {:actors, :name}
           ],
           callback: fn socket, list_opts ->
-            %{socket | private: %{list_opts: list_opts}}
+            {:ok, %{socket | private: %{list_opts: list_opts}}}
           end
         )
 
@@ -706,7 +706,7 @@ defmodule Web.LiveTableTest do
             {:actors, :name}
           ],
           callback: fn socket, list_opts ->
-            %{socket | private: %{list_opts: list_opts}}
+            {:ok, %{socket | private: %{list_opts: list_opts}}}
           end
         )
 

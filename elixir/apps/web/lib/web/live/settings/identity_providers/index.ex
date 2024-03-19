@@ -36,10 +36,11 @@ defmodule Web.Settings.IdentityProviders.Index do
 
   def handle_providers_update!(socket, list_opts) do
     with {:ok, providers, metadata} <- Auth.list_providers(socket.assigns.subject, list_opts) do
-      assign(socket,
-        providers: providers,
-        providers_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         providers: providers,
+         providers_metadata: metadata
+       )}
     end
   end
 

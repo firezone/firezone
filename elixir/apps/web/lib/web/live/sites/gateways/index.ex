@@ -41,10 +41,11 @@ defmodule Web.Sites.Gateways.Index do
     list_opts = Keyword.put(list_opts, :preload, [:online?])
 
     with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
-      assign(socket,
-        gateways: gateways,
-        gateways_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         gateways: gateways,
+         gateways_metadata: metadata
+       )}
     end
   end
 

@@ -49,10 +49,11 @@ defmodule Web.RelayGroups.Show do
     list_opts = Keyword.put(list_opts, :preload, [:online?])
 
     with {:ok, relays, metadata} <- Relays.list_relays(socket.assigns.subject, list_opts) do
-      assign(socket,
-        relays: relays,
-        relays_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         relays: relays,
+         relays_metadata: metadata
+       )}
     end
   end
 

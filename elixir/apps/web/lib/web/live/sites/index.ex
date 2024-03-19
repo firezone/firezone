@@ -31,10 +31,11 @@ defmodule Web.Sites.Index do
 
     with {:ok, groups, metadata} <-
            Gateways.list_groups(socket.assigns.subject, list_opts) do
-      assign(socket,
-        groups: groups,
-        groups_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         groups: groups,
+         groups_metadata: metadata
+       )}
     end
   end
 

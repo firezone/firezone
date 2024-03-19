@@ -30,10 +30,11 @@ defmodule Web.Clients.Index do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
     with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
-      assign(socket,
-        clients: clients,
-        clients_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         clients: clients,
+         clients_metadata: metadata
+       )}
     end
   end
 

@@ -45,10 +45,11 @@ defmodule Web.Policies.Show do
 
     with {:ok, flows, metadata} <-
            Flows.list_flows_for(socket.assigns.policy, socket.assigns.subject, list_opts) do
-      assign(socket,
-        flows: flows,
-        flows_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 

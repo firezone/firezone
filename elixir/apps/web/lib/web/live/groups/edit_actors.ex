@@ -48,10 +48,11 @@ defmodule Web.Groups.EditActors do
     list_opts = Keyword.put(list_opts, :preload, identities: :provider)
 
     with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts) do
-      assign(socket,
-        actors: actors,
-        actors_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         actors: actors,
+         actors_metadata: metadata
+       )}
     end
   end
 

@@ -432,7 +432,7 @@ defmodule Web.LiveTable do
 
     case callback.(socket, list_opts) do
       {:error, _reason} -> push_navigate(socket, to: socket.assigns.uri)
-      socket -> socket
+      {:ok, socket} -> socket
     end
   end
 
@@ -468,22 +468,7 @@ defmodule Web.LiveTable do
     ]
 
     case maybe_apply_callback(socket, id, list_opts) do
-      {:error, :invalid_cursor} ->
-        raise Web.LiveErrors.InvalidRequestError
-
-      {:error, {:unknown_filter, _metadata}} ->
-        raise Web.LiveErrors.InvalidRequestError
-
-      {:error, {:invalid_type, _metadata}} ->
-        raise Web.LiveErrors.InvalidRequestError
-
-      {:error, {:invalid_value, _metadata}} ->
-        raise Web.LiveErrors.InvalidRequestError
-
-      {:error, _reason} ->
-        raise Web.LiveErrors.NotFoundError
-
-      socket ->
+      {:ok, socket} ->
         socket
         |> assign(
           filter_form_by_table_id:
@@ -508,6 +493,21 @@ defmodule Web.LiveTable do
               list_opts
             )
         )
+
+      {:error, :invalid_cursor} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, {:unknown_filter, _metadata}} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, {:invalid_type, _metadata}} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, {:invalid_value, _metadata}} ->
+        raise Web.LiveErrors.InvalidRequestError
+
+      {:error, _reason} ->
+        raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -518,7 +518,7 @@ defmodule Web.LiveTable do
       callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
       callback.(socket, list_opts)
     else
-      socket
+      {:ok, socket}
     end
   end
 

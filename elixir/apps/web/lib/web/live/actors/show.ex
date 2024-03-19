@@ -59,10 +59,11 @@ defmodule Web.Actors.Show do
 
     with {:ok, identities, metadata} <-
            Auth.list_identities_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
-      assign(socket,
-        identities: identities,
-        identities_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         identities: identities,
+         identities_metadata: metadata
+       )}
     end
   end
 
@@ -76,10 +77,11 @@ defmodule Web.Actors.Show do
 
     with {:ok, tokens, metadata} <-
            Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
-      assign(socket,
-        tokens: tokens,
-        tokens_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         tokens: tokens,
+         tokens_metadata: metadata
+       )}
     end
   end
 
@@ -88,10 +90,11 @@ defmodule Web.Actors.Show do
 
     with {:ok, clients, metadata} <-
            Clients.list_clients_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
-      assign(socket,
-        clients: clients,
-        clients_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         clients: clients,
+         clients_metadata: metadata
+       )}
     end
   end
 
@@ -105,10 +108,11 @@ defmodule Web.Actors.Show do
 
     with {:ok, flows, metadata} <-
            Flows.list_flows_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
-      assign(socket,
-        flows: flows,
-        flows_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 

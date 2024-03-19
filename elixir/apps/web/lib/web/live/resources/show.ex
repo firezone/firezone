@@ -55,10 +55,11 @@ defmodule Web.Resources.Show do
     list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
 
     with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
-      assign(socket,
-        policies: policies,
-        policies_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         policies: policies,
+         policies_metadata: metadata
+       )}
     end
   end
 
@@ -72,10 +73,11 @@ defmodule Web.Resources.Show do
 
     with {:ok, flows, metadata} <-
            Flows.list_flows_for(socket.assigns.resource, socket.assigns.subject, list_opts) do
-      assign(socket,
-        flows: flows,
-        flows_metadata: metadata
-      )
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 
