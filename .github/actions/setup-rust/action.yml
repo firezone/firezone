@@ -40,6 +40,9 @@ runs:
         save-if: ${{ github.ref_name == 'main' }}
         key: ${{ runner.os }}-${{ inputs.targets }}
         workspaces: ./rust
+      # Download from GitHub actions can sometimes fail and it has a very long default timeout.
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
 
     # Common to either cache backend
     - name: Extract Rust version
