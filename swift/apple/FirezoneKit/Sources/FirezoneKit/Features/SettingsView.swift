@@ -18,10 +18,6 @@ enum SettingsViewError: Error {
 public final class SettingsViewModel: ObservableObject {
   let authStore: AuthStore
 
-  var tunnelAuthStatus: TunnelAuthStatus {
-    authStore.tunnelStore.tunnelAuthStatus
-  }
-
   @Published var advancedSettings: AdvancedSettings
 
   let logger: AppLogger
@@ -38,7 +34,7 @@ public final class SettingsViewModel: ObservableObject {
   func loadSettings() {
     Task {
       authStore.tunnelStore.$tunnelAuthStatus
-        .first { $0.isInitialized }
+        .first { $0 != nil }
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
@@ -56,7 +52,7 @@ public final class SettingsViewModel: ObservableObject {
       return
     }
     Task {
-      if case .signedIn = self.tunnelAuthStatus {
+      if case .signedIn = authStore.tunnelStore.tunnelAuthStatus {
         await authStore.signOut()
       }
       let authBaseURLString = advancedSettings.authBaseURLString
@@ -379,7 +375,7 @@ public struct SettingsView: View {
                 "Apply",
                 action: {
                   let action = ConfirmationAlertContinueAction.saveAdvancedSettings
-                  if case .signedIn = model.tunnelAuthStatus {
+                  if case .signedIn = model.authStore.tunnelStore.tunnelAuthStatus {
                     self.confirmationAlertContinueAction = action
                     self.isShowingConfirmationAlert = true
                   } else {

@@ -72,7 +72,7 @@ public final class AuthStore: ObservableObject {
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }
         logger.log("Tunnel auth status changed to: \(tunnelAuthStatus)")
-        self.upateLoginStatus()
+        self.updateLoginStatus()
       }
       .store(in: &cancellables)
 
@@ -98,7 +98,7 @@ public final class AuthStore: ObservableObject {
     return URL(string: AdvancedSettings.defaultValue.authBaseURLString)!
   }
 
-  private func upateLoginStatus() {
+  private func updateLoginStatus() {
     Task {
       logger.log("\(#function): Tunnel auth status is \(self.tunnelStore.tunnelAuthStatus)")
       let tunnelAuthStatus = tunnelStore.tunnelAuthStatus
@@ -116,9 +116,9 @@ public final class AuthStore: ObservableObject {
     }
   }
 
-  private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus) async -> LoginStatus {
+  private func getLoginStatus(from tunnelAuthStatus: TunnelAuthStatus?) async -> LoginStatus {
     switch tunnelAuthStatus {
-    case .uninitialized:
+    case nil:
       return .uninitialized
     case .noTunnelFound:
       return .needsTunnelCreationPermission
