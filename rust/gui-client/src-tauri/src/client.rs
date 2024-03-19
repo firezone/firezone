@@ -16,6 +16,7 @@ mod resolvers;
 mod settings;
 mod updates;
 mod uptime;
+mod welcome;
 
 #[cfg(target_os = "windows")]
 mod wintun_install;
