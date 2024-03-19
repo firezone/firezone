@@ -84,16 +84,6 @@ public final class AuthStore: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private var authBaseURL: URL {
-    let advancedSettings = self.tunnelStore.advancedSettings()
-
-    if let url = URL(string: advancedSettings.authBaseURLString) {
-      return url
-    }
-
-    return URL(string: AdvancedSettings.defaultValue.authBaseURLString)!
-  }
-
   private func updateLoginStatus() {
     Task {
       logger.log("\(#function): Manager auth status is \(self.tunnelStore.tunnelAuthStatus)")
@@ -121,9 +111,6 @@ public final class AuthStore: ObservableObject {
     case .signedOut:
       return .signedOut
     case .signedIn(let tunnelAuthBaseURL, let tokenReference):
-      guard self.authBaseURL == tunnelAuthBaseURL else {
-        return .signedOut
-      }
       let tunnelBaseURLString = self.authBaseURL.absoluteString
       guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
         tunnelBaseURLString == tokenAttributes.authBaseURLString
