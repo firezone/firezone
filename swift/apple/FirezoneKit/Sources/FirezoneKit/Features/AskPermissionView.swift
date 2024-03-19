@@ -40,7 +40,7 @@ public final class AskPermissionViewModel: ObservableObject {
 
         Task {
           await MainActor.run {
-            if case .noTunnelFound = tunnelAuthStatus {
+            if case .noManagerFound = tunnelAuthStatus {
               self.needsTunnelPermission = true
             } else {
               self.needsTunnelPermission = false

@@ -54,10 +54,6 @@ public final class AppStore: ObservableObject {
           return false
         }
       }
-
-      public static func allIdentifiers() -> [String] {
-        AppStore.WindowDefinition.allCases.map { $0.identifier }
-      }
     }
   #endif
 
@@ -82,8 +78,7 @@ public final class AppStore: ObservableObject {
     #if os(macOS)
       tunnelStore.$tunnelAuthStatus
         .sink { tunnelAuthStatus in
-
-          if case .noTunnelFound = tunnelAuthStatus {
+          if case .noManagerFound = tunnelAuthStatus {
             Task {
               await MainActor.run {
                 WindowDefinition.askPermission.openWindow()

@@ -53,11 +53,6 @@ public final class AuthStore: ObservableObject {
 
   private var status: NEVPNStatus = .invalid
 
-  // Try to automatically reconnect on network changes
-  private static let maxReconnectionAttemptCount = 60
-  private let reconnectDelaySecs = 1
-  private var reconnectionAttemptsRemaining = maxReconnectionAttemptCount
-
   init(tunnelStore: TunnelStore, logger: AppLogger) {
     self.tunnelStore = tunnelStore
     self.logger = logger
@@ -71,7 +66,7 @@ public final class AuthStore: ObservableObject {
       .receive(on: mainQueue)
       .sink { [weak self] tunnelAuthStatus in
         guard let self = self else { return }
-        logger.log("Tunnel auth status changed to: \(tunnelAuthStatus)")
+        logger.log("Manager auth status changed to: \(tunnelAuthStatus)")
         self.updateLoginStatus()
       }
       .store(in: &cancellables)
@@ -101,7 +96,7 @@ public final class AuthStore: ObservableObject {
 
   private func updateLoginStatus() {
     Task {
-      logger.log("\(#function): Tunnel auth status is \(self.tunnelStore.tunnelAuthStatus)")
+      logger.log("\(#function): Manager auth status is \(self.tunnelStore.tunnelAuthStatus)")
       let tunnelAuthStatus = tunnelStore.tunnelAuthStatus
       let loginStatus = await self.getLoginStatus(from: tunnelAuthStatus)
       if tunnelAuthStatus != self.tunnelStore.tunnelAuthStatus {
@@ -121,7 +116,7 @@ public final class AuthStore: ObservableObject {
     switch tunnelAuthStatus {
     case nil:
       return .uninitialized
-    case .noTunnelFound:
+    case .noManagerFound:
       return .needsTunnelCreationPermission
     case .signedOut:
       return .signedOut

@@ -26,25 +26,24 @@ struct AdvancedSettings: Equatable {
   }
 
   static let defaultValue: AdvancedSettings = {
+    // Note: To see what the connlibLogFilterString values mean, see:
+    // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
     #if DEBUG
       AdvancedSettings(
-        authBaseURLString: "https://app.firez.one/",
-        apiURLString: "wss://api.firez.one/",
+        authBaseURLString: "https://app.firez.one",
+        apiURLString: "wss://api.firez.one",
         connlibLogFilterString:
           "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,str0m=info,debug"
       )
     #else
       AdvancedSettings(
-        authBaseURLString: "https://app.firezone.dev/",
-        apiURLString: "wss://api.firezone.dev/",
+        authBaseURLString: "https://app.firezone.dev",
+        apiURLString: "wss://api.firezone.dev",
         connlibLogFilterString:
           "firezone_tunnel=info,connlib_shared=info,phoenix_channel=info,connlib_client_shared=info,boringtun=info,snownet=info,str0m=info,warn"
       )
     #endif
   }()
-
-  // Note: To see what the connlibLogFilterString values mean, see:
-  // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
 }
 
 extension AdvancedSettings: CustomStringConvertible {

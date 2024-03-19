@@ -57,7 +57,7 @@ public final class TunnelStore: ObservableObject {
     self.status = .invalid
     self.protocolConfiguration = NETunnelProviderProtocol()
     self.manager = nil
-    self.tunnelAuthStatus = .noTunnelFound
+    self.tunnelAuthStatus = .noManagerFound
 
     Task {
       // loadAllFromPreferences() returns list of tunnel configurations we created. Since our bundle ID
@@ -100,7 +100,7 @@ public final class TunnelStore: ObservableObject {
     var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
 
     switch authStatus {
-    case .noTunnelFound:
+    case .noManagerFound:
       return
 
     case .signedOut:
@@ -130,7 +130,7 @@ public final class TunnelStore: ObservableObject {
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = basicProviderProtocol()
     try await manager.saveToPreferences()
-    logger.log("\(#function): Tunnel created")
+    logger.log("\(#function): Manager created")
     self.manager = manager
     self.tunnelAuthStatus = authStatus()
   }
@@ -138,7 +138,7 @@ public final class TunnelStore: ObservableObject {
   func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
     logger.log("TunnelStore.\(#function) \(advancedSettings)")
     guard let manager = manager else {
-      fatalError("No tunnel yet. Can't save advanced settings.")
+      fatalError("No manager yet. Can't save advanced settings.")
     }
 
     if [.connected, .connecting].contains(manager.connection.status) {
@@ -169,7 +169,7 @@ public final class TunnelStore: ObservableObject {
 
   func start() async throws {
     guard let manager = manager else {
-      logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No manager created yet")
       return
     }
 
@@ -201,7 +201,7 @@ public final class TunnelStore: ObservableObject {
 
   func stop() async throws {
     guard let manager = manager else {
-      logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No manager created yet")
       return
     }
 
@@ -222,7 +222,7 @@ public final class TunnelStore: ObservableObject {
 
   func signOut() async throws -> Keychain.PersistentRef? {
     guard let manager = manager else {
-      logger.log("\(#function): No tunnel created yet")
+      logger.log("\(#function): No manager created yet")
       return nil
     }
 
@@ -369,28 +369,18 @@ public final class TunnelStore: ObservableObject {
       }
     )
   }
-
-  func removeProfile() async throws {
-    logger.log("\(#function)")
-    guard let manager = manager else {
-      logger.log("\(#function): No tunnel created yet")
-      return
-    }
-
-    try await manager.removeFromPreferences()
-  }
 }
 
 enum TunnelAuthStatus: Equatable, CustomStringConvertible {
-  case noTunnelFound
+  case noManagerFound
   case signedOut
   case signedIn(authBaseURL: URL, tokenReference: Data)
 
   var description: String {
     switch self {
 
-    case .noTunnelFound:
-      return "no tunnel found"
+    case .noManagerFound:
+      return "no manager found"
     case .signedOut:
       return "signedOut"
     case .signedIn(let authBaseURL, _):
