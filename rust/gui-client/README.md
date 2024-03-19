@@ -38,9 +38,8 @@ going on under the hood.
 pnpm build
 
 # Linux:
-# The release exe, AppImage with bundled WebView, and deb package are up in the workspace.
+# The release exe and deb package are up in the workspace.
 stat ../target/release/firezone
-stat ../target/release/bundle/appimage/*.AppImage
 stat ../target/release/bundle/deb/*.deb
 
 # Windows:

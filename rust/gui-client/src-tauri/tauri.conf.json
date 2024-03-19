@@ -19,7 +19,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": ["appimage", "deb", "msi"],
+      "targets": ["deb", "msi"],
       "identifier": "dev.firezone.client",
       "icon": [
         "icons/32x32.png",

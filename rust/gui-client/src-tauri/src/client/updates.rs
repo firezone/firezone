@@ -65,11 +65,11 @@ const LATEST_RELEASE_API_URL: &str =
 /// <https://docs.github.com/en/rest/about-the-rest-api/api-versions?apiVersion=2022-11-28>
 const GITHUB_API_VERSION: &str = "2022-11-28";
 
-/// The name of the Windows MSI / Linux AppImage or deb asset.
+/// The name of the Windows MSI / Linux deb asset.
 ///
 /// These ultimately come from `cd.yml`, `git grep WCPYPXZF`
 #[cfg(target_os = "linux")]
-const ASSET_NAME: &str = "firezone-linux-gui-client_amd64.AppImage";
+const ASSET_NAME: &str = "firezone-linux-gui-client_amd64.deb";
 
 /// Unused - The Tauri client is not supported for macOS
 #[cfg(target_os = "macos")]
@@ -177,7 +177,7 @@ mod tests {
                 "url": "https://api.github.com/repos/firezone/firezone/releases/assets/147443613",
                 "id": 147443613,
                 "node_id": "RA_kwDOD12Hpc4Iyc-c",
-                "name": "firezone-linux-gui-client_amd64.AppImage",
+                "name": "firezone-linux-gui-client_amd64.deb",
                 "label": "",
                 "uploader": {
                     "login": "github-actions[bot]",
@@ -205,7 +205,7 @@ mod tests {
                 "download_count": 10,
                 "created_at": "2024-01-24T04:33:53Z",
                 "updated_at": "2024-01-24T04:33:53Z",
-                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-linux-gui-client_amd64.AppImage"
+                "browser_download_url": "https://github.com/firezone/firezone/releases/download/1.0.0-pre.8/firezone-linux-gui-client_amd64.deb"
             },
             {
                 "url": "https://api.github.com/repos/firezone/firezone/releases/assets/147443612",
