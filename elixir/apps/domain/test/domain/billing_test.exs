@@ -334,6 +334,7 @@ defmodule Domain.BillingTest do
       assert {:ok, account} = provision_account(account)
       assert account.metadata.stripe.customer_id == "cus_NffrFeUfNV2Hib"
       assert account.metadata.stripe.subscription_id == "sub_1MowQVLkdIwHu7ixeRlqHVzs"
+      assert account.metadata.stripe.billing_email == "sub_1MowQVLkdIwHu7ixeRlqHVzs"
 
       assert_receive {:bypass_request, %{request_path: "/v1/customers"} = conn}
       assert conn.params == %{"name" => account.name, "metadata" => %{"account_id" => account.id}}

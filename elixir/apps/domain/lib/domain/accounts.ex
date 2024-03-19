@@ -52,7 +52,7 @@ defmodule Domain.Accounts do
     |> Repo.insert()
   end
 
-  def change_account(%Account{} = account, attrs) do
+  def change_account(%Account{} = account, attrs \\ %{}) do
     Account.Changeset.update(account, attrs)
   end
 

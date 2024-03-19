@@ -223,7 +223,8 @@ defmodule Domain.AccountsTest do
         metadata: %{
           stripe: %{
             customer_id: "cus_1234567890",
-            subscription_id: "sub_1234567890"
+            subscription_id: "sub_1234567890",
+            billing_email: "foo@example.com"
           }
         },
         config: %{
@@ -413,6 +414,9 @@ defmodule Domain.AccountsTest do
 
       assert account.metadata.stripe.subscription_id ==
                attrs.metadata.stripe.subscription_id
+
+      assert account.metadata.stripe.billing_email ==
+               attrs.metadata.stripe.billing_email
 
       assert account.config.clients_upstream_dns == [
                %Domain.Accounts.Config.ClientsUpstreamDNS{

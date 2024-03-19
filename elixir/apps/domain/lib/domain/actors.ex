@@ -46,6 +46,8 @@ defmodule Domain.Actors do
     end
   end
 
+  # TODO: we need a component that uses live search with pagination for groups,
+  # because rendering <select> with 2k items is not a good idea
   def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
@@ -53,16 +55,6 @@ defmodule Domain.Actors do
     |> Authorizer.for_subject(subject)
     |> Repo.all()
     |> Repo.preload(preload)
-  end
-
-  # TODO: this should be a filter
-  def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.not_deleted()
-      |> Group.Query.editable()
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Group.Query, opts)
-    end
   end
 
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do

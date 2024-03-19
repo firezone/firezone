@@ -88,7 +88,7 @@ defmodule Domain.Accounts.Account.Changeset do
 
   def stripe_metadata_changeset(stripe \\ %Account.Metadata.Stripe{}, attrs) do
     stripe
-    |> cast(attrs, [:customer_id, :subscription_id, :product_name])
+    |> cast(attrs, [:customer_id, :subscription_id, :product_name, :billing_email])
   end
 
   def validate_account_id_or_slug(account_id_or_slug) do
