@@ -56,10 +56,16 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 [profile.release]
 strip = true
 
-# Override build settings just for the Windows client, so we get a pdb
+# Override build settings just for the GUI client, so we get a pdb/dwp
+[profile.dev.package.firezone-gui-client]
+debug = "full"
+split-debuginfo = "packed"
+
 [profile.release.package.firezone-gui-client]
 # Generate debug symbols for the crash handler to use, even if the exe itself is optimized
 debug = "full"
 # Split out debug info from the exe. This is already default on Windows.
 # https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 split-debuginfo = "packed"
+# Since we have separate symbol files, strip the debuginfo from the exe itself
+strip = "symbols"

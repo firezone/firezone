@@ -65,11 +65,20 @@ function crash_test() {
     sudo rm "$DUMP_PATH"
 }
 
+function get_stacktrace() {
+    SYMS_PATH="../target/debug/firezone-gui-client.syms"
+    cargo install --locked dump_syms minidump-stackwalk
+    dump_syms ../target/debug/firezone-gui-client.dwp --output "$SYMS_PATH"
+    ls -lash ../target/debug
+    minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
+}
+
 # Run the tests twice to make sure it's okay for the directories to stay intact
 smoke_test
 smoke_test
 crash_test
 crash_test
+get_stacktrace
 
 # I'm not sure if the last command is handled specially, so explicitly exit with 0
 exit 0
