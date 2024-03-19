@@ -14,10 +14,7 @@ class AppRestrictionsReceiver : BroadcastReceiver() {
             return
         }
 
-        val disconnectIntent = Intent(context, TunnelService::class.java).setAction("dev.firezone.android.tunnel.action.DISCONNECT")
-        context.startService(disconnectIntent)
-
-        val connectIntent = Intent(context, TunnelService::class.java)
-        context.startService(connectIntent)
+        val reconnectIntent = Intent(context, TunnelService::class.java).setAction("dev.firezone.android.tunnel.action.RECONNECT")
+        context.startService(reconnectIntent)
     }
 }
