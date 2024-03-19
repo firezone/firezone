@@ -829,6 +829,7 @@ defmodule API.Gateway.ChannelTest do
           %{
             "flow_id" => flow.id,
             "destination" => destination,
+            "connectivity_type" => "direct",
             "rx_bytes" => 100,
             "tx_bytes" => 200
           }

@@ -97,6 +97,7 @@ defmodule Domain.Fixtures.Flows do
       window_started_at: DateTime.add(now, -1, :minute),
       window_ended_at: now,
       destination: destination,
+      connectivity_type: :relayed,
       rx_bytes: 100,
       tx_bytes: 200
     })

@@ -341,18 +341,20 @@ defmodule API.Gateway.Channel do
           %{
             "flow_id" => flow_id,
             "destination" => destination,
+            "connectivity_type" => connectivity_type,
             "rx_bytes" => rx_bytes,
             "tx_bytes" => tx_bytes
           } = metric
 
           %{
+            flow_id: flow_id,
+            account_id: socket.assigns.gateway.account_id,
             window_started_at: window_started_at,
             window_ended_at: window_ended_at,
+            connectivity_type: connectivity_type(connectivity_type),
             destination: destination,
             rx_bytes: rx_bytes,
-            tx_bytes: tx_bytes,
-            flow_id: flow_id,
-            account_id: socket.assigns.gateway.account_id
+            tx_bytes: tx_bytes
           }
         end)
 
@@ -361,4 +363,7 @@ defmodule API.Gateway.Channel do
       {:reply, :ok, socket}
     end
   end
+
+  defp connectivity_type("direct"), do: :direct
+  defp connectivity_type("relayed"), do: :relayed
 end

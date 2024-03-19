@@ -58,6 +58,7 @@ defmodule Web.Flows.DownloadActivities do
           to_string(activity.window_started_at),
           to_string(activity.window_ended_at),
           to_string(activity.destination),
+          to_string(activity.connectivity_type),
           activity.rx_bytes,
           activity.tx_bytes
         ]

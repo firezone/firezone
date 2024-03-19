@@ -9,6 +9,8 @@ defmodule Domain.Flows.Activity do
     field :rx_bytes, :integer
     field :tx_bytes, :integer
 
+    field :connectivity_type, Ecto.Enum, values: [:relayed, :direct]
+
     belongs_to :flow, Domain.Flows.Flow
     belongs_to :account, Domain.Accounts.Account
   end
