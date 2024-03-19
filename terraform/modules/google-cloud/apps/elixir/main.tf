@@ -11,6 +11,14 @@ locals {
 
   application_environment_variables = concat([
     {
+      name  = "APPLICATION_NAME"
+      value = local.application_name
+    },
+    {
+      name  = "APPLICATION_VERSION"
+      value = local.application_version
+    },
+    {
       name  = "RELEASE_HOST_DISCOVERY_METHOD"
       value = "gce_metadata"
     },
@@ -78,7 +86,7 @@ resource "google_compute_instance_template" "application" {
     container-vm = data.google_compute_image.coreos.name
 
     # This variable can be used by Erlang Cluster not to join nodes of older versions
-    version = local.application_version
+    version = replace(local.application_version, ".", "-")
   }, local.application_labels)
 
 

@@ -10,9 +10,6 @@ defmodule Domain.Telemetry do
   @impl true
   def init(_arg) do
     children = [
-      # We start a /healthz endpoint that is used for liveness probes
-      {Bandit, plug: Telemetry.HealthzPlug, scheme: :http, port: 4000},
-
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
@@ -20,7 +17,21 @@ defmodule Domain.Telemetry do
       # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
     ]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children ++ healthz_children(), strategy: :one_for_one)
+  end
+
+  defp healthz_children do
+    # We only start it when the application name is "domain" because otherwise
+    # all apps that depend on domain will interfere with each other because
+    # of the port reuse.
+    if System.get_env("APPLICATION_NAME") == "domain" do
+      [
+        # We start a /healthz endpoint that is used for liveness probes
+        {Bandit, plug: Telemetry.HealthzPlug, scheme: :http, port: 4000}
+      ]
+    else
+      []
+    end
   end
 
   def metrics do
