@@ -132,7 +132,7 @@ public final class TunnelStore: ObservableObject {
 
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
-    let providerConfiguration = protocolConfiguration.providerConfiguration as! [String: String]
+    let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String] ?? Settings.defaultValue.toProviderConfiguration()
 
     protocolConfiguration.providerConfiguration = providerConfiguration
     protocolConfiguration.providerBundleIdentifier = bundleIdentifier
@@ -144,12 +144,12 @@ public final class TunnelStore: ObservableObject {
     try await manager.saveToPreferences()
 
     self.manager = manager
-    self.tunnelAuthStatus = .signedOut
+    tunnelAuthStatus = .signedOut
   }
 
   func start() async throws {
     guard let manager = manager else {
-      logger.log("\(#function): No manager created yet")
+      logger.error("\(#function): No manager created yet")
       return
     }
 
@@ -176,7 +176,7 @@ public final class TunnelStore: ObservableObject {
 
   func stop() async throws {
     guard let manager = manager else {
-      logger.log("\(#function): No manager created yet")
+      logger.error("\(#function): No manager created yet")
       return
     }
 

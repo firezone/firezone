@@ -110,10 +110,8 @@ public final class AuthStore: ObservableObject {
       return .needsTunnelCreationPermission
     case .signedOut:
       return .signedOut
-    case .signedIn(let tunnelAuthBaseURL, let tokenReference):
-      let tunnelBaseURLString = self.authBaseURL.absoluteString
-      guard let tokenAttributes = await keychain.loadAttributes(tokenReference),
-        tunnelBaseURLString == tokenAttributes.authBaseURLString
+    case .signedIn(let _tunnelAuthBaseURL, let tokenReference):
+      guard let tokenAttributes = await keychain.loadAttributes(tokenReference)
       else {
         return .signedOut
       }
@@ -123,14 +121,15 @@ public final class AuthStore: ObservableObject {
 
   func signIn() async throws {
     logger.log("\(#function)")
+    let authURL = URL(string: tunnelStore.settings.authBaseURL)!
 
-    let authResponse = try await auth.signIn(self.authBaseURL)
+    let authResponse = try await auth.signIn(authURL)
     let attributes = Keychain.TokenAttributes(
-      authBaseURLString: self.authBaseURL.absoluteString, actorName: authResponse.actorName ?? "")
+      authBaseURLString: authURL.absoluteString, actorName: authResponse.actorName ?? "")
     let tokenRef = try await keychain.store(authResponse.token, attributes)
 
     try await tunnelStore.saveAuthStatus(
-      .signedIn(authBaseURL: self.authBaseURL, tokenReference: tokenRef))
+      .signedIn(authBaseURL: authURL, tokenReference: tokenRef))
   }
 
   func signOut() async {
