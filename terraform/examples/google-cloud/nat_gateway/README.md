@@ -4,6 +4,9 @@ In this example, we will deploy one or more Firezone Gateways in a single VPC on
 Google Cloud Platform (GCP) that are configured to egress traffic through a
 single Cloud NAT that is assigned a single static IP address.
 
+This example is built on top of
+[Google Cloud Gateway via Regional Instance Group](../../../modules/google-cloud/apps/gateway-region-instance-group/).
+
 ## Common use cases
 
 Use this guide to give your Firezone Clients a static public IP address for
@@ -90,11 +93,12 @@ Firezone Gateway(s).
 This will incur about a minute or two of downtime as Terraform destroys the
 existing Firezone Gateway(s) and deploys new ones in their place.
 
-## Future improvements
+## Output
 
-- Minimal downtime upgrades using a regional instance manager.
-- Expose the ability to select an existing subnetwork instead of auto-creating a
-  new one.
-- Expose the ability to select an existing
-  [regional external IP address](https://cloud.google.com/nat/docs/ports-and-addresses)
-  instead of auto-creating a new one.
+`static_ip_addresses` will contain a list of static IP addresses that you can
+use to whitelist your Firezone Gateway(s) in your third-party or partner
+application.
+
+# Cleanup
+
+To clean up the resources created by this example, run `terraform destroy`.

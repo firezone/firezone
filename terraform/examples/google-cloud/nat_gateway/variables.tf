@@ -16,11 +16,6 @@ variable "region" {
   description = "Region to deploy the Gateway(s) in."
 }
 
-variable "zone" {
-  type        = string
-  description = "Availability to deploy the Gateway(s) in."
-}
-
 variable "replicas" {
   type        = number
   description = "Number of Gateway replicas to deploy in the availability zone."
@@ -51,4 +46,9 @@ variable "log_level" {
 variable "token" {
   type        = string
   description = "Gateway token to use for authentication."
+}
+
+variable "subnet_cidr" {
+  type        = string
+  description = "CIDR Range to use for subnet where Gateway(s) are deployed"
 }

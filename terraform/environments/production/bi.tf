@@ -150,7 +150,7 @@ resource "google_compute_firewall" "egress-ipv4" {
   destination_ranges = ["0.0.0.0/0"]
 
   allow {
-    protocol = "udp"
+    protocol = "all"
   }
 }
 
@@ -165,7 +165,7 @@ resource "google_compute_firewall" "egress-ipv6" {
   destination_ranges = ["::/0"]
 
   allow {
-    protocol = "udp"
+    protocol = "all"
   }
 }
 

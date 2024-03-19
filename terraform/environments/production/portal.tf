@@ -356,7 +356,7 @@ module "domain" {
   image      = "domain"
   image_tag  = var.image_tag
 
-  scaling_horizontal_replicas = 2
+  scaling_horizontal_replicas = 1
 
   observability_log_level = "debug"
 

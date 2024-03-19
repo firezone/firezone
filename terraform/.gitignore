@@ -4,6 +4,7 @@
 **/terraform.tfstate.d
 **/terraform.tfvars
 out.plan
+*.tfstate
 
 # Don't ever commit these files to git
 *.p12
