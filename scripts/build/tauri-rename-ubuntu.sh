@@ -26,7 +26,7 @@ make_hash "$BINARY_DEST_PATH"_amd64.deb
 
 # TODO: There must be a better place to put this
 # Test the deb package, since this script is the easiest place to get a release build
-sudo dpkg -i "$BINARY_DEST_PATH"-amd64.deb
+sudo dpkg -i "$BINARY_DEST_PATH"_amd64.deb
 which firezone firezone-tunnel
 firezone-tunnel
 firezone || true
