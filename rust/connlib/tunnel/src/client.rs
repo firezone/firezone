@@ -9,9 +9,9 @@ use connlib_shared::messages::{
     IpDnsServer, Key, Offer, Relay, RequestConnection, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
-use connlib_shared::{Callbacks, Dname, IpProvider, PublicKey, StaticSecret};
+use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
@@ -352,6 +352,8 @@ impl ClientState {
             ip_provider: IpProvider::new(
                 IPV4_RESOURCES.parse().unwrap(),
                 IPV6_RESOURCES.parse().unwrap(),
+                Some(DNS_SENTINELS_V4.parse().unwrap()),
+                Some(DNS_SENTINELS_V6.parse().unwrap()),
             ),
             dns_resources_internal_ips: Default::default(),
             dns_resources: Default::default(),
@@ -936,6 +938,8 @@ fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
     let mut ip_provider = IpProvider::new(
         DNS_SENTINELS_V4.parse().unwrap(),
         DNS_SENTINELS_V6.parse().unwrap(),
+        None,
+        None,
     );
 
     dns.iter()
@@ -972,6 +976,47 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     }
 
     false
+}
+
+pub struct IpProvider {
+    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
+    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
+}
+
+impl IpProvider {
+    pub fn new(
+        ipv4: Ipv4Network,
+        ipv6: Ipv6Network,
+        exclusion_v4: Option<Ipv4Network>,
+        exclusion_v6: Option<Ipv6Network>,
+    ) -> Self {
+        Self {
+            ipv4: Box::new(
+                ipv4.hosts()
+                    .filter(move |ip| !exclusion_v4.is_some_and(|e| e.contains(*ip))),
+            ),
+            ipv6: Box::new(
+                ipv6.subnets_with_prefix(128)
+                    .map(|ip| ip.network_address())
+                    .filter(move |ip| !exclusion_v6.is_some_and(|e| e.contains(*ip))),
+            ),
+        }
+    }
+
+    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
+        let proxy_ip = match ip {
+            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
+            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
+        };
+
+        if proxy_ip.is_none() {
+            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
+            // this might happen in ipv4 if tokens are too long lived.
+            tracing::error!("IP exhaustion: Please reset your client");
+        }
+
+        proxy_ip
+    }
 }
 
 #[cfg(test)]
