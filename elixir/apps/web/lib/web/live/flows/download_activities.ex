@@ -21,9 +21,12 @@ defmodule Web.Flows.DownloadActivities do
 
   defp send_csv_header(conn) do
     iodata =
-      Web.CSV.dump_to_iodata([
-        ~w[window_started_at window_ended_at destination rx_bytes tx_bytes]
-      ])
+      Web.CSV.dump_to_iodata([~w[
+        window_started_at window_ended_at
+        destination
+        connectivity_type
+        rx_bytes tx_bytes
+      ]])
 
     {:ok, conn} = chunk(conn, iodata)
     conn

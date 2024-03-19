@@ -351,7 +351,7 @@ defmodule API.Gateway.Channel do
             account_id: socket.assigns.gateway.account_id,
             window_started_at: window_started_at,
             window_ended_at: window_ended_at,
-            connectivity_type: connectivity_type(connectivity_type),
+            connectivity_type: String.to_existing_atom(connectivity_type),
             destination: destination,
             rx_bytes: rx_bytes,
             tx_bytes: tx_bytes
@@ -363,7 +363,4 @@ defmodule API.Gateway.Channel do
       {:reply, :ok, socket}
     end
   end
-
-  defp connectivity_type("direct"), do: :direct
-  defp connectivity_type("relayed"), do: :relayed
 end
