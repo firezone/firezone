@@ -60,9 +60,6 @@ function crash_test() {
 
     # Fail if the crash file wasn't written
     sudo stat "$DUMP_PATH"
-
-    # Clean up
-    sudo rm "$DUMP_PATH"
 }
 
 function get_stacktrace() {
@@ -79,6 +76,9 @@ smoke_test
 crash_test
 crash_test
 get_stacktrace
+
+# Clean up
+sudo rm "$DUMP_PATH"
 
 # I'm not sure if the last command is handled specially, so explicitly exit with 0
 exit 0
