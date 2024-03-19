@@ -129,7 +129,7 @@ defmodule Web.Live.SignUpTest do
              |> form("form", registration: attrs)
              |> render_submit()
 
-    assert html =~ "email domain is not allowed at this time"
+    assert html =~ "this email domain is not allowed at this time"
   end
 
   test "renders changeset errors on input change", %{conn: conn} do
