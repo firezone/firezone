@@ -12,4 +12,4 @@ pnpm tsc
 pnpm tailwindcss -i src/input.css -o src/output.css
 
 # Compile Rust and bundle
-pnpm tauri build
+cargo deb
