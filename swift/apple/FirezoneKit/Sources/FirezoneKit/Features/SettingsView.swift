@@ -38,8 +38,7 @@ public final class SettingsViewModel: ObservableObject {
         .receive(on: RunLoop.main)
         .sink { [weak self] tunnelAuthStatus in
           guard let self = self else { return }
-          self.advancedSettings =
-            authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
+          self.advancedSettings = authStore.tunnelStore.advancedSettings()
         }
         .store(in: &cancellables)
     }
@@ -388,7 +387,7 @@ public struct SettingsView: View {
               Button(
                 "Reset to Defaults",
                 action: {
-                  self.restoreAdvancedSettingsToDefaults()
+                  self.resetToDefaults()
                 }
               )
               .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
@@ -587,11 +586,8 @@ public struct SettingsView: View {
     dismiss()
   }
 
-  func restoreAdvancedSettingsToDefaults() {
-    let defaultValue = AdvancedSettings.defaultValue
-    model.advancedSettings.authBaseURLString = defaultValue.authBaseURLString
-    model.advancedSettings.apiURLString = defaultValue.apiURLString
-    model.advancedSettings.connlibLogFilterString = defaultValue.connlibLogFilterString
+  func resetToDefaults() {
+    model.advancedSettings = AdvancedSettings.defaultValue
     model.saveAdvancedSettings()
   }
 
