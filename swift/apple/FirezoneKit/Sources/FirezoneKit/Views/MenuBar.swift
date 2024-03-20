@@ -62,7 +62,7 @@
         .receive(on: mainQueue)
         .sink { [weak self] _ in
           self?.updateStatusItemIcon()
-          self?.handleLoginOrTunnelStatusChanged()
+          self?.handleTunnelStatusChanged()
           self?.handleMenuVisibilityOrStatusChanged()
         }
         .store(in: &cancellables)
@@ -221,6 +221,7 @@
       self.statusItem.button?.image = {
         switch tunnelStore.status {
         case .invalid, .disconnected:
+          self.stopConnectingAnimation()
           return self.signedOutIcon
         case .connected:
           self.stopConnectingAnimation()
@@ -236,7 +237,7 @@
 
     private func startConnectingAnimation() {
       guard connectingAnimationTimer == nil else { return }
-      let timer = Timer(timeInterval: 0.40, repeats: true) { [weak self] _ in
+      let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
         guard let self = self else { return }
         Task {
           await self.connectingAnimationShowNextFrame()
@@ -250,7 +251,6 @@
       guard let timer = self.connectingAnimationTimer else { return }
       timer.invalidate()
       connectingAnimationTimer = nil
-      connectingAnimationImageIndex = 0
     }
 
     private func connectingAnimationShowNextFrame() async {
@@ -260,7 +260,7 @@
         (self.connectingAnimationImageIndex + 1) % self.connectingAnimationImages.count
     }
 
-    private func handleLoginOrTunnelStatusChanged() {
+    private func handleTunnelStatusChanged() {
       // Update "Sign In" / "Sign Out" menu items
       switch tunnelStore.status {
       case .invalid:

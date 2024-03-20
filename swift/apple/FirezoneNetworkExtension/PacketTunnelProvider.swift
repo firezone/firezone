@@ -31,9 +31,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration as? [String: String],
           let logFilter = providerConfiguration[TunnelStoreKeys.logFilter]
     else {
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "\(#function): protocolConfiguration is missing fields")
+//      self.handleTunnelShutdown(
+//        dueTo: .badTunnelConfiguration,
+//        errorMessage: "\(#function): protocolConfiguration is missing fields")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
       return
@@ -42,9 +42,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
-        self.handleTunnelShutdown(
-          dueTo: .tokenNotFound,
-          errorMessage: "Token not found in keychain")
+//        self.handleTunnelShutdown(
+//          dueTo: .tokenNotFound,
+//          errorMessage: "Token not found in keychain")
         completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
         return
       }
@@ -89,15 +89,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
-    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
-
-    #if os(iOS)
-      if reason.action == .signoutImmediately {
-        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
-      }
-    #endif
-  }
+//  func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
+//    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
+//
+//    #if os(iOS)
+//      if reason.action == .signoutImmediately {
+//        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
+//      }
+//    #endif
+//  }
 }
 
 extension NEProviderStopReason: CustomStringConvertible {

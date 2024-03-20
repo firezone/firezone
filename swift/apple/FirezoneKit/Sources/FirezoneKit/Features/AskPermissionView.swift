@@ -113,7 +113,7 @@ public struct AskPermissionView: View {
           .frame(maxWidth: 320)
           .padding(.horizontal, 10)
         Spacer()
-        if $model.needsTunnelPermission.wrappedValue {
+        if model.needsTunnelPermission {
 
           #if os(macOS)
             Text(

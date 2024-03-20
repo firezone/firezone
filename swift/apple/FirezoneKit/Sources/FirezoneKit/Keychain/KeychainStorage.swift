@@ -10,7 +10,6 @@ import Foundation
 struct KeychainStorage: Sendable {
   var add: @Sendable (Keychain.Token) async throws -> Keychain.PersistentRef
   var update: @Sendable (Keychain.Token) async throws -> Void
-  var delete: @Sendable (Keychain.PersistentRef) async throws -> Void
   var search: @Sendable () async -> Keychain.PersistentRef?
 }
 
@@ -21,7 +20,6 @@ extension KeychainStorage: DependencyKey {
     return KeychainStorage(
       add: { try await keychain.add(token: $0) },
       update: { try await keychain.update(token: $0) },
-      delete: { try await keychain.delete(persistentRef: $0) },
       search: { await keychain.search() }
     )
   }
@@ -38,11 +36,6 @@ extension KeychainStorage: DependencyKey {
       },
       update: { token in
 
-      },
-      delete: { ref in
-        storage.withValue {
-          $0[ref] = nil
-        }
       },
       search: {
         return UUID().uuidString.data(using: .utf8)!

@@ -163,9 +163,9 @@ class Adapter {
         )
       } catch let error {
         self.logger.error("Adapter.start: Error: \(error)")
-        packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .connlibConnectFailure,
-          errorMessage: error.localizedDescription)
+//        packetTunnelProvider?.handleTunnelShutdown(
+//          dueTo: .connlibConnectFailure,
+//          errorMessage: error.localizedDescription)
         self.state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
       }
@@ -179,9 +179,9 @@ class Adapter {
 
       self.logger.log("Adapter.stop")
 
-      packetTunnelProvider?.handleTunnelShutdown(
-        dueTo: .stopped(reason),
-        errorMessage: "\(reason)")
+//      packetTunnelProvider?.handleTunnelShutdown(
+//        dueTo: .stopped(reason),
+//        errorMessage: "\(reason)")
 
       switch self.state {
       case .stoppedTunnel, .stoppingTunnel:
@@ -515,9 +515,9 @@ extension Adapter: CallbackHandlerDelegate {
       case .stoppedTunnelTemporarily:
         self.state = .stoppedTunnel
       default:
-        packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .connlibDisconnected,
-          errorMessage: error)
+//        packetTunnelProvider?.handleTunnelShutdown(
+//          dueTo: .connlibDisconnected,
+//          errorMessage: error)
         self.packetTunnelProvider?.cancelTunnelWithError(
           AdapterError.connlibFatalError(error))
         self.state = .stoppedTunnel

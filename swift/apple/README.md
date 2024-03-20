@@ -61,7 +61,7 @@ Try clearing your LaunchAgent db:
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -delete
 ```
 
-**Note**: You MUST reboot after doing this!<D-s>
+**Note**: You MUST reboot after doing this!
 
 ### Outdated version of NetworkExtension loading
 

@@ -191,21 +191,6 @@ public actor Keychain {
     }
   }
 
-  func delete(persistentRef: PersistentRef) async throws {
-    return try await withCheckedThrowingContinuation { [weak self] continuation in
-      self?.workQueue.async {
-        let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
-        let ret = SecStatus(SecItemDelete(query as CFDictionary))
-        guard ret.isSuccess || ret == .status(.itemNotFound) else {
-          continuation.resume(
-            throwing: KeychainError.appleSecError(call: "SecItemDelete", status: ret))
-          return
-        }
-        continuation.resume(returning: ())
-      }
-    }
-  }
-
   func search() async -> PersistentRef? {
     return await withCheckedContinuation { [weak self] continuation in
       guard let self = self else { return }

@@ -83,47 +83,51 @@ public final class TunnelStore: ObservableObject {
           self.manager = manager
           self.status = manager.connection.status
 
-          // Connect UI state updates to this manager's status
-          setupTunnelObservers()
-
-          // Connect on app launch unless we're already connected
-          if let _ = protocolConfiguration.passwordReference,
-             self.status == .disconnected {
-            try await start()
-          }
-
           // Stop looking for our tunnel
           break
         }
       }
 
+      // Connect UI state updates to this manager's status
+      setupTunnelObservers()
+
+      // Connect on app launch unless we're already connected
+      if let _ = manager?.protocolConfiguration?.passwordReference,
+         self.status == .disconnected {
+        try await start()
+      }
     }
   }
 
   // Initialize and save a new VPN profile in system Preferences
   func createManager() async throws {
-    guard manager == nil else {
-      fatalError("Manager unexpectedly exists already.")
+    if let manager = manager {
+      // Someone deleted the manager while Fireone is running!
+      // Let's assume that was an accident and recreate it from
+      // our current state.
+      try await manager.saveToPreferences()
+      try await manager.loadFromPreferences()
+    } else {
+      let protocolConfiguration = NETunnelProviderProtocol()
+      let manager = NETunnelProviderManager()
+      let providerConfiguration =
+        protocolConfiguration.providerConfiguration
+        as? [String: String]
+        ?? Settings.defaultValue.toProviderConfiguration()
+
+      protocolConfiguration.providerConfiguration = providerConfiguration
+      protocolConfiguration.providerBundleIdentifier = bundleIdentifier
+      protocolConfiguration.serverAddress = settings.apiURL
+      manager.localizedDescription = bundleDescription
+      manager.protocolConfiguration = protocolConfiguration
+
+      // Save the new VPN profile to System Preferences
+      try await manager.saveToPreferences()
+      try await manager.loadFromPreferences()
+
+      self.manager = manager
+      self.status = .disconnected
     }
-
-    let protocolConfiguration = NETunnelProviderProtocol()
-    let manager = NETunnelProviderManager()
-    let providerConfiguration =
-      protocolConfiguration.providerConfiguration
-      as? [String: String]
-      ?? Settings.defaultValue.toProviderConfiguration()
-
-    protocolConfiguration.providerConfiguration = providerConfiguration
-    protocolConfiguration.providerBundleIdentifier = bundleIdentifier
-    protocolConfiguration.serverAddress = settings.apiURL
-    manager.localizedDescription = bundleDescription
-    manager.protocolConfiguration = protocolConfiguration
-
-    // Save the new VPN profile to System Preferences
-    try await manager.saveToPreferences()
-
-    self.manager = manager
-    self.status = manager.connection.status
   }
 
   func start() async throws {
@@ -207,6 +211,7 @@ public final class TunnelStore: ObservableObject {
 
     // Save token and actorName
     providerConfiguration[TunnelStoreKeys.actorName] = authResponse.actorName
+    protocolConfiguration.providerConfiguration = providerConfiguration
     protocolConfiguration.passwordReference = tokenRef
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
