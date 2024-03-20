@@ -8,7 +8,15 @@ defmodule Web.Settings.ApiClients.Components do
   def api_client_form(assigns) do
     ~H"""
     <div>
-      <.input label="Name" field={@form[:name]} placeholder="Name for API client" required />
+      <.input
+        label="Name"
+        field={@form[:name]}
+        placeholder="E.g. 'GitHub Actions' or 'Terraform'"
+        required
+      />
+      <p class="mt-2 text-xs text-neutral-500">
+        Describe what this API client will be used for. This can be changed later if needed.
+      </p>
     </div>
     """
   end

@@ -380,16 +380,11 @@ defmodule Domain.Actors do
   end
 
   def list_actors_by_type(%Auth.Subject{} = subject, type, opts \\ []) do
-    {preload, _opts} = Keyword.pop(opts, :preload, [])
-
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {:ok, actors} =
-        Actor.Query.not_deleted()
-        |> Actor.Query.by_type(type)
-        |> Authorizer.for_subject(subject)
-        |> Repo.list()
-
-      {:ok, Repo.preload(actors, preload)}
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_type(type)
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Actor.Query, opts)
     end
   end
 

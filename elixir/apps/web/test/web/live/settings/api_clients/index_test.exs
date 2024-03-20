@@ -84,15 +84,12 @@ defmodule Web.Live.Settings.ApiClients.IndexTest do
     rows
     |> with_table_row("name", api_client.name, fn row ->
       assert row["status"] =~ "Active"
-      assert row["tokens"] == "0"
     end)
     |> with_table_row("name", api_client_2.name, fn row ->
       assert row["status"] =~ "Disabled"
-      assert row["tokens"] == "0"
     end)
     |> with_table_row("name", api_client_3.name, fn row ->
       assert row["status"] =~ "Active"
-      assert row["tokens"] == "1"
     end)
   end
 end

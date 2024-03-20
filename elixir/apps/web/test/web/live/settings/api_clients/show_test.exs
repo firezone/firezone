@@ -214,7 +214,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
 
     assert row1["name"] == token.name
     assert row1["expires at"]
-    assert row1["last seen at"] == "never"
+    assert row1["last used"] == "never"
     assert row1["actions"] == "Revoke"
   end
 

@@ -1,28 +1,46 @@
 defmodule Web.Settings.ApiClients.Index do
   use Web, :live_view
-  alias Domain.{Actors, Tokens}
+  alias Domain.Actors
 
   def mount(_params, _session, socket) do
     unless Domain.Config.global_feature_enabled?(:api_client_ui),
       do: raise(Web.LiveErrors.NotFoundError)
 
-    with {:ok, actors} <- Actors.list_actors_by_type(socket.assigns.subject, :api_client),
-         {:ok, tokens} <- Tokens.list_tokens_by_type(:api_client, socket.assigns.subject) do
-      token_count =
-        Enum.reduce(tokens, %{}, fn %{actor_id: actor_id}, acc ->
-          Map.update(acc, actor_id, 1, &(&1 + 1))
-        end)
+    socket =
+      socket
+      |> assign(page_title: "API Clients")
+      |> assign_live_table("actors",
+        query_module: Actors.Actor.Query,
+        sortable_fields: [
+          {:actors, :name},
+          {:actors, :status}
+        ],
+        hide_filters: [
+          :provider_id,
+          :type
+        ],
+        callback: &handle_api_clients_update!/2
+      )
 
+    {:ok, socket}
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_api_clients_update!(socket, list_opts) do
+    with {:ok, actors, actors_metadata} <-
+           Actors.list_actors_by_type(socket.assigns.subject, :api_client, list_opts) do
       socket =
         assign(socket,
           actors: actors,
-          token_count: token_count,
+          actors_metadata: actors_metadata,
           page_title: "API Clients"
         )
 
       {:ok, socket}
-    else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
   end
 
@@ -34,6 +52,11 @@ defmodule Web.Settings.ApiClients.Index do
 
     <.section>
       <:title><%= @page_title %></:title>
+      <:help>
+        API Clients are used to manage Firezone configuration through a REST API. See the
+        <a class={link_style()} href="https://firezone.dev/kb/reference/rest-api">REST API docs</a>
+        for more info.
+      </:help>
 
       <:action>
         <.add_button navigate={~p"/#{@account}/settings/api_clients/new"}>
@@ -41,19 +64,26 @@ defmodule Web.Settings.ApiClients.Index do
         </.add_button>
       </:action>
       <:content>
-        <.table id="actors" rows={@actors} row_id={&"api-client-#{&1.id}"}>
-          <:col :let={actor} label="name" sortable="false">
+        <.live_table
+          id="actors"
+          rows={@actors}
+          row_id={&"api-client-#{&1.id}"}
+          filters={@filters_by_table_id["actors"]}
+          filter={@filter_form_by_table_id["actors"]}
+          ordered_by={@order_by_table_id["actors"]}
+          metadata={@actors_metadata}
+        >
+          <:col :let={actor} label="name">
             <.link navigate={~p"/#{@account}/settings/api_clients/#{actor}"} class={link_style()}>
               <%= actor.name %>
             </.link>
           </:col>
-          <:col :let={actor} label="status" sortable="false">
-            <%= status(actor) %>
+          <:col :let={actor} label="status">
+            <.badge type={badge_type(actor)}>
+              <%= status(actor) %>
+            </.badge>
           </:col>
-          <:col :let={actor} label="tokens" sortable="false">
-            <%= Map.get(@token_count, actor.id, 0) %>
-          </:col>
-          <:col :let={actor} label="created at" sortable="false">
+          <:col :let={actor} label="created at">
             <%= Cldr.DateTime.Formatter.date(actor.inserted_at, 1, "en", Web.CLDR, []) %>
           </:col>
           <:empty>
@@ -63,13 +93,20 @@ defmodule Web.Settings.ApiClients.Index do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
     """
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   defp status(actor) do
     if Actors.actor_active?(actor), do: "Active", else: "Disabled"
+  end
+
+  defp badge_type(actor) do
+    if Actors.actor_active?(actor), do: "success", else: "danger"
   end
 end

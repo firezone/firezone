@@ -56,7 +56,8 @@ defmodule Domain.Tokens do
 
   def list_tokens_by_type(type, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.by_type(type)
+      Token.Query.not_deleted()
+      |> Token.Query.by_type(type)
       |> list_tokens(subject, opts)
     end
   end
