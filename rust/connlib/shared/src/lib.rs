@@ -4,7 +4,6 @@
 //! we are using the same version across our own crates.
 
 mod callbacks;
-mod callbacks_error_facade;
 pub mod error;
 pub mod messages;
 
@@ -22,7 +21,6 @@ pub mod windows;
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
 pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
-pub use callbacks_error_facade::CallbackErrorFacade;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
