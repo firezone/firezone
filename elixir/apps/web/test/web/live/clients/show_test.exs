@@ -97,6 +97,31 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["user agent"] =~ client.last_seen_user_agent
   end
 
+  test "updates client online status using presence", %{
+    account: account,
+    client: client,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    Domain.Clients.subscribe_to_clients_presence_for_actor(actor)
+    assert Domain.Clients.connect_client(client) == :ok
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
+
+    table =
+      lv
+      |> element("#client")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["status"] =~ "Online"
+  end
+
   test "renders client owner", %{
     account: account,
     client: client,

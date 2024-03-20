@@ -102,6 +102,34 @@ defmodule Web.Live.RelayGroups.IndexTest do
     end)
   end
 
+  test "updates online status using relay presence", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Relays.create_group(account: account)
+    relay = Fixtures.Relays.create_relay(account: account, group: group)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relay_groups")
+
+    Domain.Config.put_env_override(:test_pid, self())
+    :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
+    :ok = Domain.Relays.connect_relay(relay, "foo")
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
+    assert_receive {:live_table_reloaded, "groups"}, 250
+
+    lv
+    |> element("#groups")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("instance", "#{relay.ipv4} #{relay.ipv6}", fn row ->
+      assert row["status"] =~ "Online"
+    end)
+  end
+
   test "renders not found error when self_hosted_relays feature flag is false", %{
     account: account,
     identity: identity,

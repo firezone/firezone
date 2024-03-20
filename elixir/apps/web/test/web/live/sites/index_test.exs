@@ -58,7 +58,6 @@ defmodule Web.Live.Sites.IndexTest do
     conn: conn
   } do
     group = Fixtures.Gateways.create_group(account: account)
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
     resource =
       Fixtures.Resources.create_resource(
@@ -82,15 +81,26 @@ defmodule Web.Live.Sites.IndexTest do
              "online gateways" => "None",
              "resources" => resource.name
            }
+  end
 
-    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(group)
-    :ok = Domain.Gateways.connect_gateway(gateway)
-    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
+  test "updates sites table using presence", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Gateways.create_group(account: account)
+    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites")
+
+    Domain.Config.put_env_override(:test_pid, self())
+    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_account(account)
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
+    assert_receive {:live_table_reloaded, "groups"}, 250
 
     [row] =
       lv
@@ -98,10 +108,6 @@ defmodule Web.Live.Sites.IndexTest do
       |> render()
       |> table_to_map()
 
-    assert row == %{
-             "site" => group.name,
-             "online gateways" => gateway.name,
-             "resources" => resource.name
-           }
+    assert row["online gateways"] =~ gateway.name
   end
 end

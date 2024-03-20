@@ -135,23 +135,27 @@ defmodule Web.Live.Sites.ShowTest do
 
     rows
     |> with_table_row("instance", gateway.name, fn row ->
+      assert gateway.last_seen_remote_ip
+      assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Online"
     end)
   end
 
-  test "renders gateway status", %{
+  test "updates online gateways table", %{
     account: account,
     group: group,
     gateway: gateway,
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Gateways.connect_gateway(gateway)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
+
+    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(group)
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
     lv
     |> element("#gateways")

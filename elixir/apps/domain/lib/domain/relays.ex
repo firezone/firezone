@@ -383,8 +383,10 @@ defmodule Domain.Relays do
     PubSub.subscribe(account_presence_topic(account))
   end
 
-  def subscribe_to_relays_presence_in_group(%Group{} = group) do
-    PubSub.subscribe(group_presence_topic(group))
+  def subscribe_to_relays_presence_in_group(group_or_id) do
+    group_or_id
+    |> group_presence_topic()
+    |> PubSub.subscribe()
   end
 
   def broadcast_to_relay(relay_or_id, payload) do
