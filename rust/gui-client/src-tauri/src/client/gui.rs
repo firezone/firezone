@@ -127,23 +127,10 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         }
     };
 
-    // Needed for the deep link server
-    let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
-    let _guard = rt.enter();
-
-    let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
-
-    let managed = Managed {
-        ctlr_tx: ctlr_tx.clone(),
-        inject_faults: cli.inject_faults,
-    };
-
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
     tracing::debug!("Setting up Tauri app instance...");
     let app = tauri::Builder::default()
-        .manage(managed)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 // Keep the frontend running but just hide this webview
@@ -184,6 +171,15 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         })
         .setup(move |app| {
             tracing::debug!("Entered Tauri's `setup`");
+
+            let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+            let notify_controller = Arc::new(Notify::new());
+
+            let managed = Managed {
+                ctlr_tx: ctlr_tx.clone(),
+                inject_faults: cli.inject_faults,
+            };
+            app.manage(managed);
 
             // Check for updates
             let ctlr_tx_clone = ctlr_tx.clone();
