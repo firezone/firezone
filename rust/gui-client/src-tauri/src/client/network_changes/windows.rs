@@ -596,8 +596,9 @@ mod async_dns {
                 "Can't call `register_callback` on a `Listener` that's already been closed",
             )?;
             let key_handle = Registry::HKEY(self.key.raw_handle());
-            let notify_flags =
-                Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
+            let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
+                | Registry::REG_NOTIFY_CHANGE_LAST_SET
+                | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
             // Ask Windows to signal our event once when anything inside this key changes.
             // We can't ask for repeated signals.
             unsafe {
