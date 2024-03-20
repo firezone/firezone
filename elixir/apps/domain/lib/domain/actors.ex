@@ -46,8 +46,6 @@ defmodule Domain.Actors do
     end
   end
 
-  # TODO: we need a component that uses live search with pagination for groups,
-  # because rendering <select> with 2k items is not a good idea
   def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
