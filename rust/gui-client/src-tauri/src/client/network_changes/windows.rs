@@ -497,9 +497,14 @@ mod async_dns {
     /// Listens to one registry key for changes. Callers should await `notified`.
     struct Listener {
         key: winreg::RegKey,
-        // Rust never calls this again, but the C callback does. So it must live as long
+        // Rust never uses `tx` again, but the C callback does. So it must live as long
         // as Listener, and then be dropped after the C callback is cancelled and any
         // ongoing callback finishes running.
+        //
+        // We `pin` it here to avoid this sequence:
+        // - `Listener::new` called, pointer to `tx` passed to `RegisterWaitForSingleObject`
+        // - `Listener` and `tx` move
+        // - The callback fires, using the now-invalid previous location of `tx`
         _tx: std::pin::Pin<Box<mpsc::Sender<()>>>,
         rx: mpsc::Receiver<()>,
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
