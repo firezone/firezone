@@ -6,8 +6,10 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -166,6 +168,17 @@ class TunnelService : VpnService() {
             }
         }
 
+    private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
+
+    private val restrictionsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (connlibSessionPtr != null) {
+                disconnect()
+            }
+            connect()
+        }
+    }
+
     // Primary callback used to start and stop the VPN service
     // This can be called either from the UI or from the system
     // via AlwaysOnVpn.
@@ -175,15 +188,19 @@ class TunnelService : VpnService() {
         startId: Int,
     ): Int {
         Log.d(TAG, "onStartCommand")
-        if (intent?.action == "dev.firezone.android.tunnel.action.RECONNECT" && connlibSessionPtr != null) {
-            disconnect()
-        }
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
         }
-
         connect()
         return START_STICKY
+    }
+
+    override fun onCreate() {
+        registerReceiver(restrictionsReceiver, restrictionsFilter)
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(restrictionsReceiver)
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
