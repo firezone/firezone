@@ -8,13 +8,13 @@ name: lan-integration-test
 services:
   dialer:
     build:
-      target: debug
+      target: dev
       context: ..
       args:
         PACKAGE: snownet-tests
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
-    image: ${SNOWNET_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/snownet-tests}:${SNOWNET_TAG:-main}
+    image: ${SNOWNET_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/snownet-tests}:${SNOWNET_TAG:-main}
     environment:
       ROLE: "dialer"
     cap_add:
@@ -54,13 +54,13 @@ services:
 
   listener:
     build:
-      target: debug
+      target: dev
       context: ..
       args:
         PACKAGE: snownet-tests
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/snownet-tests:main
-    image: ${SNOWNET_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/snownet-tests}:${SNOWNET_TAG:-main}
+    image: ${SNOWNET_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/snownet-tests}:${SNOWNET_TAG:-main}
     init: true
     environment:
       ROLE: "listener"
@@ -96,13 +96,13 @@ services:
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
     build:
-      target: debug
+      target: dev
       context: ..
       cache_from:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
     init: true
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
