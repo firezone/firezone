@@ -14,10 +14,20 @@ defmodule Domain.Types.IPPortTest do
       assert cast("1.1.1.1:0") == {:error, [message: "is invalid"]}
 
       assert cast("1.1.1.1:1") ==
-               {:ok, %Domain.Types.IPPort{type: :ipv4, address: {1, 1, 1, 1}, port: 1}}
+               {:ok,
+                %Domain.Types.IPPort{
+                  address_type: :ipv4,
+                  address: {1, 1, 1, 1},
+                  port: 1
+                }}
 
       assert cast("1.1.1.1:65535") ==
-               {:ok, %Domain.Types.IPPort{type: :ipv4, address: {1, 1, 1, 1}, port: 65_535}}
+               {:ok,
+                %Domain.Types.IPPort{
+                  address_type: :ipv4,
+                  address: {1, 1, 1, 1},
+                  port: 65_535
+                }}
 
       assert cast("1.1.1.1:65536") == {:error, [message: "is invalid"]}
     end
@@ -28,7 +38,7 @@ defmodule Domain.Types.IPPortTest do
       {:ok, ip_port} = cast("1.1.1.1")
 
       assert put_default_port(ip_port, 53) == %Domain.Types.IPPort{
-               type: :ipv4,
+               address_type: :ipv4,
                address: {1, 1, 1, 1},
                port: 53
              }
@@ -38,7 +48,7 @@ defmodule Domain.Types.IPPortTest do
       {:ok, ip_port} = cast("1.1.1.1:853")
 
       assert put_default_port(ip_port, 53) == %Domain.Types.IPPort{
-               type: :ipv4,
+               address_type: :ipv4,
                address: {1, 1, 1, 1},
                port: 853
              }

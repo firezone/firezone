@@ -63,36 +63,25 @@ defmodule Web.Sites.Show do
       end)
 
     with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
-      assign(socket,
-        gateways: gateways,
-        gateways_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         gateways: gateways,
+         gateways_metadata: metadata
+       )}
     end
   end
 
   def handle_resources_update!(socket, list_opts) do
     with {:ok, resources, metadata} <-
-           Resources.list_resources(socket.assigns.subject, list_opts) do
-      {:ok, resource_actor_groups_peek} =
-        Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject)
-
-      assign(socket,
-        resources: resources,
-        resources_metadata: metadata,
-        resource_actor_groups_peek: resource_actor_groups_peek
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+           Resources.list_resources(socket.assigns.subject, list_opts),
+         {:ok, resource_actor_groups_peek} <-
+           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+      {:ok,
+       assign(socket,
+         resources: resources,
+         resources_metadata: metadata,
+         resource_actor_groups_peek: resource_actor_groups_peek
+       )}
     end
   end
 

@@ -34,7 +34,6 @@ jobs:
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
             artifacts: |
               rust/gui-client/firezone-linux-gui-client-amd64
-              rust/gui-client/firezone-linux-gui-client_amd64.AppImage
               rust/gui-client/firezone-linux-gui-client_amd64.deb
           - runs-on: windows-2019
             binary-dest-path: firezone-windows-client
