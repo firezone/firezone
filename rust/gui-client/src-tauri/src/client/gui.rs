@@ -154,7 +154,8 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         tokio::spawn(async move {
             if let Err(error) = smoke_test(ctlr_tx).await {
                 tracing::error!(?error, "Error during smoke test");
-                std::process::exit(1);
+                tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                unsafe { sadness_generator::raise_segfault() }
             }
         });
     }

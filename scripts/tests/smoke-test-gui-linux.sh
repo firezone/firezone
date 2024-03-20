@@ -9,6 +9,7 @@ LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
+SYMS_PATH="../target/debug/firezone-gui-client.syms"
 
 export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client
@@ -16,6 +17,11 @@ export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
 cargo build -p "$PACKAGE"
+cargo install --quiet --locked dump_syms minidump-stackwalk
+# The dwp doesn't actually do anything if the exe already has all the debug info
+# Getting this to coordinate between Linux and Windows is tricky
+dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
+ls -lash ../target/debug
 
 function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
@@ -27,6 +33,10 @@ function smoke_test() {
 
     # Run the smoke test normally
     xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
+    if [ $? -ne 0 ]
+    then
+        minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
+    fi
 
     # Note the device ID
     # DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
@@ -68,12 +78,6 @@ function crash_test() {
 }
 
 function get_stacktrace() {
-    SYMS_PATH="../target/debug/firezone-gui-client.syms"
-    cargo install --quiet --locked dump_syms minidump-stackwalk
-    # The dwp doesn't actually do anything if the exe already has all the debug info
-    # Getting this to coordinate between Linux and Windows is tricky
-    dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
-    ls -lash ../target/debug
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
 
