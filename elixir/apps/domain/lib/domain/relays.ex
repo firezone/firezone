@@ -322,7 +322,7 @@ defmodule Domain.Relays do
     end)
     |> Enum.map(fn
       {{nil, nil}, relay} ->
-        {Geo.fetch_radius_of_earth_km!(), relay}
+        {nil, relay}
 
       {{relay_lat, relay_lon}, relay} ->
         distance = Geo.distance({lat, lon}, {relay_lat, relay_lon})
