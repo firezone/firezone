@@ -402,7 +402,7 @@ fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
 mod async_dns {
     use anyhow::{Context, Result};
     use std::{ffi::c_void, ops::Deref};
-    use tokio::sync::Notify;
+    use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
@@ -496,15 +496,20 @@ mod async_dns {
 
     struct Listener {
         key: winreg::RegKey,
-        notify: std::pin::Pin<Box<Notify>>,
+        // Rust never calls this again, but the C callback does. So it must live as long
+        // as Listener, and then be dropped after the C callback is cancelled and any
+        // ongoing callback finishes running.
+        _tx: std::pin::Pin<Box<mpsc::Sender<()>>>,
+        rx: mpsc::Receiver<()>,
         wait_handle: Option<HANDLE>,
         event: Option<HANDLE>,
     }
 
     impl Listener {
         pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
-            let notify = Box::pin(Notify::default());
-            let notify_ptr: *const Notify = notify.deref();
+            let (tx, rx) = mpsc::channel(1);
+            let tx = Box::pin(tx);
+            let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
             let mut wait_handle = HANDLE(0isize);
 
@@ -528,7 +533,7 @@ mod async_dns {
                     &mut wait_handle,
                     event,
                     Some(callback),
-                    Some(notify_ptr as *const _),
+                    Some(tx_ptr as *const _),
                     INFINITE,
                     WT_EXECUTEINWAITTHREAD,
                 )
@@ -536,7 +541,8 @@ mod async_dns {
 
             let mut that = Self {
                 key,
-                notify,
+                _tx: tx,
+                rx,
                 wait_handle: Some(wait_handle),
                 event: Some(event),
             };
@@ -565,7 +571,7 @@ mod async_dns {
             // Order matters here
             // We want to return to the caller and let them check the DNS
             // while the callback is registered.
-            self.notify.notified().await;
+            self.rx.recv().await.context("`Listener` is closing down")?;
             self.register_callback()
                 .context("`register_callback` failed")?;
 
@@ -597,13 +603,15 @@ mod async_dns {
         }
     }
 
-    // SAFETY: The waker should be alive, because we only `Drop` it after waiting
+    // SAFETY: The `Sender` should be alive, because we only `Drop` it after waiting
     // for any run of this callback to finish.
     // This function runs on a worker thread in a Windows-managed thread pool where
     // many API calls are illegal, so try not to do anything in here. Right now
     // all we do is wake up our Tokio task.
     unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
-        let notify = &*(ctx as *const tokio::sync::Notify);
-        notify.notify_one();
+        let tx = &*(ctx as *const mpsc::Sender<()>);
+        // It's not a problem if sending fails. It either means the `Listener`
+        // is closing down, or it's already been notified.
+        tx.try_send(()).ok();
     }
 }
