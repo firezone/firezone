@@ -210,12 +210,12 @@ defmodule Domain.Billing.EventHandler do
          "id" => customer_id,
          "name" => customer_name,
          "email" => account_email,
-         "metadata" => %{
-           "company_website" => company_website,
-           "account_owner_first_name" => account_owner_first_name,
-           "account_owner_last_name" => account_owner_last_name,
-           "admin_email" => account_admin_email
-         }
+         "metadata" =>
+           %{
+             "company_website" => company_website,
+             "account_owner_first_name" => account_owner_first_name,
+             "account_owner_last_name" => account_owner_last_name
+           } = metadata
        }) do
     uri = URI.parse(company_website)
     account_slug = uri.host |> String.split(".") |> List.delete_at(-1) |> Enum.join("_")
@@ -226,7 +226,7 @@ defmodule Domain.Billing.EventHandler do
       metadata: %{
         stripe: %{
           customer_id: customer_id,
-          billing_email: account_email || account_admin_email
+          billing_email: account_email
         }
       }
     }
@@ -257,8 +257,8 @@ defmodule Domain.Billing.EventHandler do
 
           {:ok, _identity} =
             Domain.Auth.upsert_identity(actor, magic_link_provider, %{
-              provider_identifier: account_admin_email,
-              provider_identifier_confirmation: account_admin_email
+              provider_identifier: metadata["account_admin_email"] || account_email,
+              provider_identifier_confirmation: metadata["account_admin_email"] || account_email
             })
 
           {:ok, account}

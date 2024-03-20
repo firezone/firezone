@@ -464,8 +464,7 @@ defmodule Domain.BillingTest do
             %{
               "company_website" => "https://bigcompany.com",
               "account_owner_first_name" => "John",
-              "account_owner_last_name" => "Smith",
-              "admin_email" => "johnthe1@smith.com"
+              "account_owner_last_name" => "Smith"
             }
           )
         )
@@ -480,6 +479,12 @@ defmodule Domain.BillingTest do
       # Product name and subscription attributes will be synced from a separate webhook
       # from Stripe that is sent when subscription is created or updated
       refute account.metadata.stripe.product_name
+
+      assert actor = Repo.get_by(Domain.Actors.Actor, account_id: account.id)
+      assert actor.name == "John Smith"
+
+      assert identity = Repo.get_by(Domain.Auth.Identity, actor_id: actor.id)
+      assert identity.provider_identifier == "iown@bigcompany.com"
 
       assert_receive {:bypass_request,
                       %{request_path: "/v1/customers/" <> ^customer_id, params: params}}
@@ -541,8 +546,7 @@ defmodule Domain.BillingTest do
       customer_metadata = %{
         "company_website" => "https://bigcompany.com",
         "account_owner_first_name" => "John",
-        "account_owner_last_name" => "Smith",
-        "admin_email" => "johnthe1@smith.com"
+        "account_owner_last_name" => "Smith"
       }
 
       Bypass.open()
@@ -573,6 +577,12 @@ defmodule Domain.BillingTest do
       # Product name and subscription attributes will be synced from a separate webhook
       # from Stripe that is sent when subscription is created or updated
       refute account.metadata.stripe.product_name
+
+      assert actor = Repo.get_by(Domain.Actors.Actor, account_id: account.id)
+      assert actor.name == "John Smith"
+
+      assert identity = Repo.get_by(Domain.Auth.Identity, actor_id: actor.id)
+      assert identity.provider_identifier == "iown@bigcompany.com"
 
       assert_receive {:bypass_request,
                       %{
