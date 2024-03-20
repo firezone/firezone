@@ -170,14 +170,29 @@ class TunnelService : VpnService() {
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
 
-    private val restrictionsReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (connlibSessionPtr != null) {
-                disconnect()
+    private val restrictionsReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                Log.d(TAG, "onReceive")
+                val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
+                val newAppRestrictions = restrictionsManager.applicationRestrictions
+                val changed =
+                    arrayOf("token", "allowedApplications", "disallowedApplications")
+                        .any { key -> newAppRestrictions.getString(key) != appRestrictions.getString(key) }
+                if (!changed) {
+                    return
+                }
+
+                if (connlibSessionPtr != null) {
+                    disconnect()
+                }
+                appRestrictions = newAppRestrictions
+                connect()
             }
-            connect()
         }
-    }
 
     // Primary callback used to start and stop the VPN service
     // This can be called either from the UI or from the system
@@ -196,11 +211,15 @@ class TunnelService : VpnService() {
     }
 
     override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "onCreate")
         registerReceiver(restrictionsReceiver, restrictionsFilter)
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "onDestroy")
         unregisterReceiver(restrictionsReceiver)
+        super.onDestroy()
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
