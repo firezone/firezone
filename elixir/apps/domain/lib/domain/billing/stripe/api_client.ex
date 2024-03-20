@@ -25,17 +25,32 @@ defmodule Domain.Billing.Stripe.APIClient do
     [conn_opts: [transport_opts: transport_opts]]
   end
 
-  def create_customer(api_token, id, name) do
+  def create_customer(api_token, id, name, slug) do
     body =
       URI.encode_query(
         %{
           "name" => name,
-          "metadata[account_id]" => id
+          "metadata[account_id]" => id,
+          "metadata[account_slug]" => slug
         },
         :www_form
       )
 
     request(api_token, :post, "customers", body)
+  end
+
+  def update_customer(api_token, customer_id, id, name, slug) do
+    body =
+      URI.encode_query(
+        %{
+          "name" => name,
+          "metadata[account_id]" => id,
+          "metadata[account_slug]" => slug
+        },
+        :www_form
+      )
+
+    request(api_token, :post, "customers/#{customer_id}", body)
   end
 
   def fetch_customer(api_token, customer_id) do

@@ -11,7 +11,12 @@ defmodule Domain.Ops do
       {:ok, account} =
         Domain.Accounts.create_account(%{
           name: account_name,
-          slug: account_slug
+          slug: account_slug,
+          metadata: %{
+            stripe: %{
+              billing_email: account_admin_email
+            }
+          }
         })
 
       {:ok, account} = Domain.Billing.provision_account(account)

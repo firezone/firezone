@@ -32,7 +32,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Edit do
       <.breadcrumb path={
         ~p"/#{@account}/settings/identity_providers/openid_connect/#{@form.data}/edit"
       }>
-        Edit <%= # {@form.data.name} %>
+        Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.section>

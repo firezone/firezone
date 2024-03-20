@@ -21,6 +21,11 @@ defmodule Web.Settings.Account do
       <:title>
         Account Settings
       </:title>
+      <:action>
+        <.edit_button navigate={~p"/#{@account}/settings/account/edit"}>
+          Edit Account
+        </.edit_button>
+      </:action>
       <:content>
         <.vertical_table id="account">
           <.vertical_table_row>

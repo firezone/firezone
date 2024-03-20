@@ -199,7 +199,11 @@ defmodule Web.Router do
       end
 
       scope "/settings", Settings do
-        live "/account", Account
+        scope "/account" do
+          live "/", Account
+          live "/edit", Account.Edit
+        end
+
         live "/billing", Billing
 
         scope "/identity_providers", IdentityProviders do

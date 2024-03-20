@@ -10,7 +10,8 @@ defmodule Web.Live.Settings.BillingTest do
           stripe: %{
             customer_id: "cus_NffrFeUfNV2Hib",
             subscription_id: "sub_NffrFeUfNV2Hib",
-            product_name: "Enterprise"
+            product_name: "Enterprise",
+            billing_email: "foo@example.com"
           }
         },
         limits: %{
@@ -72,6 +73,7 @@ defmodule Web.Live.Settings.BillingTest do
       |> render()
       |> vertical_table_to_map()
 
+    assert rows["billing email"] =~ account.metadata.stripe.billing_email
     assert rows["current plan"] =~ account.metadata.stripe.product_name
     assert rows["seats"] =~ "0 used / 100 allowed"
     assert rows["sites"] =~ "0 used / 10 allowed"
