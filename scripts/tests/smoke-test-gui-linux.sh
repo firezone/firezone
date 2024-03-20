@@ -32,10 +32,10 @@ function smoke_test() {
     stat "$RAN_BEFORE_PATH" && exit 1
 
     # Run the smoke test normally
-    xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
-    if [ $? -ne 0 ]
+    if ! xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
     then
         minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
+        exit 1
     fi
 
     # Note the device ID
