@@ -41,16 +41,11 @@ defmodule Web.Sites.Gateways.Index do
     list_opts = Keyword.put(list_opts, :preload, [:online?])
 
     with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
-      assign(socket,
-        gateways: gateways,
-        gateways_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         gateways: gateways,
+         gateways_metadata: metadata
+       )}
     end
   end
 
