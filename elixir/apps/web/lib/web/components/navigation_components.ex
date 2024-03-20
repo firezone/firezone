@@ -22,10 +22,7 @@ defmodule Web.NavigationComponents do
             <.icon name="hero-bars-3-center-left" class="w-6 h-6" />
             <span class="sr-only">Toggle sidebar</span>
           </button>
-          <a
-            href="https://www.firezone.dev/?utm_source=product"
-            class="flex items-center justify-between mr-4"
-          >
+          <a href={~p"/"} class="flex items-center justify-between mr-4">
             <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
             <span class="self-center text-2xl font-medium whitespace-nowrap">
               Firezone
