@@ -533,11 +533,12 @@ mod async_dns {
             // If he's not, then we're invisibly tying up two worker threads. Can't help it.
 
             // SAFETY: It's complicated.
-            // The callback here can cause a lot of problems. We pin the `Notify` object.
-            // We don't use an `Arc` because `Notify` already has only `&self` methods, and
-            // the callback has no way to free an `Arc`.
+            // The callback here can cause a lot of problems. We pin the `Sender` object.
+            // We don't use an `Arc` because sending is already `&self`, and
+            // the callback has no way to free an `Arc`, since we will always cancel the callback
+            // before it fires when the `Listener` drops.
             // When we call `UnregisterWaitEx` later, we wait for all callbacks to finish running
-            // before we drop the `Notify`, to avoid a dangling pointer.
+            // before we drop everything, to prevent the callback from seeing a dangling pointer.
             unsafe {
                 RegisterWaitForSingleObject(
                     &mut wait_handle,
