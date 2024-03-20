@@ -18,39 +18,20 @@ mod tun;
 #[path = "device_channel/tun_android.rs"]
 mod tun;
 
+pub use tun::Tun;
+
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
-use connlib_shared::{Cidrv4, Cidrv6};
-use ip_network::IpNetwork;
+use connlib_shared::error::ConnlibError;
 use pnet_packet::Packet;
-use std::collections::HashSet;
 use std::io;
-use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
-use tun::Tun;
 
 pub struct Device {
     mtu: usize,
     tun: Option<Tun>,
     waker: Option<Waker>,
     mtu_refreshed_at: Instant,
-}
-
-#[allow(dead_code)]
-fn ipv4(ip: IpNetwork) -> Option<Cidrv4> {
-    match ip {
-        IpNetwork::V4(v4) => Some(v4.into()),
-        IpNetwork::V6(_) => None,
-    }
-}
-
-#[allow(dead_code)]
-fn ipv6(ip: IpNetwork) -> Option<Cidrv6> {
-    match ip {
-        IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6.into()),
-    }
 }
 
 impl Device {
@@ -63,14 +44,7 @@ impl Device {
         }
     }
 
-    #[cfg(target_family = "unix")]
-    pub(crate) fn initialize(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        let tun = Tun::new(config, dns_config, callbacks)?;
+    pub(crate) fn update_tun(&mut self, tun: Tun) -> Result<(), ConnlibError> {
         let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
         self.tun = Some(tun);
@@ -83,23 +57,43 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(target_family = "windows")]
-    pub(crate) fn initialize(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        _: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        let tun = Tun::new(config, dns_config)?;
+    // #[cfg(target_family = "unix")]
+    // pub(crate) fn initialize(
+    //     &mut self,
+    //     config: &Interface,
+    //     dns_config: Vec<IpAddr>,
+    //     callbacks: &impl Callbacks,
+    // ) -> Result<(), ConnlibError> {
+    //     let tun = Tun::new(config, dns_config, callbacks)?;
+    //     let mtu = ioctl::interface_mtu_by_name(tun.name())?;
 
-        self.tun = Some(tun);
+    //     self.tun = Some(tun);
+    //     self.mtu = mtu;
 
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
+    //     if let Some(waker) = self.waker.take() {
+    //         waker.wake();
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
+
+    // #[cfg(target_family = "windows")]
+    // pub(crate) fn initialize(
+    //     &mut self,
+    //     config: &Interface,
+    //     dns_config: Vec<IpAddr>,
+    //     _: &impl Callbacks,
+    // ) -> Result<(), ConnlibError> {
+    //     let tun = Tun::new(config, dns_config)?;
+
+    //     self.tun = Some(tun);
+
+    //     if let Some(waker) = self.waker.take() {
+    //         waker.wake();
+    //     }
+
+    //     Ok(())
+    // }
 
     #[cfg(target_family = "unix")]
     pub(crate) fn poll_read<'b>(
@@ -186,14 +180,14 @@ impl Device {
             .unwrap_or("uninitialized")
     }
 
-    pub(crate) fn set_routes(
-        &mut self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), Error> {
-        self.tun_mut()?.set_routes(routes, callbacks)?;
-        Ok(())
-    }
+    // pub(crate) fn set_routes(
+    //     &mut self,
+    //     routes: HashSet<IpNetwork>,
+    //     callbacks: &impl Callbacks,
+    // ) -> Result<(), Error> {
+    //     self.tun_mut()?.set_routes(routes, callbacks)?;
+    //     Ok(())
+    // }
 
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
         tracing::trace!(target: "wire", to = "device", bytes = %packet.packet().len());
@@ -206,10 +200,6 @@ impl Device {
 
     fn tun(&self) -> io::Result<&Tun> {
         self.tun.as_ref().ok_or_else(io_error_not_initialized)
-    }
-
-    fn tun_mut(&mut self) -> io::Result<&mut Tun> {
-        self.tun.as_mut().ok_or_else(io_error_not_initialized)
     }
 }
 

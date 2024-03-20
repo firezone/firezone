@@ -7,7 +7,7 @@ pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, Tun};
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
 
@@ -25,6 +25,7 @@ use tokio::task::JoinHandle;
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
+#[derive(Clone)]
 pub struct Session {
     channel: tokio::sync::mpsc::Sender<Command>,
 }
@@ -70,6 +71,10 @@ impl Session {
     /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
     pub fn reconnect(&mut self) {
         let _ = self.channel.try_send(Command::Reconnect);
+    }
+
+    pub fn update_tun(&mut self, tun: Tun) {
+        let _ = self.channel.try_send(Command::Update(tun));
     }
 
     /// Disconnect a [`Session`].

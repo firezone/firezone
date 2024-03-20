@@ -9,12 +9,13 @@ use connlib_shared::messages::{
     IpDnsServer, Key, Offer, Relay, RequestConnection, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
-use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
+use connlib_shared::{Callbacks, Cidrv4, Cidrv6, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
+use crate::device_channel::Tun;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
@@ -92,7 +93,7 @@ where
         }
 
         self.update_resource_list();
-        self.update_routes()?;
+        self.update_routes();
 
         Ok(())
     }
@@ -111,10 +112,7 @@ where
 
         self.role_state.resource_ids.remove(&id);
 
-        if let Err(err) = self.update_routes() {
-            tracing::error!(%id, "Failed to update routes: {err:?}");
-        }
-
+        self.update_routes();
         self.update_resource_list();
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
@@ -168,9 +166,26 @@ where
         );
     }
 
+    pub fn update_tun(&mut self, tun: Tun) -> connlib_shared::Result<()> {
+        let name = tun.name().to_owned();
+
+        self.io.device_mut().update_tun(tun)?;
+
+        // self.io
+        //     .device_mut()
+        //     .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        // let name = self.io.device_mut().name().to_owned();
+
+        self.callbacks.on_tunnel_ready();
+
+        tracing::info!(%name, "TUN device initialized");
+
+        Ok(())
+    }
+
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
+    pub fn set_interface(&mut self, config: &InterfaceConfig) {
         self.role_state.interface_config = Some(config.clone());
         let effective_dns_servers = effective_dns_servers(
             config.upstream_dns.clone(),
@@ -183,25 +198,23 @@ where
         self.role_state.set_dns_mapping(dns_mapping.clone());
         self.io.set_upstream_dns_servers(dns_mapping.clone());
 
-        let callbacks = self.callbacks.clone();
+        let dns_servers = dns_mapping.left_values().copied().sorted().collect();
+        let ip4_routes = self.role_state.routes().filter_map(ipv4).collect();
+        let ip6_routes = self.role_state.routes().filter_map(ipv6).collect();
 
-        self.io.device_mut().initialize(
-            config,
-            // We can just sort in here because sentinel ips are created in order
-            dns_mapping.left_values().copied().sorted().collect(),
-            &callbacks,
-        )?;
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, ?dns_servers, ?ip4_routes, ?ip6_routes, "Updating device configuration");
 
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        let name = self.io.device_mut().name().to_owned();
+        // Let the client app know that we've now received the device configuration.
+        self.callbacks
+            .on_set_interface_config(config.ipv4, config.ipv6, dns_servers);
+        self.callbacks.on_update_routes(ip4_routes, ip6_routes);
 
-        self.callbacks.on_tunnel_ready();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
+        // self.io.device_mut().initialize(
+        //     config,
+        //     // We can just sort in here because sentinel ips are created in order
+        //     dns_servers,
+        //     &callbacks,
+        // )?;
     }
 
     /// Clean up a connection to a resource.
@@ -212,12 +225,10 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-
-        Ok(())
+    pub fn update_routes(&mut self) {
+        let ip4_routes = self.role_state.routes().filter_map(ipv4).collect();
+        let ip6_routes = self.role_state.routes().filter_map(ipv6).collect();
+        self.callbacks.on_update_routes(ip4_routes, ip6_routes);
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -304,6 +315,21 @@ fn send_dns_answer(
     }
 }
 
+fn ipv4(ip: IpNetwork) -> Option<Cidrv4> {
+    match ip {
+        IpNetwork::V4(v4) => Some(v4.into()),
+        IpNetwork::V6(_) => None,
+    }
+}
+
+fn ipv6(ip: IpNetwork) -> Option<Cidrv6> {
+    match ip {
+        IpNetwork::V4(_) => None,
+        IpNetwork::V6(v6) => Some(v6.into()),
+    }
+}
+
+/// [`Tunnel`] state specific to clients.
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     resources_gateways: HashMap<ResourceId, GatewayId>,

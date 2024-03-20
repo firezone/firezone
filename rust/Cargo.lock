@@ -1104,6 +1104,7 @@ name = "connlib-client-android"
 version = "1.0.0"
 dependencies = [
  "connlib-client-shared",
+ "firezone-tunnel",
  "ip_network",
  "jni 0.21.1",
  "log",
@@ -1124,6 +1125,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "connlib-client-shared",
+ "firezone-tunnel",
  "ip_network",
  "libc",
  "secrecy",
@@ -1969,8 +1971,13 @@ dependencies = [
  "connlib-client-shared",
  "connlib-shared",
  "firezone-cli-utils",
+ "firezone-tunnel",
  "humantime",
+ "netlink-packet-core",
+ "netlink-packet-route",
  "resolv-conf",
+ "rtnetlink",
+ "sd-notify",
  "secrecy",
  "thiserror",
  "tokio",

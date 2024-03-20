@@ -21,3 +21,8 @@ humantime = "2.1"
 resolv-conf = "0.7.0"
 thiserror = "1.0.57"
 tokio = { version = "1.36", default-features = false, features = ["rt", "macros", "signal"] }
+netlink-packet-route = { version = "0.19", default-features = false }
+netlink-packet-core = { version = "0.7", default-features = false }
+rtnetlink = { workspace = true }
+firezone-tunnel = { workspace = true }
+sd-notify = "0.4.1"

@@ -70,11 +70,7 @@ impl Tun {
         }
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -131,8 +127,6 @@ impl Tun {
             }
 
             if addr.sc_id == info.ctl_id {
-                callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
                 set_non_blocking(fd)?;
 
                 return Ok(Self {
@@ -145,15 +139,15 @@ impl Tun {
         Err(get_last_error())
     }
 
-    pub fn set_routes(&self, routes: HashSet<IpNetwork>, callbacks: &impl Callbacks) -> Result<()> {
-        // This will always be None in macos
-        callbacks.on_update_routes(
-            routes.iter().copied().filter_map(ipv4).collect(),
-            routes.iter().copied().filter_map(ipv6).collect(),
-        );
+    // pub fn set_routes(&self, routes: HashSet<IpNetwork>, callbacks: &impl Callbacks) -> Result<()> {
+    //     // This will always be None in macos
+    //     callbacks.on_update_routes(
+    //         routes.iter().copied().filter_map(ipv4).collect(),
+    //         routes.iter().copied().filter_map(ipv6).collect(),
+    //     );
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub fn name(&self) -> &str {
         self.name.as_str()

@@ -10,7 +10,7 @@ use connlib_shared::{
     messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, Tun};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
@@ -37,6 +37,7 @@ pub struct Eventloop<C: Callbacks> {
 pub enum Command {
     Stop,
     Reconnect,
+    Update(Tun),
 }
 
 impl<C: Callbacks> Eventloop<C> {
@@ -70,6 +71,11 @@ where
                     self.tunnel.reconnect();
 
                     continue;
+                }
+                Poll::Ready(Some(Command::Update(tun))) => {
+                    if let Err(e) = self.tunnel.update_tun(tun) {
+                        tracing::warn!("Failed to update TUN device: {e}");
+                    };
                 }
                 Poll::Pending => {}
             }
@@ -180,10 +186,7 @@ where
                 resources,
             }) => {
                 if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(&interface) {
-                        tracing::warn!("Failed to set interface on tunnel: {e}");
-                        return;
-                    }
+                    self.tunnel.set_interface(&interface);
 
                     self.tunnel_init = true;
                     tracing::info!("Firezone Started!");
