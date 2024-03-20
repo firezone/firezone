@@ -123,7 +123,10 @@ defmodule Web.Relays.Show do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id, payload: payload},
+        %Phoenix.Socket.Broadcast{
+          topic: "presences:group_relays:" <> _group_id,
+          payload: payload
+        },
         socket
       ) do
     relay = socket.assigns.relay

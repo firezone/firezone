@@ -431,9 +431,25 @@ defmodule Web.LiveTable do
     list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
 
     case callback.(socket, list_opts) do
-      {:error, _reason} -> push_navigate(socket, to: socket.assigns.uri)
-      {:ok, socket} -> socket
+      {:error, _reason} ->
+        push_navigate(socket, to: socket.assigns.uri)
+
+      {:ok, socket} ->
+        :ok = maybe_notify_test_pid(id)
+        socket
     end
+  end
+
+  if Mix.env() == :test do
+    defp maybe_notify_test_pid(id) do
+      if test_pid = Domain.Config.get_env(:domain, :test_pid) do
+        send(test_pid, {:live_table_reloaded, id})
+      end
+
+      :ok
+    end
+  else
+    defp maybe_notify_test_pid(_socket, _id), do: :ok
   end
 
   @doc """

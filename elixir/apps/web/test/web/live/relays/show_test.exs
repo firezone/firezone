@@ -119,6 +119,30 @@ defmodule Web.Live.Relays.ShowTest do
     assert table["status"] =~ "Online"
   end
 
+  test "updates relay status using presence", %{
+    account: account,
+    relay: relay,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relays/#{relay}")
+
+    :ok = Domain.Relays.subscribe_to_relays_presence_in_group(relay.group_id)
+    :ok = Domain.Relays.connect_relay(relay, "foo")
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
+
+    table =
+      lv
+      |> element("#relay")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["status"] =~ "Online"
+  end
+
   test "allows deleting relays", %{
     account: account,
     relay: relay,

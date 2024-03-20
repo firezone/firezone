@@ -81,4 +81,32 @@ defmodule Web.Live.Clients.IndexTest do
       assert row["user"] =~ name
     end)
   end
+
+  test "updates clients table using presence events", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    actor = Fixtures.Actors.create_actor(account: account)
+    client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients")
+
+    Domain.Config.put_env_override(:test_pid, self())
+    Domain.Clients.subscribe_to_clients_presence_for_actor(actor)
+    assert Domain.Clients.connect_client(client) == :ok
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
+    assert_receive {:live_table_reloaded, "clients"}, 250
+
+    [row] =
+      lv
+      |> element("#clients")
+      |> render()
+      |> table_to_map()
+
+    assert row["status"] == "Online"
+  end
 end
