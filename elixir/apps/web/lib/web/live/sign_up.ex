@@ -17,10 +17,13 @@ defmodule Web.SignUp do
     end
 
     def changeset(attrs) do
+      whitelisted_domains = Domain.Config.get_env(:domain, :sign_up_whitelisted_domains)
+
       %Registration{}
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_required([:email])
       |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
+      |> validate_email_allowed(whitelisted_domains)
       |> Ecto.Changeset.validate_confirmation(:email,
         required: true,
         message: "email does not match"
@@ -32,11 +35,32 @@ defmodule Web.SignUp do
         with: fn _account, attrs -> Actors.Actor.Changeset.create(attrs) end
       )
     end
+
+    defp validate_email_allowed(changeset, []) do
+      changeset
+    end
+
+    defp validate_email_allowed(changeset, whitelisted_domains) do
+      Ecto.Changeset.validate_change(changeset, :email, fn :email, email ->
+        if email_allowed?(email, whitelisted_domains),
+          do: [],
+          else: [email: "this email domain is not allowed at this time"]
+      end)
+    end
+
+    defp email_allowed?(email, whitelisted_domains) do
+      with [_, domain] <- String.split(email, "@", parts: 2) do
+        Enum.member?(whitelisted_domains, domain)
+      else
+        _ -> false
+      end
+    end
   end
 
   def mount(_params, _session, socket) do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
     real_ip = Web.Auth.real_ip(socket)
+    sign_up_enabled? = Config.sign_up_enabled?()
 
     changeset =
       Registration.changeset(%{
@@ -46,15 +70,15 @@ defmodule Web.SignUp do
 
     socket =
       assign(socket,
+        page_title: "Sign Up",
         form: to_form(changeset),
         account: nil,
         provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: Config.sign_up_enabled?(),
+        sign_up_enabled?: sign_up_enabled?,
         account_name_changed?: false,
-        actor_name_changed?: false,
-        page_title: "Sign Up"
+        actor_name_changed?: false
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -290,49 +314,10 @@ defmodule Web.SignUp do
       |> Registration.changeset()
       |> Map.put(:action, :insert)
 
-    if changeset.valid? && socket.assigns.sign_up_enabled? do
+    if changeset.valid? and socket.assigns.sign_up_enabled? do
       registration = Ecto.Changeset.apply_changes(changeset)
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.run(
-          :account,
-          fn _repo, _changes ->
-            Accounts.create_account(%{
-              name: registration.account.name
-            })
-          end
-        )
-        |> Ecto.Multi.run(
-          :provider,
-          fn _repo, %{account: account} ->
-            Auth.create_provider(account, %{
-              name: "Email",
-              adapter: :email,
-              adapter_config: %{}
-            })
-          end
-        )
-        |> Ecto.Multi.run(
-          :actor,
-          fn _repo, %{account: account} ->
-            Actors.create_actor(account, %{
-              type: :account_admin_user,
-              name: registration.actor.name
-            })
-          end
-        )
-        |> Ecto.Multi.run(
-          :identity,
-          fn _repo, %{actor: actor, provider: provider} ->
-            Auth.create_identity(actor, provider, %{
-              provider_identifier: registration.email,
-              provider_identifier_confirmation: registration.email
-            })
-          end
-        )
-
-      case Domain.Repo.transaction(multi) do
+      case register_account(registration) do
         {:ok, %{account: account, provider: provider, identity: identity}} ->
           {:ok, account} = Domain.Billing.provision_account(account)
 
@@ -384,5 +369,48 @@ defmodule Web.SignUp do
   defp maybe_put_default_actor_name(attrs, false) do
     [default_name | _] = String.split(attrs["email"], "@", parts: 2)
     put_in(attrs, ["actor", "name"], default_name)
+  end
+
+  defp register_account(registration) do
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.run(
+        :account,
+        fn _repo, _changes ->
+          Accounts.create_account(%{
+            name: registration.account.name
+          })
+        end
+      )
+      |> Ecto.Multi.run(
+        :provider,
+        fn _repo, %{account: account} ->
+          Auth.create_provider(account, %{
+            name: "Email",
+            adapter: :email,
+            adapter_config: %{}
+          })
+        end
+      )
+      |> Ecto.Multi.run(
+        :actor,
+        fn _repo, %{account: account} ->
+          Actors.create_actor(account, %{
+            type: :account_admin_user,
+            name: registration.actor.name
+          })
+        end
+      )
+      |> Ecto.Multi.run(
+        :identity,
+        fn _repo, %{actor: actor, provider: provider} ->
+          Auth.create_identity(actor, provider, %{
+            provider_identifier: registration.email,
+            provider_identifier_confirmation: registration.email
+          })
+        end
+      )
+
+    Domain.Repo.transaction(multi)
   end
 end

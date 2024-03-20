@@ -31,21 +31,15 @@ defmodule Web.Resources.Index do
     list_opts = Keyword.put(list_opts, :preload, [:gateway_groups])
 
     with {:ok, resources, metadata} <-
-           Resources.list_resources(socket.assigns.subject, list_opts) do
-      {:ok, resource_actor_groups_peek} =
-        Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject)
-
-      assign(socket,
-        resources: resources,
-        resource_actor_groups_peek: resource_actor_groups_peek,
-        resources_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+           Resources.list_resources(socket.assigns.subject, list_opts),
+         {:ok, resource_actor_groups_peek} <-
+           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+      {:ok,
+       assign(socket,
+         resources: resources,
+         resource_actor_groups_peek: resource_actor_groups_peek,
+         resources_metadata: metadata
+       )}
     end
   end
 

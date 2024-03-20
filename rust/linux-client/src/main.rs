@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
         Some(id) => id,
-        None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?,
+        None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let (private_key, public_key) = keypair();
@@ -70,10 +70,6 @@ async fn main() -> Result<()> {
         return Poll::Pending;
     })
     .await;
-
-    if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
-        etc_resolv_conf::unconfigure_dns()?;
-    }
 
     session.disconnect();
 
