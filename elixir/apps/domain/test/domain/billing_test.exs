@@ -502,6 +502,28 @@ defmodule Domain.BillingTest do
              }
     end
 
+    test "does nothing on customer.created event when an account already exists", %{
+      account: account
+    } do
+      event =
+        Stripe.build_event(
+          "customer.created",
+          Stripe.customer_object(
+            account.metadata.stripe.customer_id,
+            "New Account Name",
+            "iown@bigcompany.com",
+            %{
+              "company_website" => account.slug,
+              "account_owner_first_name" => "John",
+              "account_owner_last_name" => "Smith"
+            }
+          )
+        )
+
+      assert handle_events([event]) == :ok
+      assert Repo.one(Domain.Accounts.Account)
+    end
+
     test "does nothing on customer.updated event when metadata is incomplete" do
       customer_id = "cus_" <> Ecto.UUID.generate()
 

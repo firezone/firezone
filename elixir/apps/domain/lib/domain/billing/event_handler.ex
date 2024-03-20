@@ -218,7 +218,21 @@ defmodule Domain.Billing.EventHandler do
            } = metadata
        }) do
     uri = URI.parse(company_website)
-    account_slug = uri.host |> String.split(".") |> List.delete_at(-1) |> Enum.join("_")
+
+    account_slug =
+      cond do
+        uri.host ->
+          uri.host
+          |> String.split(".")
+          |> List.delete_at(-1)
+          |> Enum.join("_")
+
+        uri.path ->
+          uri.path
+
+        true ->
+          Accounts.generate_unique_slug()
+      end
 
     attrs = %{
       name: customer_name,
@@ -232,7 +246,7 @@ defmodule Domain.Billing.EventHandler do
     }
 
     Repo.transaction(fn ->
-      {:ok, _account} =
+      :ok =
         with {:ok, account} <- Domain.Accounts.create_account(attrs),
              {:ok, account} <- Billing.update_customer(account),
              {:ok, account} <- Domain.Billing.create_subscription(account) do
@@ -261,7 +275,13 @@ defmodule Domain.Billing.EventHandler do
               provider_identifier_confirmation: metadata["account_admin_email"] || account_email
             })
 
-          {:ok, account}
+          :ok
+        else
+          {:error, %Ecto.Changeset{errors: [{:slug, {"has already been taken", _}} | _]}} ->
+            :ok
+
+          {:error, reason} ->
+            {:error, reason}
         end
     end)
     |> case do
