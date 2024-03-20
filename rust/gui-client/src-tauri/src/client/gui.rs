@@ -84,7 +84,7 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
+pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default
@@ -134,60 +134,12 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let notify_controller = Arc::new(Notify::new());
 
-    // Check for updates
-    let ctlr_tx_clone = ctlr_tx.clone();
-    let always_show_update_notification = cli.always_show_update_notification;
-    tokio::spawn(async move {
-        if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
-        {
-            tracing::error!(?error, "Error in check_for_updates");
-        }
-    });
-
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new()?;
-
-    if let Some(client::Cmd::SmokeTest) = &cli.command {
-        let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
-            if let Err(error) = smoke_test(ctlr_tx).await {
-                tracing::error!(?error, "Error during smoke test");
-                tracing::error!("Crashing on purpose so a dev can see our stacktraces");
-                unsafe { sadness_generator::raise_segfault() }
-            }
-        });
-    }
-
-    tracing::debug!(cli.no_deep_links);
-    if !cli.no_deep_links {
-        // The single-instance check is done, so register our exe
-        // to handle deep links
-        deep_link::register().context("Failed to register deep link handler")?;
-        tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
-    }
-
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
         inject_faults: cli.inject_faults,
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
-
-    if let Some(failure) = cli.fail_on_purpose() {
-        let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
-            let delay = 5;
-            tracing::info!(
-                "Will crash / error / panic on purpose in {delay} seconds to test error handling."
-            );
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing / erroring / panicking on purpose");
-            ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
-            Ok::<_, anyhow::Error>(())
-        });
-    }
 
     tracing::debug!("Setting up Tauri app instance...");
     let app = tauri::Builder::default()
@@ -232,6 +184,55 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         })
         .setup(move |app| {
             tracing::debug!("Entered Tauri's `setup`");
+
+            // Check for updates
+            let ctlr_tx_clone = ctlr_tx.clone();
+            let always_show_update_notification = cli.always_show_update_notification;
+            tokio::spawn(async move {
+                if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+                {
+                    tracing::error!(?error, "Error in check_for_updates");
+                }
+            });
+
+            // Make sure we're single-instance
+            // We register our deep links to call the `open-deep-link` subcommand,
+            // so if we're at this point, we know we've been launched manually
+            let server = deep_link::Server::new()?;
+
+            if let Some(client::Cmd::SmokeTest) = &cli.command {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = smoke_test(ctlr_tx).await {
+                        tracing::error!(?error, "Error during smoke test");
+                        tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                        unsafe { sadness_generator::raise_segfault() }
+                    }
+                });
+            }
+
+            tracing::debug!(cli.no_deep_links);
+            if !cli.no_deep_links {
+                // The single-instance check is done, so register our exe
+                // to handle deep links
+                deep_link::register().context("Failed to register deep link handler")?;
+                tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+            }
+
+            if let Some(failure) = cli.fail_on_purpose() {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    let delay = 5;
+                    tracing::info!(
+                        "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+                    );
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                    tracing::info!("Crashing / erroring / panicking on purpose");
+                    ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                    Ok::<_, anyhow::Error>(())
+                });
+            }
+
             assert_eq!(
                 BUNDLE_ID,
                 app.handle().config().tauri.bundle.identifier,
@@ -315,9 +316,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
-    // Write the settings so we can check the path for those
-    settings::save(&settings::AdvancedSettings::default()).await?;
-
     // Test log exporting
     let path = PathBuf::from("smoke_test_log_export.zip");
 
@@ -340,6 +338,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
+
+    // Write the settings so we can check the path for those
+    settings::save(&settings::AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
