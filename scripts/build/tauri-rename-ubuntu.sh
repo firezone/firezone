@@ -23,3 +23,13 @@ function make_hash() {
 make_hash "$BINARY_DEST_PATH"-amd64
 make_hash "$BINARY_DEST_PATH"-amd64.dwp
 make_hash "$BINARY_DEST_PATH"_amd64.deb
+
+# TODO: There must be a better place to put this
+# Test the deb package, since this script is the easiest place to get a release build
+sudo dpkg --install "$BINARY_DEST_PATH"_amd64.deb
+
+# Debug-print the files. The icons and both binaries should be in here
+dpkg --listfiles firezone
+which firezone firezone-tunnel
+firezone-tunnel
+firezone || true
