@@ -21,7 +21,7 @@ import SwiftUI
 
     @Published var loginStatus: AuthStore.LoginStatus = .uninitialized
     @Published var tunnelStatus: NEVPNStatus = .invalid
-    @Published var orderedResources: [DisplayableResources.Resource] = []
+    @Published var resources: [DisplayableResources.Resource] = []
 
     init(appStore: AppStore) {
       self.appStore = appStore
@@ -53,7 +53,7 @@ import SwiftUI
         .receive(on: mainQueue)
         .sink { [weak self] resources in
           guard let self = self else { return }
-          self.orderedResources = resources.orderedResources.map {
+          self.resources = resources.resources.map {
             DisplayableResources.Resource(name: $0.name, location: $0.location)
           }
         }
@@ -120,10 +120,10 @@ import SwiftUI
         }
         if case .signedIn = self.model.loginStatus, self.model.tunnelStatus == .connected {
           Section(header: Text("Resources")) {
-            if self.model.orderedResources.isEmpty {
+            if self.model.resources.isEmpty {
               Text("No resources")
             } else {
-              ForEach(self.model.orderedResources) { resource in
+              ForEach(self.model.resources) { resource in
                 Menu(content: {
                   Button {
                     self.copyResourceTapped(resource)

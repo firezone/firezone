@@ -16,7 +16,6 @@ enum SettingsViewError: Error {
 }
 
 public final class SettingsViewModel: ObservableObject {
-  let authStore: AuthStore
   let tunnelStore: TunnelStore
 
   @Published var settings: Settings
@@ -24,8 +23,7 @@ public final class SettingsViewModel: ObservableObject {
   let logger: AppLogger
   private var cancellables = Set<AnyCancellable>()
 
-  public init(authStore: AuthStore, tunnelStore: TunnelStore, logger: AppLogger) {
-    self.authStore = authStore
+  public init(tunnelStore: TunnelStore, logger: AppLogger) {
     self.tunnelStore = tunnelStore
     self.logger = logger
     settings = Settings.defaultValue
@@ -49,8 +47,8 @@ public final class SettingsViewModel: ObservableObject {
 
   func saveSettings() {
     Task {
-      if case .signedIn = tunnelStore.tunnelAuthStatus {
-        await authStore.signOut()
+      if [.connected, .connecting, .reasserting].contains(tunnelStore.status) {
+        _ = try await tunnelStore.signOut()
       }
       do {
         try await tunnelStore.save(settings)
@@ -58,7 +56,7 @@ public final class SettingsViewModel: ObservableObject {
         logger.error("Error saving settings to tunnel store: \(error)")
       }
       await MainActor.run {
-
+        // intentionally blank
       }
     }
   }
@@ -66,7 +64,6 @@ public final class SettingsViewModel: ObservableObject {
   func calculateLogDirSize(logger: AppLogger) -> String? {
     logger.log("\(#function)")
 
-    let startTime = DispatchTime.now()
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       logger.error("\(#function): Log folder is unavailable")
       return nil
@@ -92,10 +89,6 @@ public final class SettingsViewModel: ObservableObject {
     if Task.isCancelled {
       return nil
     }
-
-    let elapsedTime =
-      (DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-    logger.log("\(#function): Finished calculating (\(totalSize) bytes) in \(elapsedTime) ms")
 
     let byteCountFormatter = ByteCountFormatter()
     byteCountFormatter.countStyle = .file
@@ -365,7 +358,7 @@ public struct SettingsView: View {
                 "Apply",
                 action: {
                   let action = ConfirmationAlertContinueAction.saveSettings
-                  if case .signedIn = model.tunnelStore.tunnelAuthStatus {
+                  if [.connected, .connecting, .reasserting].contains(model.tunnelStore.status) {
                     self.confirmationAlertContinueAction = action
                     self.isShowingConfirmationAlert = true
                   } else {

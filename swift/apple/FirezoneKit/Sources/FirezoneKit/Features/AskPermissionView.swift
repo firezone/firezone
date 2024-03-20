@@ -33,14 +33,13 @@ public final class AskPermissionViewModel: ObservableObject {
     self.tunnelStore = tunnelStore
     self.sessionNotificationHelper = sessionNotificationHelper
 
-    tunnelStore.$tunnelAuthStatus
-      .filter { $0 != nil }
-      .sink { [weak self] tunnelAuthStatus in
+    tunnelStore.$status
+      .sink { [weak self] status in
         guard let self = self else { return }
 
         Task {
           await MainActor.run {
-            if case .noManagerFound = tunnelAuthStatus {
+            if case .invalid = status {
               self.needsTunnelPermission = true
             } else {
               self.needsTunnelPermission = false
@@ -111,7 +110,7 @@ public struct AskPermissionView: View {
         Image("LogoText")
           .resizable()
           .scaledToFit()
-          .frame(maxWidth: 600)
+          .frame(maxWidth: 320)
           .padding(.horizontal, 10)
         Spacer()
         if $model.needsTunnelPermission.wrappedValue {

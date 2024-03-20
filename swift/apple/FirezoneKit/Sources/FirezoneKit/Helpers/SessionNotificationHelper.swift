@@ -41,7 +41,7 @@ public class SessionNotificationHelper: NSObject {
   }
 
   private let logger: AppLogger
-  private let authStore: AuthStore
+  private let tunnelStore: TunnelStore
 
   @Published var notificationDecision: NotificationDecision = .uninitialized {
     didSet {
@@ -51,10 +51,10 @@ public class SessionNotificationHelper: NSObject {
     }
   }
 
-  public init(logger: AppLogger, authStore: AuthStore) {
+  public init(logger: AppLogger, tunnelStore: TunnelStore) {
 
     self.logger = logger
-    self.authStore = authStore
+    self.tunnelStore = tunnelStore
 
     super.init()
 
@@ -145,7 +145,7 @@ public class SessionNotificationHelper: NSObject {
   #elseif os(macOS)
     // In macOS, use a Cocoa alert.
     // This gets called from the app side.
-    static func showSignedOutAlertmacOS(logger: AppLogger, authStore: AuthStore) {
+    static func showSignedOutAlertmacOS(logger: AppLogger, tunnelStore: TunnelStore) {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
       alert.informativeText = "Please sign in again to reconnect"
@@ -157,7 +157,7 @@ public class SessionNotificationHelper: NSObject {
         logger.log("SessionNotificationHelper: \(#function): 'Sign In' clicked in notification")
         Task {
           do {
-            try await authStore.signIn()
+            try await tunnelStore.signIn()
           } catch {
             logger.error("Error signing in: \(error)")
           }

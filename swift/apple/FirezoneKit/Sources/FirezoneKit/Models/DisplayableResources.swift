@@ -23,12 +23,12 @@ public class DisplayableResources {
 
   public private(set) var version: UInt64
   public private(set) var versionString: String
-  public private(set) var orderedResources: [Resource]
+  public private(set) var resources: [Resource]
 
   public init(version: UInt64, resources: [Resource]) {
     self.version = version
     self.versionString = "\(version)"
-    self.orderedResources = resources
+    self.resources = resources
   }
 
   public convenience init() {
@@ -38,14 +38,14 @@ public class DisplayableResources {
   public func update(resources: [Resource]) {
     self.version = self.version &+ 1  // Overflow is ok
     self.versionString = "\(version)"
-    self.orderedResources = resources
+    self.resources = resources
   }
 }
 
 extension DisplayableResources {
   public func toData() -> Data? {
     ("\(versionString),"
-      + (orderedResources.flatMap { [$0.name, $0.location] })
+      + (resources.flatMap { [$0.name, $0.location] })
       .map { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) }.compactMap { $0 }
       .joined(separator: ",")).data(using: .utf8)
   }

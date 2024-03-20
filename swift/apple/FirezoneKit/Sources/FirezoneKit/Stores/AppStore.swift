@@ -57,7 +57,6 @@ public final class AppStore: ObservableObject {
     }
   #endif
 
-  public let authStore: AuthStore
   public let tunnelStore: TunnelStore
   public let settingsViewModel: SettingsViewModel
 
@@ -67,18 +66,16 @@ public final class AppStore: ObservableObject {
   public init() {
     let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)
     let tunnelStore = TunnelStore(logger: logger)
-    let authStore = AuthStore(tunnelStore: tunnelStore, logger: logger)
-    let settingsViewModel = SettingsViewModel(authStore: authStore, tunnelStore: tunnelStore, logger: logger)
+    let settingsViewModel = SettingsViewModel(tunnelStore: tunnelStore, logger: logger)
 
-    self.authStore = authStore
     self.tunnelStore = tunnelStore
     self.settingsViewModel = settingsViewModel
     self.logger = logger
 
     #if os(macOS)
-      tunnelStore.$tunnelAuthStatus
+      tunnelStore.$status
         .sink { tunnelAuthStatus in
-          if case .noManagerFound = tunnelAuthStatus {
+          if case .invalid = tunnelAuthStatus {
             Task {
               await MainActor.run {
                 WindowDefinition.askPermission.openWindow()
