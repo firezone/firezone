@@ -597,7 +597,9 @@ mod async_dns {
             )?;
             let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags =
-                Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
+                Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
+            // Ask Windows to signal our event once when anything inside this key changes.
+            // We can't ask for repeated signals.
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }
