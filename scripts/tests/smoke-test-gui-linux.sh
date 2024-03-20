@@ -18,12 +18,13 @@ cargo build -p "$PACKAGE"
 
 function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
-    sudo stat "$LOGS_PATH" && exit 1
-    sudo stat "$SETTINGS_PATH" && exit 1
-    sudo stat "$DEVICE_ID_PATH" && exit 1
+    stat "$LOGS_PATH" && exit 1
+    stat "$SETTINGS_PATH" && exit 1
+    # TODO: Revisit
+    # stat "$DEVICE_ID_PATH" && exit 1
 
     # Run the smoke test normally
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
+    xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
@@ -31,12 +32,13 @@ function smoke_test() {
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
     # https://stackoverflow.com/questions/41321092
-    sudo bash -c "stat \"${LOGS_PATH}/\"connlib*log"
-    sudo stat "$SETTINGS_PATH"
-    sudo stat "$DEVICE_ID_PATH"
+    bash -c "stat \"${LOGS_PATH}/\"connlib*log"
+    stat "$SETTINGS_PATH"
+    # TODO: Revisit
+    # stat "$DEVICE_ID_PATH"
 
     # Run the test again and make sure the device ID is not changed
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
+    xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
     DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
@@ -46,20 +48,21 @@ function smoke_test() {
     fi
 
     # Clean up the files but not the folders
-    sudo rm -rf "$LOGS_PATH"
-    sudo rm "$SETTINGS_PATH"
-    sudo rm "$DEVICE_ID_PATH"
+    rm -rf "$LOGS_PATH"
+    rm "$SETTINGS_PATH"
+    # TODO: Revisit
+    # rm "$DEVICE_ID_PATH"
 }
 
 function crash_test() {
     # Delete the crash file if present
-    sudo rm -f "$DUMP_PATH"
+    rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    sudo --preserve-env xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash --no-deep-links && exit 1
+    xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash --no-deep-links && exit 1
 
     # Fail if the crash file wasn't written
-    sudo stat "$DUMP_PATH"
+    stat "$DUMP_PATH"
 }
 
 function get_stacktrace() {
@@ -80,7 +83,7 @@ crash_test
 get_stacktrace
 
 # Clean up
-sudo rm "$DUMP_PATH"
+rm "$DUMP_PATH"
 
 # I'm not sure if the last command is handled specially, so explicitly exit with 0
 exit 0

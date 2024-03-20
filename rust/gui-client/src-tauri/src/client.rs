@@ -87,7 +87,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::SmokeTest) => {
             // Check for elevation. This also ensures wintun.dll is installed.
             if !elevation::check()? {
-                anyhow::bail!("`smoke-test` must be run with elevated permissions");
+                anyhow::bail!("`smoke-test` failed its elevation check");
             }
 
             let result = gui::run(&cli);
