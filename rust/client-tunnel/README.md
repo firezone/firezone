@@ -1,6 +1,6 @@
-# linux-tunnel
+# firezone-client-tunnel
 
-A privileged tunnel process that can communicate with the Linux GUI Client
+A privileged tunnel process that can communicate with the Linux GUI Client (and eventually Windows)
 
 ## Files
 

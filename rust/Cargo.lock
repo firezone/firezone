@@ -1874,6 +1874,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-client-tunnel"
+version = "0.1.0"
+
+[[package]]
 name = "firezone-gateway"
 version = "1.0.0"
 dependencies = [
@@ -1920,6 +1924,7 @@ dependencies = [
  "crash-handler",
  "dirs",
  "firezone-cli-utils",
+ "firezone-client-tunnel",
  "futures",
  "git-version",
  "hex",
@@ -1927,7 +1932,6 @@ dependencies = [
  "ipconfig",
  "keyring",
  "known-folders",
- "linux-tunnel",
  "minidumper",
  "native-dialog",
  "output_vt100",
@@ -3444,10 +3448,6 @@ name = "linux-raw-sys"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
-
-[[package]]
-name = "linux-tunnel"
-version = "0.1.0"
 
 [[package]]
 name = "lock_api"

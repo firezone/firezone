@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "client-tunnel",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
@@ -13,7 +14,7 @@ members = [
   "phoenix-channel",
   "relay",
   "gui-client/src-tauri",
-  "http-health-check", "linux-tunnel",
+  "http-health-check",
 ]
 
 resolver = "2"
