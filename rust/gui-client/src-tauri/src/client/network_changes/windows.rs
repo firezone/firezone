@@ -107,7 +107,7 @@ pub(crate) fn run_debug() -> Result<()> {
 
     rt.block_on(async move {
         loop {
-            tokio::select!{
+            tokio::select! {
                 _r = tokio::signal::ctrl_c() => break,
                 () = com_worker.notified() => {},
             };
@@ -351,9 +351,7 @@ impl<'a> Listener<'a> {
             _com: com,
         };
 
-        let cb = Callback {
-            tx: tx.clone(),
-        };
+        let cb = Callback { tx: tx.clone() };
 
         let callbacks: INetworkEvents = cb.into();
 
