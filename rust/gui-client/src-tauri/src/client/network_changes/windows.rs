@@ -164,6 +164,7 @@ pub(crate) struct Worker {
     inner: Option<WorkerInner>,
     // I think this is `Arc` because of the worker thread, and we need the worker thread
     // because of COM. `Notify` only has `&self` methods so it does not need `Arc` in general.
+    // TODO: Replace with a channel of size 1 for cancel-safety <https://github.com/firezone/firezone/issues/4226>
     notify: Arc<Notify>,
 }
 
