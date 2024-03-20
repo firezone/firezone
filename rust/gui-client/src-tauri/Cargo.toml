@@ -44,7 +44,7 @@ tauri = { version = "1.6", features = [ "dialog", "shell-open-api", "system-tray
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.36.0", features = ["time"] }
+tokio = { version = "1.36.0", features = ["signal", "time"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-panic = "0.1.1"
