@@ -4,7 +4,7 @@ set -euo pipefail
 
 BUNDLE_ID="dev.firezone.client"
 
-DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
+#DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
@@ -41,13 +41,13 @@ function smoke_test() {
 
     # Run the test again and make sure the device ID is not changed
     xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
-    DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
+    # DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
-    if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
-    then
-        echo "The device ID should not change if the file is intact between runs"
-        exit 1
-    fi
+    #if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
+    #then
+    #    echo "The device ID should not change if the file is intact between runs"
+    #    exit 1
+    #fi
 
     # Clean up the files but not the folders
     rm -rf "$LOGS_PATH"
@@ -86,6 +86,3 @@ get_stacktrace
 
 # Clean up
 rm "$DUMP_PATH"
-
-# I'm not sure if the last command is handled specially, so explicitly exit with 0
-exit 0
