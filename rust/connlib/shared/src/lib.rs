@@ -25,12 +25,7 @@ pub use error::ConnlibError as Error;
 pub use error::Result;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
-use ip_network::Ipv4Network;
-use ip_network::Ipv6Network;
 use rand_core::OsRng;
-use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
 
 pub type Dname = domain::base::Dname<Vec<u8>>;
 
@@ -57,35 +52,6 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     let public_key = PublicKey::from(&private_key);
 
     (private_key, public_key)
-}
-
-pub struct IpProvider {
-    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
-    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
-}
-
-impl IpProvider {
-    pub fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
-        Self {
-            ipv4: Box::new(ipv4.hosts()),
-            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
-        }
-    }
-
-    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let proxy_ip = match ip {
-            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
-            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
-        };
-
-        if proxy_ip.is_none() {
-            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
-            // this might happen in ipv4 if tokens are too long lived.
-            tracing::error!("IP exhaustion: Please reset your client");
-        }
-
-        proxy_ip
-    }
 }
 
 pub fn get_user_agent(os_version_override: Option<String>) -> String {
