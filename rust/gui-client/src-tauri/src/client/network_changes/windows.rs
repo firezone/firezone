@@ -411,11 +411,12 @@ mod async_dns {
             WT_EXECUTEINWAITTHREAD,
         },
     };
+    use winreg::RegKey;
 
     /// Opens and returns the IPv4 and IPv6 registry keys
     ///
     /// `HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Services/Tcpip[6]/Parameters/Interfaces`
-    fn open_network_registry_keys() -> Result<[winreg::RegKey; 2]> {
+    fn open_network_registry_keys() -> Result<(RegKey, RegKey)> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
         let path_4 = std::path::Path::new("SYSTEM")
             .join("CurrentControlSet")
@@ -430,35 +431,30 @@ mod async_dns {
             .join("Parameters")
             .join("Interfaces");
         let flags = winreg::enums::KEY_NOTIFY;
-        Ok([
+        Ok((
             hklm.open_subkey_with_flags(path_4, flags)?,
             hklm.open_subkey_with_flags(path_6, flags)?,
-        ])
+        ))
     }
 
     pub(crate) fn run_debug() -> Result<()> {
         tracing_subscriber::fmt::init();
         let rt = tokio::runtime::Runtime::new()?;
 
-        let [key_ipv4, key_ipv6] = open_network_registry_keys()?;
-
-        let mut listener_4 = Listener::new(key_ipv4)?;
-        let mut listener_6 = Listener::new(key_ipv6)?;
+        let mut listener = CombinedListener::new()?;
 
         rt.block_on(async move {
             loop {
                 tokio::select! {
                     _r = tokio::signal::ctrl_c() => break,
-                    r = listener_4.notified() => r?,
-                    r = listener_6.notified() => r?,
+                    r = listener.notified() => r?,
                 }
 
                 let resolvers = crate::client::resolvers::get()?;
                 tracing::info!(?resolvers);
             }
 
-            listener_4.close()?;
-            listener_6.close()?;
+            listener.close()?;
             Ok::<_, anyhow::Error>(())
         })?;
 
@@ -472,7 +468,7 @@ mod async_dns {
 
     impl CombinedListener {
         pub(crate) fn new() -> Result<Self> {
-            let [key_ipv4, key_ipv6] = open_network_registry_keys()?;
+            let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
             let listener_4 = Listener::new(key_ipv4)?;
             let listener_6 = Listener::new(key_ipv6)?;
 
