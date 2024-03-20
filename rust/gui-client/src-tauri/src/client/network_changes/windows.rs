@@ -566,7 +566,7 @@ mod async_dns {
         // There is no reason in practice you'd ever want to call it from two
         // threads at once.
         //
-        // Cancel-safety: Probably. `tokio::sync::Notify` sounds cancel-safe.
+        // Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
         pub(crate) async fn notified(&mut self) -> Result<()> {
             // Order matters here
             // We want to return to the caller and let them check the DNS
