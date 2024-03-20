@@ -1,6 +1,6 @@
 defmodule Domain.Accounts do
   alias Domain.{Repo, Config, PubSub}
-  alias Domain.Auth
+  alias Domain.{Auth, Billing}
   alias Domain.Accounts.{Account, Features, Authorizer}
 
   def all_active_accounts! do
@@ -93,6 +93,8 @@ defmodule Domain.Accounts do
   end
 
   defp on_account_update(account, changeset) do
+    :ok = Billing.on_account_update(account, changeset)
+
     if Ecto.Changeset.changed?(changeset, :config) do
       broadcast_config_update_to_account(account)
     else

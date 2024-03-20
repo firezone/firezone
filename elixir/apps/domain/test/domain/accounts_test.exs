@@ -294,7 +294,12 @@ defmodule Domain.AccountsTest do
 
   describe "update_account_by_id/2.id" do
     setup do
-      account = Fixtures.Accounts.create_account(config: %{})
+      account =
+        Fixtures.Accounts.create_account(
+          config: %{},
+          metadata: %{stripe: %{customer_id: "cus_1234567890"}}
+        )
+
       %{account: account}
     end
 
@@ -374,6 +379,9 @@ defmodule Domain.AccountsTest do
     end
 
     test "updates account and broadcasts a message", %{account: account} do
+      Bypass.open()
+      |> Domain.Mocks.Stripe.mock_update_customer_endpoint(account)
+
       attrs = %{
         name: Ecto.UUID.generate(),
         features: %{
@@ -386,7 +394,8 @@ defmodule Domain.AccountsTest do
         metadata: %{
           stripe: %{
             customer_id: "cus_1234567890",
-            subscription_id: "sub_1234567890"
+            subscription_id: "sub_1234567890",
+            billing_email: Fixtures.Auth.email()
           }
         },
         config: %{
