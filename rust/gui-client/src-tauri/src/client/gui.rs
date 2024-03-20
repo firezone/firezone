@@ -794,6 +794,13 @@ async fn run_controller(
         tokio::fs::write(&ran_before_path, &[]).await?;
     }
 
+    // TODO: This is temporary until process separation is done
+    // Try to create the device ID and ignore errors if we fail.
+    // This allows Linux to run with the "Generate device ID lazily" behavior,
+    // but Windows, which runs elevated, will write the device ID, and the smoke
+    // tests can cover it.
+    connlib_shared::device_id::get().ok();
+
     let mut controller = Controller {
         advanced_settings,
         app,
