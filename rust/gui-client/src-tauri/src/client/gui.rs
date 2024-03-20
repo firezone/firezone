@@ -8,7 +8,7 @@ use crate::client::{
     settings::{self, AdvancedSettings},
     Failure,
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
@@ -188,6 +188,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         });
     }
 
+    tracing::debug!("Setting up Tauri app instance...");
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -209,6 +210,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
             settings::get_advanced_settings,
+            crate::client::welcome::sign_in,
         ])
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
@@ -228,6 +230,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         })
         .setup(move |app| {
+            tracing::debug!("Entered Tauri's `setup`");
             assert_eq!(
                 BUNDLE_ID,
                 app.handle().config().tauri.bundle.identifier,
@@ -274,8 +277,9 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             });
 
             Ok(())
-        })
-        .build(tauri::generate_context!());
+        });
+    tracing::debug!("Building Tauri app...");
+    let app = app.build(tauri::generate_context!());
 
     let app = match app {
         Ok(x) => x,
@@ -430,6 +434,7 @@ pub(crate) enum ControllerRequest {
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(SecretString),
+    SignIn,
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
     UpdateAvailable(client::updates::Release),
@@ -444,39 +449,38 @@ struct CallbackHandler {
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
-#[derive(thiserror::Error, Debug)]
-enum CallbackError {
-    #[error("system DNS resolver problem: {0}")]
-    Resolvers(#[from] client::resolvers::Error),
-    #[error("can't send to controller task: {0}")]
-    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
-}
-
 // Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
-        Ok(())
+        self.ctlr_tx
+            .try_send(ControllerRequest::Disconnected)
+            .expect("controller channel failed");
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         tracing::info!("on_tunnel_ready");
-        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
-        Ok(())
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-        Ok(())
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(client::resolvers::get()?))
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
+        let resolvers = match client::resolvers::get() {
+            Ok(resolvers) => resolvers,
+            Err(e) => {
+                tracing::error!("Failed to get system default resolvers: {e}");
+                return None;
+            }
+        };
+
+        Some(resolvers)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -618,6 +622,17 @@ impl Controller {
                 .handle_deep_link(&url)
                 .await
                 .context("Couldn't handle deep link")?,
+            Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
+                if let Some(req) = self.auth.start_sign_in()? {
+                    let url = req.to_url(&self.advanced_settings.auth_base_url);
+                    self.refresh_system_tray_menu()?;
+                    os::open_url(&self.app, &url)?;
+                    self.app
+                        .get_window("welcome")
+                        .context("Couldn't get handle to Welcome window")?
+                        .hide()?;
+                }
+            }
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 if self.session.is_some() {
                     // If the user opened the menu, then sign-in completed, then they
@@ -648,13 +663,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
                 .copy_resource(&id)
                 .context("Couldn't copy resource to clipboard")?,
-            Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self.auth.start_sign_in()? {
-                    let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu()?;
-                    os::open_url(&self.app, &url)?;
-                }
-            }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out()?;
@@ -759,7 +767,7 @@ impl Controller {
         let win = self
             .app
             .get_window(id)
-            .ok_or_else(|| anyhow!("getting handle to `{id}` window"))?;
+            .context("Couldn't get handle to `{id}` window")?;
 
         win.show()?;
         win.unminimize()?;
@@ -776,8 +784,17 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
+    tracing::debug!("Reading / generating device ID...");
     let device_id =
         connlib_shared::device_id::get().context("Failed to read / create device ID")?;
+
+    if device_id.is_first_time {
+        let win = app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?;
+        win.show()?;
+    }
+    let device_id = device_id.id;
 
     let mut controller = Controller {
         advanced_settings,

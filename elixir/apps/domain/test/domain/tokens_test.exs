@@ -444,7 +444,7 @@ defmodule Domain.TokensTest do
       assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
-    test "user can not delete other users token", %{
+    test "user cannot delete other users token", %{
       account: account
     } do
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)

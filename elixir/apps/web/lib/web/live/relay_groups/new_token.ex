@@ -303,7 +303,7 @@ defmodule Web.RelayGroups.NewToken do
           "https://api.github.com/repos/firezone/firezone/releases/latest" | \\
           grep "\\\\"tag_name\\\\":" | sed "s/.*\\\\"tag_name\\\\": \\\\"\\([^\\\\"\\\\]*\\).*/\\1/" \\
         ); \\
-        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Can not fetch latest version, rate limited by GitHub?" && exit 1; \\
+        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Cannot fetch latest version, rate limited by GitHub?" && exit 1; \\
         echo "Downloading Firezone Relay version $FIREZONE_VERSION"; \\
         arch=$(uname -m); \\
         case $arch in \\

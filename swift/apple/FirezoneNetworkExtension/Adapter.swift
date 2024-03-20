@@ -129,9 +129,7 @@ class Adapter {
 
       self.logger.log("Adapter.start")
       guard case .stoppedTunnel = self.state else {
-        packetTunnelProvider?.handleTunnelShutdown(
-          dueTo: .invalidAdapterState,
-          errorMessage: "Adapter is in invalid state")
+        logger.error("\(#function): Invalid Adapter state")
         completionHandler(.invalidState)
         return
       }
@@ -433,9 +431,7 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.setMatchDomains([""])
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger) { error in
         if let error = error {
-          self.packetTunnelProvider?.handleTunnelShutdown(
-            dueTo: .networkSettingsApplyFailure,
-            errorMessage: error.localizedDescription)
+          self.logger.error("\(#function): \(error)")
           onStarted?(AdapterError.setNetworkSettings(error))
           self.state = .stoppedTunnel
         } else {
@@ -464,6 +460,7 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes6 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
       ).compactMap { $0.asNEIPv6Route }
+      networkSettings.hasUnappliedChanges = true
 
       networkSettings.apply(on: packetTunnelProvider, logger: self.logger, completionHandler: nil)
     }

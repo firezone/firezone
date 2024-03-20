@@ -64,18 +64,6 @@ pub enum ConnlibError {
     /// Error when reading system's interface
     #[error("Error while reading system's interface")]
     IfaceRead(std::io::Error),
-    #[error("`on_set_interface_config` failed: {0}")]
-    OnSetInterfaceConfigFailed(String),
-    #[error("`on_tunnel_ready` failed: {0}")]
-    OnTunnelReadyFailed(String),
-    #[error("`on_update_resources` failed: {0}")]
-    OnUpdateResourcesFailed(String),
-    #[error("`on_update_routes` failed: {0}")]
-    OnUpdateRoutesFailed(String),
-    #[error("`get_system_default_resolvers` failed: {0}")]
-    GetSystemDefaultResolverFailed(String),
-    #[error("`protect_file_descriptor` failed: {0}")]
-    ProtectFileDescriptorFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),
@@ -164,7 +152,7 @@ pub enum ConnlibError {
 
     #[cfg(target_os = "linux")]
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
-    ResolvConf(#[from] crate::linux::etc_resolv_conf::Error),
+    ResolvConf(anyhow::Error),
 
     #[error(transparent)]
     Snownet(#[from] snownet::Error),
