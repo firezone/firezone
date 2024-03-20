@@ -344,12 +344,7 @@ impl ClientState {
         Self {
             awaiting_connection: Default::default(),
             resources_gateways: Default::default(),
-            ip_provider: IpProvider::new(
-                IPV4_RESOURCES.parse().unwrap(),
-                IPV6_RESOURCES.parse().unwrap(),
-                Some(DNS_SENTINELS_V4.parse().unwrap()),
-                Some(DNS_SENTINELS_V6.parse().unwrap()),
-            ),
+            ip_provider: IpProvider::for_resources(),
             dns_resources_internal_ips: Default::default(),
             dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
@@ -930,12 +925,7 @@ fn effective_dns_servers(
 }
 
 fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::new(
-        DNS_SENTINELS_V4.parse().unwrap(),
-        DNS_SENTINELS_V6.parse().unwrap(),
-        None,
-        None,
-    );
+    let mut ip_provider = IpProvider::for_stub_dns_servers();
 
     dns.iter()
         .cloned()
@@ -979,7 +969,25 @@ pub struct IpProvider {
 }
 
 impl IpProvider {
-    pub fn new(
+    pub fn for_resources() -> Self {
+        IpProvider::new(
+            IPV4_RESOURCES.parse().unwrap(),
+            IPV6_RESOURCES.parse().unwrap(),
+            Some(DNS_SENTINELS_V4.parse().unwrap()),
+            Some(DNS_SENTINELS_V6.parse().unwrap()),
+        )
+    }
+
+    pub fn for_stub_dns_servers() -> Self {
+        IpProvider::new(
+            DNS_SENTINELS_V4.parse().unwrap(),
+            DNS_SENTINELS_V6.parse().unwrap(),
+            None,
+            None,
+        )
+    }
+
+    fn new(
         ipv4: Ipv4Network,
         ipv6: Ipv6Network,
         exclusion_v4: Option<Ipv4Network>,
