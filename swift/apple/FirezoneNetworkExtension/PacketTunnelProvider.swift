@@ -26,27 +26,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     logger.log("\(#function)")
 
-    guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
-      logger.error("serverAddress is missing")
+    guard let apiURL = protocolConfiguration.serverAddress,
+          let tokenRef = protocolConfiguration.passwordReference,
+          let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration as? [String: String],
+          let logFilter = providerConfiguration[TunnelStoreKeys.logFilter]
+    else {
       self.handleTunnelShutdown(
         dueTo: .badTunnelConfiguration,
-        errorMessage: "serverAddress is missing")
+        errorMessage: "\(#function): protocolConfiguration is missing fields")
       completionHandler(
         PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
       return
     }
-
-    guard let tokenRef = protocolConfiguration.passwordReference else {
-      logger.error("passwordReference is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "passwordReference is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
-      return
-    }
-
-    let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration as! [String: String]
 
     Task {
       let keychain = Keychain()
@@ -59,9 +50,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       }
 
       let adapter = Adapter(
-        controlPlaneURLString: controlPlaneURLString,
+        apiURL: apiURL,
         token: token,
-        logFilter: providerConfiguration[TunnelStoreKeys.logFilter]!,
+        logFilter: logFilter,
         packetTunnelProvider: self)
       self.adapter = adapter
       do {

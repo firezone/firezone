@@ -7,7 +7,7 @@
 import Foundation
 
 public enum KeychainError: Error {
-  case securityError(Status)
+  case securityError(KeychainStatus)
   case appleSecError(call: String, status: Keychain.SecStatus)
   case nilResultFromAppleSecCall(call: String)
   case resultFromAppleSecCallIsInvalid(call: String)
@@ -29,11 +29,11 @@ public actor Keychain {
   public typealias PersistentRef = Data
 
   public enum SecStatus: Equatable {
-    case status(Status)
+    case status(KeychainStatus)
     case unknownStatus(OSStatus)
 
     init(_ osStatus: OSStatus) {
-      if let status = Status(rawValue: osStatus) {
+      if let status = KeychainStatus(rawValue: osStatus) {
         self = .status(status)
       } else {
         self = .unknownStatus(osStatus)
@@ -47,7 +47,7 @@ public actor Keychain {
 
   public init() {}
 
-  func store(token: Token) async throws -> PersistentRef {
+  func add(token: Token) async throws -> PersistentRef {
     var query: [CFString: Any] = [
       // Common for both iOS and macOS:
       kSecClass: kSecClassGenericPassword,
@@ -83,33 +83,42 @@ public actor Keychain {
           continuation.resume(throwing: KeychainError.nilResultFromAppleSecCall(call: "SecItemAdd"))
           return
         }
-        // Remove any other keychain items for the same service URL
-        var checkForStaleItemsResult: CFTypeRef?
-        let checkForStaleItemsQuery =
-          [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: Bundle.main.bundleIdentifier!,
-            kSecMatchLimit: kSecMatchLimitAll,
-            kSecReturnPersistentRef: true,
-          ] as [CFString: Any]
-        let checkRet =
-          SecStatus(
-            SecItemCopyMatching(checkForStaleItemsQuery as CFDictionary, &checkForStaleItemsResult))
-        var isSavedItemFound = false
-        if checkRet.isSuccess, let allRefs = checkForStaleItemsResult as? [Data] {
-          for ref in allRefs {
-            if ref == savedPersistentRef {
-              isSavedItemFound = true
-            } else {
-              SecItemDelete([kSecValuePersistentRef: ref] as CFDictionary)
-            }
-          }
-        }
-        guard isSavedItemFound else {
-          continuation.resume(throwing: KeychainError.unableToFindSavedItem)
+        continuation.resume(returning: savedPersistentRef)
+        return
+      }
+    }
+  }
+
+  func update(token: Token) async throws {
+    var query: [CFString: Any] = [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrAccount: account,
+      kSecAttrService: service,
+    ]
+
+    let attributesToUpdate = [
+      kSecValueData: token.data(using: .utf8) as Any,
+    ]
+
+    #if os(iOS)
+    query.merge([
+      kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
+    ], uniquingKeysWith: {_, _ in })
+    #elseif os(macOS)
+    query.merge([
+      kSecAttrAccess: try secAccessForAppAndNetworkExtension()
+    ], uniquingKeysWith: {_, _ in })
+    #endif
+
+    return try await withCheckedThrowingContinuation { [weak self] continuation in
+      self?.workQueue.async {
+        let ret = SecStatus(SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
+        guard ret.isSuccess else {
+          continuation.resume(
+            throwing: KeychainError.appleSecError(call: "SecItemUpdate", status: ret))
           return
         }
-        continuation.resume(returning: savedPersistentRef)
+        continuation.resume()
       }
     }
   }
@@ -197,7 +206,7 @@ public actor Keychain {
     }
   }
 
-  func fetch() async -> PersistentRef? {
+  func search() async -> PersistentRef? {
     return await withCheckedContinuation { [weak self] continuation in
       guard let self = self else { return }
       self.workQueue.async {
@@ -221,6 +230,6 @@ public actor Keychain {
   }
 
   private func securityError(_ status: OSStatus) -> Error {
-    KeychainError.securityError(Status(rawValue: status)!)
+    KeychainError.securityError(KeychainStatus(rawValue: status)!)
   }
 }

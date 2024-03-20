@@ -8,9 +8,10 @@ import Dependencies
 import Foundation
 
 struct KeychainStorage: Sendable {
-  var store: @Sendable (Keychain.Token) async throws -> Keychain.PersistentRef
+  var add: @Sendable (Keychain.Token) async throws -> Keychain.PersistentRef
+  var update: @Sendable (Keychain.Token) async throws -> Void
   var delete: @Sendable (Keychain.PersistentRef) async throws -> Void
-  var fetch: @Sendable () async -> Keychain.PersistentRef?
+  var search: @Sendable () async -> Keychain.PersistentRef?
 }
 
 extension KeychainStorage: DependencyKey {
@@ -18,29 +19,33 @@ extension KeychainStorage: DependencyKey {
     let keychain = Keychain()
 
     return KeychainStorage(
-      store: { try await keychain.store(token: $0) },
+      add: { try await keychain.add(token: $0) },
+      update: { try await keychain.update(token: $0) },
       delete: { try await keychain.delete(persistentRef: $0) },
-      fetch: { await keychain.fetch() }
+      search: { await keychain.search() }
     )
   }
 
   static var testValue: KeychainStorage {
     let storage = LockIsolated([Data: (Keychain.Token)]())
     return KeychainStorage(
-      store: { token in
+      add: { token in
         storage.withValue {
           let uuid = UUID().uuidString.data(using: .utf8)!
           $0[uuid] = (token)
           return uuid
         }
       },
+      update: { token in
+
+      },
       delete: { ref in
         storage.withValue {
           $0[ref] = nil
         }
       },
-      fetch: {
-        nil
+      search: {
+        return UUID().uuidString.data(using: .utf8)!
       }
     )
   }

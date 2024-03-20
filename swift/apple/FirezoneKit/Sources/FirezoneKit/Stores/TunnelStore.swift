@@ -83,12 +83,20 @@ public final class TunnelStore: ObservableObject {
           self.manager = manager
           self.status = manager.connection.status
 
+          // Connect UI state updates to this manager's status
+          setupTunnelObservers()
+
+          // Connect on app launch unless we're already connected
+          if let _ = protocolConfiguration.passwordReference,
+             self.status == .disconnected {
+            try await start()
+          }
+
           // Stop looking for our tunnel
           break
         }
       }
 
-      setupTunnelObservers()
     }
   }
 
@@ -185,11 +193,17 @@ public final class TunnelStore: ObservableObject {
       return
     }
 
-    logger.log("\(#function)")
-
     let authURL = URL(string: settings.authBaseURL)!
     let authResponse = try await auth.signIn(authURL)
-    let tokenRef = try await keychain.store(authResponse.token)
+
+    // Apple recommends updating Keychain items in place if possible
+    var tokenRef: Keychain.PersistentRef
+    if let ref = await keychain.search() {
+      try await keychain.update(authResponse.token)
+      tokenRef = ref
+    } else {
+      tokenRef = try await keychain.add(authResponse.token)
+    }
 
     // Save token and actorName
     providerConfiguration[TunnelStoreKeys.actorName] = authResponse.actorName
@@ -203,24 +217,28 @@ public final class TunnelStore: ObservableObject {
 
   // from authStore
   func signOut() async throws {
+    logger.log("\(#function)")
     guard let manager = manager,
           ![.disconnecting, .disconnected].contains(status),
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          let passwordReference = protocolConfiguration.passwordReference
+          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {
       logger.error("\(#function): Tunnel seems to be already disconnected")
       return
     }
-    logger.log("\(#function)")
 
-    // Clear token
-    try await keychain.delete(passwordReference)
+    // Clear token from VPN profile, but keep it in Keychain because the user
+    // may have customized the Keychain Item.
+    protocolConfiguration.passwordReference = nil
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
 
     // Stop tunnel
     try await stop()
   }
 
   func beginUpdatingResources() {
+    logger.log("\(#function)")
+
     self.updateResources()
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
@@ -237,6 +255,8 @@ public final class TunnelStore: ObservableObject {
   }
 
   func save(_ settings: Settings) async throws {
+    logger.log("\(#function)")
+
     guard let manager = manager,
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration

@@ -86,7 +86,7 @@ class Adapter {
   private var displayableResources = DisplayableResources()
 
   /// Starting parameters
-  private var controlPlaneURLString: String
+  private var apiURL: String
   private var token: String
 
   private let logFilter: String
@@ -94,10 +94,10 @@ class Adapter {
   private let firezoneIdFileURL: URL
 
   init(
-    controlPlaneURLString: String, token: String,
+    apiURL: String, token: String,
     logFilter: String, packetTunnelProvider: PacketTunnelProvider
   ) {
-    self.controlPlaneURLString = controlPlaneURLString
+    self.apiURL = apiURL
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler(logger: packetTunnelProvider.logger)
@@ -150,7 +150,7 @@ class Adapter {
         )
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            self.controlPlaneURLString,
+            self.apiURL,
             self.token,
             self.getOrCreateFirezoneId(from: self.firezoneIdFileURL),
             self.getDeviceName(),
@@ -347,7 +347,7 @@ extension Adapter {
       do {
         self.state = .startingTunnel(
           session: try WrappedSession.connect(
-            controlPlaneURLString,
+            apiURL,
             token,
             self.getOrCreateFirezoneId(from: self.firezoneIdFileURL),
             self.getDeviceName(),

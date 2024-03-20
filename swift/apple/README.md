@@ -61,7 +61,7 @@ Try clearing your LaunchAgent db:
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -delete
 ```
 
-**Note**: You MUST reboot after doing this!
+**Note**: You MUST reboot after doing this!<D-s>
 
 ### Outdated version of NetworkExtension loading
 
@@ -109,4 +109,13 @@ cd swift/apple
 
 ```
 rm -rf $HOME/Library/Group\ Containers/47R2M6779T.group.dev.firezone.firezone/Library/Caches/logs/connlib
+```
+
+### Clearing the Keychain item
+
+Sometimes it's helpful to be able to test how the app behaves when the keychain
+item is missing. You can remove the keychain item with the following command:
+
+```bash
+security delete-generic-password -s "dev.firezone.firezone"
 ```
