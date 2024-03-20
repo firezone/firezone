@@ -26,9 +26,9 @@ services:
         set -ex
 
         ROUTER_IP=$$(dig +short router)
-        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/lan-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
 
-        ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
+        ip route del default
+        ip route add default via $$ROUTER_IP dev eth0
 
         export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
         export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
@@ -71,9 +71,9 @@ services:
         set -ex
 
         ROUTER_IP=$$(dig +short router)
-        INTERNET_SUBNET=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/networks/lan-integration-test_wan | jq -r '.IPAM.Config[0].Subnet')
 
-        ip route add $$INTERNET_SUBNET via $$ROUTER_IP dev eth0
+        ip route del default
+        ip route add default via $$ROUTER_IP dev eth0
 
         export STUN_SERVER=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-relay-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
         export REDIS_HOST=$$(curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/containers/lan-integration-test-redis-1/json | jq -r '.NetworkSettings.Networks."lan-integration-test_wan".IPAddress')
