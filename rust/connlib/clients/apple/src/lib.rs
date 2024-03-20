@@ -97,57 +97,51 @@ pub struct CallbackHandler {
 }
 
 impl Callbacks for CallbackHandler {
-    type Error = std::convert::Infallible;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-        Ok(None)
+
+        None
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         self.inner.on_tunnel_ready();
-        Ok(())
     }
 
     fn on_update_routes(
         &self,
         route_list_4: Vec<Cidrv4>,
         route_list_6: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.inner.on_update_routes(
             serde_json::to_string(&route_list_4).unwrap(),
             serde_json::to_string(&route_list_6).unwrap(),
         );
-        Ok(None)
+
+        None
     }
 
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.inner.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),
         );
-        Ok(())
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) {
         self.inner.on_disconnect(error.to_string());
-        Ok(())
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
         let resolvers_json = self.inner.get_system_default_resolvers();
         tracing::debug!(
             "get_system_default_resolvers returned: {:?}",
@@ -156,7 +150,8 @@ impl Callbacks for CallbackHandler {
 
         let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
             .expect("developer error: failed to deserialize resolvers");
-        Ok(Some(resolvers))
+
+        Some(resolvers)
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {

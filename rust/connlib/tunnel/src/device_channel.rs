@@ -68,7 +68,7 @@ impl Device {
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         let tun = Tun::new(config, dns_config, callbacks)?;
         let mtu = ioctl::interface_mtu_by_name(tun.name())?;
@@ -88,7 +88,7 @@ impl Device {
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
-        _: &impl Callbacks<Error = Error>,
+        _: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         let tun = Tun::new(config, dns_config)?;
 
@@ -189,7 +189,7 @@ impl Device {
     pub(crate) fn set_routes(
         &mut self,
         routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<(), Error> {
         self.tun_mut()?.set_routes(routes, callbacks)?;
         Ok(())

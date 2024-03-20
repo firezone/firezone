@@ -6,7 +6,7 @@
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
     messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Result,
+    Callbacks, Result,
 };
 use io::Io;
 use std::{
@@ -41,7 +41,7 @@ pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState> {
-    pub callbacks: CallbackErrorFacade<CB>,
+    pub callbacks: CB,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
@@ -59,8 +59,6 @@ where
     CB: Callbacks + 'static,
 {
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
-
         Ok(Self {
             io: new_io(&callbacks)?,
             callbacks,
@@ -150,8 +148,6 @@ where
     CB: Callbacks + 'static,
 {
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
-
         Ok(Self {
             io: new_io(&callbacks)?,
             callbacks,
@@ -223,7 +219,7 @@ where
 }
 
 #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
-fn new_io<CB>(callbacks: &CallbackErrorFacade<CB>) -> Result<Io>
+fn new_io<CB>(callbacks: &CB) -> Result<Io>
 where
     CB: Callbacks,
 {
@@ -233,10 +229,10 @@ where
     #[cfg(target_os = "android")]
     {
         if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
-            callbacks.protect_file_descriptor(ip4_socket)?;
+            callbacks.protect_file_descriptor(ip4_socket);
         }
         if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
-            callbacks.protect_file_descriptor(ip6_socket)?;
+            callbacks.protect_file_descriptor(ip6_socket);
         }
     }
 

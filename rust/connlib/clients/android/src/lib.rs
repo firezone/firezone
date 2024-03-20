@@ -138,14 +138,12 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 }
 
 impl Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -180,9 +178,10 @@ impl Callbacks for CallbackHandler {
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
+        .expect("onSetInterfaceConfig callback failed")
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -192,13 +191,14 @@ impl Callbacks for CallbackHandler {
                 &[],
             )
         })
+        .expect("onTunnelReady callback failed")
     }
 
     fn on_update_routes(
         &self,
         route_list_4: Vec<Cidrv4>,
         route_list_6: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.env(|mut env| {
             let route_list_4 = env
                 .new_string(serde_json::to_string(&route_list_4)?)
@@ -224,10 +224,11 @@ impl Callbacks for CallbackHandler {
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
+        .expect("onUpdateRoutes callback failed")
     }
 
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), Self::Error> {
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -237,12 +238,10 @@ impl Callbacks for CallbackHandler {
                 &[JValue::Int(file_descriptor)],
             )
         })
+        .expect("protectFileDescriptor callback failed");
     }
 
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
@@ -258,9 +257,10 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&resource_list)],
             )
         })
+        .expect("onUpdateResources callback failed")
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) {
         self.env(|mut env| {
             let error = env
                 .new_string(serde_json::to_string(&error.to_string())?)
@@ -276,6 +276,7 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&error)],
             )
         })
+        .expect("onDisconnect callback failed")
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -286,7 +287,7 @@ impl Callbacks for CallbackHandler {
         })
     }
 
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
         self.env(|mut env| {
             let name = "getSystemDefaultResolvers";
             let addrs = env
@@ -297,6 +298,7 @@ impl Callbacks for CallbackHandler {
 
             Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
         })
+        .expect("getSystemDefaultResolvers callback failed")
     }
 }
 

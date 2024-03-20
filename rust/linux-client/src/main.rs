@@ -82,32 +82,32 @@ struct CallbackHandler {
     handle: Option<file_logger::Handle>,
 }
 
-#[derive(Debug, thiserror::Error)]
-enum CbError {
-    #[error(transparent)]
-    Any(#[from] anyhow::Error),
-}
-
 impl Callbacks for CallbackHandler {
-    // I spent several minutes messing with `anyhow` and couldn't figure out how to make
-    // it implement `std::error::Error`: <https://github.com/dtolnay/anyhow/issues/25>
-    type Error = CbError;
-
     /// May return Firezone's own servers, e.g. `100.100.111.1`.
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        let default_resolvers = match self.dns_control_method {
-            None => get_system_default_resolvers_resolv_conf()?,
-            Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf()?,
+    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
+        let maybe_resolvers = match self.dns_control_method {
+            None => get_system_default_resolvers_resolv_conf(),
+            Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
             Some(DnsControlMethod::NetworkManager) => {
-                get_system_default_resolvers_network_manager()?
+                get_system_default_resolvers_network_manager()
             }
-            Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved()?,
+            Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
         };
-        tracing::info!(?default_resolvers);
-        Ok(Some(default_resolvers))
+
+        let resolvers = match maybe_resolvers {
+            Ok(resolvers) => resolvers,
+            Err(e) => {
+                tracing::error!("Failed to get system default resolvers: {e}");
+                return None;
+            }
+        };
+
+        tracing::info!(?resolvers);
+
+        Some(resolvers)
     }
 
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!("Disconnected: {error}");
 
         std::process::exit(1);

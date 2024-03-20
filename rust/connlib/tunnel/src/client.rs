@@ -91,7 +91,7 @@ where
                 .insert(resource_description.id(), resource_description.clone());
         }
 
-        self.update_resource_list()?;
+        self.update_resource_list();
         self.update_routes()?;
 
         Ok(())
@@ -115,9 +115,7 @@ where
             tracing::error!(%id, "Failed to update routes: {err:?}");
         }
 
-        if let Err(err) = self.update_resource_list() {
-            tracing::error!("Failed to update resource list: {err:#?}")
-        }
+        self.update_resource_list();
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
             tracing::debug!("No gateway associated with resource");
@@ -159,7 +157,7 @@ where
         tracing::debug!("Resource removed")
     }
 
-    fn update_resource_list(&self) -> connlib_shared::Result<()> {
+    fn update_resource_list(&self) {
         self.callbacks.on_update_resources(
             self.role_state
                 .resource_ids
@@ -167,8 +165,7 @@ where
                 .sorted()
                 .cloned()
                 .collect_vec(),
-        )?;
-        Ok(())
+        );
     }
 
     /// Sets the interface configuration and starts background tasks.
@@ -179,8 +176,6 @@ where
             config.upstream_dns.clone(),
             self.callbacks
                 .get_system_default_resolvers()
-                .ok()
-                .flatten()
                 .unwrap_or_default(),
         );
 
@@ -202,7 +197,7 @@ where
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
         let name = self.io.device_mut().name().to_owned();
 
-        self.callbacks.on_tunnel_ready()?;
+        self.callbacks.on_tunnel_ready();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 

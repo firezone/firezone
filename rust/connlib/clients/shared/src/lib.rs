@@ -6,7 +6,7 @@ pub use connlib_shared::{
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, CallbackErrorFacade};
+use connlib_shared::get_user_agent;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::time::Duration;
@@ -41,7 +41,6 @@ impl Session {
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
         let connect_handle = handle.spawn(connect(
@@ -127,20 +126,20 @@ where
         }
         Ok(Err(e)) => {
             tracing::error!("connlib failed: {e}");
-            let _ = callbacks.on_disconnect(&e);
+            callbacks.on_disconnect(&e);
         }
         Err(e) => match e.try_into_panic() {
             Ok(panic) => {
                 if let Some(msg) = panic.downcast_ref::<&str>() {
-                    let _ = callbacks.on_disconnect(&Error::Panic(msg.to_string()));
+                    callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;
                 }
 
-                let _ = callbacks.on_disconnect(&Error::PanicNonStringPayload);
+                callbacks.on_disconnect(&Error::PanicNonStringPayload);
             }
             Err(_) => {
                 tracing::error!("connlib task was cancelled");
-                let _ = callbacks.on_disconnect(&Error::Cancelled);
+                callbacks.on_disconnect(&Error::Cancelled);
             }
         },
     }
