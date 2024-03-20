@@ -132,7 +132,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
 
     // Check for updates
     let ctlr_tx_clone = ctlr_tx.clone();
@@ -248,7 +247,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                         ctlr_rx,
                         logging_handles,
                         advanced_settings,
-                        notify_controller,
                     )
                     .await
                 });
@@ -782,7 +780,6 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
-    notify_controller: Arc<Notify>,
 ) -> Result<()> {
     tracing::debug!("Reading / generating device ID...");
     let device_id =
@@ -804,7 +801,7 @@ async fn run_controller(
         session: None,
         device_id,
         logging_handles,
-        notify_controller,
+        notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
     };
