@@ -57,8 +57,7 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::{runtime::Runtime, sync::Notify};
+use tokio::{runtime::Runtime, sync::mpsc};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -91,7 +90,7 @@ pub(crate) fn run_debug() -> Result<()> {
     // Returns Err before COM is initialized
     assert!(get_apartment_type().is_err());
 
-    let com_worker = Worker::new()?;
+    let mut com_worker = Worker::new()?;
 
     // We have to initialize COM again for the main thread. This doesn't
     // seem to be a problem in the main app since Tauri initializes COM for itself.
@@ -188,7 +187,7 @@ pub fn check_internet() -> Result<bool> {
 /// Worker thread that can be joined explicitly, and joins on Drop
 pub(crate) struct Worker {
     inner: Option<WorkerInner>,
-    notify: Arc<Notify>,
+    rx: mpsc::Receiver<()>,
 }
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
@@ -199,18 +198,17 @@ struct WorkerInner {
 
 impl Worker {
     pub(crate) fn new() -> Result<Self> {
-        let notify = Arc::new(Notify::new());
+        let (tx, rx) = mpsc::channel(1);
 
-        let (stopper, rx) = tokio::sync::oneshot::channel();
+        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
         let thread = {
-            let notify = Arc::clone(&notify);
             std::thread::Builder::new()
                 .name("Firezone COM worker".into())
                 .spawn(move || {
                     {
                         let com = ComGuard::new()?;
-                        let _network_change_listener = Listener::new(&com, notify)?;
-                        rx.blocking_recv().ok();
+                        let _network_change_listener = Listener::new(&com, tx)?;
+                        stopper_rx.blocking_recv().ok();
                     }
                     tracing::debug!("COM worker thread shut down gracefully");
                     Ok(())
@@ -219,7 +217,7 @@ impl Worker {
 
         Ok(Self {
             inner: Some(WorkerInner { thread, stopper }),
-            notify,
+            rx,
         })
     }
 
@@ -238,8 +236,8 @@ impl Worker {
         Ok(())
     }
 
-    pub(crate) async fn notified(&self) {
-        self.notify.notified().await;
+    pub(crate) async fn notified(&mut self) {
+        self.rx.recv().await;
     }
 }
 
@@ -314,7 +312,7 @@ struct Listener<'a> {
 #[windows_implement::implement(INetworkEvents)]
 #[derive(Clone)]
 struct ListenerInner {
-    notify: Arc<Notify>,
+    tx: mpsc::Sender<()>,
 }
 
 impl<'a> Drop for Listener<'a> {
@@ -332,7 +330,7 @@ impl<'a> Listener<'a> {
     ///   on the same thread as `new` is called on.
     /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    fn new(com: &'a ComGuard, notify: Arc<Notify>) -> Result<Self, Error> {
+    fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self, Error> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
@@ -349,7 +347,7 @@ impl<'a> Listener<'a> {
         let mut this = Listener {
             advise_cookie_net: None,
             cxn_point_net,
-            inner: ListenerInner { notify },
+            inner: ListenerInner { tx },
             _com: com,
         };
 
@@ -367,7 +365,7 @@ impl<'a> Listener<'a> {
         // 2. Caller continues setup, checks Internet is connected
         // 3. Internet gets disconnected but caller isn't notified
         // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
-        this.inner.notify.notify_one();
+        this.inner.tx.try_send(()).ok();
 
         Ok(this)
     }
@@ -399,7 +397,8 @@ impl INetworkEvents_Impl for ListenerInner {
         _networkid: &GUID,
         _newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
-        self.notify.notify_one();
+        // Use `try_send` because we're only sending a notification to wake up the receiver.
+        self.tx.try_send(()).ok();
         Ok(())
     }
 
