@@ -6,19 +6,40 @@ defmodule Web.Settings.ApiClients.Show do
     unless Domain.Config.global_feature_enabled?(:api_client_ui),
       do: raise(Web.LiveErrors.NotFoundError)
 
-    with {:ok, actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []),
-         {:ok, tokens} <-
-           Tokens.list_tokens_for(actor, socket.assigns.subject, preload: :created_by_identity) do
+    with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
       socket =
-        assign(
-          socket,
+        socket
+        |> assign(
           actor: actor,
-          tokens: tokens,
           page_title: "API Client #{actor.name}"
+        )
+        |> assign_live_table("tokens",
+          query_module: Tokens.Token.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_tokens_update!/2
         )
 
       {:ok, socket}
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_tokens_update!(socket, list_opts) do
+    list_opts =
+      Keyword.put(list_opts, :preload, created_by_identity: [:actor])
+
+    with {:ok, tokens, metadata} <-
+           Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         tokens: tokens,
+         tokens_metadata: metadata
+       )}
     end
   end
 
@@ -100,18 +121,29 @@ defmodule Web.Settings.ApiClients.Show do
       </:action>
 
       <:content>
-        <.table id="tokens" rows={@tokens} row_id={&"api-client-token-#{&1.id}"}>
-          <:col :let={token} label="name" sortable="false">
+        <.live_table
+          id="tokens"
+          rows={@tokens}
+          row_id={&"api-client-token-#{&1.id}"}
+          filters={@filters_by_table_id["tokens"]}
+          filter={@filter_form_by_table_id["tokens"]}
+          ordered_by={@order_by_table_id["tokens"]}
+          metadata={@tokens_metadata}
+        >
+          <:col :let={token} label="name">
             <%= token.name %>
           </:col>
-          <:col :let={token} label="expires at" sortable="false">
+          <:col :let={token} label="expires at">
             <%= Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, []) %>
           </:col>
-          <:col :let={token} label="created by" sortable="false">
+          <:col :let={token} label="created by">
             <%= token.created_by_identity.provider_identifier %>
           </:col>
-          <:col :let={token} label="last seen at" sortable="false">
+          <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
+          </:col>
+          <:col :let={token} label="last used IP">
+            <%= token.last_seen_remote_ip %>
           </:col>
           <:action :let={token}>
             <.delete_button
@@ -132,7 +164,7 @@ defmodule Web.Settings.ApiClients.Show do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
 
@@ -150,13 +182,12 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("disable", _params, socket) do
-    with {:ok, actor} <- Actors.disable_actor(socket.assigns.actor, socket.assigns.subject),
-         {:ok, tokens} <-
-           Tokens.list_tokens_for(actor, socket.assigns.subject, preload: :created_by_identity) do
+    with {:ok, actor} <- Actors.disable_actor(socket.assigns.actor, socket.assigns.subject) do
       socket =
         socket
         |> put_flash(:info, "API Client was disabled.")
-        |> assign(actor: actor, tokens: tokens)
+        |> assign(actor: actor)
+        |> reload_live_table!("tokens")
 
       {:noreply, socket}
     end
@@ -169,6 +200,7 @@ defmodule Web.Settings.ApiClients.Show do
       socket
       |> put_flash(:info, "API Client was enabled.")
       |> assign(actor: actor)
+      |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
@@ -176,15 +208,10 @@ defmodule Web.Settings.ApiClients.Show do
   def handle_event("revoke_all_tokens", _params, socket) do
     {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
 
-    {:ok, tokens} =
-      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: :created_by_identity
-      )
-
     socket =
       socket
       |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
-      |> assign(tokens: tokens)
+      |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
@@ -193,15 +220,10 @@ defmodule Web.Settings.ApiClients.Show do
     {:ok, token} = Tokens.fetch_token_by_id(id, socket.assigns.subject)
     {:ok, _token} = Tokens.delete_token(token, socket.assigns.subject)
 
-    {:ok, tokens} =
-      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: :created_by_identity
-      )
-
     socket =
       socket
       |> put_flash(:info, "Token was revoked.")
-      |> assign(tokens: tokens)
+      |> reload_live_table!("tokens")
 
     {:noreply, socket}
   end
