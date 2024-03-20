@@ -1,10 +1,6 @@
 defmodule Domain.Geo do
   @radius_of_earth_km 6371.0
 
-  # Since most of our customers are from US we use
-  # geographic center of USA as default coordinates
-  @default_coordinates {39.8283, -98.5795}
-
   @coordinates_by_code %{
                          "AF" => {33, 65},
                          "AX" => {60.116667, 19.9},
@@ -259,10 +255,6 @@ defmodule Domain.Geo do
                        |> Enum.map(fn {code, {lat, lon}} -> {code, {lat * 1.0, lon * 1.0}} end)
                        |> Map.new()
 
-  def fetch_radius_of_earth_km! do
-    @radius_of_earth_km
-  end
-
   def distance({lat1, lon1}, {lat2, lon2}) do
     d_lat = degrees_to_radians(lat2 - lat1)
     d_lon = degrees_to_radians(lon2 - lon1)
@@ -282,7 +274,10 @@ defmodule Domain.Geo do
   end
 
   def maybe_put_default_coordinates(country_code, {nil, nil}) do
-    Map.get(@coordinates_by_code, country_code, @default_coordinates)
+    case Map.get(@coordinates_by_code, country_code) do
+      {lat, lon} -> {lat, lon}
+      nil -> {nil, nil}
+    end
   end
 
   def maybe_put_default_coordinates(_country_code, {lat, lon}) do
