@@ -43,14 +43,14 @@ defmodule API.MixProject do
       {:domain, in_umbrella: true},
 
       # Phoenix deps
+      {:bandit, "~> 1.0"},
       {:phoenix, "~> 1.7.0"},
       {:phoenix_ecto, "~> 4.4"},
-      {:plug_cowboy, "~> 2.7"},
 
       # Observability deps
-      {:telemetry_metrics, "~> 0.6"},
+      {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
-      {:opentelemetry_cowboy, "~> 0.3"},
+      {:opentelemetry_bandit, "~> 0.1.4"},
       {:opentelemetry_phoenix, "~> 1.1"},
 
       # Other deps

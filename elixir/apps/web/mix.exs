@@ -42,7 +42,7 @@ defmodule Web.MixProject do
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 0.20.1"},
-      {:plug_cowboy, "~> 2.7"},
+      {:bandit, "~> 1.0"},
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.0"},
 
@@ -56,7 +56,7 @@ defmodule Web.MixProject do
       {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
 
       # Observability and debugging deps
-      {:telemetry_metrics, "~> 0.6"},
+      {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
@@ -66,9 +66,9 @@ defmodule Web.MixProject do
       {:gen_smtp, "~> 1.0"},
 
       # Observability
-      {:opentelemetry_cowboy, "~> 0.3"},
+      {:opentelemetry_bandit, "~> 0.1.4"},
       {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
-      {:opentelemetry_phoenix, "~> 1.1"},
+      {:opentelemetry_phoenix, "~> 1.2"},
       {:nimble_options, "~> 1.0", override: true},
 
       # Other deps
