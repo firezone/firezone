@@ -90,7 +90,7 @@ pub(crate) fn run() -> Result<()> {
                 anyhow::bail!("`smoke-test` failed its elevation check");
             }
 
-            let result = gui::run(cli);
+            let result = gui::run(&cli);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -108,7 +108,7 @@ pub(crate) fn run() -> Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 fn run_gui(cli: Cli) -> Result<()> {
-    let result = gui::run(cli);
+    let result = gui::run(&cli);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
