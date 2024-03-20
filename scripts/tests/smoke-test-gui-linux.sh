@@ -8,6 +8,7 @@ DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
+RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
 
 export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client
@@ -20,22 +21,23 @@ function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
     stat "$LOGS_PATH" && exit 1
     stat "$SETTINGS_PATH" && exit 1
-    # TODO: Revisit
+    # TODO: The device ID will be written by the tunnel, not the GUI, so we can't check that.
     # stat "$DEVICE_ID_PATH" && exit 1
+    stat "$RAN_BEFORE_PATH" && exit 1
 
     # Run the smoke test normally
     xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
 
     # Note the device ID
-    DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
+    # DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
 
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
     # https://stackoverflow.com/questions/41321092
     bash -c "stat \"${LOGS_PATH}/\"connlib*log"
     stat "$SETTINGS_PATH"
-    # TODO: Revisit
     # stat "$DEVICE_ID_PATH"
+    stat "$RAN_BEFORE_PATH"
 
     # Run the test again and make sure the device ID is not changed
     xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
@@ -50,8 +52,8 @@ function smoke_test() {
     # Clean up the files but not the folders
     rm -rf "$LOGS_PATH"
     rm "$SETTINGS_PATH"
-    # TODO: Revisit
     # rm "$DEVICE_ID_PATH"
+    rm "$RAN_BEFORE_PATH"
 }
 
 function crash_test() {
