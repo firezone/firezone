@@ -9,7 +9,6 @@ LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 
-export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
