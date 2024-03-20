@@ -501,9 +501,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    /// The UUIDv4 device ID persisted to disk
-    /// Sent verbatim to Session::connect
-    device_id: String,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -537,11 +534,13 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
+        let device_id =
+            connlib_shared::device_id::get().context("Failed to read / create device ID")?;
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
             &token,
-            self.device_id.clone(),
+            device_id.id,
             None,
             public_key.to_bytes(),
         )?;
@@ -784,17 +783,16 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
     notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    tracing::debug!("Reading / generating device ID...");
-    let device_id =
-        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
-
-    if device_id.is_first_time {
+    let session_dir = crate::client::known_dirs::session().context("Couldn't find session dir")?;
+    let ran_before_path = session_dir.join("ran_before.txt");
+    if !tokio::fs::try_exists(&ran_before_path).await? {
         let win = app
             .get_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
         win.show()?;
+        tokio::fs::create_dir_all(&session_dir).await?;
+        tokio::fs::write(&ran_before_path, &[]).await?;
     }
-    let device_id = device_id.id;
 
     let mut controller = Controller {
         advanced_settings,
@@ -802,7 +800,6 @@ async fn run_controller(
         auth: client::auth::Auth::new().context("Failed to set up auth module")?,
         ctlr_tx,
         session: None,
-        device_id,
         logging_handles,
         notify_controller,
         tunnel_ready: false,
