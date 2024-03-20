@@ -449,7 +449,7 @@ defmodule Web.LiveTable do
       :ok
     end
   else
-    defp maybe_notify_test_pid(_socket, _id), do: :ok
+    defp maybe_notify_test_pid(_id), do: :ok
   end
 
   @doc """
