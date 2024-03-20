@@ -107,7 +107,10 @@ pub(crate) fn run_debug() -> Result<()> {
 
     rt.block_on(async move {
         loop {
-            com_worker.notified().await;
+            tokio::select!{
+                _r = tokio::signal::ctrl_c() => break,
+                () = com_worker.notified() => {},
+            };
             // Make sure whatever Tokio thread we're on is associated with COM
             // somehow.
             assert_eq!(
@@ -117,7 +120,10 @@ pub(crate) fn run_debug() -> Result<()> {
 
             tracing::info!(have_internet = %check_internet()?);
         }
-    })
+        Ok::<_, anyhow::Error>(())
+    })?;
+
+    Ok(())
 }
 
 /// Runs a debug subcommand that listens to the registry for DNS changes
@@ -300,18 +306,13 @@ struct Listener<'a> {
     advise_cookie_net: Option<u32>,
     cxn_point_net: Com::IConnectionPoint,
 
-    inner: ListenerInner,
-
     /// Hold a reference to a `ComGuard` to enforce the right init-use-uninit order
     _com: &'a ComGuard,
 }
 
-/// This must be separate because we need to `Clone` that `Notify` and we can't
-/// `Clone` the COM objects in `Listener`
 // https://kennykerr.ca/rust-getting-started/how-to-implement-com-interface.html
 #[windows_implement::implement(INetworkEvents)]
-#[derive(Clone)]
-struct ListenerInner {
+struct Callback {
     tx: mpsc::Sender<()>,
 }
 
@@ -328,7 +329,7 @@ impl<'a> Listener<'a> {
     ///
     /// * `com` - Makes sure that CoInitializeEx was called. `com` have been created
     ///   on the same thread as `new` is called on.
-    /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
+    /// * `tx` - A Sender to notify when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
     fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self, Error> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
@@ -347,11 +348,14 @@ impl<'a> Listener<'a> {
         let mut this = Listener {
             advise_cookie_net: None,
             cxn_point_net,
-            inner: ListenerInner { tx },
             _com: com,
         };
 
-        let callbacks: INetworkEvents = this.inner.clone().into();
+        let cb = Callback {
+            tx: tx.clone(),
+        };
+
+        let callbacks: INetworkEvents = cb.into();
 
         // SAFETY: What happens if Windows sends us a network change event while
         // we're dropping Listener?
@@ -365,7 +369,7 @@ impl<'a> Listener<'a> {
         // 2. Caller continues setup, checks Internet is connected
         // 3. Internet gets disconnected but caller isn't notified
         // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
-        this.inner.tx.try_send(()).ok();
+        tx.try_send(()).ok();
 
         Ok(this)
     }
@@ -383,7 +387,7 @@ impl<'a> Listener<'a> {
     }
 }
 
-impl INetworkEvents_Impl for ListenerInner {
+impl INetworkEvents_Impl for Callback {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
         Ok(())
     }
@@ -408,6 +412,12 @@ impl INetworkEvents_Impl for ListenerInner {
         _flags: NLM_NETWORK_PROPERTY_CHANGE,
     ) -> WinResult<()> {
         Ok(())
+    }
+}
+
+impl Drop for Callback {
+    fn drop(&mut self) {
+        tracing::debug!("Dropped `network_changes::Callback`");
     }
 }
 
