@@ -93,6 +93,7 @@ jobs:
           direct-curl-portal-down,
           relayed-curl-portal-down,
           direct-curl-portal-relay-down,
+          direct-download-roaming-network,
           dns-etc-resolvconf,
           dns-nm,
           systemd/dns-systemd-resolved,

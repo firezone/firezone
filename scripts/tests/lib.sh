@@ -15,3 +15,14 @@ function remove_iptables_drop_rules() {
 function client_curl_resource() {
     docker compose exec -it client curl --max-time 30 --fail -i 172.20.0.100
 }
+
+# Downloads a number of bytes from a server (all zeros) and writes them to the given file.
+# Parameters:
+# $1: Number of bytes
+# $2: Destination file
+function download_bytes() {
+    NUM_BYTES=$1
+    DESTINATION=$2
+
+    docker compose exec -it client sh -c "curl --limit-rate 1k http://172.20.0.101/bytes?num=$NUM_BYTES" > "$DESTINATION"
+}
