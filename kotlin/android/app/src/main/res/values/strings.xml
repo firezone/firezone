@@ -26,7 +26,7 @@
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->
-	<string name="launching_auth_flow">Launching Chrome to sign in...</string>
+	<string name="launching_auth_flow">Launching Chrome to sign in…</string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
@@ -65,6 +65,6 @@
 	<string name="config_device_name_title">Device Name</string>
 	<string name="config_device_name_description">
 		The name of the device. This is used to identify the device in the Firezone console.
-		If unset, then the device name will be the device's model name.
+		If unset, then the device name will be the device\'s model name.
 	</string>
 </resources>
