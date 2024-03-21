@@ -106,6 +106,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          TAG_NAME: ${{ needs.update-release-draft.outputs.tag_name }}
+          TAG_NAME: ${{ inputs.release_tag || env.VERSION }}
         shell: bash
         run: ${{ matrix.upload_script }}
