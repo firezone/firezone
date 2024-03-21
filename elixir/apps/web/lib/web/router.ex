@@ -56,6 +56,12 @@ defmodule Web.Router do
       pipe_through [:public]
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+
+    scope "/error", Web do
+      pipe_through [:public]
+
+      get "/:code", ErrorController, :show
+    end
   end
 
   scope "/sign_up", Web do
