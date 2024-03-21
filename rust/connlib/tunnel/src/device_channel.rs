@@ -18,8 +18,12 @@ use tun_windows as tun;
 
 // TODO: Android and linux are nearly identical; use a common tunnel module?
 #[cfg(target_os = "android")]
-#[path = "device_channel/tun_android.rs"]
-mod tun;
+mod tun_android;
+#[cfg(target_os = "android")]
+use tun_android as tun;
+
+#[cfg(target_family = "unix")]
+mod utils;
 
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
