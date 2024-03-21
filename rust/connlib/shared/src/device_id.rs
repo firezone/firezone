@@ -3,8 +3,6 @@ use std::fs;
 use std::io::Write;
 
 pub struct DeviceId {
-    /// True iff the device ID was not found on disk and we had to generate it, meaning this is the app's first run since installing.
-    pub is_first_time: bool,
     pub id: String,
 }
 
@@ -27,10 +25,7 @@ pub fn get() -> Result<DeviceId> {
     {
         let id = j.device_id();
         tracing::debug!(?id, "Loaded device ID from disk");
-        return Ok(DeviceId {
-            is_first_time: false,
-            id,
-        });
+        return Ok(DeviceId { id });
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
@@ -50,10 +45,7 @@ pub fn get() -> Result<DeviceId> {
 
     let id = j.device_id();
     tracing::debug!(?id, "Saved device ID to disk");
-    Ok(DeviceId {
-        is_first_time: true,
-        id,
-    })
+    Ok(DeviceId { id })
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
