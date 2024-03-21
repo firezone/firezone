@@ -69,6 +69,7 @@ mod ffi {
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: String);
 
+        // TODO: remove in favor of set_dns
         #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
         fn get_system_default_resolvers(&self) -> String;
     }
@@ -141,19 +142,6 @@ impl Callbacks for CallbackHandler {
         self.inner.on_disconnect(error.to_string());
     }
 
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        let resolvers_json = self.inner.get_system_default_resolvers();
-        tracing::debug!(
-            "get_system_default_resolvers returned: {:?}",
-            resolvers_json
-        );
-
-        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
-            .expect("developer error: failed to deserialize resolvers");
-
-        Some(resolvers)
-    }
-
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.handle.roll_to_new_file().unwrap_or_else(|e| {
             tracing::error!("Failed to roll over to new log file: {e}");
@@ -193,6 +181,10 @@ impl WrappedSession {
         let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
 
+        let resolvers_json = callback_handler.get_system_default_resolvers();
+        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
+            .expect("developer error: failed to deserialize resolvers");
+
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
@@ -222,6 +214,8 @@ impl WrappedSession {
             runtime.handle().clone(),
         )
         .map_err(|err| err.to_string())?;
+
+        session.set_dns(resolvers);
 
         Ok(Self {
             inner: session,

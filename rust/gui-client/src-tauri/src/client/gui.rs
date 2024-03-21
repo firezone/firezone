@@ -13,7 +13,7 @@ use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -471,18 +471,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.notify_controller.notify_one();
     }
 
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        let resolvers = match client::resolvers::get() {
-            Ok(resolvers) => resolvers,
-            Err(e) => {
-                tracing::error!("Failed to get system default resolvers: {e}");
-                return None;
-            }
-        };
-
-        Some(resolvers)
-    }
-
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.logger.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
@@ -553,6 +541,8 @@ impl Controller {
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
         )?;
+
+        connlib.set_dns(client::resolvers::get().unwrap_or_default());
 
         self.session = Some(Session {
             callback_handler,

@@ -19,11 +19,7 @@ async fn main() -> Result<()> {
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let dns_control_method = get_dns_control_from_env();
-    let callbacks = CallbackHandler {
-        dns_control_method: dns_control_method.clone(),
-        handle,
-    };
+    let callbacks = CallbackHandler { handle };
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -40,15 +36,17 @@ async fn main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
-    let mut session = Session::connect(
+    let session = Session::connect(
         login,
         private_key,
         None,
-        callbacks,
+        callbacks.clone(),
         max_partition_time,
         tokio::runtime::Handle::current(),
     )
     .unwrap();
+    // TODO: this should be added dynamically
+    session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
@@ -76,37 +74,21 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
+    match dns_control_method {
+        None => get_system_default_resolvers_resolv_conf(),
+        Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
+        Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
+        Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
+    }
+}
+
 #[derive(Clone)]
 struct CallbackHandler {
-    dns_control_method: Option<DnsControlMethod>,
     handle: Option<file_logger::Handle>,
 }
 
 impl Callbacks for CallbackHandler {
-    /// May return Firezone's own servers, e.g. `100.100.111.1`.
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        let maybe_resolvers = match self.dns_control_method {
-            None => get_system_default_resolvers_resolv_conf(),
-            Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
-            Some(DnsControlMethod::NetworkManager) => {
-                get_system_default_resolvers_network_manager()
-            }
-            Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
-        };
-
-        let resolvers = match maybe_resolvers {
-            Ok(resolvers) => resolvers,
-            Err(e) => {
-                tracing::error!("Failed to get system default resolvers: {e}");
-                return None;
-            }
-        };
-
-        tracing::info!(?resolvers);
-
-        Some(resolvers)
-    }
-
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!("Disconnected: {error}");
 

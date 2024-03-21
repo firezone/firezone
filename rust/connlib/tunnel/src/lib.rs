@@ -76,8 +76,27 @@ where
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
-            if let Some(other) = self.role_state.poll_event() {
-                return Poll::Ready(Ok(other));
+            match self.role_state.poll_event() {
+                Some(client::Event::RefreshInterfance) => {
+                    self.update_interface()?;
+                    continue;
+                }
+                Some(client::Event::SignalIceCandidate { conn_id, candidate }) => {
+                    return Poll::Ready(Ok(ClientEvent::SignalIceCandidate { conn_id, candidate }))
+                }
+                Some(client::Event::ConnectionIntent {
+                    resource,
+                    connected_gateway_ids,
+                }) => {
+                    return Poll::Ready(Ok(ClientEvent::ConnectionIntent {
+                        resource,
+                        connected_gateway_ids,
+                    }))
+                }
+                Some(client::Event::RefreshResources { connections }) => {
+                    return Poll::Ready(Ok(ClientEvent::RefreshResources { connections }))
+                }
+                None => {}
             }
 
             if let Some(packet) = self.role_state.poll_packets() {
@@ -239,6 +258,7 @@ where
     Ok(io)
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ClientEvent {
     SignalIceCandidate {
         conn_id: GatewayId,

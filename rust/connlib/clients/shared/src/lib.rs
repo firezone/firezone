@@ -3,12 +3,14 @@ pub use connlib_shared::messages::ResourceDescription;
 pub use connlib_shared::{
     keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
+use tokio::sync::mpsc::UnboundedReceiver;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
+use std::net::IpAddr;
 use std::time::Duration;
 
 mod eventloop;
@@ -26,7 +28,7 @@ use tokio::task::JoinHandle;
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
 pub struct Session {
-    channel: tokio::sync::mpsc::Sender<Command>,
+    channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
 impl Session {
@@ -41,7 +43,7 @@ impl Session {
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
     ) -> connlib_shared::Result<Self> {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let connect_handle = handle.spawn(connect(
             url,
@@ -68,15 +70,19 @@ impl Session {
     ///
     /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
     /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
-    pub fn reconnect(&mut self) {
-        let _ = self.channel.try_send(Command::Reconnect);
+    pub fn reconnect(&self) {
+        let _ = self.channel.send(Command::Reconnect);
+    }
+
+    pub fn set_dns(&self, new_dns: Vec<IpAddr>) {
+        let _ = self.channel.send(Command::SetDns(new_dns));
     }
 
     /// Disconnect a [`Session`].
     ///
     /// This consumes [`Session`] which cleans up all state associated with it.
     pub fn disconnect(self) {
-        let _ = self.channel.try_send(Command::Stop);
+        let _ = self.channel.send(Command::Stop);
     }
 }
 
@@ -89,7 +95,7 @@ async fn connect<CB>(
     os_version_override: Option<String>,
     callbacks: CB,
     max_partition_time: Option<Duration>,
-    rx: tokio::sync::mpsc::Receiver<Command>,
+    rx: UnboundedReceiver<Command>,
 ) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
