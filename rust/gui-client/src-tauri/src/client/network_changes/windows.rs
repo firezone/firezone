@@ -677,13 +677,11 @@ mod async_dns {
         #[test]
         fn registry() {
             let flags = winreg::enums::KEY_NOTIFY | winreg::enums::KEY_WRITE;
+            let key_path = Path::new("Software")
+                .join("dev.firezone.client")
+                .join("test_CZD3JHFS");
             let (key, _disposition) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-                .create_subkey_with_flags(
-                    Path::new("Software")
-                        .join("dev.firezone.client")
-                        .join("test_CZD3JHFS"),
-                    flags,
-                )
+                .create_subkey_with_flags(&key_path, flags)
                 .expect("`open_subkey_with_flags` failed");
 
             let event =
@@ -732,6 +730,10 @@ mod async_dns {
 
             // Setting the value shouldn't break anything or crash here.
             set_reg_value(&key, 3000);
+
+            winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+                .delete_subkey_all(&key_path)
+                .expect("Should be able to delete test key");
         }
     }
 }
