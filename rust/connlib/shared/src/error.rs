@@ -1,6 +1,7 @@
 //! Error module.
 use base64::{DecodeError, DecodeSliceError};
 use boringtun::noise::errors::WireGuardError;
+use std::net::IpAddr;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -156,8 +157,8 @@ pub enum ConnlibError {
 
     #[error(transparent)]
     Snownet(#[from] snownet::Error),
-    #[error("Detected non-allowed packet in channel")]
-    UnallowedPacket,
+    #[error("Detected non-allowed packet in channel from {0}")]
+    UnallowedPacket(IpAddr),
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
