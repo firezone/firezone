@@ -2,16 +2,19 @@
 #![cfg_attr(target_family = "windows", allow(dead_code))] // TODO: Remove when windows is fully implemented.
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-#[path = "device_channel/tun_darwin.rs"]
-mod tun;
+mod tun_darwin;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use tun_darwin as tun;
 
 #[cfg(target_os = "linux")]
-#[path = "device_channel/tun_linux.rs"]
-mod tun;
+mod tun_linux;
+#[cfg(target_os = "linux")]
+use tun_linux as tun;
 
-#[cfg(target_family = "windows")]
-#[path = "device_channel/tun_windows.rs"]
-mod tun;
+#[cfg(target_os = "windows")]
+mod tun_windows;
+#[cfg(target_os = "windows")]
+use tun_windows as tun;
 
 // TODO: Android and linux are nearly identical; use a common tunnel module?
 #[cfg(target_os = "android")]
