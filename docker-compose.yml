@@ -357,7 +357,7 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
-  httptest:
+  download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
     build:
       target: dev
       context: rust
@@ -367,8 +367,8 @@ services:
     environment:
       PORT: 80
     networks:
-      resources:
-        ipv4_address: 172.20.0.101
+      dns_resources:
+        ipv4_address: 172.21.0.101
 
   dns.httpbin:
     image: kennethreitz/httpbin

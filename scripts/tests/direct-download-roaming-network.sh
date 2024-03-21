@@ -4,8 +4,7 @@ set -euo pipefail
 
 source "./scripts/tests/lib.sh"
 
-# Download happens at 1KB/s so this will take ~15 seconds
-download_bytes 10000 "download.file" &
+download_bytes 10000000 "1M" "download.file" & # Download 10MB at a max rate of 1MB/s
 DOWNLOAD_PID=$!
 
 sleep 3 # Download a bit
@@ -21,7 +20,7 @@ wait $DOWNLOAD_PID || {
     exit 1
 }
 
-known_checksum="95b532cc4381affdff0d956e12520a04129ed49d37e154228368fe5621f0b9a2"
+known_checksum="a993f8c574e0fea8c1cdcbcd9408d9e2e107ee6e4d120edcfa11decd53fa0cae"
 computed_checksum=$(sha256sum download.file | awk '{ print $1 }')
 
 if [[ "$computed_checksum" != "$known_checksum" ]]; then
