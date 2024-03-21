@@ -79,6 +79,21 @@ impl CallbackHandler {
             .map_err(CallbackError::AttachCurrentThreadFailed)
             .and_then(f)
     }
+
+    fn get_system_default_resolvers(&self) -> Vec<IpAddr> {
+        self.env(|mut env| {
+            let name = "getSystemDefaultResolvers";
+            let addrs = env
+                .call_method(&self.callback_handler, name, "()[[B", &[])
+                .and_then(JValueGen::l)
+                .and_then(|arr| convert_byte_array_array(&mut env, arr.into()))
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+
+            Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
+        })
+        .expect("getSystemDefaultResolvers callback failed")
+        .unwrap_or_default()
+    }
 }
 
 fn call_method(
@@ -286,20 +301,6 @@ impl Callbacks for CallbackHandler {
             None
         })
     }
-
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        self.env(|mut env| {
-            let name = "getSystemDefaultResolvers";
-            let addrs = env
-                .call_method(&self.callback_handler, name, "()[[B", &[])
-                .and_then(JValueGen::l)
-                .and_then(|arr| convert_byte_array_array(&mut env, arr.into()))
-                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-
-            Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
-        })
-        .expect("getSystemDefaultResolvers callback failed")
-    }
 }
 
 fn to_ip(val: &[u8]) -> Option<IpAddr> {
@@ -427,10 +428,12 @@ fn connect(
         login,
         private_key,
         Some(os_version),
-        callback_handler,
+        callback_handler.clone(),
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     )?;
+
+    session.set_dns(callback_handler.get_system_default_resolvers());
 
     Ok(SessionWrapper {
         inner: session,
