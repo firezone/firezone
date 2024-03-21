@@ -85,7 +85,7 @@ where
         let (packet, addr) = self.transform.packet_untransform(packet)?;
 
         if !self.is_allowed(addr) {
-            return Err(Error::UnallowedPacket);
+            return Err(Error::UnallowedPacket(addr));
         }
 
         Ok(packet)
