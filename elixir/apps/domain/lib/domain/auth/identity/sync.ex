@@ -38,13 +38,11 @@ defmodule Domain.Auth.Identity.Sync do
       :actor_ids_by_provider_identifier,
       fn _repo,
          %{
-           plan_identities: {_insert, _update, delete},
-           identities: identities,
+           update_identities_and_actors: update_identities,
            insert_identities: insert_identities
          } ->
         actor_ids_by_provider_identifier =
-          for identity <- identities ++ insert_identities,
-              identity.provider_identifier not in delete,
+          for identity <- update_identities ++ insert_identities,
               into: %{} do
             {identity.provider_identifier, identity.actor_id}
           end
@@ -92,7 +90,8 @@ defmodule Domain.Auth.Identity.Sync do
     provider_identifiers_to_delete = Enum.uniq(provider_identifiers_to_delete)
 
     {_count, identities} =
-      Identity.Query.by_account_id(provider.account_id)
+      Identity.Query.not_deleted()
+      |> Identity.Query.by_account_id(provider.account_id)
       |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
       |> Identity.Query.delete()
@@ -139,10 +138,22 @@ defmodule Domain.Auth.Identity.Sync do
       |> Enum.filter(fn identity ->
         identity.provider_identifier in provider_identifiers_to_update
       end)
-      # make sure that deleted identities are in the end in case of conflicts
-      |> Enum.sort_by(& &1.deleted_at, :desc)
       |> repo.preload(:actor)
-      |> Map.new(&{&1.provider_identifier, &1})
+      |> Enum.reduce(%{}, fn identity, acc ->
+        acc_identity = Map.get(acc, identity.provider_identifier)
+
+        # make sure that deleted identities are have the least priority in case of conflicts
+        cond do
+          is_nil(acc_identity) ->
+            Map.put(acc, identity.provider_identifier, identity)
+
+          is_nil(acc_identity.deleted_at) ->
+            acc
+
+          true ->
+            Map.put(acc, identity.provider_identifier, identity)
+        end
+      end)
 
     provider_identifiers_to_update
     |> Enum.uniq()

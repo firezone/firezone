@@ -69,7 +69,7 @@ config :bureaucrat, :json_library, Jason
 config :wallaby,
   driver: Wallaby.Chrome,
   screenshot_on_failure: true,
-  # XXX: Contribute to Wallaby to make this configurable on the per-process level,
+  # TODO: Contribute to Wallaby to make this configurable on the per-process level,
   # along with buffer to write logs only on process failure
   js_logger: false,
   hackney_options: [timeout: 10_000, recv_timeout: 10_000]

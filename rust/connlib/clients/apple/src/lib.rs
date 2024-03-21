@@ -2,9 +2,8 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Error, LoginUrl, ResourceDescription, Session,
+    file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, ResourceDescription, Session,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -13,8 +12,9 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tracing_subscriber::prelude::*;
+use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{prelude::*, util::TryInitError};
 
 /// The Apple client implements reconnect logic in the upper layer using OS provided
 /// APIs to detect network connectivity changes. The reconnect timeout here only
@@ -43,7 +43,7 @@ mod ffi {
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
-        fn disconnect(&mut self);
+        fn disconnect(self);
     }
 
     extern "Swift" {
@@ -69,13 +69,19 @@ mod ffi {
         #[swift_bridge(swift_name = "onDisconnect")]
         fn on_disconnect(&self, error: String);
 
+        // TODO: remove in favor of set_dns
         #[swift_bridge(swift_name = "getSystemDefaultResolvers")]
         fn get_system_default_resolvers(&self) -> String;
     }
 }
 
 /// This is used by the apple client to interact with our code.
-pub struct WrappedSession(Session);
+pub struct WrappedSession {
+    inner: Session,
+
+    #[allow(dead_code)]
+    runtime: Runtime,
+}
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
 // TODO: Uphold that promise!
@@ -92,66 +98,48 @@ pub struct CallbackHandler {
 }
 
 impl Callbacks for CallbackHandler {
-    type Error = std::convert::Infallible;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-        Ok(None)
+
+        None
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         self.inner.on_tunnel_ready();
-        Ok(())
     }
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Ipv4Network>,
-        route_list_6: Vec<Ipv6Network>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+        route_list_4: Vec<Cidrv4>,
+        route_list_6: Vec<Cidrv6>,
+    ) -> Option<RawFd> {
         self.inner.on_update_routes(
             serde_json::to_string(&route_list_4).unwrap(),
             serde_json::to_string(&route_list_6).unwrap(),
         );
-        Ok(None)
+
+        None
     }
 
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.inner.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),
         );
-        Ok(())
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) {
         self.inner.on_disconnect(error.to_string());
-        Ok(())
-    }
-
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        let resolvers_json = self.inner.get_system_default_resolvers();
-        tracing::debug!(
-            "get_system_default_resolvers returned: {:?}",
-            resolvers_json
-        );
-
-        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
-            .expect("developer error: failed to deserialize resolvers");
-        Ok(Some(resolvers))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -162,18 +150,18 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> file_logger::Handle {
+fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Handle, TryInitError> {
     let (file_layer, handle) = file_logger::layer(&log_dir);
 
-    let _ = tracing_subscriber::registry()
+    tracing_subscriber::registry()
         .with(
             tracing_oslog::OsLogger::new("dev.firezone.firezone", "connlib")
                 .with_filter(EnvFilter::new(log_filter.clone())),
         )
         .with(file_layer.with_filter(EnvFilter::new(log_filter)))
-        .try_init();
+        .try_init()?;
 
-    handle
+    Ok(handle)
 }
 
 impl WrappedSession {
@@ -190,7 +178,12 @@ impl WrappedSession {
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
+        let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
+
+        let resolvers_json = callback_handler.get_system_default_resolvers();
+        let resolvers: Vec<IpAddr> = serde_json::from_str(&resolvers_json)
+            .expect("developer error: failed to deserialize resolvers");
 
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
@@ -202,22 +195,35 @@ impl WrappedSession {
         )
         .map_err(|e| e.to_string())?;
 
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_name("connlib")
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?;
+
         let session = Session::connect(
             login,
             private_key,
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle: init_logging(log_dir.into(), log_filter),
+                handle,
             },
             Some(MAX_PARTITION_TIME),
+            runtime.handle().clone(),
         )
         .map_err(|err| err.to_string())?;
 
-        Ok(Self(session))
+        session.set_dns(resolvers);
+
+        Ok(Self {
+            inner: session,
+            runtime,
+        })
     }
 
-    fn disconnect(&mut self) {
-        self.0.disconnect()
+    fn disconnect(self) {
+        self.inner.disconnect()
     }
 }

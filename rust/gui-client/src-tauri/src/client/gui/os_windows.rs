@@ -1,5 +1,14 @@
-use super::{ControllerRequest, CtlrTx, Error};
+use super::{ControllerRequest, CtlrTx};
+use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
+use secrecy::{ExposeSecret, SecretString};
+use tauri::Manager;
+
+/// Open a URL in the user's default browser
+pub(crate) fn open_url(app: &tauri::AppHandle, url: &SecretString) -> Result<()> {
+    tauri::api::shell::open(&app.shell_scope(), url.expose_secret(), None)?;
+    Ok(())
+}
 
 /// Show a notification in the bottom right of the screen
 ///
@@ -8,14 +17,14 @@ use connlib_shared::BUNDLE_ID;
 ///
 /// TODO: Warn about silent failure if the AppID is not installed:
 /// <https://github.com/tauri-apps/winrt-notification/issues/17#issuecomment-1988715694>
-pub(crate) fn show_notification(title: &str, body: &str) -> Result<(), Error> {
+pub(crate) fn show_notification(title: &str, body: &str) -> Result<()> {
     tracing::debug!(?title, ?body, "show_notification");
 
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
         .title(title)
         .text1(body)
         .show()
-        .map_err(|_| Error::Notification(title.to_string()))?;
+        .context("Couldn't show notification")?;
 
     Ok(())
 }
@@ -41,7 +50,7 @@ pub(crate) fn show_clickable_notification(
     body: &str,
     tx: CtlrTx,
     req: ControllerRequest,
-) -> Result<(), Error> {
+) -> Result<()> {
     // For some reason `on_activated` is FnMut
     let mut req = Some(req);
 
@@ -61,6 +70,6 @@ pub(crate) fn show_clickable_notification(
             Ok(())
         })
         .show()
-        .map_err(|_| Error::ClickableNotification(title.to_string()))?;
+        .context("Couldn't show clickable notification")?;
     Ok(())
 }

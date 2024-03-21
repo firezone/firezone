@@ -3,25 +3,24 @@ defmodule Web.Policies.New do
   alias Domain.{Resources, Actors, Policies}
 
   def mount(params, _session, socket) do
-    with {:ok, resources} <-
-           Resources.list_resources(socket.assigns.subject, preload: [:gateway_groups]),
-         {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject, preload: :provider) do
-      form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
+    # TODO: unify this dropdown and the one we use for live table filters
+    resources = Resources.all_resources!(socket.assigns.subject, preload: [:gateway_groups])
+    # TODO: unify this dropdown and the one we use for live table filters
+    actor_groups = Actors.all_groups!(socket.assigns.subject, preload: :provider)
+    form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
 
-      socket =
-        assign(socket,
-          resources: resources,
-          actor_groups: actor_groups,
-          params: Map.take(params, ["site_id"]),
-          resource_id: params["resource_id"],
-          page_title: "New Policy",
-          form: form
-        )
+    socket =
+      assign(socket,
+        resources: resources,
+        actor_groups: actor_groups,
+        params: Map.take(params, ["site_id"]),
+        resource_id: params["resource_id"],
+        actor_group_id: params["actor_group_id"],
+        page_title: "New Policy",
+        form: form
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -66,7 +65,8 @@ defmodule Web.Policies.New do
               label="Group"
               type="group_select"
               options={Web.Groups.Components.select_options(@actor_groups)}
-              value={@form[:actor_group_id].value}
+              value={@actor_group_id || @form[:actor_group_id].value}
+              disabled={not is_nil(@actor_group_id)}
               required
             />
             <.input

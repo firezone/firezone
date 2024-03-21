@@ -144,9 +144,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.80"
+version = "1.0.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ad32ce52e4161730f7098c077cd2ed6229b5804ccf99e5366be1ab72a98b4e1"
+checksum = "0952808a6c2afd1aa8947271f3a60f1a6763c7b912d210184c5149b5cf147247"
 
 [[package]]
 name = "arboard"
@@ -902,12 +902,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "cfg_aliases"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
-
-[[package]]
 name = "chacha20"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -977,9 +971,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.2"
+version = "4.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b230ab84b0ffdf890d5a10abdbc8b83ae1c4918275daea1ab8801f71536b2651"
+checksum = "949626d00e063efc93b6dca932419ceb5432f99769911c0b995f7e884c778813"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -999,11 +993,11 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.0"
+version = "4.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "307bc0538d5f0f83b8248db3087aa92fe504e4691294d0c96c0eabc33f47ba47"
+checksum = "90239a040c80f5e14809ca132ddc4176ab33d5e17e49691793296e3fcb34d72f"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.52",
@@ -1116,6 +1110,7 @@ dependencies = [
  "secrecy",
  "serde_json",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-android",
  "tracing-appender",
@@ -1135,6 +1130,7 @@ dependencies = [
  "serde_json",
  "swift-bridge",
  "swift-bridge-build",
+ "tokio",
  "tracing",
  "tracing-appender",
  "tracing-oslog",
@@ -1193,6 +1189,7 @@ dependencies = [
  "known-folders",
  "libc",
  "log",
+ "mutants",
  "os_info",
  "parking_lot",
  "phoenix-channel",
@@ -1416,16 +1413,6 @@ checksum = "ad291aa74992b9b7a7e88c38acbbf6ad7e107f1d90ee8775b7bc1fc3394f485c"
 dependencies = [
  "quote",
  "syn 2.0.52",
-]
-
-[[package]]
-name = "ctrlc"
-version = "3.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "672465ae37dc1bc6380a6547a8883d5dd397b0f1faaad4f265726cc7042a5345"
-dependencies = [
- "nix 0.28.0",
- "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1879,13 +1866,16 @@ name = "firezone-cli-utils"
 version = "1.0.0"
 dependencies = [
  "clap",
- "ctrlc",
  "ip_network",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
  "url",
 ]
+
+[[package]]
+name = "firezone-client-tunnel"
+version = "0.1.0"
 
 [[package]]
 name = "firezone-gateway"
@@ -1905,6 +1895,7 @@ dependencies = [
  "firezone-tunnel",
  "futures",
  "futures-bounded",
+ "http-health-check",
  "ip_network",
  "libc",
  "phoenix-channel",
@@ -1933,6 +1924,7 @@ dependencies = [
  "crash-handler",
  "dirs",
  "firezone-cli-utils",
+ "firezone-client-tunnel",
  "futures",
  "git-version",
  "hex",
@@ -1986,6 +1978,7 @@ dependencies = [
  "resolv-conf",
  "secrecy",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1995,7 +1988,6 @@ name = "firezone-relay"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "axum 0.7.4",
  "backoff",
  "base64 0.22.0",
  "bytecodec",
@@ -2007,6 +1999,7 @@ dependencies = [
  "futures",
  "hex",
  "hex-literal",
+ "http-health-check",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2709,6 +2702,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "hermit-abi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2875,6 +2874,15 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "pin-project-lite",
+]
+
+[[package]]
+name = "http-health-check"
+version = "1.0.0"
+dependencies = [
+ "axum 0.7.4",
+ "clap",
+ "tokio",
 ]
 
 [[package]]
@@ -3681,6 +3689,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mutants"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
+
+[[package]]
 name = "native-dialog"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3834,18 +3848,6 @@ checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
 dependencies = [
  "bitflags 2.4.2",
  "cfg-if",
- "libc",
-]
-
-[[package]]
-name = "nix"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
-dependencies = [
- "bitflags 2.4.2",
- "cfg-if",
- "cfg_aliases",
  "libc",
 ]
 

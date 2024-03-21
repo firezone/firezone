@@ -87,6 +87,8 @@ config :domain, :enabled_features,
   self_hosted_relays: true,
   multi_site_resources: true
 
+config :domain, sign_up_whitelisted_domains: []
+
 config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firezone"
 
 config :domain, outbound_email_adapter_configured?: false
@@ -103,7 +105,7 @@ config :web, Web.Endpoint,
   url: [
     scheme: "http",
     host: "localhost",
-    port: 13000,
+    port: 13_000,
     path: nil
   ],
   render_errors: [
@@ -151,7 +153,7 @@ config :api, API.Endpoint,
   url: [
     scheme: "http",
     host: "localhost",
-    port: 13001,
+    port: 13_001,
     path: nil
   ],
   render_errors: [
@@ -198,6 +200,8 @@ config :logger, :console,
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
+
+config :swoosh, :api_client, Swoosh.ApiClient.Finch
 
 config :web, Web.Mailer,
   adapter: Domain.Mailer.NoopAdapter,

@@ -1,25 +1,26 @@
-use crate::ip_packet::MutableIpPacket;
+use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
-use crate::utils::{stun, turn};
-use crate::Tunnel;
+use crate::utils::{earliest, stun, turn};
+use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
     Relay, ResourceId,
 };
-use connlib_shared::{Callbacks, Dname, Error, Result};
+use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::Server;
-use std::collections::HashSet;
-use std::task::{ready, Context, Poll};
+use snownet::ServerNode;
+use std::collections::{HashSet, VecDeque};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-use tokio::time::{interval, Interval, MissedTickBehavior};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
+
+const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Description of a resource that maps to a DNS record which had its domain already resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -38,7 +39,7 @@ pub struct ResolvedResourceDescriptionDns {
 pub type ResourceDescription =
     connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
-impl<CB> Tunnel<CB, GatewayState, Server, ClientId>
+impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
@@ -46,14 +47,16 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
-        self.device
-            .initialize(config, vec![], &self.callbacks().clone())?;
-        self.device.set_routes(
+        let callbacks = self.callbacks.clone();
+        self.io
+            .device_mut()
+            .initialize(config, vec![], &callbacks)?;
+        self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
-            &self.callbacks,
+            &callbacks,
         )?;
 
-        let name = self.device.name().to_owned();
+        let name = self.io.device_mut().name().to_owned();
 
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
@@ -80,7 +83,7 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        let resource_addresses = match &resource {
+        let (resource_addresses, id) = match &resource {
             ResourceDescription::Dns(r) => {
                 let Some(domain) = domain.clone() else {
                     return Err(Error::ControlProtocolError);
@@ -90,12 +93,12 @@ where
                     return Err(Error::InvalidResource);
                 }
 
-                r.addresses.clone()
+                (r.addresses.clone(), r.id)
             }
-            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
+            ResourceDescription::Cidr(ref cidr) => (vec![cidr.address], cidr.id),
         };
 
-        let answer = self.connections_state.node.accept_connection(
+        let answer = self.role_state.node.accept_connection(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -105,22 +108,12 @@ where
                 },
             },
             client,
-            stun(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
-            turn(&relays, |addr| {
-                self.connections_state.sockets.can_handle(addr)
-            }),
+            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         );
 
-        self.new_peer(
-            ips,
-            client_id,
-            resource,
-            expires_at,
-            resource_addresses.clone(),
-        )?;
+        self.new_peer(ips, client_id, id, expires_at, resource_addresses.clone())?;
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
@@ -168,7 +161,7 @@ where
 
         for address in &addresses {
             peer.transform
-                .add_resource(*address, resource.clone(), expires_at);
+                .add_resource(*address, resource_id, expires_at);
         }
 
         tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
@@ -195,7 +188,7 @@ where
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.connections_state
+        self.role_state
             .node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
@@ -204,15 +197,14 @@ where
         &mut self,
         ips: Vec<IpNetwork>,
         client_id: ClientId,
-        resource: ResourceDescription,
+        resource: ResourceId,
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
 
         for address in resource_addresses {
-            peer.transform
-                .add_resource(address, resource.clone(), expires_at);
+            peer.transform.add_resource(address, resource, expires_at);
         }
 
         self.role_state.peers.insert(peer, &ips);
@@ -221,46 +213,126 @@ where
     }
 }
 
-/// [`Tunnel`] state specific to gateways.
 pub struct GatewayState {
     pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
-    expire_interval: Interval,
+    node: ServerNode<ClientId>,
+
+    next_expiry_resources_check: Option<Instant>,
+    buffered_events: VecDeque<GatewayEvent>,
 }
 
 impl GatewayState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Option<(ClientId, MutableIpPacket<'a>)> {
+    pub(crate) fn new(private_key: StaticSecret) -> Self {
+        Self {
+            peers: Default::default(),
+            node: ServerNode::new(private_key),
+            next_expiry_resources_check: Default::default(),
+            buffered_events: VecDeque::default(),
+        }
+    }
+
+    pub(crate) fn encapsulate<'s>(
+        &'s mut self,
+        packet: MutableIpPacket<'_>,
+    ) -> Option<snownet::Transmit<'s>> {
         let dest = packet.destination();
 
         let peer = self.peers.peer_by_ip_mut(dest)?;
         let packet = peer.transform(packet)?;
 
-        Some((peer.conn_id, packet))
+        let transmit = self
+            .node
+            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .ok()??;
+
+        Some(transmit)
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        ready!(self.expire_interval.poll_tick(cx));
-        self.expire_resources();
-        Poll::Ready(())
+    pub(crate) fn decapsulate<'b>(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+        buffer: &'b mut [u8],
+    ) -> Option<IpPacket<'b>> {
+        let (conn_id, packet) = self.node.decapsulate(
+            local,
+            from,
+            packet,
+            now,
+            buffer,
+        )
+        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .ok()??;
+
+        let Some(peer) = self.peers.get_mut(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+
+            return None;
+        };
+
+        let packet = match peer.untransform(packet.into()) {
+            Ok(packet) => packet,
+            Err(e) => {
+                // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
+                // source ips can be sticky.
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                return None;
+            }
+        };
+
+        Some(packet.into_immutable())
     }
 
-    fn expire_resources(&mut self) {
-        self.peers
-            .iter_mut()
-            .for_each(|p| p.transform.expire_resources());
-        self.peers.retain(|_, p| !p.transform.is_emptied());
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
+        earliest(self.next_expiry_resources_check, self.node.poll_timeout())
     }
-}
 
-impl Default for GatewayState {
-    fn default() -> Self {
-        let mut expire_interval = interval(Duration::from_secs(1));
-        expire_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self {
-            peers: Default::default(),
-            expire_interval,
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.node.handle_timeout(now);
+
+        match self.next_expiry_resources_check {
+            Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.transform.expire_resources());
+                self.peers.retain(|_, p| !p.transform.is_emptied());
+
+                self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
+            }
+            None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
+            Some(_) => {}
         }
+
+        while let Some(event) = self.node.poll_event() {
+            match event {
+                snownet::Event::ConnectionFailed(id) => {
+                    self.peers.remove(&id);
+                }
+                snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                } => {
+                    self.buffered_events
+                        .push_back(GatewayEvent::SignalIceCandidate {
+                            conn_id: connection,
+                            candidate,
+                        });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+        self.node.poll_transmit()
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
+        self.buffered_events.pop_front()
     }
 }

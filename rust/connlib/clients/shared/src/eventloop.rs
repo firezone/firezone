@@ -7,20 +7,20 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayId, GatewayResponse, ResourceAccepted, ResourceId},
+    messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
-    convert::Infallible,
     io,
+    net::IpAddr,
     path::PathBuf,
     task::{Context, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
-use tokio::time::{Instant, Interval, MissedTickBehavior};
+use tokio::time::{Interval, MissedTickBehavior};
 use url::Url;
 
 pub struct Eventloop<C: Callbacks> {
@@ -28,14 +28,24 @@ pub struct Eventloop<C: Callbacks> {
     tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
+
     connection_intents: SentConnectionIntents,
     log_upload_interval: tokio::time::Interval,
+}
+
+/// Commands that can be sent to the [`Eventloop`].
+pub enum Command {
+    Stop,
+    Reconnect,
+    SetDns(Vec<IpAddr>),
 }
 
 impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel<C>,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
         Self {
             tunnel,
@@ -43,6 +53,7 @@ impl<C: Callbacks> Eventloop<C> {
             tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
             log_upload_interval: upload_interval(),
+            rx,
         }
     }
 }
@@ -52,18 +63,27 @@ where
     C: Callbacks + 'static,
 {
     #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
-    pub fn poll(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Infallible, phoenix_channel::Error>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
+            match self.rx.poll_recv(cx) {
+                Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Ready(Some(Command::SetDns(dns))) => self.tunnel.set_dns(dns, Instant::now()),
+                Poll::Ready(Some(Command::Reconnect)) => {
+                    self.portal.reconnect();
+                    self.tunnel.reconnect();
+
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::error!("Tunnel failed: {e}");
+                    tracing::warn!("Tunnel error: {e}");
                     continue;
                 }
                 Poll::Pending => {}
@@ -87,9 +107,9 @@ where
         }
     }
 
-    fn handle_tunnel_event(&mut self, event: firezone_tunnel::Event<GatewayId>) {
+    fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::Event::SignalIceCandidate {
+            firezone_tunnel::ClientEvent::SignalIceCandidate {
                 conn_id: gateway,
                 candidate,
             } => {
@@ -103,7 +123,7 @@ where
                     }),
                 );
             }
-            firezone_tunnel::Event::ConnectionIntent {
+            firezone_tunnel::ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
                 resource,
                 ..
@@ -117,16 +137,11 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::Event::RefreshResources { connections } => {
+            firezone_tunnel::ClientEvent::RefreshResources { connections } => {
                 for connection in connections {
                     self.portal
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
-            }
-            firezone_tunnel::Event::SendPacket { .. }
-            | firezone_tunnel::Event::StopPeer { .. }
-            | firezone_tunnel::Event::DeviceConfigUpdated => {
-                unreachable!("Handled internally")
             }
         }
     }
@@ -168,7 +183,7 @@ where
                 resources,
             }) => {
                 if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(&interface) {
+                    if let Err(e) = self.tunnel.set_interface(interface) {
                         tracing::warn!("Failed to set interface on tunnel: {e}");
                         return;
                     }
@@ -267,7 +282,7 @@ where
                 };
             }
             ReplyMessages::SignedLogUrl(url) => {
-                let Some(path) = self.tunnel.callbacks().roll_log_file() else {
+                let Some(path) = self.tunnel.callbacks.roll_log_file() else {
                     return;
                 };
 
@@ -352,7 +367,7 @@ async fn upload(_path: PathBuf, _url: Url) -> io::Result<()> {
 
 fn upload_interval() -> Interval {
     let duration = upload_interval_duration_from_env_or_default();
-    let mut interval = tokio::time::interval_at(Instant::now() + duration, duration);
+    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + duration, duration);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     interval

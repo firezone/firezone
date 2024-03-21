@@ -7,15 +7,52 @@ defmodule Web.RelayGroups.Show do
          {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
-               relays: [],
                created_by_identity: [:actor]
              ]
            ) do
-      :ok = Relays.subscribe_to_relays_presence_in_group(group)
-      socket = assign(socket, group: group, page_title: "Relay Group #{group.name}")
+      if connected?(socket) do
+        :ok = Relays.subscribe_to_relays_presence_in_group(group)
+      end
+
+      socket =
+        socket
+        |> assign(
+          page_title: "Relay Group #{group.name}",
+          group: group
+        )
+        |> assign_live_table("relays",
+          query_module: Relays.Relay.Query,
+          enforce_filters: [
+            {:relay_group_id, group.id}
+          ],
+          sortable_fields: [
+            {:relays, :name},
+            {:relays, :last_seen_at}
+          ],
+          limit: 10,
+          callback: &handle_relays_update!/2
+        )
+
       {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_relays_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:online?])
+
+    with {:ok, relays, metadata} <- Relays.list_relays(socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         relays: relays,
+         relays_metadata: metadata
+       )}
     end
   end
 
@@ -73,7 +110,14 @@ defmodule Web.RelayGroups.Show do
       </:action>
       <:content flash={@flash}>
         <div class="relative overflow-x-auto">
-          <.table id="relays" rows={@group.relays}>
+          <.live_table
+            id="relays"
+            rows={@relays}
+            filters={@filters_by_table_id["relays"]}
+            filter={@filter_form_by_table_id["relays"]}
+            ordered_by={@order_by_table_id["relays"]}
+            metadata={@relays_metadata}
+          >
             <:col :let={relay} label="INSTANCE">
               <.link navigate={~p"/#{@account}/relays/#{relay.id}"} class={[link_style()]}>
                 <code :if={relay.name} class="block text-xs">
@@ -93,7 +137,7 @@ defmodule Web.RelayGroups.Show do
             <:empty>
               <div class="text-center text-neutral-500 p-4">No relay instances to display</div>
             </:empty>
-          </.table>
+          </.live_table>
         </div>
       </:content>
     </.section>
@@ -107,25 +151,19 @@ defmodule Web.RelayGroups.Show do
           Delete Instance Group
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:relay_groups:" <> _account_id},
+        %Phoenix.Socket.Broadcast{topic: "presences:" <> _rest},
         socket
       ) do
-    {:ok, group} =
-      Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
-        preload: [
-          relays: [],
-          created_by_identity: [:actor]
-        ]
-      )
-
-    {:noreply, assign(socket, group: group)}
+    {:noreply, reload_live_table!(socket, "relays")}
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 
   def handle_event("revoke_all_tokens", _params, socket) do
     group = socket.assigns.group

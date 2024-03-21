@@ -13,7 +13,7 @@ use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
@@ -28,6 +28,7 @@ pub use login_url::{LoginUrl, LoginUrlError};
 // See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
+    waker: Option<Waker>,
     pending_messages: VecDeque<String>,
     next_request_id: u64,
 
@@ -227,6 +228,7 @@ where
 
                 Ok(stream)
             })),
+            waker: None,
             pending_messages: Default::default(),
             _phantom: PhantomData,
             next_request_id: 0,
@@ -241,14 +243,40 @@ where
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
     pub fn join(&mut self, topic: impl Into<String>, payload: impl Serialize) {
-        let request_id = self.send_message(topic, EgressControlMessage::PhxJoin(payload));
+        let (request_id, msg) = self.make_message(topic, EgressControlMessage::PhxJoin(payload));
+        self.pending_messages.push_front(msg); // Must send the join message before all others.
 
         self.pending_join_requests.insert(request_id);
     }
 
     /// Send a message to a topic.
     pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
-        self.send_message(topic, message)
+        let (id, msg) = self.make_message(topic, message);
+        self.pending_messages.push_back(msg);
+
+        id
+    }
+
+    /// Reconnects to the portal.
+    pub fn reconnect(&mut self) {
+        // 1. Reset the backoff.
+        self.reconnect_backoff.reset();
+
+        // 2. Set state to `Connecting` without a timer.
+        let url = self.url.clone();
+        let user_agent = self.user_agent.clone();
+        self.state = State::Connecting(Box::pin(async move {
+            let (stream, _) = connect_async(make_request(url, user_agent))
+                .await
+                .map_err(InternalError::WebSocket)?;
+
+            Ok(stream)
+        }));
+
+        // 3. In case we were already re-connecting, we need to wake the suspended task.
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
     }
 
     pub fn poll(
@@ -259,8 +287,8 @@ where
             // First, check if we are connected.
             let stream = match &mut self.state {
                 State::Connected(stream) => stream,
-                State::Connecting(future) => match ready!(future.poll_unpin(cx)) {
-                    Ok(stream) => {
+                State::Connecting(future) => match future.poll_unpin(cx) {
+                    Poll::Ready(Ok(stream)) => {
                         self.reconnect_backoff.reset();
                         self.state = State::Connected(stream);
 
@@ -271,12 +299,12 @@ where
 
                         continue;
                     }
-                    Err(InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(
-                        r,
+                    Poll::Ready(Err(InternalError::WebSocket(
+                        tokio_tungstenite::tungstenite::Error::Http(r),
                     ))) if r.status().is_client_error() => {
                         return Poll::Ready(Err(Error::ClientError(r.status())));
                     }
-                    Err(e) => {
+                    Poll::Ready(Err(e)) => {
                         let Some(backoff) = self.reconnect_backoff.next_backoff() else {
                             tracing::warn!("Reconnect backoff expired");
                             return Poll::Ready(Err(Error::MaxRetriesReached));
@@ -297,6 +325,11 @@ where
                             Ok(stream)
                         }));
                         continue;
+                    }
+                    Poll::Pending => {
+                        // Save a waker in case we want to reset the `Connecting` state while we are waiting.
+                        self.waker = Some(cx.waker().clone());
+                        return Poll::Pending;
                     }
                 },
             };
@@ -416,7 +449,8 @@ where
             // Priority 3: Handle heartbeats.
             match self.heartbeat.poll(cx) {
                 Poll::Ready(Ok(msg)) => {
-                    let id = self.send_message("phoenix", msg);
+                    let (id, msg) = self.make_message("phoenix", msg);
+                    self.pending_messages.push_back(msg);
                     self.heartbeat.set_id(id);
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
@@ -451,11 +485,11 @@ where
         self.state = State::Connecting(future::ready(Err(e)).boxed())
     }
 
-    fn send_message(
+    fn make_message(
         &mut self,
         topic: impl Into<String>,
         payload: impl Serialize,
-    ) -> OutboundRequestId {
+    ) -> (OutboundRequestId, String) {
         let request_id = self.fetch_add_request_id();
 
         // We don't care about the reply type when serializing
@@ -466,9 +500,7 @@ where
         ))
         .expect("we should always be able to serialize a join topic message");
 
-        self.pending_messages.push_back(msg);
-
-        request_id
+        (request_id, msg)
     }
 
     fn fetch_add_request_id(&mut self) -> OutboundRequestId {
@@ -494,6 +526,7 @@ where
             reconnect_backoff: self.reconnect_backoff,
             login: self.login,
             init_req: self.init_req,
+            waker: self.waker,
         }
     }
 }

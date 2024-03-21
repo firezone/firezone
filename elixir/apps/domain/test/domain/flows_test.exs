@@ -223,7 +223,7 @@ defmodule Domain.FlowsTest do
     end
   end
 
-  describe "fetch_flow_by_id/2" do
+  describe "fetch_flow_by_id/3" do
     test "returns error when flow does not exist", %{subject: subject} do
       assert fetch_flow_by_id(Ecto.UUID.generate(), subject) == {:error, :not_found}
     end
@@ -306,7 +306,7 @@ defmodule Domain.FlowsTest do
     end
   end
 
-  describe "list_flows_for/2" do
+  describe "list_flows_for/3" do
     test "returns empty list when there are no flows", %{
       actor: actor,
       client: client,
@@ -315,11 +315,11 @@ defmodule Domain.FlowsTest do
       policy: policy,
       subject: subject
     } do
-      assert list_flows_for(policy, subject) == {:ok, []}
-      assert list_flows_for(resource, subject) == {:ok, []}
-      assert list_flows_for(actor, subject) == {:ok, []}
-      assert list_flows_for(client, subject) == {:ok, []}
-      assert list_flows_for(gateway, subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_flows_for(policy, subject)
+      assert {:ok, [], _metadata} = list_flows_for(resource, subject)
+      assert {:ok, [], _metadata} = list_flows_for(actor, subject)
+      assert {:ok, [], _metadata} = list_flows_for(client, subject)
+      assert {:ok, [], _metadata} = list_flows_for(gateway, subject)
     end
 
     test "does not list flows from other accounts", %{
@@ -332,11 +332,11 @@ defmodule Domain.FlowsTest do
     } do
       Fixtures.Flows.create_flow()
 
-      assert list_flows_for(policy, subject) == {:ok, []}
-      assert list_flows_for(resource, subject) == {:ok, []}
-      assert list_flows_for(actor, subject) == {:ok, []}
-      assert list_flows_for(client, subject) == {:ok, []}
-      assert list_flows_for(gateway, subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_flows_for(policy, subject)
+      assert {:ok, [], _metadata} = list_flows_for(resource, subject)
+      assert {:ok, [], _metadata} = list_flows_for(actor, subject)
+      assert {:ok, [], _metadata} = list_flows_for(client, subject)
+      assert {:ok, [], _metadata} = list_flows_for(gateway, subject)
     end
 
     test "returns all authorized flows for a given entity", %{
@@ -358,11 +358,11 @@ defmodule Domain.FlowsTest do
           gateway: gateway
         )
 
-      assert list_flows_for(policy, subject) == {:ok, [flow]}
-      assert list_flows_for(resource, subject) == {:ok, [flow]}
-      assert list_flows_for(actor, subject) == {:ok, [flow]}
-      assert list_flows_for(client, subject) == {:ok, [flow]}
-      assert list_flows_for(gateway, subject) == {:ok, [flow]}
+      assert {:ok, [^flow], _metadata} = list_flows_for(policy, subject)
+      assert {:ok, [^flow], _metadata} = list_flows_for(resource, subject)
+      assert {:ok, [^flow], _metadata} = list_flows_for(actor, subject)
+      assert {:ok, [^flow], _metadata} = list_flows_for(client, subject)
+      assert {:ok, [^flow], _metadata} = list_flows_for(gateway, subject)
     end
 
     test "does not return authorized flow of other entities", %{
@@ -377,11 +377,11 @@ defmodule Domain.FlowsTest do
       other_client = Fixtures.Clients.create_client(account: account)
       Fixtures.Flows.create_flow(account: account, client: other_client, subject: subject)
 
-      assert list_flows_for(policy, subject) == {:ok, []}
-      assert list_flows_for(resource, subject) == {:ok, []}
-      assert list_flows_for(actor, subject) == {:ok, []}
-      assert list_flows_for(client, subject) == {:ok, []}
-      assert list_flows_for(gateway, subject) == {:ok, []}
+      assert {:ok, [], _metadata} = list_flows_for(policy, subject)
+      assert {:ok, [], _metadata} = list_flows_for(resource, subject)
+      assert {:ok, [], _metadata} = list_flows_for(actor, subject)
+      assert {:ok, [], _metadata} = list_flows_for(client, subject)
+      assert {:ok, [], _metadata} = list_flows_for(gateway, subject)
     end
 
     test "returns error when subject has no permission to view flows", %{
@@ -429,7 +429,7 @@ defmodule Domain.FlowsTest do
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      {:ok, destination} = Domain.Types.IPPort.cast("127.0.0.1:80")
+      {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://127.0.0.1:80")
 
       activity = %{
         window_started_at: DateTime.add(now, -1, :minute),
@@ -437,6 +437,7 @@ defmodule Domain.FlowsTest do
         destination: destination,
         rx_bytes: 100,
         tx_bytes: 200,
+        connectivity_type: :direct,
         flow_id: flow.id,
         account_id: account.id
       }
@@ -480,6 +481,69 @@ defmodule Domain.FlowsTest do
     end
   end
 
+  describe "fetch_last_activity_for/3" do
+    setup %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      %{flow: flow}
+    end
+
+    test "returns error when flow has no activities", %{subject: subject, flow: flow} do
+      assert fetch_last_activity_for(flow, subject) == {:error, :not_found}
+    end
+
+    test "returns last activity for a flow", %{subject: subject, flow: flow} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      thirty_minutes_ago = DateTime.add(now, -30, :minute)
+      five_minutes_ago = DateTime.add(now, -5, :minute)
+      four_minutes_ago = DateTime.add(now, -4, :minute)
+
+      Fixtures.Flows.create_activity(
+        flow: flow,
+        window_started_at: thirty_minutes_ago,
+        window_ended_at: five_minutes_ago
+      )
+
+      activity =
+        Fixtures.Flows.create_activity(
+          flow: flow,
+          window_started_at: five_minutes_ago,
+          window_ended_at: four_minutes_ago
+        )
+
+      assert {:ok, fetched_activity} = fetch_last_activity_for(flow, subject)
+      assert fetched_activity.id == activity.id
+    end
+
+    test "returns error when subject has no permission to view flows", %{
+      flow: flow,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_last_activity_for(flow, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Flows.Authorizer.manage_flows_permission()]}}
+    end
+  end
+
   describe "list_flow_activities_for/4" do
     setup %{
       account: account,
@@ -511,8 +575,11 @@ defmodule Domain.FlowsTest do
       ended_after = DateTime.add(now, -30, :minute)
       started_before = DateTime.add(now, 30, :minute)
 
-      assert list_flow_activities_for(account, ended_after, started_before, subject) == {:ok, []}
-      assert list_flow_activities_for(flow, ended_after, started_before, subject) == {:ok, []}
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(account, ended_after, started_before, subject)
+
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(flow, ended_after, started_before, subject)
     end
 
     test "does not list flow activities from other accounts", %{
@@ -526,8 +593,11 @@ defmodule Domain.FlowsTest do
       ended_after = DateTime.add(now, -30, :minute)
       started_before = DateTime.add(now, 30, :minute)
 
-      assert list_flow_activities_for(account, ended_after, started_before, subject) == {:ok, []}
-      assert list_flow_activities_for(flow, ended_after, started_before, subject) == {:ok, []}
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(account, ended_after, started_before, subject)
+
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(flow, ended_after, started_before, subject)
     end
 
     test "returns ordered by window start time flow activities within a time window", %{
@@ -550,47 +620,53 @@ defmodule Domain.FlowsTest do
           window_ended_at: three_minutes_ago
         )
 
-      assert list_flow_activities_for(
-               account,
-               thirty_minutes_in_future,
-               sixty_minutes_in_future,
-               subject
-             ) == {:ok, []}
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(
+                 account,
+                 thirty_minutes_in_future,
+                 sixty_minutes_in_future,
+                 subject
+               )
 
-      assert list_flow_activities_for(
-               flow,
-               thirty_minutes_in_future,
-               sixty_minutes_in_future,
-               subject
-             ) == {:ok, []}
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(
+                 flow,
+                 thirty_minutes_in_future,
+                 sixty_minutes_in_future,
+                 subject
+               )
 
-      assert list_flow_activities_for(
-               account,
-               thirty_minutes_ago,
-               five_minutes_ago,
-               subject
-             ) == {:ok, []}
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(
+                 account,
+                 thirty_minutes_ago,
+                 five_minutes_ago,
+                 subject
+               )
 
-      assert list_flow_activities_for(
-               flow,
-               thirty_minutes_ago,
-               five_minutes_ago,
-               subject
-             ) == {:ok, []}
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(
+                 flow,
+                 thirty_minutes_ago,
+                 five_minutes_ago,
+                 subject
+               )
 
-      assert list_flow_activities_for(
-               account,
-               five_minutes_ago,
-               now,
-               subject
-             ) == {:ok, [activity1]}
+      assert {:ok, [^activity1], _metadata} =
+               list_flow_activities_for(
+                 account,
+                 five_minutes_ago,
+                 now,
+                 subject
+               )
 
-      assert list_flow_activities_for(
-               flow,
-               five_minutes_ago,
-               now,
-               subject
-             ) == {:ok, [activity1]}
+      assert {:ok, [^activity1], _metadata} =
+               list_flow_activities_for(
+                 flow,
+                 five_minutes_ago,
+                 now,
+                 subject
+               )
 
       activity2 =
         Fixtures.Flows.create_activity(
@@ -599,19 +675,21 @@ defmodule Domain.FlowsTest do
           window_ended_at: four_minutes_ago
         )
 
-      assert list_flow_activities_for(
-               account,
-               thirty_minutes_ago,
-               now,
-               subject
-             ) == {:ok, [activity2, activity1]}
+      assert {:ok, [^activity2, ^activity1], _metadata} =
+               list_flow_activities_for(
+                 account,
+                 thirty_minutes_ago,
+                 now,
+                 subject
+               )
 
-      assert list_flow_activities_for(
-               flow,
-               thirty_minutes_ago,
-               now,
-               subject
-             ) == {:ok, [activity2, activity1]}
+      assert {:ok, [^activity2, ^activity1], _metadata} =
+               list_flow_activities_for(
+                 flow,
+                 thirty_minutes_ago,
+                 now,
+                 subject
+               )
     end
 
     test "returns error when subject has no permission to view flows", %{
@@ -810,15 +888,15 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [_expired_flow]} = expire_flows_for(resource, subject)
-      assert expire_flows_for(actor_group, subject) == {:ok, []}
-      assert expire_flows_for(resource, subject) == {:ok, []}
+      assert {:ok, []} = expire_flows_for(actor_group, subject)
+      assert {:ok, []} = expire_flows_for(resource, subject)
     end
 
     test "does not expire flows outside of account", %{
       resource: resource
     } do
       subject = Fixtures.Auth.create_subject()
-      assert expire_flows_for(resource, subject) == {:ok, []}
+      assert {:ok, []} = expire_flows_for(resource, subject)
     end
   end
 end

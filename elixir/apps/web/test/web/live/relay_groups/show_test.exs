@@ -155,6 +155,33 @@ defmodule Web.Live.RelayGroups.ShowTest do
     end)
   end
 
+  test "updates relay status using presence", %{
+    account: account,
+    group: group,
+    relay: relay,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/relay_groups/#{group}")
+
+    Domain.Config.put_env_override(:test_pid, self())
+    :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
+    :ok = Domain.Relays.connect_relay(relay, "foo")
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
+    assert_receive {:live_table_reloaded, "relays"}, 250
+
+    lv
+    |> element("#relays")
+    |> render()
+    |> table_to_map()
+    |> with_table_row("instance", "#{relay.ipv4} #{relay.ipv6}", fn row ->
+      assert row["status"] =~ "Online"
+    end)
+  end
+
   test "allows deleting relays", %{
     account: account,
     group: group,
@@ -181,8 +208,6 @@ defmodule Web.Live.RelayGroups.ShowTest do
     identity: identity,
     conn: conn
   } do
-    token = Fixtures.Relays.create_token(account: account, group: group)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -192,7 +217,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
            |> element("button", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
-    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    assert Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id).deleted_at
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{

@@ -137,4 +137,28 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert Repo.get(Domain.Gateways.Gateway, gateway.id).deleted_at
   end
+
+  test "updates gateway status on presence event", %{
+    account: account,
+    gateway: gateway,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/gateways/#{gateway}")
+
+    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(gateway.group_id)
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    assert_receive %{topic: "presences:group_gateways:" <> _}
+
+    table =
+      lv
+      |> element("#gateway")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["status"] =~ "Online"
+  end
 end

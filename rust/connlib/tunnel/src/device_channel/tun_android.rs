@@ -42,10 +42,10 @@ impl Tun {
     pub fn new(
         config: &InterfaceConfig,
         dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<Self> {
         let fd = callbacks
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config)?
+            .on_set_interface_config(config.ipv4, config.ipv6, dns_config)
             .ok_or(Error::NoFd)?;
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };
@@ -63,13 +63,13 @@ impl Tun {
     pub fn set_routes(
         &mut self,
         routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<()> {
         let fd = callbacks
             .on_update_routes(
-                routes.iter().filter_map(ipv4).copied().collect(),
-                routes.iter().filter_map(ipv6).copied().collect(),
-            )?
+                routes.iter().copied().filter_map(ipv4).collect(),
+                routes.iter().copied().filter_map(ipv6).collect(),
+            )
             .ok_or(Error::NoFd)?;
 
         // SAFETY: we expect the callback to return a valid file descriptor

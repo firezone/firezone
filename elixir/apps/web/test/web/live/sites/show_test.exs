@@ -135,23 +135,27 @@ defmodule Web.Live.Sites.ShowTest do
 
     rows
     |> with_table_row("instance", gateway.name, fn row ->
+      assert gateway.last_seen_remote_ip
+      assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
       assert row["status"] =~ "Online"
     end)
   end
 
-  test "renders gateway status", %{
+  test "updates online gateways table", %{
     account: account,
     group: group,
     gateway: gateway,
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Gateways.connect_gateway(gateway)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
+
+    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(group)
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
     lv
     |> element("#gateways")
@@ -170,8 +174,6 @@ defmodule Web.Live.Sites.ShowTest do
     identity: identity,
     conn: conn
   } do
-    token = Fixtures.Gateways.create_token(account: account, group: group)
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -181,7 +183,7 @@ defmodule Web.Live.Sites.ShowTest do
            |> element("button", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
-    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
   end
 
   test "renders resources table", %{
@@ -199,7 +201,7 @@ defmodule Web.Live.Sites.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources")
+      |> live(~p"/#{account}/sites/#{group}")
 
     resource_rows =
       lv
@@ -210,7 +212,6 @@ defmodule Web.Live.Sites.ShowTest do
     Enum.each(resource_rows, fn row ->
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
-      assert row["sites"] =~ group.name
       assert row["authorized groups"] == "None, create a Policy to grant access."
     end)
   end
@@ -247,7 +248,7 @@ defmodule Web.Live.Sites.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources")
+      |> live(~p"/#{account}/sites/#{group}")
 
     resource_rows =
       lv
@@ -269,7 +270,7 @@ defmodule Web.Live.Sites.ShowTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources")
+      |> live(~p"/#{account}/sites/#{group}")
 
     resource_rows =
       lv

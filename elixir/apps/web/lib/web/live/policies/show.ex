@@ -7,24 +7,49 @@ defmodule Web.Policies.Show do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [actor_group: [:provider], resource: [], created_by_identity: :actor]
-           ),
-         {:ok, flows} <-
-           Flows.list_flows_for(policy, socket.assigns.subject,
-             preload: [client: [:actor], gateway: [:group]]
            ) do
-      :ok = Policies.subscribe_to_events_for_policy(policy)
+      if connected?(socket) do
+        :ok = Policies.subscribe_to_events_for_policy(policy)
+      end
 
       socket =
         assign(socket,
-          policy: policy,
-          flows: flows,
           page_title: "Policy #{policy.id}",
+          policy: policy,
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account)
+        )
+        |> assign_live_table("flows",
+          query_module: Flows.Flow.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_flows_update!/2
         )
 
       {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_flows_update!(socket, list_opts) do
+    list_opts =
+      Keyword.put(list_opts, :preload,
+        client: [:actor],
+        gateway: [:group]
+      )
+
+    with {:ok, flows, metadata} <-
+           Flows.list_flows_for(socket.assigns.policy, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 
@@ -136,7 +161,15 @@ defmodule Web.Policies.Show do
         Attempts by actors to access the resource governed by this policy.
       </:help>
       <:content>
-        <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+        <.live_table
+          id="flows"
+          rows={@flows}
+          row_id={&"flows-#{&1.id}"}
+          filters={@filters_by_table_id["flows"]}
+          filter={@filter_form_by_table_id["flows"]}
+          ordered_by={@order_by_table_id["flows"]}
+          metadata={@flows_metadata}
+        >
           <:col :let={flow} label="AUTHORIZED AT">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
@@ -167,7 +200,7 @@ defmodule Web.Policies.Show do
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
 
@@ -188,11 +221,14 @@ defmodule Web.Policies.Show do
   def handle_info({_action, _policy_id}, socket) do
     {:ok, policy} =
       Policies.fetch_policy_by_id(socket.assigns.policy.id, socket.assigns.subject,
-        preload: [:actor_group, :resource, [created_by_identity: :actor]]
+        preload: [:actor_group, :resource, created_by_identity: :actor]
       )
 
     {:noreply, assign(socket, policy: policy)}
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 
   def handle_event("disable", _params, socket) do
     {:ok, policy} = Policies.disable_policy(socket.assigns.policy, socket.assigns.subject)

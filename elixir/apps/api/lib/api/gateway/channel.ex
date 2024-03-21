@@ -217,7 +217,7 @@ defmodule API.Gateway.Channel do
       {relay_hosting_type, relay_connection_type} =
         Gateways.relay_strategy([socket.assigns.gateway_group])
 
-      {:ok, relays} = Relays.list_connected_relays_for_resource(resource, relay_hosting_type)
+      {:ok, relays} = Relays.all_connected_relays_for_resource(resource, relay_hosting_type)
 
       ref = Ecto.UUID.generate()
 
@@ -341,18 +341,20 @@ defmodule API.Gateway.Channel do
           %{
             "flow_id" => flow_id,
             "destination" => destination,
+            "connectivity_type" => connectivity_type,
             "rx_bytes" => rx_bytes,
             "tx_bytes" => tx_bytes
           } = metric
 
           %{
+            flow_id: flow_id,
+            account_id: socket.assigns.gateway.account_id,
             window_started_at: window_started_at,
             window_ended_at: window_ended_at,
+            connectivity_type: String.to_existing_atom(connectivity_type),
             destination: destination,
             rx_bytes: rx_bytes,
-            tx_bytes: tx_bytes,
-            flow_id: flow_id,
-            account_id: socket.assigns.gateway.account_id
+            tx_bytes: tx_bytes
           }
         end)
 

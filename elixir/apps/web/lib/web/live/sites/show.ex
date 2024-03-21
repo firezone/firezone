@@ -5,30 +5,83 @@ defmodule Web.Sites.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Gateways.fetch_group_by_id(id, socket.assigns.subject,
-             preload: [
-               connections: [:resource],
-               created_by_identity: [:actor]
-             ]
-           ),
-         {:ok, gateways} <-
-           Gateways.list_connected_gateways_for_group(group, socket.assigns.subject),
-         resources =
-           group.connections
-           |> Enum.reject(&is_nil(&1.resource))
-           |> Enum.map(& &1.resource),
-         {:ok, resource_actor_groups_peek} <-
-           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
-      :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
+             preload: [created_by_identity: [:actor]]
+           ) do
+      if connected?(socket) do
+        :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
+      end
 
-      {:ok,
-       assign(socket,
-         group: group,
-         gateways: gateways,
-         resource_actor_groups_peek: resource_actor_groups_peek,
-         page_title: "Site #{group.name}"
-       )}
+      socket =
+        socket
+        |> assign(
+          page_title: "Site #{group.name}",
+          group: group
+        )
+        |> assign_live_table("gateways",
+          query_module: Gateways.Gateway.Query,
+          enforce_filters: [
+            {:gateway_group_id, group.id}
+          ],
+          sortable_fields: [
+            {:gateways, :last_seen_at}
+          ],
+          limit: 10,
+          callback: &handle_gateways_update!/2
+        )
+        |> assign_live_table("resources",
+          query_module: Resources.Resource.Query,
+          enforce_filters: [
+            {:gateway_group_id, group.id}
+          ],
+          sortable_fields: [
+            {:resources, :name},
+            {:resources, :address}
+          ],
+          limit: 10,
+          callback: &handle_resources_update!/2
+        )
+
+      {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_gateways_update!(socket, list_opts) do
+    online_ids = Gateways.all_online_gateway_ids_by_group_id!(socket.assigns.group.id)
+
+    list_opts =
+      list_opts
+      |> Keyword.put(:preload, [:online?])
+      |> Keyword.update(:filter, [], fn filter ->
+        filter ++ [{:ids, online_ids}]
+      end)
+
+    with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         gateways: gateways,
+         gateways_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_resources_update!(socket, list_opts) do
+    with {:ok, resources, metadata} <-
+           Resources.list_resources(socket.assigns.subject, list_opts),
+         {:ok, resource_actor_groups_peek} <-
+           Resources.peek_resource_actor_groups(resources, 3, socket.assigns.subject) do
+      {:ok,
+       assign(socket,
+         resources: resources,
+         resources_metadata: metadata,
+         resource_actor_groups_peek: resource_actor_groups_peek
+       )}
     end
   end
 
@@ -95,7 +148,14 @@ defmodule Web.Sites.Show do
       </:help>
       <:content flash={@flash}>
         <div class="relative overflow-x-auto">
-          <.table id="gateways" rows={@gateways}>
+          <.live_table
+            id="gateways"
+            rows={@gateways}
+            filters={@filters_by_table_id["gateways"]}
+            filter={@filter_form_by_table_id["gateways"]}
+            ordered_by={@order_by_table_id["gateways"]}
+            metadata={@gateways_metadata}
+          >
             <:col :let={gateway} label="INSTANCE">
               <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
                 <%= gateway.name %>
@@ -124,7 +184,7 @@ defmodule Web.Sites.Show do
                 </div>
               </div>
             </:empty>
-          </.table>
+          </.live_table>
         </div>
       </:content>
     </.section>
@@ -143,12 +203,15 @@ defmodule Web.Sites.Show do
       </:help>
       <:content>
         <div class="relative overflow-x-auto">
-          <.table
+          <.live_table
             id="resources"
-            rows={Enum.reject(@group.connections, &is_nil(&1.resource))}
-            row_item={& &1.resource}
+            rows={@resources}
+            filters={@filters_by_table_id["resources"]}
+            filter={@filter_form_by_table_id["resources"]}
+            ordered_by={@order_by_table_id["resources"]}
+            metadata={@resources_metadata}
           >
-            <:col :let={resource} label="NAME">
+            <:col :let={resource} label="NAME" field={{:resources, :name}}>
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
                 class={[link_style()]}
@@ -156,7 +219,7 @@ defmodule Web.Sites.Show do
                 <%= resource.name %>
               </.link>
             </:col>
-            <:col :let={resource} label="ADDRESS">
+            <:col :let={resource} label="ADDRESS" field={{:resources, :address}}>
               <%= resource.address %>
             </:col>
             <:col :let={resource} label="Authorized groups">
@@ -190,7 +253,7 @@ defmodule Web.Sites.Show do
                 </div>
               </div>
             </:empty>
-          </.table>
+          </.live_table>
         </div>
       </:content>
     </.section>
@@ -204,7 +267,6 @@ defmodule Web.Sites.Show do
           Delete Site
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end
@@ -213,15 +275,14 @@ defmodule Web.Sites.Show do
         %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
         socket
       ) do
-    {:ok, gateways} =
-      Gateways.list_connected_gateways_for_group(socket.assigns.group, socket.assigns.subject)
-
-    {:noreply, assign(socket, gateways: gateways)}
+    {:noreply, reload_live_table!(socket, "gateways")}
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   def handle_event("revoke_all_tokens", _params, socket) do
-    group = socket.assigns.group
-    {:ok, deleted_tokens} = Tokens.delete_tokens_for(group, socket.assigns.subject)
+    {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.group, socket.assigns.subject)
 
     socket =
       socket

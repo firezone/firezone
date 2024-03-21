@@ -129,15 +129,29 @@ impl Allocation {
         .flatten()
     }
 
-    /// Refresh this allocation.
+    /// Update the credentials of this [`Allocation`].
     ///
-    /// In case refreshing the allocation fails, we will attempt to make a new one.
-    pub fn refresh(&mut self, username: Username, password: &str, realm: Realm, now: Instant) {
-        self.update_now(now);
-
+    /// This will implicitly trigger a [`refresh`](Allocation::refresh) to ensure these credentials are valid.
+    pub fn update_credentials(
+        &mut self,
+        username: Username,
+        password: &str,
+        realm: Realm,
+        now: Instant,
+    ) {
         self.username = username;
         self.realm = realm;
         self.password = password.to_owned();
+
+        self.refresh(now);
+    }
+
+    /// Refresh this allocation.
+    ///
+    /// In case refreshing the allocation fails, we will attempt to make a new one.
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
+    pub fn refresh(&mut self, now: Instant) {
+        self.update_now(now);
 
         if !self.has_allocation() && self.allocate_in_flight() {
             tracing::debug!("Not refreshing allocation because we are already making one");
@@ -947,12 +961,9 @@ impl ChannelBindings {
     }
 
     fn handle_failed_binding(&mut self, c: u16) {
-        let Some(channel) = self.inner.remove(&c) else {
+        if self.inner.remove(&c).is_none() {
             debug_assert!(false, "No channel binding for {c}");
-            return;
-        };
-
-        debug_assert!(!channel.bound, "Channel should not yet be bound")
+        }
     }
 
     fn set_confirmed(&mut self, c: u16, now: Instant) -> bool {
@@ -1998,7 +2009,7 @@ mod tests {
         }
 
         fn refresh_with_same_credentials(&mut self) {
-            self.refresh(
+            self.update_credentials(
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz",
                 Realm::new("firezone".to_owned()).unwrap(),

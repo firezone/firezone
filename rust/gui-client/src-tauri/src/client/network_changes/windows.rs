@@ -1,5 +1,28 @@
 //! A module for getting callbacks from Windows when we gain / lose Internet connectivity
 //!
+//! # Changes detected / not detected
+//!
+//! Tested manually one time each, with `RUST_LOG=info cargo run -p firezone-gui-client -- debug network-changes`
+//!
+//! Some network changes will fire multiple events with `have_internet = true` in a row.
+//! Others will report `have_internet = false` and then `have_internet = true` once they reconnect.
+//!
+//! We could attempt to listen for DNS changes by subscribing to changes in the Windows Registry: <https://stackoverflow.com/a/64482724>
+//!
+//! - Manually changing DNS servers on Wi-Fi, not detected
+//!
+//! - Wi-Fi-only, enable Airplane Mode, <1 second
+//! - Disable Airplane Mode, return to Wi-Fi, <5 seconds
+//! - Wi-Fi-only, disable Wi-Fi, <1 second
+//! - Wi-Fi-only, enable Wi-Fi, <5 seconds
+//! - Switching to hotspot Wi-Fi from a phone, instant (once Windows connects)
+//! - Stopping the phone's hotspot and switching back to home Wi-Fi, instant (once Windows connects)
+//! - On Wi-Fi, connect Ethernet, <4 seconds
+//! - On Ethernet and Wi-Fi, disconnect Ethernet, not detected
+//! - On Ethernet, Wi-Fi enabled but not connected, disconnect Ethernet, <2 seconds
+//! - On Wi-Fi, WLAN loses Internet, 1 minute (Windows doesn't figure it out immediately)
+//! - On Wi-Fi, WLAN regains Internet, 6 seconds (Some of that is the AP)
+//!
 //! # Latency
 //!
 //! 2 or 3 seconds for the user clicking "Connect" or "Disconnect" on Wi-Fi,
@@ -34,8 +57,7 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::{runtime::Runtime, sync::Notify};
+use tokio::{runtime::Runtime, sync::mpsc};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -43,7 +65,7 @@ use windows::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
             NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
         },
-        System::Com,
+        System::{Com, Registry},
     },
 };
 
@@ -68,7 +90,7 @@ pub(crate) fn run_debug() -> Result<()> {
     // Returns Err before COM is initialized
     assert!(get_apartment_type().is_err());
 
-    let com_worker = Worker::new()?;
+    let mut com_worker = Worker::new()?;
 
     // We have to initialize COM again for the main thread. This doesn't
     // seem to be a problem in the main app since Tauri initializes COM for itself.
@@ -79,13 +101,16 @@ pub(crate) fn run_debug() -> Result<()> {
         Ok((Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE))
     );
 
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new()?;
 
     tracing::info!("Listening for network events...");
 
     rt.block_on(async move {
         loop {
-            com_worker.notified().await;
+            tokio::select! {
+                _r = tokio::signal::ctrl_c() => break,
+                () = com_worker.notified() => {},
+            };
             // Make sure whatever Tokio thread we're on is associated with COM
             // somehow.
             assert_eq!(
@@ -95,7 +120,55 @@ pub(crate) fn run_debug() -> Result<()> {
 
             tracing::info!(have_internet = %check_internet()?);
         }
-    })
+        Ok::<_, anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+/// Runs a debug subcommand that listens to the registry for DNS changes
+///
+/// This actually listens to the entire IPv4 key, so it will have lots of false positives,
+/// including when connlib changes anything on the Firezone tunnel.
+/// It will often fire multiple events in quick succession.
+pub(crate) fn run_dns_debug() -> Result<()> {
+    tracing_subscriber::fmt::init();
+    tracing::info!("Listening for network events...");
+
+    // TODO: Use WaitForMultipleObjects or whatever to async await both IPv4 and IPv6 DNS changes
+
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let path = std::path::Path::new("SYSTEM")
+        .join("CurrentControlSet")
+        .join("Services")
+        .join("Tcpip")
+        .join("Parameters")
+        .join("Interfaces");
+    let key = hklm.open_subkey_with_flags(path, winreg::enums::KEY_NOTIFY)?;
+    let key_handle = Registry::HKEY(key.raw_handle());
+    let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
+
+    loop {
+        // SAFETY: No buffers or pointers involved, just the handle to the reg key.
+        unsafe {
+            Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, None, false);
+        }
+
+        // TODO: It's possible we could miss an event here:
+        //
+        // - We call `RegNotifyChangeKeyValue`
+        // - Some un-important change happens and spuriously wake up
+        // - We notify connlib
+        // - Connlib does nothing since the change didn't matter
+        // - An important change happens but our thread hasn't looped over yet
+        // - We call `RegNotifyChangeKeyValue` again, having missed the second change
+        //
+        // Switching to async may offer a way to close this gap, since we can re-register
+        // the notify before notifying connlib. Then the second change should cause us to
+        // immediately re-notify connlib.
+
+        tracing::info!("Something changed.");
+    }
 }
 
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
@@ -120,7 +193,7 @@ pub fn check_internet() -> Result<bool> {
 /// Worker thread that can be joined explicitly, and joins on Drop
 pub(crate) struct Worker {
     inner: Option<WorkerInner>,
-    notify: Arc<Notify>,
+    rx: mpsc::Receiver<()>,
 }
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
@@ -131,18 +204,17 @@ struct WorkerInner {
 
 impl Worker {
     pub(crate) fn new() -> Result<Self> {
-        let notify = Arc::new(Notify::new());
+        let (tx, rx) = mpsc::channel(1);
 
-        let (stopper, rx) = tokio::sync::oneshot::channel();
+        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
         let thread = {
-            let notify = Arc::clone(&notify);
             std::thread::Builder::new()
                 .name("Firezone COM worker".into())
                 .spawn(move || {
                     {
                         let com = ComGuard::new()?;
-                        let _network_change_listener = Listener::new(&com, notify)?;
-                        rx.blocking_recv().ok();
+                        let _network_change_listener = Listener::new(&com, tx)?;
+                        stopper_rx.blocking_recv().ok();
                     }
                     tracing::debug!("COM worker thread shut down gracefully");
                     Ok(())
@@ -151,7 +223,7 @@ impl Worker {
 
         Ok(Self {
             inner: Some(WorkerInner { thread, stopper }),
-            notify,
+            rx,
         })
     }
 
@@ -170,8 +242,8 @@ impl Worker {
         Ok(())
     }
 
-    pub(crate) async fn notified(&self) {
-        self.notify.notified().await;
+    pub(crate) async fn notified(&mut self) {
+        self.rx.recv().await;
     }
 }
 
@@ -234,19 +306,14 @@ struct Listener<'a> {
     advise_cookie_net: Option<u32>,
     cxn_point_net: Com::IConnectionPoint,
 
-    inner: ListenerInner,
-
     /// Hold a reference to a `ComGuard` to enforce the right init-use-uninit order
     _com: &'a ComGuard,
 }
 
-/// This must be separate because we need to `Clone` that `Notify` and we can't
-/// `Clone` the COM objects in `Listener`
 // https://kennykerr.ca/rust-getting-started/how-to-implement-com-interface.html
 #[windows_implement::implement(INetworkEvents)]
-#[derive(Clone)]
-struct ListenerInner {
-    notify: Arc<Notify>,
+struct Callback {
+    tx: mpsc::Sender<()>,
 }
 
 impl<'a> Drop for Listener<'a> {
@@ -262,9 +329,9 @@ impl<'a> Listener<'a> {
     ///
     /// * `com` - Makes sure that CoInitializeEx was called. `com` have been created
     ///   on the same thread as `new` is called on.
-    /// * `notify` - A Tokio `Notify` that will be notified when Windows detects
+    /// * `tx` - A Sender to notify when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    fn new(com: &'a ComGuard, notify: Arc<Notify>) -> Result<Self, Error> {
+    fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self, Error> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
@@ -281,11 +348,12 @@ impl<'a> Listener<'a> {
         let mut this = Listener {
             advise_cookie_net: None,
             cxn_point_net,
-            inner: ListenerInner { notify },
             _com: com,
         };
 
-        let callbacks: INetworkEvents = this.inner.clone().into();
+        let cb = Callback { tx: tx.clone() };
+
+        let callbacks: INetworkEvents = cb.into();
 
         // SAFETY: What happens if Windows sends us a network change event while
         // we're dropping Listener?
@@ -299,7 +367,7 @@ impl<'a> Listener<'a> {
         // 2. Caller continues setup, checks Internet is connected
         // 3. Internet gets disconnected but caller isn't notified
         // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
-        this.inner.notify.notify_one();
+        tx.try_send(()).ok();
 
         Ok(this)
     }
@@ -317,7 +385,7 @@ impl<'a> Listener<'a> {
     }
 }
 
-impl INetworkEvents_Impl for ListenerInner {
+impl INetworkEvents_Impl for Callback {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
         Ok(())
     }
@@ -331,7 +399,8 @@ impl INetworkEvents_Impl for ListenerInner {
         _networkid: &GUID,
         _newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
-        self.notify.notify_one();
+        // Use `try_send` because we're only sending a notification to wake up the receiver.
+        self.tx.try_send(()).ok();
         Ok(())
     }
 
@@ -341,6 +410,12 @@ impl INetworkEvents_Impl for ListenerInner {
         _flags: NLM_NETWORK_PROPERTY_CHANGE,
     ) -> WinResult<()> {
         Ok(())
+    }
+}
+
+impl Drop for Callback {
+    fn drop(&mut self) {
+        tracing::debug!("Dropped `network_changes::Callback`");
     }
 }
 

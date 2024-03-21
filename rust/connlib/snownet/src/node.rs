@@ -30,7 +30,7 @@ use std::borrow::Cow;
 use std::iter;
 use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
-use tracing::{field, Span};
+use tracing::{field, info_span, Span};
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -136,8 +136,24 @@ where
         }
     }
 
+    pub fn reconnect(&mut self, now: Instant) {
+        for binding in self.bindings.values_mut() {
+            binding.refresh(now);
+        }
+
+        for allocation in self.allocations.values_mut() {
+            allocation.refresh(now);
+        }
+    }
+
     pub fn public_key(&self) -> PublicKey {
         (&self.private_key).into()
+    }
+
+    pub fn is_connected_to(&self, key: PublicKey) -> bool {
+        self.connections
+            .iter_established()
+            .any(|(_, c)| c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
     }
 
     pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
@@ -173,7 +189,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     pub fn add_remote_candidate(&mut self, id: TId, candidate: String, now: Instant) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
@@ -389,13 +405,7 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(
-                id,
-                now,
-                &mut self.allocations,
-                &mut self.pending_events,
-                &mut self.buffered_transmits,
-            );
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -481,6 +491,7 @@ where
             intent_sent_at,
             is_failed: false,
             signalling_completed_at: now,
+            remote_pub_key: remote,
         }
     }
 
@@ -497,13 +508,10 @@ where
             return Ok(());
         }
 
-        for (conn, agent) in self.connections.agents_mut() {
-            add_local_candidate(
-                conn,
-                agent,
-                host_candidate.clone(),
-                &mut self.pending_events,
-            );
+        for (id, agent) in self.connections.agents_mut() {
+            let _span = info_span!("connection", %id).entered();
+
+            add_local_candidate(id, agent, host_candidate.clone(), &mut self.pending_events);
         }
 
         Ok(())
@@ -580,7 +588,9 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (_, agent) in self.connections.agents_mut() {
+        for (id, agent) in self.connections.agents_mut() {
+            let _span = info_span!("connection", %id).entered();
+
             if agent.accepts_message(&message) {
                 agent.handle_packet(
                     now,
@@ -612,6 +622,8 @@ where
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
         for (id, conn) in self.connections.iter_established_mut() {
+            let _span = info_span!("connection", %id).entered();
+
             if !conn.accepts(from) {
                 continue;
             }
@@ -633,7 +645,10 @@ where
 
             // I can't think of a better way to detect this ...
             if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
-                tracing::info!(%id, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+                tracing::info!(duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+
+                self.pending_events
+                    .push_back(Event::ConnectionEstablished(id))
             }
 
             return match control_flow {
@@ -661,7 +676,7 @@ where
         for (server, event) in binding_events.chain(allocation_events) {
             match event {
                 CandidateEvent::New(candidate) => {
-                    add_candidates(
+                    add_local_candidate_to_all(
                         server,
                         candidate,
                         &mut self.connections,
@@ -669,7 +684,8 @@ where
                     );
                 }
                 CandidateEvent::Invalid(candidate) => {
-                    for (_, agent) in self.connections.agents_mut() {
+                    for (id, agent) in self.connections.agents_mut() {
+                        let _span = info_span!("connection", %id).entered();
                         agent.invalidate_candidate(&candidate);
                     }
                 }
@@ -898,7 +914,7 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(server) {
-                existing.refresh(username, password, realm, now);
+                existing.update_credentials(username, password, realm, now);
                 continue;
             }
 
@@ -973,7 +989,7 @@ impl<TId> Default for Connections<TId> {
 
 impl<TId> Connections<TId>
 where
-    TId: Eq + Hash + Copy,
+    TId: Eq + Hash + Copy + fmt::Display,
 {
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>) {
         self.initial.retain(|id, conn| {
@@ -1035,6 +1051,10 @@ where
         initial.chain(established)
     }
 
+    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection)> {
+        self.established.iter().map(|(id, conn)| (*id, conn))
+    }
+
     fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
     }
@@ -1076,7 +1096,7 @@ enum EncodeError {
     NoChannel,
 }
 
-fn add_candidates<TId>(
+fn add_local_candidate_to_all<TId>(
     server: SocketAddr,
     candidate: Candidate,
     connections: &mut Connections<TId>,
@@ -1096,16 +1116,18 @@ fn add_candidates<TId>(
     for (id, allowed_stun, allowed_turn, agent) in
         initial_connections.chain(established_connections)
     {
+        let _span = info_span!("connection", %id).entered();
+
         match candidate.kind() {
             CandidateKind::ServerReflexive => {
                 if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
-                    tracing::debug!(%id, %server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
+                    tracing::debug!(%server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
                     continue;
                 }
             }
             CandidateKind::Relayed => {
                 if !allowed_turn.contains(&server) {
-                    tracing::debug!(%id, %server, ?allowed_turn, "Not adding relay candidate");
+                    tracing::debug!(%server, ?allowed_turn, "Not adding relay candidate");
 
                     continue;
                 }
@@ -1122,7 +1144,9 @@ fn add_local_candidate<TId>(
     agent: &mut IceAgent,
     candidate: Candidate,
     pending_events: &mut VecDeque<Event<TId>>,
-) {
+) where
+    TId: fmt::Display,
+{
     let is_new = agent.add_local_candidate(candidate.clone());
 
     if is_new {
@@ -1211,12 +1235,13 @@ struct InitialConnection {
 }
 
 impl InitialConnection {
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
     fn handle_timeout<TId>(&mut self, id: TId, now: Instant)
     where
         TId: fmt::Display,
     {
         if now.duration_since(self.created_at) >= HANDSHAKE_TIMEOUT {
-            tracing::info!(%id, "Connection setup timed out (no answer received)");
+            tracing::info!("Connection setup timed out (no answer received)");
             self.is_failed = true;
         }
     }
@@ -1228,6 +1253,8 @@ impl InitialConnection {
 
 struct Connection {
     agent: IceAgent,
+
+    remote_pub_key: PublicKey,
 
     tunnel: Tunn,
     next_timer_update: Instant,
@@ -1338,12 +1365,12 @@ impl Connection {
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
     }
 
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
     fn handle_timeout<TId>(
         &mut self,
         id: TId,
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
-        events: &mut VecDeque<Event<TId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
         TId: fmt::Display + Copy,
@@ -1354,7 +1381,7 @@ impl Connection {
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!(%id, "Connection failed (no candidates received)");
+            tracing::info!("Connection failed (no candidates received)");
             self.is_failed = true;
             return;
         }
@@ -1379,11 +1406,11 @@ impl Connection {
             match self.tunnel.update_timers(&mut buf) {
                 TunnResult::Done => {}
                 TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                    tracing::info!(%id, "Connection failed (wireguard tunnel expired)");
+                    tracing::info!("Connection failed (wireguard tunnel expired)");
                     self.is_failed = true;
                 }
                 TunnResult::Err(e) => {
-                    tracing::warn!(%id, ?e);
+                    tracing::warn!(?e);
                 }
                 TunnResult::WriteToNetwork(b) => {
                     transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
@@ -1398,7 +1425,7 @@ impl Connection {
                     self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::info!(%id, "Connection failed (ICE timeout)");
+                    tracing::info!("Connection failed (ICE timeout)");
                     self.is_failed = true;
                 }
                 IceAgentEvent::NominatedSend {
@@ -1441,17 +1468,11 @@ impl Connection {
                     };
 
                     if self.peer_socket != Some(remote_socket) {
-                        let is_first_connection = self.peer_socket.is_none();
-
                         tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
                         self.peer_socket = Some(remote_socket);
 
                         self.invalidate_candiates();
                         self.force_handshake(allocations, transmits, now);
-
-                        if is_first_connection {
-                            events.push_back(Event::ConnectionEstablished(id))
-                        }
                     }
                 }
                 _ => {}

@@ -1,31 +1,30 @@
 use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::PacketTransformClient;
+use crate::peer::{PacketTransformClient, Peer};
 use crate::peer_store::PeerStore;
-use crate::{dns, dns::DnsQuery, Event, Tunnel, DNS_QUERIES_QUEUE_SIZE};
+use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
-    DnsServer, GatewayId, Interface as InterfaceConfig, IpDnsServer, ResourceDescription,
+    Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
+    IpDnsServer, Key, Offer, Relay, RequestConnection, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
-use connlib_shared::{Callbacks, Dname, IpProvider};
+use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
-use futures_bounded::FuturesTupleSet;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
-use snownet::Client;
 
-use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
-use hickory_resolver::TokioAsyncResolver;
+use crate::utils::{earliest, stun, turn};
+use crate::ClientTunnel;
+use secrecy::{ExposeSecret as _, Secret};
+use snownet::ClientNode;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
-use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::time::{Interval, MissedTickBehavior};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -34,6 +33,27 @@ const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
+// With this single timer this might mean that some DNS are refreshed too often
+// however... this also mean any resource is refresh within a 5 mins interval
+// therefore, only the first time it's added that happens, after that it doesn't matter.
+const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Event {
+    SignalIceCandidate {
+        conn_id: GatewayId,
+        candidate: String,
+    },
+    ConnectionIntent {
+        resource: ResourceId,
+        connected_gateway_ids: HashSet<GatewayId>,
+    },
+    RefreshResources {
+        connections: Vec<ReuseConnection>,
+    },
+    RefreshInterface,
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -50,7 +70,7 @@ impl DnsResource {
     }
 }
 
-impl<CB> Tunnel<CB, ClientState, Client, GatewayId>
+impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
@@ -87,7 +107,7 @@ where
                 .insert(resource_description.id(), resource_description.clone());
         }
 
-        self.update_resource_list()?;
+        self.update_resource_list();
         self.update_routes()?;
 
         Ok(())
@@ -111,9 +131,7 @@ where
             tracing::error!(%id, "Failed to update routes: {err:?}");
         }
 
-        if let Err(err) = self.update_resource_list() {
-            tracing::error!("Failed to update resource list: {err:#?}")
-        }
+        self.update_resource_list();
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
             tracing::debug!("No gateway associated with resource");
@@ -155,7 +173,7 @@ where
         tracing::debug!("Resource removed")
     }
 
-    fn update_resource_list(&self) -> connlib_shared::Result<()> {
+    fn update_resource_list(&self) {
         self.callbacks.on_update_resources(
             self.role_state
                 .resource_ids
@@ -163,49 +181,54 @@ where
                 .sorted()
                 .cloned()
                 .collect_vec(),
-        )?;
-        Ok(())
+        );
     }
 
-    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
-        let dns_mapping = self.role_state.dns_mapping();
-        let config =
-            self.role_state.interface_config.as_ref().expect("Developer error: we should always call update_interface after the interface config is set");
-
-        self.device.initialize(
-            config,
-            // We can just sort in here because sentinel ips are created in order
-            dns_mapping.left_values().copied().sorted().collect(),
-            &self.callbacks().clone(),
-        )?;
-
-        self.device
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        let name = self.device.name().to_owned();
-
-        self.callbacks.on_tunnel_ready()?;
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
+    /// Updates the system's dns
+    pub fn set_dns(&mut self, new_dns: Vec<IpAddr>, now: Instant) {
+        self.role_state.update_system_resolvers(new_dns, now);
     }
 
     /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        self.role_state.interface_config = Some(config.clone());
+    pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
+        self.role_state.interface_config = Some(config);
+        self.update_interface()
+    }
+
+    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
+        let Some(config) = self.role_state.interface_config.as_ref().cloned() else {
+            return Ok(());
+        };
+
         let effective_dns_servers = effective_dns_servers(
             config.upstream_dns.clone(),
-            self.callbacks()
-                .get_system_default_resolvers()
-                .ok()
-                .flatten()
-                .unwrap_or_default(),
+            self.role_state.system_resolvers.clone(),
         );
 
         let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
-        self.role_state.set_dns_mapping(dns_mapping);
-        self.update_interface()
+        self.role_state.set_dns_mapping(dns_mapping.clone());
+        self.io.set_upstream_dns_servers(dns_mapping.clone());
+
+        let callbacks = self.callbacks.clone();
+
+        self.io.device_mut().initialize(
+            &config,
+            // We can just sort in here because sentinel ips are created in order
+            dns_mapping.left_values().copied().sorted().collect(),
+            &callbacks,
+        )?;
+
+        self.io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        let name = self.io.device_mut().name().to_owned();
+
+        self.callbacks.on_tunnel_ready();
+
+        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
+
+        Ok(())
     }
 
     /// Clean up a connection to a resource.
@@ -217,20 +240,97 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
-        self.device
+        self.io
+            .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
 
         Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.connections_state
+        self.role_state
             .node
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
+
+    /// Initiate an ice connection request.
+    ///
+    /// Given a resource id and a list of relay creates a [RequestConnection]
+    /// and prepares the tunnel to handle the connection once initiated.
+    ///
+    /// # Parameters
+    /// - `resource_id`: Id of the resource we are going to request the connection to.
+    /// - `relays`: The list of relays used for that connection.
+    ///
+    /// # Returns
+    /// A [RequestConnection] that should be sent to the gateway through the control-plane.
+    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
+    pub fn request_connection(
+        &mut self,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+        relays: Vec<Relay>,
+    ) -> connlib_shared::Result<Request> {
+        self.role_state.create_or_reuse_connection(
+            resource_id,
+            gateway_id,
+            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+        )
+    }
+
+    /// Called when a response to [ClientTunnel::request_connection] is ready.
+    ///
+    /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
+    pub fn received_offer_response(
+        &mut self,
+        resource_id: ResourceId,
+        answer: Answer,
+        domain_response: Option<DomainResponse>,
+        gateway_public_key: PublicKey,
+    ) -> connlib_shared::Result<()> {
+        self.role_state
+            .accept_answer(answer, resource_id, gateway_public_key, domain_response)?;
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, resource_id))]
+    pub fn received_domain_parameters(
+        &mut self,
+        resource_id: ResourceId,
+        domain_response: DomainResponse,
+    ) -> connlib_shared::Result<()> {
+        self.role_state
+            .received_domain_parameters(resource_id, domain_response)?;
+
+        Ok(())
+    }
 }
 
-/// [`Tunnel`] state specific to clients.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Request {
+    NewConnection(RequestConnection),
+    ReuseConnection(ReuseConnection),
+}
+
+fn send_dns_answer(
+    role_state: &mut ClientState,
+    qtype: Rtype,
+    resource_description: &DnsResource,
+    addrs: &HashSet<IpAddr>,
+) {
+    let packet = role_state
+        .deferred_dns_queries
+        .remove(&(resource_description.clone(), qtype));
+    if let Some(packet) = packet {
+        let Some(packet) = dns::create_local_answer(addrs, packet) else {
+            return;
+        };
+        role_state.buffered_packets.push_back(packet);
+    }
+}
+
 pub struct ClientState {
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
     resources_gateways: HashMap<ResourceId, GatewayId>,
@@ -243,20 +343,23 @@ pub struct ClientState {
 
     pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
 
-    forwarded_dns_queries: FuturesTupleSet<
-        Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
-        DnsQuery<'static>,
-    >,
+    node: ClientNode<GatewayId>,
 
     pub ip_provider: IpProvider,
 
-    refresh_dns_timer: Interval,
-
     dns_mapping: BiMap<IpAddr, DnsServer>,
-    dns_resolvers: HashMap<IpAddr, TokioAsyncResolver>,
 
-    buffered_events: VecDeque<Event<GatewayId>>,
+    buffered_events: VecDeque<Event>,
     interface_config: Option<InterfaceConfig>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
+
+    /// DNS queries that we need to forward to the system resolver.
+    buffered_dns_queries: VecDeque<DnsQuery<'static>>,
+
+    next_dns_refresh: Option<Instant>,
+    next_system_resolver_refresh: Option<Instant>,
+
+    system_resolvers: Vec<IpAddr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,15 +370,37 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn encapsulate<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
+    pub(crate) fn new(private_key: StaticSecret) -> Self {
+        Self {
+            awaiting_connection: Default::default(),
+            resources_gateways: Default::default(),
+            ip_provider: IpProvider::for_resources(),
+            dns_resources_internal_ips: Default::default(),
+            dns_resources: Default::default(),
+            cidr_resources: IpNetworkTable::new(),
+            resource_ids: Default::default(),
+            peers: Default::default(),
+            deferred_dns_queries: Default::default(),
+            dns_mapping: Default::default(),
+            buffered_events: Default::default(),
+            interface_config: Default::default(),
+            buffered_packets: Default::default(),
+            buffered_dns_queries: Default::default(),
+            next_dns_refresh: Default::default(),
+            node: ClientNode::new(private_key),
+            system_resolvers: Default::default(),
+            next_system_resolver_refresh: Default::default(),
+        }
+    }
+
+    pub(crate) fn encapsulate<'s>(
+        &'s mut self,
+        packet: MutableIpPacket<'_>,
         now: Instant,
-    ) -> Option<(GatewayId, MutableIpPacket<'a>)> {
+    ) -> Option<snownet::Transmit<'s>> {
         let (packet, dest) = match self.handle_dns(packet, now) {
             Ok(response) => {
-                self.buffered_events
-                    .push_back(Event::SendPacket(response?.to_owned()));
+                self.buffered_packets.push_back(response?.to_owned());
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -288,7 +413,231 @@ impl ClientState {
 
         let packet = peer.transform(packet)?;
 
-        Some((peer.conn_id, packet))
+        let transmit = self
+            .node
+            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .ok()??;
+
+        Some(transmit)
+    }
+
+    pub(crate) fn decapsulate<'b>(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+        buffer: &'b mut [u8],
+    ) -> Option<IpPacket<'b>> {
+        let (conn_id, packet) = self.node.decapsulate(
+            local,
+            from,
+            packet.as_ref(),
+            now,
+            buffer,
+        )
+        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .ok()??;
+
+        let Some(peer) = self.peers.get_mut(&conn_id) else {
+            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+
+            return None;
+        };
+
+        let packet = match peer.untransform(packet.into()) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+
+                return None;
+            }
+        };
+
+        Some(packet.into_immutable())
+    }
+
+    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
+    fn accept_answer(
+        &mut self,
+        answer: Answer,
+        resource_id: ResourceId,
+        gateway: PublicKey,
+        domain_response: Option<DomainResponse>,
+    ) -> connlib_shared::Result<()> {
+        let gateway_id = self
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        self.node.accept_answer(
+            gateway_id,
+            gateway,
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: answer.username,
+                    password: answer.password,
+                },
+            },
+            Instant::now(),
+        );
+
+        let desc = self
+            .resource_ids
+            .get(&resource_id)
+            .ok_or(Error::ControlProtocolError)?;
+
+        let ips = self.get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
+
+        // Tidy up state once everything succeeded.
+        self.awaiting_connection.remove(&resource_id);
+
+        let resource_ids = HashSet::from([resource_id]);
+        let mut peer: Peer<_, PacketTransformClient, _> =
+            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
+        peer.transform.set_dns(self.dns_mapping());
+        self.peers.insert(peer, &[]);
+
+        let peer_ips = if let Some(domain_response) = domain_response {
+            self.dns_response(&resource_id, &domain_response, &gateway_id)?
+        } else {
+            ips
+        };
+
+        self.peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
+        Ok(())
+    }
+
+    fn create_or_reuse_connection(
+        &mut self,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+        allowed_stun_servers: HashSet<SocketAddr>,
+        allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
+    ) -> connlib_shared::Result<Request> {
+        tracing::trace!("request_connection");
+
+        let desc = self
+            .resource_ids
+            .get(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        let domain = self.get_awaiting_connection(&resource_id)?.domain.clone();
+
+        if self.is_connected_to(resource_id, &domain) {
+            return Err(Error::UnexpectedConnectionDetails);
+        }
+
+        let awaiting_connection = self
+            .awaiting_connection
+            .get(&resource_id)
+            .ok_or(Error::UnexpectedConnectionDetails)?
+            .clone();
+
+        self.resources_gateways.insert(resource_id, gateway_id);
+
+        if self.peers.get(&gateway_id).is_some() {
+            self.peers.add_ips_with_resource(
+                &gateway_id,
+                &self.get_resource_ip(desc, &domain),
+                &resource_id,
+            );
+
+            self.awaiting_connection.remove(&resource_id);
+
+            return Ok(Request::ReuseConnection(ReuseConnection {
+                resource_id,
+                gateway_id,
+                payload: domain.clone(),
+            }));
+        };
+
+        if self.node.is_expecting_answer(gateway_id) {
+            return Err(Error::PendingConnection);
+        }
+
+        let offer = self.node.new_connection(
+            gateway_id,
+            allowed_stun_servers,
+            allowed_turn_servers,
+            awaiting_connection.last_intent_sent_at,
+            Instant::now(),
+        );
+
+        return Ok(Request::NewConnection(RequestConnection {
+            resource_id,
+            gateway_id,
+            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+            client_payload: ClientPayload {
+                ice_parameters: Offer {
+                    username: offer.credentials.username,
+                    password: offer.credentials.password,
+                },
+                domain: awaiting_connection.domain,
+            },
+        }));
+    }
+
+    fn received_domain_parameters(
+        &mut self,
+        resource_id: ResourceId,
+        domain_response: DomainResponse,
+    ) -> connlib_shared::Result<()> {
+        let gateway_id = self
+            .gateway_by_resource(&resource_id)
+            .ok_or(Error::UnknownResource)?;
+
+        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
+
+        self.peers
+            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+
+        Ok(())
+    }
+
+    fn dns_response(
+        &mut self,
+        resource_id: &ResourceId,
+        domain_response: &DomainResponse,
+        peer_id: &GatewayId,
+    ) -> connlib_shared::Result<Vec<IpNetwork>> {
+        let peer = self
+            .peers
+            .get_mut(peer_id)
+            .ok_or(Error::ControlProtocolError)?;
+
+        let resource_description = self
+            .resource_ids
+            .get(resource_id)
+            .ok_or(Error::UnknownResource)?
+            .clone();
+
+        let ResourceDescription::Dns(resource_description) = resource_description else {
+            // We should never get a domain_response for a CIDR resource!
+            return Err(Error::ControlProtocolError);
+        };
+
+        let resource_description =
+            DnsResource::from_description(&resource_description, domain_response.domain.clone());
+
+        let addrs: HashSet<_> = domain_response
+            .address
+            .iter()
+            .filter_map(|external_ip| {
+                peer.transform
+                    .get_or_assign_translation(external_ip, &mut self.ip_provider)
+            })
+            .collect();
+
+        self.dns_resources_internal_ips
+            .insert(resource_description.clone(), addrs.clone());
+
+        send_dns_answer(self, Rtype::Aaaa, &resource_description, &addrs);
+        send_dns_answer(self, Rtype::A, &resource_description, &addrs);
+
+        Ok(addrs.iter().copied().map(Into::into).collect())
     }
 
     /// Attempt to handle the given packet as a DNS packet.
@@ -322,7 +671,7 @@ impl ClientState {
                     }
                 }
 
-                self.add_pending_dns_query(query);
+                self.buffered_dns_queries.push_back(query.into_owned());
 
                 Ok(None)
             }
@@ -347,44 +696,6 @@ impl ClientState {
         self.awaiting_connection
             .get(resource)
             .ok_or(Error::UnexpectedConnectionDetails)
-    }
-
-    pub(crate) fn attempt_to_reuse_connection(
-        &mut self,
-        resource: ResourceId,
-        gateway: GatewayId,
-    ) -> Result<Option<ReuseConnection>, ConnlibError> {
-        let desc = self
-            .resource_ids
-            .get(&resource)
-            .ok_or(Error::UnknownResource)?;
-
-        let domain = self.get_awaiting_connection(&resource)?.domain.clone();
-
-        if self.is_connected_to(resource, &domain) {
-            return Err(Error::UnexpectedConnectionDetails);
-        }
-
-        self.awaiting_connection
-            .get_mut(&resource)
-            .ok_or(Error::UnexpectedConnectionDetails)?;
-
-        self.resources_gateways.insert(resource, gateway);
-
-        if self.peers.get(&gateway).is_none() {
-            return Ok(None);
-        };
-
-        self.peers
-            .add_ips_with_resource(&gateway, &self.get_resource_ip(desc, &domain), &resource);
-
-        self.awaiting_connection.remove(&resource);
-
-        Ok(Some(ReuseConnection {
-            resource_id: resource,
-            gateway_id: gateway,
-            payload: domain.clone(),
-        }))
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -466,31 +777,15 @@ impl ClientState {
         });
     }
 
-    pub fn create_peer_config_for_new_connection(
-        &mut self,
-        resource: ResourceId,
-        domain: &Option<Dname>,
-    ) -> Result<Vec<IpNetwork>, ConnlibError> {
-        let desc = self
-            .resource_ids
-            .get(&resource)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let ips = self.get_resource_ip(desc, domain);
-
-        // Tidy up state once everything succeeded.
-        self.awaiting_connection.remove(&resource);
-
-        Ok(ips)
-    }
-
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
         self.resources_gateways.get(resource).copied()
     }
 
-    fn set_dns_mapping(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
-        self.dns_mapping = mapping.clone();
-        self.dns_resolvers = create_resolvers(mapping);
+    fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
+        self.dns_mapping = new_mapping.clone();
+        self.peers
+            .iter_mut()
+            .for_each(|p| p.transform.set_dns(new_mapping.clone()));
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -555,39 +850,34 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
-    fn add_pending_dns_query(&mut self, query: DnsQuery) {
-        let upstream = query.query.destination();
-        let Some(resolver) = self.dns_resolvers.get(&upstream).cloned() else {
-            tracing::warn!(%upstream, "Dropping DNS query because of unknown upstream DNS server");
+    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>, now: Instant) {
+        if !dns_updated(&self.system_resolvers, &new_dns) {
+            tracing::debug!("Updated dns called but no change to system's resolver");
             return;
-        };
-
-        let query = query.into_owned();
-
-        if self
-            .forwarded_dns_queries
-            .try_push(
-                {
-                    let name = query.name.clone();
-                    let record_type = query.record_type;
-
-                    async move { resolver.lookup(&name, record_type).await }
-                },
-                query,
-            )
-            .is_err()
-        {
-            tracing::warn!("Too many DNS queries, dropping existing one");
         }
+
+        self.next_system_resolver_refresh = Some(now + std::time::Duration::from_millis(500));
+        self.system_resolvers = new_dns;
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Event<GatewayId>> {
-        loop {
-            if let Some(event) = self.buffered_events.pop_front() {
-                return Poll::Ready(event);
-            }
+    pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
+        self.buffered_packets.pop_front()
+    }
 
-            if self.refresh_dns_timer.poll_tick(cx).is_ready() {
+    pub fn poll_dns_queries(&mut self) -> Option<DnsQuery<'static>> {
+        self.buffered_dns_queries.pop_front()
+    }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        let timeout = earliest(self.next_dns_refresh, self.node.poll_timeout());
+        earliest(timeout, self.next_system_resolver_refresh)
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.node.handle_timeout(now);
+
+        match self.next_dns_refresh {
+            Some(next_dns_refresh) if now >= next_dns_refresh => {
                 let mut connections = Vec::new();
 
                 self.peers
@@ -609,80 +899,53 @@ impl ClientState {
                         payload: Some(resource.address.clone()),
                     });
                 }
-                return Poll::Ready(Event::RefreshResources { connections });
-            }
 
-            match self.forwarded_dns_queries.poll_unpin(cx) {
-                Poll::Ready((Ok(response), query)) => {
-                    match dns::build_response_from_resolve_result(query.query, response) {
-                        Ok(Some(packet)) => return Poll::Ready(Event::SendPacket(packet)),
-                        Ok(None) => continue,
-                        Err(e) => {
-                            tracing::warn!("Failed to build DNS response from lookup result: {e}");
-                            continue;
-                        }
-                    }
-                }
-                Poll::Ready((Err(resolve_timeout), query)) => {
-                    tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
-                    continue;
-                }
-                Poll::Pending => {}
-            }
+                self.buffered_events
+                    .push_back(Event::RefreshResources { connections });
 
-            return Poll::Pending;
+                self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL);
+            }
+            None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
+            Some(_) => {}
         }
+
+        if self.next_system_resolver_refresh.is_some_and(|e| now >= e) {
+            self.buffered_events.push_back(Event::RefreshInterface);
+            self.next_system_resolver_refresh = None;
+        }
+
+        while let Some(event) = self.node.poll_event() {
+            match event {
+                snownet::Event::ConnectionFailed(id) => {
+                    self.cleanup_connected_gateway(&id);
+                }
+                snownet::Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                } => self.buffered_events.push_back(Event::SignalIceCandidate {
+                    conn_id: connection,
+                    candidate,
+                }),
+                _ => {}
+            }
+        }
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<Event> {
+        self.buffered_events.pop_front()
+    }
+
+    pub(crate) fn reconnect(&mut self, now: Instant) {
+        self.node.reconnect(now)
+    }
+
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+        self.node.poll_transmit()
     }
 }
 
-fn create_resolvers(
-    sentinel_mapping: BiMap<IpAddr, DnsServer>,
-) -> HashMap<IpAddr, TokioAsyncResolver> {
-    sentinel_mapping
-        .into_iter()
-        .map(|(sentinel, srv)| {
-            let mut resolver_config = ResolverConfig::new();
-            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
-            (
-                sentinel,
-                TokioAsyncResolver::tokio(resolver_config, Default::default()),
-            )
-        })
-        .collect()
-}
-
-impl Default for ClientState {
-    fn default() -> Self {
-        // With this single timer this might mean that some DNS are refreshed too often
-        // however... this also mean any resource is refresh within a 5 mins interval
-        // therefore, only the first time it's added that happens, after that it doesn't matter.
-        let mut interval = tokio::time::interval(Duration::from_secs(300));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-
-        Self {
-            awaiting_connection: Default::default(),
-            resources_gateways: Default::default(),
-            forwarded_dns_queries: FuturesTupleSet::new(
-                Duration::from_secs(60),
-                DNS_QUERIES_QUEUE_SIZE,
-            ),
-            ip_provider: IpProvider::new(
-                IPV4_RESOURCES.parse().unwrap(),
-                IPV6_RESOURCES.parse().unwrap(),
-            ),
-            dns_resources_internal_ips: Default::default(),
-            dns_resources: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
-            resource_ids: Default::default(),
-            peers: Default::default(),
-            deferred_dns_queries: Default::default(),
-            refresh_dns_timer: interval,
-            dns_mapping: Default::default(),
-            dns_resolvers: Default::default(),
-            buffered_events: Default::default(),
-            interface_config: Default::default(),
-        }
-    }
+fn dns_updated(old_dns: &[IpAddr], new_dns: &[IpAddr]) -> bool {
+    HashSet::<&IpAddr>::from_iter(old_dns.iter()) != HashSet::<&IpAddr>::from_iter(new_dns.iter())
 }
 
 fn effective_dns_servers(
@@ -714,10 +977,7 @@ fn effective_dns_servers(
 }
 
 fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::new(
-        DNS_SENTINELS_V4.parse().unwrap(),
-        DNS_SENTINELS_V6.parse().unwrap(),
-    );
+    let mut ip_provider = IpProvider::for_stub_dns_servers();
 
     dns.iter()
         .cloned()
@@ -755,17 +1015,150 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     false
 }
 
+pub struct IpProvider {
+    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
+    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
+}
+
+impl IpProvider {
+    pub fn for_resources() -> Self {
+        IpProvider::new(
+            IPV4_RESOURCES.parse().unwrap(),
+            IPV6_RESOURCES.parse().unwrap(),
+            Some(DNS_SENTINELS_V4.parse().unwrap()),
+            Some(DNS_SENTINELS_V6.parse().unwrap()),
+        )
+    }
+
+    pub fn for_stub_dns_servers() -> Self {
+        IpProvider::new(
+            DNS_SENTINELS_V4.parse().unwrap(),
+            DNS_SENTINELS_V6.parse().unwrap(),
+            None,
+            None,
+        )
+    }
+
+    fn new(
+        ipv4: Ipv4Network,
+        ipv6: Ipv6Network,
+        exclusion_v4: Option<Ipv4Network>,
+        exclusion_v6: Option<Ipv6Network>,
+    ) -> Self {
+        Self {
+            ipv4: Box::new(
+                ipv4.hosts()
+                    .filter(move |ip| !exclusion_v4.is_some_and(|e| e.contains(*ip))),
+            ),
+            ipv6: Box::new(
+                ipv6.subnets_with_prefix(128)
+                    .map(|ip| ip.network_address())
+                    .filter(move |ip| !exclusion_v6.is_some_and(|e| e.contains(*ip))),
+            ),
+        }
+    }
+
+    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
+        let proxy_ip = match ip {
+            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
+            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
+        };
+
+        if proxy_ip.is_none() {
+            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
+            // this might happen in ipv4 if tokens are too long lived.
+            tracing::error!("IP exhaustion: Please reset your client");
+        }
+
+        proxy_ip
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use rand_core::OsRng;
+
     use super::*;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
-        assert!(is_definitely_not_a_resource("224.0.0.22".parse().unwrap()))
+        assert!(is_definitely_not_a_resource(ip("224.0.0.22")))
     }
 
     #[test]
     fn ignores_ip6_multicast_all_routers() {
-        assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
+        assert!(is_definitely_not_a_resource(ip("ff02::2")))
+    }
+
+    #[test]
+    fn dns_updated_when_dns_changes() {
+        assert!(dns_updated(&[ip("1.0.0.1")], &[ip("1.1.1.1")]))
+    }
+
+    #[test]
+    fn dns_not_updated_when_dns_remains_the_same() {
+        assert!(!dns_updated(&[ip("1.1.1.1")], &[ip("1.1.1.1")]))
+    }
+
+    #[test]
+    fn dns_updated_ignores_order() {
+        assert!(!dns_updated(
+            &[ip("1.0.0.1"), ip("1.1.1.1")],
+            &[ip("1.1.1.1"), ip("1.0.0.1")]
+        ))
+    }
+
+    #[test]
+    fn update_system_dns_works() {
+        let mut client_state = ClientState::for_test();
+
+        let now = Instant::now();
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
+        let now = now + Duration::from_millis(500);
+        client_state.handle_timeout(now);
+
+        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterface));
+    }
+
+    #[test]
+    fn update_system_dns_without_change_is_a_no_op() {
+        let mut client_state = ClientState::for_test();
+
+        let now = Instant::now();
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
+        let now = now + Duration::from_millis(500);
+        client_state.handle_timeout(now);
+        client_state.poll_event();
+
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
+        let now = now + Duration::from_millis(500);
+        client_state.handle_timeout(now);
+        assert!(client_state.poll_event().is_none());
+    }
+
+    #[test]
+    fn update_system_dns_with_change_works() {
+        let mut client_state = ClientState::for_test();
+
+        let now = Instant::now();
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
+        let now = now + Duration::from_millis(500);
+        client_state.handle_timeout(now);
+        client_state.poll_event();
+
+        client_state.update_system_resolvers(vec![ip("1.0.0.1")], now);
+        let now = now + Duration::from_millis(500);
+        client_state.handle_timeout(now);
+        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterface));
+    }
+
+    impl ClientState {
+        fn for_test() -> ClientState {
+            ClientState::new(StaticSecret::random_from_rng(OsRng))
+        }
+    }
+
+    fn ip(addr: &str) -> IpAddr {
+        addr.parse().unwrap()
     }
 }

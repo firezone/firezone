@@ -1,7 +1,7 @@
 defmodule Web.Groups.Show do
   use Web, :live_view
   import Web.Actors.Components
-  alias Domain.Actors
+  alias Domain.{Actors, Policies}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -12,10 +12,61 @@ defmodule Web.Groups.Show do
                created_by_identity: [:actor]
              ]
            ) do
-      socket = assign(socket, group: group, page_title: "Group #{group.name}")
+      socket =
+        assign(socket,
+          page_title: "Group #{group.name}",
+          group: group
+        )
+        |> assign_live_table("actors",
+          query_module: Actors.Actor.Query,
+          sortable_fields: [
+            {:actors, :name}
+          ],
+          hide_filters: [:type, :provider_id],
+          callback: &handle_actors_update!/2
+        )
+        |> assign_live_table("policies",
+          query_module: Policies.Policy.Query,
+          hide_filters: [:resource_id],
+          enforce_filters: [
+            {:actor_group_id, group.id}
+          ],
+          sortable_fields: [],
+          callback: &handle_policies_update!/2
+        )
+
       {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_actors_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:last_seen_at, identities: :provider])
+
+    with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         actors: actors,
+         actors_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_policies_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, :resource)
+
+    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         policies: policies,
+         policies_metadata: metadata
+       )}
     end
   end
 
@@ -89,7 +140,14 @@ defmodule Web.Groups.Show do
         </.edit_button>
       </:action>
       <:content>
-        <.table id="actors" rows={@group.actors}>
+        <.live_table
+          id="actors"
+          rows={@group.actors}
+          filters={@filters_by_table_id["actors"]}
+          filter={@filter_form_by_table_id["actors"]}
+          ordered_by={@order_by_table_id["actors"]}
+          metadata={@actors_metadata}
+        >
           <:col :let={actor} label="ACTOR">
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
@@ -115,7 +173,65 @@ defmodule Web.Groups.Show do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>
+        Policies
+      </:title>
+      <:action>
+        <.add_button navigate={~p"/#{@account}/policies/new?actor_group_id=#{@group.id}"}>
+          Add Policy
+        </.add_button>
+      </:action>
+      <:content>
+        <.live_table
+          id="policies"
+          rows={@policies}
+          row_id={&"policies-#{&1.id}"}
+          filters={@filters_by_table_id["policies"]}
+          filter={@filter_form_by_table_id["policies"]}
+          ordered_by={@order_by_table_id["policies"]}
+          metadata={@policies_metadata}
+        >
+          <:col :let={policy} label="ID">
+            <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
+              <%= policy.id %>
+            </.link>
+          </:col>
+          <:col :let={policy} label="RESOURCE">
+            <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
+              <%= policy.resource.name %>
+            </.link>
+          </:col>
+          <:col :let={policy} label="STATUS">
+            <%= if is_nil(policy.deleted_at) do %>
+              <%= if is_nil(policy.disabled_at) do %>
+                Active
+              <% else %>
+                Disabled
+              <% end %>
+            <% else %>
+              Deleted
+            <% end %>
+          </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-neutral-500 p-4">
+              <div class="pb-4 w-auto">
+                No policies to display.
+                <.link
+                  class={[link_style()]}
+                  navigate={~p"/#{@account}/policies/new?actor_group_id=#{@group.id}"}
+                >
+                  Add a policy
+                </.link>
+                to grant access to a resource.
+              </div>
+            </div>
+          </:empty>
+        </.live_table>
       </:content>
     </.section>
 
@@ -128,10 +244,12 @@ defmodule Web.Groups.Show do
           Delete Group
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 
   def handle_event("delete", _params, socket) do
     {:ok, _group} = Actors.delete_group(socket.assigns.group, socket.assigns.subject)
