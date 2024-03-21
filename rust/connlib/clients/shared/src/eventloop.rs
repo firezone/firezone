@@ -143,9 +143,6 @@ where
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
             }
-            firezone_tunnel::ClientEvent::RefreshInterfance => {
-                unreachable!("Handled internally");
-            }
         }
     }
 
