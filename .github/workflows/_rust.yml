@@ -55,9 +55,9 @@ jobs:
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
-            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
           - runs-on: windows-2022
-            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
