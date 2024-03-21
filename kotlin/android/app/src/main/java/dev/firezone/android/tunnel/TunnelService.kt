@@ -385,13 +385,11 @@ class TunnelService : VpnService() {
     }
 
     private fun getDeviceName(): String {
-        val serial = Build.getSerial()
-        val serialIsUnavailable = serial == "UNKNOWN" || serial == "null" || serial.isBlank()
-        // The serial number is not always available, so we use the model name as a fallback
-        return if (serialIsUnavailable) {
+        val deviceName = appRestrictions.getString("deviceName")
+        return if (deviceName.isNullOrBlank() || deviceName == "null") {
             Build.MODEL
         } else {
-            serial
+            deviceName
         }
     }
 

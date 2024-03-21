@@ -62,4 +62,9 @@
 		If this list is empty, no applications are disallowed. Either "Allowed Applications" OR
 		"Disallowed Applications" may be set *but not* both.
 	</string>
+	<string name="config_device_name_title">Device Name</string>
+	<string name="config_device_name_description">
+		The name of the device. This is used to identify the device in the Firezone console.
+		If unset, then the device name will be the device's model name.
+	</string>
 </resources>
