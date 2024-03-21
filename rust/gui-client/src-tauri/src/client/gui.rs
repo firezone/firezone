@@ -861,10 +861,6 @@ async fn run_controller(
         }
     }
 
-    if let Err(error) = dns_listener.close() {
-        tracing::error!(?error, "dns_listener");
-    }
-
     if let Err(error) = com_worker.close() {
         tracing::error!(?error, "com_worker");
     }

@@ -459,7 +459,6 @@ mod async_dns {
                 tracing::info!(?resolvers);
             }
 
-            listener.close()?;
             Ok::<_, anyhow::Error>(())
         })?;
 
@@ -481,13 +480,6 @@ mod async_dns {
                 listener_4,
                 listener_6,
             })
-        }
-
-        pub(crate) fn close(&mut self) -> Result<()> {
-            self.listener_4.close()?;
-            self.listener_6.close()?;
-            tracing::debug!("Unregistered registry listener");
-            Ok(())
         }
 
         pub(crate) async fn notified(&mut self) -> Result<()> {
@@ -516,13 +508,13 @@ mod async_dns {
         ///
         /// This doesn't get signalled, it's just used so we can unregister and stop the
         /// callbacks gracefully when dropping the `Listener`.
-        wait_handle: Option<HANDLE>,
+        wait_handle: HANDLE,
         /// An event that's 'signalled' when the registry key changes
         ///
         /// `RegNotifyChangeKeyValue` can't call a callback directly, so it signals this
         /// event, and we use `RegisterWaitForSingleObject` to adapt that signal into
         /// a C callback.
-        event: Option<HANDLE>,
+        event: HANDLE,
     }
 
     impl Listener {
@@ -564,23 +556,12 @@ mod async_dns {
                 key,
                 _tx: tx,
                 rx,
-                wait_handle: Some(wait_handle),
-                event: Some(event),
+                wait_handle,
+                event,
             };
             that.register_callback()?;
 
             Ok(that)
-        }
-
-        pub(crate) fn close(&mut self) -> Result<()> {
-            if let Some(wait_handle) = self.wait_handle.take() {
-                unsafe { UnregisterWaitEx(wait_handle, INVALID_HANDLE_VALUE) }?;
-            }
-            if let Some(event) = self.event.take() {
-                unsafe { CloseHandle(event) }?;
-            }
-
-            Ok(())
         }
 
         /// Returns when the registry key has changed
@@ -603,9 +584,6 @@ mod async_dns {
         // Be careful with this, if you register twice before the callback fires,
         // it will probably leak something. Check the MS docs for `RegNotifyChangeKeyValue`.
         fn register_callback(&mut self) -> Result<()> {
-            let event = self.event.context(
-                "Can't call `register_callback` on a `Listener` that's already been closed",
-            )?;
             let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
@@ -613,7 +591,7 @@ mod async_dns {
             // Ask Windows to signal our event once when anything inside this key changes.
             // We can't ask for repeated signals.
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, self.event, true)
             }
             .ok()
             .context("`RegNotifyChangeKeyValue` failed")?;
@@ -623,8 +601,9 @@ mod async_dns {
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            self.close()
-                .expect("Should be able to drop DNS change listener");
+            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }.expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
+            unsafe { CloseHandle(self.event) }.expect("Should be able to `CloseHandle` in the DNS change listener");
+            tracing::debug!("Gracefully closed DNS change listener");
         }
     }
 
