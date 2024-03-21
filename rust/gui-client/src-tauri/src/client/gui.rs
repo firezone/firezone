@@ -13,7 +13,7 @@ use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -132,7 +132,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
 
     // Check for updates
     let ctlr_tx_clone = ctlr_tx.clone();
@@ -248,7 +247,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                         ctlr_rx,
                         logging_handles,
                         advanced_settings,
-                        notify_controller,
                     )
                     .await
                 });
@@ -471,18 +469,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         self.notify_controller.notify_one();
     }
 
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        let resolvers = match client::resolvers::get() {
-            Ok(resolvers) => resolvers,
-            Err(e) => {
-                tracing::error!("Failed to get system default resolvers: {e}");
-                return None;
-            }
-        };
-
-        Some(resolvers)
-    }
-
     fn roll_log_file(&self) -> Option<PathBuf> {
         self.logger.roll_to_new_file().unwrap_or_else(|e| {
             tracing::debug!("Failed to roll over to new file: {e}");
@@ -553,6 +539,8 @@ impl Controller {
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
         )?;
+
+        connlib.set_dns(client::resolvers::get().unwrap_or_default());
 
         self.session = Some(Session {
             callback_handler,
@@ -782,7 +770,6 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
-    notify_controller: Arc<Notify>,
 ) -> Result<()> {
     tracing::debug!("Reading / generating device ID...");
     let device_id =
@@ -804,7 +791,7 @@ async fn run_controller(
         session: None,
         device_id,
         logging_handles,
-        notify_controller,
+        notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
     };

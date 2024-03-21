@@ -7,7 +7,6 @@ defmodule Web.RelayGroups.Show do
          {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
-               relays: [:online?],
                created_by_identity: [:actor]
              ]
            ) do
@@ -113,7 +112,7 @@ defmodule Web.RelayGroups.Show do
         <div class="relative overflow-x-auto">
           <.live_table
             id="relays"
-            rows={@group.relays}
+            rows={@relays}
             filters={@filters_by_table_id["relays"]}
             filter={@filter_form_by_table_id["relays"]}
             ordered_by={@order_by_table_id["relays"]}
@@ -160,15 +159,7 @@ defmodule Web.RelayGroups.Show do
         %Phoenix.Socket.Broadcast{topic: "presences:" <> _rest},
         socket
       ) do
-    {:ok, group} =
-      Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
-        preload: [
-          relays: [:online?],
-          created_by_identity: [:actor]
-        ]
-      )
-
-    {:noreply, assign(socket, group: group)}
+    {:noreply, reload_live_table!(socket, "relays")}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],

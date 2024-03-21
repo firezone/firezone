@@ -85,7 +85,7 @@ where
         let (packet, addr) = self.transform.packet_untransform(packet)?;
 
         if !self.is_allowed(addr) {
-            return Err(Error::UnallowedPacket);
+            return Err(Error::UnallowedPacket(addr));
         }
 
         Ok(packet)
@@ -133,6 +133,7 @@ impl PacketTransformClient {
     }
 
     pub fn set_dns(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+        self.mangled_dns_ids.clear();
         self.dns_mapping = mapping;
     }
 }
