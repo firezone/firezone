@@ -52,7 +52,7 @@ pub(crate) enum Event {
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
-    RefreshInterfance,
+    RefreshInterface,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -910,7 +910,7 @@ impl ClientState {
         }
 
         if self.next_system_resolver_refresh.is_some_and(|e| now >= e) {
-            self.buffered_events.push_back(Event::RefreshInterfance);
+            self.buffered_events.push_back(Event::RefreshInterface);
             self.next_system_resolver_refresh = None;
         }
 
@@ -1117,7 +1117,7 @@ mod tests {
         let now = now + Duration::from_millis(500);
         client_state.handle_timeout(now);
 
-        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterfance));
+        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterface));
     }
 
     #[test]
@@ -1149,7 +1149,7 @@ mod tests {
         client_state.update_system_resolvers(vec![ip("1.0.0.1")], now);
         let now = now + Duration::from_millis(500);
         client_state.handle_timeout(now);
-        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterfance));
+        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterface));
     }
 
     impl ClientState {
