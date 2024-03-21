@@ -340,12 +340,11 @@ mod tests {
         // Install wintun so the test can run
         // CI only needs x86_64 for now
         let wintun_bytes = include_bytes!("../../../gui-client/wintun/bin/amd64/wintun.dll");
-        tokio::fs::write(
-            &connlib_shared::windows::wintun_dll_path().unwrap(),
-            wintun_bytes,
-        )
-        .await
-        .unwrap();
+        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&wintun_path, wintun_bytes).await.unwrap();
 
         device_common();
     }
