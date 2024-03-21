@@ -1999,7 +1999,7 @@ defmodule Domain.ActorsTest do
       assert fetch_actor_by_id(actor.id, subject) == {:error, :not_found}
     end
 
-    test "returns error when subject can not view actors" do
+    test "returns error when subject cannot view actors" do
       subject = Fixtures.Auth.create_subject()
       subject = Fixtures.Auth.remove_permissions(subject)
 
@@ -2103,7 +2103,7 @@ defmodule Domain.ActorsTest do
       assert Enum.sort(Enum.map(actors, & &1.id)) == Enum.sort([actor1.id, actor2.id])
     end
 
-    test "returns error when subject can not view actors" do
+    test "returns error when subject cannot view actors" do
       subject = Fixtures.Auth.create_subject()
       subject = Fixtures.Auth.remove_permissions(subject)
 
@@ -2288,7 +2288,7 @@ defmodule Domain.ActorsTest do
       assert create_actor(account, attrs, subject) == {:error, :service_accounts_limit_reached}
     end
 
-    test "returns error when subject can not create actors", %{
+    test "returns error when subject cannot create actors", %{
       account: account,
       subject: subject
     } do
@@ -2390,7 +2390,7 @@ defmodule Domain.ActorsTest do
                update_actor(actor, %{type: :account_admin_user}, subject)
     end
 
-    test "returns error when subject can not manage types", %{account: account} do
+    test "returns error when subject cannot manage types", %{account: account} do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       subject =
@@ -2641,7 +2641,7 @@ defmodule Domain.ActorsTest do
       assert disable_actor(other_actor, subject) == {:error, :not_found}
     end
 
-    test "returns error when subject can not disable actors" do
+    test "returns error when subject cannot disable actors" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
@@ -2701,7 +2701,7 @@ defmodule Domain.ActorsTest do
       assert enable_actor(other_actor, subject) == {:error, :not_found}
     end
 
-    test "returns error when subject can not enable actors" do
+    test "returns error when subject cannot enable actors" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
@@ -2963,7 +2963,7 @@ defmodule Domain.ActorsTest do
       assert delete_actor(other_actor, subject) == {:error, :not_found}
     end
 
-    test "returns error when subject can not delete actors" do
+    test "returns error when subject cannot delete actors" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 

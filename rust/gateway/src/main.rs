@@ -120,9 +120,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
 #[derive(Clone)]
 struct CallbackHandler;
 
-impl Callbacks for CallbackHandler {
-    type Error = Infallible;
-}
+impl Callbacks for CallbackHandler {}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

@@ -5,16 +5,15 @@ use std::time::Instant;
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{DnsServer, ResourceId};
-use connlib_shared::IpProvider;
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use pnet_packet::Packet;
 
-use crate::gateway::ResourceDescription;
+use crate::client::IpProvider;
 use crate::ip_packet::MutableIpPacket;
 
-type ExpiryingResource = (ResourceDescription, Option<DateTime<Utc>>);
+type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
 
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
@@ -86,7 +85,7 @@ where
         let (packet, addr) = self.transform.packet_untransform(packet)?;
 
         if !self.is_allowed(addr) {
-            return Err(Error::UnallowedPacket);
+            return Err(Error::UnallowedPacket(addr));
         }
 
         Ok(packet)
@@ -134,6 +133,7 @@ impl PacketTransformClient {
     }
 
     pub fn set_dns(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
+        self.mangled_dns_ids.clear();
         self.dns_mapping = mapping;
     }
 }
@@ -149,16 +149,13 @@ impl PacketTransformGateway {
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.retain(|_, (r, _)| match r {
-            connlib_shared::messages::ResourceDescription::Dns(r) => r.id != *resource,
-            connlib_shared::messages::ResourceDescription::Cidr(r) => r.id != *resource,
-        })
+        self.resources.retain(|_, (r, _)| r != resource)
     }
 
     pub(crate) fn add_resource(
         &mut self,
         ip: IpNetwork,
-        resource: ResourceDescription,
+        resource: ResourceId,
         expires_at: Option<DateTime<Utc>>,
     ) {
         self.resources.insert(ip, (resource, expires_at));

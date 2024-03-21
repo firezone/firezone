@@ -6,7 +6,7 @@
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
     messages::{ClientId, GatewayId, ResourceId, ReuseConnection},
-    CallbackErrorFacade, Callbacks, Result,
+    Callbacks, Result,
 };
 use io::Io;
 use std::{
@@ -41,7 +41,7 @@ pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 
 /// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
 pub struct Tunnel<CB: Callbacks, TRoleState> {
-    pub callbacks: CallbackErrorFacade<CB>,
+    pub callbacks: CB,
 
     /// State that differs per role, i.e. clients vs gateways.
     role_state: TRoleState,
@@ -59,8 +59,6 @@ where
     CB: Callbacks + 'static,
 {
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
-
         Ok(Self {
             io: new_io(&callbacks)?,
             callbacks,
@@ -78,8 +76,27 @@ where
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
-            if let Some(other) = self.role_state.poll_event() {
-                return Poll::Ready(Ok(other));
+            match self.role_state.poll_event() {
+                Some(client::Event::RefreshInterfance) => {
+                    self.update_interface()?;
+                    continue;
+                }
+                Some(client::Event::SignalIceCandidate { conn_id, candidate }) => {
+                    return Poll::Ready(Ok(ClientEvent::SignalIceCandidate { conn_id, candidate }))
+                }
+                Some(client::Event::ConnectionIntent {
+                    resource,
+                    connected_gateway_ids,
+                }) => {
+                    return Poll::Ready(Ok(ClientEvent::ConnectionIntent {
+                        resource,
+                        connected_gateway_ids,
+                    }))
+                }
+                Some(client::Event::RefreshResources { connections }) => {
+                    return Poll::Ready(Ok(ClientEvent::RefreshResources { connections }))
+                }
+                None => {}
             }
 
             if let Some(packet) = self.role_state.poll_packets() {
@@ -150,8 +167,6 @@ where
     CB: Callbacks + 'static,
 {
     pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
-        let callbacks = CallbackErrorFacade(callbacks);
-
         Ok(Self {
             io: new_io(&callbacks)?,
             callbacks,
@@ -223,7 +238,7 @@ where
 }
 
 #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
-fn new_io<CB>(callbacks: &CallbackErrorFacade<CB>) -> Result<Io>
+fn new_io<CB>(callbacks: &CB) -> Result<Io>
 where
     CB: Callbacks,
 {
@@ -233,16 +248,17 @@ where
     #[cfg(target_os = "android")]
     {
         if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
-            callbacks.protect_file_descriptor(ip4_socket)?;
+            callbacks.protect_file_descriptor(ip4_socket);
         }
         if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
-            callbacks.protect_file_descriptor(ip6_socket)?;
+            callbacks.protect_file_descriptor(ip6_socket);
         }
     }
 
     Ok(io)
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ClientEvent {
     SignalIceCandidate {
         conn_id: GatewayId,

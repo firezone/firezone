@@ -9,7 +9,7 @@ defmodule Web.Clients.Show do
              preload: [:actor, last_used_token: [identity: [:provider]]]
            ) do
       if connected?(socket) do
-        :ok = Clients.subscribe_to_clients_presence_in_account(client.account_id)
+        :ok = Clients.subscribe_to_clients_presence_for_actor(client.actor)
       end
 
       socket =
@@ -47,16 +47,11 @@ defmodule Web.Clients.Show do
 
     with {:ok, flows, metadata} <-
            Flows.list_flows_for(socket.assigns.client, socket.assigns.subject, list_opts) do
-      assign(socket,
-        flows: flows,
-        flows_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 
@@ -211,7 +206,10 @@ defmodule Web.Clients.Show do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "clients:" <> _account_id, payload: payload},
+        %Phoenix.Socket.Broadcast{
+          topic: "presences:actor_clients:" <> _actor_id,
+          payload: payload
+        },
         socket
       ) do
     client = socket.assigns.client

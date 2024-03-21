@@ -32,13 +32,13 @@ function smoke_test() {
     done
 
     # Run the smoke test normally
-    cargo run -p "$PACKAGE" -- smoke-test
+    cargo run --bin "$PACKAGE" -- smoke-test
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
 
     # Run the test again and make sure the device ID is not changed
-    cargo run -p "$PACKAGE" -- smoke-test
+    cargo run --bin "$PACKAGE" -- smoke-test
     DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
@@ -66,7 +66,7 @@ function crash_test() {
     rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    cargo run -p "$PACKAGE" -- --crash && exit 1
+    cargo run --bin "$PACKAGE" -- --crash && exit 1
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"
@@ -75,9 +75,9 @@ function crash_test() {
 function get_stacktrace() {
     # Per `crash_handling.rs`
     SYMS_PATH="../target/debug/firezone-gui-client.syms"
-    cargo install --locked dump_syms minidump-stackwalk
+    cargo install --quiet --locked dump_syms minidump-stackwalk
     dump_syms ../target/debug/firezone_gui_client.pdb ../target/debug/firezone-gui-client.exe --output "$SYMS_PATH"
-    ls ../target/debug
+    ls -lash ../target/debug
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
 

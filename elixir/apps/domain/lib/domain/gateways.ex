@@ -339,7 +339,7 @@ defmodule Domain.Gateways do
     # Replace the location with the approximate distance to the client
     |> Enum.map(fn
       {{gateway_lat, gateway_lon}, gateway} when is_nil(gateway_lat) or is_nil(gateway_lon) ->
-        {Geo.fetch_radius_of_earth_km!(), gateway}
+        {nil, gateway}
 
       {{gateway_lat, gateway_lon}, gateway} ->
         distance = Geo.distance({lat, lon}, {gateway_lat, gateway_lon})
@@ -428,8 +428,10 @@ defmodule Domain.Gateways do
     PubSub.subscribe(account_presence_topic(account))
   end
 
-  def subscribe_to_gateways_presence_in_group(%Group{} = group) do
-    PubSub.subscribe(group_presence_topic(group))
+  def subscribe_to_gateways_presence_in_group(group_or_id) do
+    group_or_id
+    |> group_presence_topic()
+    |> PubSub.subscribe()
   end
 
   def broadcast_to_gateway(gateway_or_id, payload) do

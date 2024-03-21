@@ -9,7 +9,6 @@ LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 
-export FIREZONE_DISABLE_SYSTRAY=true
 PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
@@ -60,9 +59,16 @@ function crash_test() {
 
     # Fail if the crash file wasn't written
     sudo stat "$DUMP_PATH"
+}
 
-    # Clean up
-    sudo rm "$DUMP_PATH"
+function get_stacktrace() {
+    SYMS_PATH="../target/debug/firezone-gui-client.syms"
+    cargo install --quiet --locked dump_syms minidump-stackwalk
+    # The dwp doesn't actually do anything if the exe already has all the debug info
+    # Getting this to coordinate between Linux and Windows is tricky
+    dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
+    ls -lash ../target/debug
+    minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
 }
 
 # Run the tests twice to make sure it's okay for the directories to stay intact
@@ -70,6 +76,10 @@ smoke_test
 smoke_test
 crash_test
 crash_test
+get_stacktrace
+
+# Clean up
+sudo rm "$DUMP_PATH"
 
 # I'm not sure if the last command is handled specially, so explicitly exit with 0
 exit 0
