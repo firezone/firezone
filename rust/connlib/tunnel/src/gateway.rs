@@ -276,6 +276,8 @@ impl GatewayState {
         let packet = match peer.untransform(packet.into()) {
             Ok(packet) => packet,
             Err(e) => {
+                // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
+                // source ips can be sticky.
                 tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
 
                 return None;

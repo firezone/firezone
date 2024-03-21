@@ -76,6 +76,13 @@ defmodule Web.Settings.Billing do
             </:value>
           </.vertical_table_row>
 
+          <.vertical_table_row>
+            <:label>Billing Email</:label>
+            <:value>
+              <%= @account.metadata.stripe.billing_email %>
+            </:value>
+          </.vertical_table_row>
+
           <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
             <:label>
               <p>Seats</p>

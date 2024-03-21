@@ -119,6 +119,8 @@ impl Io {
         &mut self,
         dns_servers: impl IntoIterator<Item = (IpAddr, DnsServer)>,
     ) {
+        self.forwarded_dns_queries =
+            FuturesTupleSet::new(Duration::from_secs(60), DNS_QUERIES_QUEUE_SIZE);
         self.upstream_dns_servers = create_resolvers(dns_servers);
     }
 

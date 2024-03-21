@@ -19,11 +19,7 @@ async fn main() -> Result<()> {
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let dns_control_method = get_dns_control_from_env();
-    let callbacks = CallbackHandler {
-        dns_control_method: dns_control_method.clone(),
-        handle,
-    };
+    let callbacks = CallbackHandler { handle };
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -40,15 +36,17 @@ async fn main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
-    let mut session = Session::connect(
+    let session = Session::connect(
         login,
         private_key,
         None,
-        callbacks,
+        callbacks.clone(),
         max_partition_time,
         tokio::runtime::Handle::current(),
     )
     .unwrap();
+    // TODO: this should be added dynamically
+    session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
@@ -76,38 +74,22 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
+    match dns_control_method {
+        None => get_system_default_resolvers_resolv_conf(),
+        Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
+        Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
+        Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
+    }
+}
+
 #[derive(Clone)]
 struct CallbackHandler {
-    dns_control_method: Option<DnsControlMethod>,
     handle: Option<file_logger::Handle>,
 }
 
-#[derive(Debug, thiserror::Error)]
-enum CbError {
-    #[error(transparent)]
-    Any(#[from] anyhow::Error),
-}
-
 impl Callbacks for CallbackHandler {
-    // I spent several minutes messing with `anyhow` and couldn't figure out how to make
-    // it implement `std::error::Error`: <https://github.com/dtolnay/anyhow/issues/25>
-    type Error = CbError;
-
-    /// May return Firezone's own servers, e.g. `100.100.111.1`.
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        let default_resolvers = match self.dns_control_method {
-            None => get_system_default_resolvers_resolv_conf()?,
-            Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf()?,
-            Some(DnsControlMethod::NetworkManager) => {
-                get_system_default_resolvers_network_manager()?
-            }
-            Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved()?,
-        };
-        tracing::info!(?default_resolvers);
-        Ok(Some(default_resolvers))
-    }
-
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!("Disconnected: {error}");
 
         std::process::exit(1);

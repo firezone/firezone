@@ -158,13 +158,13 @@ defmodule Web.Sites.Index do
     """
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
-
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
     {:noreply, reload_live_table!(socket, "groups")}
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end

@@ -13,7 +13,7 @@ use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -449,39 +449,26 @@ struct CallbackHandler {
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
-#[derive(thiserror::Error, Debug)]
-enum CallbackError {
-    #[error("can't send to controller task: {0}")]
-    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-
 // Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
-        Ok(())
+        self.ctlr_tx
+            .try_send(ControllerRequest::Disconnected)
+            .expect("controller channel failed");
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         tracing::info!("on_tunnel_ready");
-        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
-        Ok(())
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-        Ok(())
-    }
-
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(client::resolvers::get()?))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -554,6 +541,8 @@ impl Controller {
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
         )?;
+
+        connlib.set_dns(client::resolvers::get().unwrap_or_default());
 
         self.session = Some(Session {
             callback_handler,

@@ -8,7 +8,7 @@ use connlib_client_shared::{
     ResourceDescription, Session,
 };
 use jni::{
-    objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
+    objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     JNIEnv, JavaVM,
 };
@@ -138,14 +138,12 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 }
 
 impl Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -180,9 +178,10 @@ impl Callbacks for CallbackHandler {
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
+        .expect("onSetInterfaceConfig callback failed")
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -192,13 +191,14 @@ impl Callbacks for CallbackHandler {
                 &[],
             )
         })
+        .expect("onTunnelReady callback failed")
     }
 
     fn on_update_routes(
         &self,
         route_list_4: Vec<Cidrv4>,
         route_list_6: Vec<Cidrv6>,
-    ) -> Result<Option<RawFd>, Self::Error> {
+    ) -> Option<RawFd> {
         self.env(|mut env| {
             let route_list_4 = env
                 .new_string(serde_json::to_string(&route_list_4)?)
@@ -224,10 +224,11 @@ impl Callbacks for CallbackHandler {
             .map(Some)
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
+        .expect("onUpdateRoutes callback failed")
     }
 
     #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), Self::Error> {
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -237,12 +238,10 @@ impl Callbacks for CallbackHandler {
                 &[JValue::Int(file_descriptor)],
             )
         })
+        .expect("protectFileDescriptor callback failed");
     }
 
-    fn on_update_resources(
-        &self,
-        resource_list: Vec<ResourceDescription>,
-    ) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
@@ -258,9 +257,10 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&resource_list)],
             )
         })
+        .expect("onUpdateResources callback failed")
     }
 
-    fn on_disconnect(&self, error: &Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &Error) {
         self.env(|mut env| {
             let error = env
                 .new_string(serde_json::to_string(&error.to_string())?)
@@ -276,6 +276,7 @@ impl Callbacks for CallbackHandler {
                 &[JValue::from(&error)],
             )
         })
+        .expect("onDisconnect callback failed")
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -285,42 +286,6 @@ impl Callbacks for CallbackHandler {
             None
         })
     }
-
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        self.env(|mut env| {
-            let name = "getSystemDefaultResolvers";
-            let addrs = env
-                .call_method(&self.callback_handler, name, "()[[B", &[])
-                .and_then(JValueGen::l)
-                .and_then(|arr| convert_byte_array_array(&mut env, arr.into()))
-                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-
-            Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
-        })
-    }
-}
-
-fn to_ip(val: &[u8]) -> Option<IpAddr> {
-    let addr: Option<[u8; 4]> = val.try_into().ok();
-    if let Some(addr) = addr {
-        return Some(addr.into());
-    }
-
-    let addr: [u8; 16] = val.try_into().ok()?;
-    Some(addr.into())
-}
-
-fn convert_byte_array_array(
-    env: &mut JNIEnv,
-    array: JObjectArray,
-) -> jni::errors::Result<Vec<Vec<u8>>> {
-    let len = env.get_array_length(&array)?;
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let arr: JByteArray<'_> = env.get_object_array_element(&array, i)?.into();
-        result.push(env.convert_byte_array(arr)?);
-    }
-    Ok(result)
 }
 
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
@@ -502,4 +467,39 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).inner.disconnect();
     });
+}
+
+/// # Safety
+/// Pointers must be valid
+#[allow(non_snake_case)]
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
+    mut env: JNIEnv,
+    _: JClass,
+    session: *const SessionWrapper,
+    dns_list: JString,
+) {
+    let dns = String::from(
+        env.get_string(&dns_list)
+            .map_err(|source| ConnectError::StringInvalid {
+                name: "dns_list",
+                source,
+            })
+            .expect("Invalid string returned from android client"),
+    );
+    let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
+    let session = &*session;
+    session.inner.set_dns(dns);
+}
+
+/// # Safety
+/// Pointers must be valid
+#[allow(non_snake_case)]
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
+    _: JNIEnv,
+    _: JClass,
+    session: *const SessionWrapper,
+) {
+    (*session).inner.reconnect();
 }
