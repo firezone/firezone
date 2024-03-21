@@ -14,4 +14,11 @@ object ConnlibSession {
     ): Long
 
     external fun disconnect(connlibSession: Long): Boolean
+
+    external fun setDns(
+        connlibSession: Long,
+        dnsList: String,
+    ): Boolean
+
+    external fun reconnect(connlibSession: Long): Boolean
 }

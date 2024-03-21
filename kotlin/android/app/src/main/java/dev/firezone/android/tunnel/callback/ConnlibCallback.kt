@@ -20,7 +20,5 @@ interface ConnlibCallback {
     // The JNI doesn't support nullable types, so we need two method signatures
     fun onDisconnect(error: String): Boolean
 
-    fun getSystemDefaultResolvers(): Array<ByteArray>
-
     fun protectFileDescriptor(fileDescriptor: Int)
 }

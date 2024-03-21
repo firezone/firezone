@@ -8,7 +8,7 @@ use connlib_client_shared::{
     ResourceDescription, Session,
 };
 use jni::{
-    objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString, JValue, JValueGen},
+    objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     JNIEnv, JavaVM,
 };
@@ -78,21 +78,6 @@ impl CallbackHandler {
             .attach_current_thread_as_daemon()
             .map_err(CallbackError::AttachCurrentThreadFailed)
             .and_then(f)
-    }
-
-    fn get_system_default_resolvers(&self) -> Vec<IpAddr> {
-        self.env(|mut env| {
-            let name = "getSystemDefaultResolvers";
-            let addrs = env
-                .call_method(&self.callback_handler, name, "()[[B", &[])
-                .and_then(JValueGen::l)
-                .and_then(|arr| convert_byte_array_array(&mut env, arr.into()))
-                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-
-            Ok(Some(addrs.iter().filter_map(|v| to_ip(v)).collect()))
-        })
-        .expect("getSystemDefaultResolvers callback failed")
-        .unwrap_or_default()
     }
 }
 
@@ -303,29 +288,6 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn to_ip(val: &[u8]) -> Option<IpAddr> {
-    let addr: Option<[u8; 4]> = val.try_into().ok();
-    if let Some(addr) = addr {
-        return Some(addr.into());
-    }
-
-    let addr: [u8; 16] = val.try_into().ok()?;
-    Some(addr.into())
-}
-
-fn convert_byte_array_array(
-    env: &mut JNIEnv,
-    array: JObjectArray,
-) -> jni::errors::Result<Vec<Vec<u8>>> {
-    let len = env.get_array_length(&array)?;
-    let mut result = Vec::with_capacity(len as usize);
-    for i in 0..len {
-        let arr: JByteArray<'_> = env.get_object_array_element(&array, i)?.into();
-        result.push(env.convert_byte_array(arr)?);
-    }
-    Ok(result)
-}
-
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
     if let Err(err) = env.throw_new(class, msg) {
         // We can't panic, since unwinding across the FFI boundary is UB...
@@ -428,12 +390,10 @@ fn connect(
         login,
         private_key,
         Some(os_version),
-        callback_handler.clone(),
+        callback_handler,
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     )?;
-
-    session.set_dns(callback_handler.get_system_default_resolvers());
 
     Ok(SessionWrapper {
         inner: session,
@@ -507,4 +467,39 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).inner.disconnect();
     });
+}
+
+/// # Safety
+/// Pointers must be valid
+#[allow(non_snake_case)]
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
+    mut env: JNIEnv,
+    _: JClass,
+    session: *const SessionWrapper,
+    dns_list: JString,
+) {
+    let dns = String::from(
+        env.get_string(&dns_list)
+            .map_err(|source| ConnectError::StringInvalid {
+                name: "dns_list",
+                source,
+            })
+            .expect("Invalid string returned from android client"),
+    );
+    let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
+    let session = &*session;
+    session.inner.set_dns(dns);
+}
+
+/// # Safety
+/// Pointers must be valid
+#[allow(non_snake_case)]
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
+    _: JNIEnv,
+    _: JClass,
+    session: *const SessionWrapper,
+) {
+    (*session).inner.reconnect();
 }
