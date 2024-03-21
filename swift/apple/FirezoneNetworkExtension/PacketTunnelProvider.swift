@@ -43,9 +43,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Task {
       let keychain = Keychain()
       guard let token = await keychain.load(persistentRef: tokenRef) else {
-        //        self.handleTunnelShutdown(
-        //          dueTo: .tokenNotFound,
-        //          errorMessage: "Token not found in keychain")
+        logger.error("\(#function): No token found in Keychain")
         completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
         return
       }
@@ -59,7 +57,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         try adapter.start { error in
           if let error {
-            self.logger.error("Error in adapter.start: \(error)")
+            self.logger.error("\(#function): \(error)")
           }
           completionHandler(error)
         }

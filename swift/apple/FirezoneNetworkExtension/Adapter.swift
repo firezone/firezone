@@ -153,9 +153,6 @@ class Adapter {
         session.setDns(getSystemDefaultResolvers().intoRustString())
       } catch let error {
         logger.error("\(#function): Adapter.start: Error: \(error)")
-        //        packetTunnelProvider?.handleTunnelShutdown(
-        //          dueTo: .connlibConnectFailure,
-        //          errorMessage: error.localizedDescription)
         state = .stoppedTunnel
         completionHandler(AdapterError.connlibConnectError(error))
       }
@@ -179,10 +176,6 @@ class Adapter {
 
       networkMonitor?.cancel()
       networkMonitor = nil
-
-      //      packetTunnelProvider?.handleTunnelShutdown(
-      //        dueTo: .stopped(reason),
-      //        errorMessage: "\(reason)")
 
       switch state {
       case .stoppedTunnel:
@@ -289,7 +282,7 @@ extension Adapter {
 
         // Set potentially new DNS servers
         if shouldUpdateDns(path: path) {
-          // Spawn a new thread to avoid blocking the UI
+          // Spawn a new thread to avoid blocking the UI on iOS
           Task {
             session.setDns(getSystemDefaultResolvers().intoRustString())
           }
@@ -390,9 +383,6 @@ extension Adapter: CallbackHandlerDelegate {
       // Unexpected disconnect initiated by connlib. Typically for 401s.
       logger.error(
         "Connlib disconnected with unrecoverable error: \(error)")
-      // packetTunnelProvider?.handleTunnelShutdown(
-      //   dueTo: .connlibDisconnected,
-      //   errorMessage: error)
       // TODO: Define more connlib error types across the FFI so we can switch on them
       // more granularly, and not just sign the user out every time this is called.
       packetTunnelProvider?.cancelTunnelWithError(
