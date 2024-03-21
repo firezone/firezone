@@ -212,7 +212,7 @@ where
 
         let callbacks = self.callbacks.clone();
 
-        self.io.device_mut().initialize(
+        self.io.device_mut().set_config(
             &config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
