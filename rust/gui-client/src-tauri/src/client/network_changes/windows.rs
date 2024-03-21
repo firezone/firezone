@@ -652,35 +652,46 @@ mod async_dns {
         }
 
         fn reg_notify(key: &winreg::RegKey, event: HANDLE) {
-            assert!(! event_is_signaled(event));
+            assert!(!event_is_signaled(event));
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
             let key_handle = Registry::HKEY(key.raw_handle());
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
-            }.ok().expect("`RegNotifyChangeKeyValue` failed");
+            }
+            .ok()
+            .expect("`RegNotifyChangeKeyValue` failed");
         }
 
         fn set_reg_value(key: &winreg::RegKey, val: u32) {
-            key.set_value("some_key", &val).expect("setting registry value `{val}` failed");
+            key.set_value("some_key", &val)
+                .expect("setting registry value `{val}` failed");
         }
 
         fn reset_event(event: HANDLE) {
             unsafe { ResetEvent(event) }.expect("`ResetEvent` failed");
-            assert!(! event_is_signaled(event));
+            assert!(!event_is_signaled(event));
         }
 
         #[test]
         fn registry() {
             let flags = winreg::enums::KEY_NOTIFY | winreg::enums::KEY_WRITE;
-            let (key, _disposition) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER).create_subkey_with_flags(Path::new("Software").join("dev.firezone.client").join("test_CZD3JHFS"), flags).expect("`open_subkey_with_flags` failed");
+            let (key, _disposition) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+                .create_subkey_with_flags(
+                    Path::new("Software")
+                        .join("dev.firezone.client")
+                        .join("test_CZD3JHFS"),
+                    flags,
+                )
+                .expect("`open_subkey_with_flags` failed");
 
-            let event = unsafe { CreateEventA(None, false, false, None) }.expect("`CreateEventA` failed");
+            let event =
+                unsafe { CreateEventA(None, false, false, None) }.expect("`CreateEventA` failed");
 
             // Registering the notify alone does not signal the event
             reg_notify(&key, event);
-            assert!(! event_is_signaled(event));
+            assert!(!event_is_signaled(event));
 
             // Setting the value after we've registered does
             set_reg_value(&key, 0);
@@ -689,7 +700,7 @@ mod async_dns {
             // Do that one more time to prove it wasn't a fluke
             reset_event(event);
             reg_notify(&key, event);
-            assert!(! event_is_signaled(event));
+            assert!(!event_is_signaled(event));
 
             set_reg_value(&key, 0500);
             assert!(event_is_signaled(event));
@@ -702,7 +713,7 @@ mod async_dns {
             // make it clear. I'll leave the workaround in the main code.
             reset_event(event);
             set_reg_value(&key, 1000);
-            assert!(! event_is_signaled(event));
+            assert!(!event_is_signaled(event));
             reg_notify(&key, event);
             // This is the part I was wrong about
             assert!(event_is_signaled(event));
