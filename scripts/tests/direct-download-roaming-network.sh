@@ -4,7 +4,13 @@ set -euo pipefail
 
 source "./scripts/tests/lib.sh"
 
-download_bytes 10000000 "1M" "download.file" & # Download 10MB at a max rate of 1MB/s
+# Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 20 seconds (allows for 10s of restablishing)
+docker compose exec -it client sh -c \
+    "curl \
+        --fail \
+        --max-time 20 \
+        --limit-rate 1M http://download.httpbin/bytes?num=10000000" > download.file &
+
 DOWNLOAD_PID=$!
 
 sleep 3 # Download a bit
