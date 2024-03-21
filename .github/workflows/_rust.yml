@@ -67,6 +67,8 @@ jobs:
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
+          # Windows CI may not need this, it already runs as admin
+          # CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER: "powershell -Command Start-Process -Verb runAs -FilePath"
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           RUST_BACKTRACE: full
 
