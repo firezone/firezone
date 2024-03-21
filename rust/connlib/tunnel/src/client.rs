@@ -184,8 +184,16 @@ where
         );
     }
 
+    /// Updates the system's dns
     pub fn set_dns(&mut self, new_dns: Vec<IpAddr>, now: Instant) {
         self.role_state.update_system_resolvers(new_dns, now);
+    }
+
+    /// Sets the interface configuration and starts background tasks.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
+        self.role_state.interface_config = Some(config);
+        self.update_interface()
     }
 
     pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
@@ -221,13 +229,6 @@ where
         tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
 
         Ok(())
-    }
-
-    /// Sets the interface configuration and starts background tasks.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
-        self.role_state.interface_config = Some(config);
-        self.update_interface()
     }
 
     /// Clean up a connection to a resource.
@@ -1079,85 +1080,85 @@ mod tests {
 
     use super::*;
 
-    fn client_state_fixture() -> ClientState {
-        ClientState::new(StaticSecret::random_from_rng(OsRng))
-    }
-
     #[test]
     fn ignores_ip4_igmp_multicast() {
-        assert!(is_definitely_not_a_resource("224.0.0.22".parse().unwrap()))
+        assert!(is_definitely_not_a_resource(ip("224.0.0.22")))
     }
 
     #[test]
     fn ignores_ip6_multicast_all_routers() {
-        assert!(is_definitely_not_a_resource("ff02::2".parse().unwrap()))
+        assert!(is_definitely_not_a_resource(ip("ff02::2")))
     }
 
     #[test]
     fn dns_updated_when_dns_changes() {
-        assert!(dns_updated(
-            &["1.0.0.1".parse().unwrap()],
-            &["1.1.1.1".parse().unwrap()]
-        ))
+        assert!(dns_updated(&[ip("1.0.0.1")], &[ip("1.1.1.1")]))
     }
 
     #[test]
     fn dns_not_updated_when_dns_remains_the_same() {
-        assert!(!dns_updated(
-            &["1.1.1.1".parse().unwrap()],
-            &["1.1.1.1".parse().unwrap()]
-        ))
+        assert!(!dns_updated(&[ip("1.1.1.1")], &[ip("1.1.1.1")]))
     }
 
     #[test]
     fn dns_updated_ignores_order() {
         assert!(!dns_updated(
-            &["1.0.0.1".parse().unwrap(), "1.1.1.1".parse().unwrap()],
-            &["1.1.1.1".parse().unwrap(), "1.0.0.1".parse().unwrap()]
+            &[ip("1.0.0.1"), ip("1.1.1.1")],
+            &[ip("1.1.1.1"), ip("1.0.0.1")]
         ))
     }
 
     #[test]
     fn update_system_dns_works() {
-        let mut mock_state = client_state_fixture();
+        let mut client_state = ClientState::for_test();
 
         let now = Instant::now();
-        mock_state.update_system_resolvers(vec!["1.1.1.1".parse().unwrap()], now);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
         let now = now + Duration::from_millis(500);
-        mock_state.handle_timeout(now);
+        client_state.handle_timeout(now);
 
-        assert_eq!(mock_state.poll_event(), Some(Event::RefreshInterfance));
+        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterfance));
     }
 
     #[test]
     fn update_system_dns_without_change_is_a_no_op() {
-        let mut mock_state = client_state_fixture();
+        let mut client_state = ClientState::for_test();
 
         let now = Instant::now();
-        mock_state.update_system_resolvers(vec!["1.1.1.1".parse().unwrap()], now);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
         let now = now + Duration::from_millis(500);
-        mock_state.handle_timeout(now);
-        mock_state.poll_event();
+        client_state.handle_timeout(now);
+        client_state.poll_event();
 
-        mock_state.update_system_resolvers(vec!["1.1.1.1".parse().unwrap()], now);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
         let now = now + Duration::from_millis(500);
-        mock_state.handle_timeout(now);
-        assert!(mock_state.poll_event().is_none());
+        client_state.handle_timeout(now);
+        assert!(client_state.poll_event().is_none());
     }
 
     #[test]
     fn update_system_dns_with_change_works() {
-        let mut mock_state = client_state_fixture();
+        let mut client_state = ClientState::for_test();
 
         let now = Instant::now();
-        mock_state.update_system_resolvers(vec!["1.1.1.1".parse().unwrap()], now);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
         let now = now + Duration::from_millis(500);
-        mock_state.handle_timeout(now);
-        mock_state.poll_event();
+        client_state.handle_timeout(now);
+        client_state.poll_event();
 
-        mock_state.update_system_resolvers(vec!["1.0.0.1".parse().unwrap()], now);
+        client_state.update_system_resolvers(vec![ip("1.0.0.1")], now);
         let now = now + Duration::from_millis(500);
-        mock_state.handle_timeout(now);
-        assert_eq!(mock_state.poll_event(), Some(Event::RefreshInterfance));
+        client_state.handle_timeout(now);
+        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterfance));
+    }
+
+    impl ClientState {
+        fn for_test() -> ClientState {
+            ClientState::new(StaticSecret::random_from_rng(OsRng))
+        }
+    }
+
+    fn ip(addr: &str) -> IpAddr {
+        addr.parse().unwrap()
     }
 }
