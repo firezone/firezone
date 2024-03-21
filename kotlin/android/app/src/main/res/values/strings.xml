@@ -26,7 +26,7 @@
 	<string name="sign_out">Sign Out</string>
 
 	<!-- Auth -->
-	<string name="launching_auth_flow">Launching Chrome to sign in...</string>
+	<string name="launching_auth_flow">Launching Chrome to sign in…</string>
 
 	<!-- Error Dialog -->
 	<string name="error_dialog_title">Error</string>
@@ -61,5 +61,10 @@
 		package IDs that are disallowed to use the Firezone tunnel and will be routed outside of it.
 		If this list is empty, no applications are disallowed. Either "Allowed Applications" OR
 		"Disallowed Applications" may be set *but not* both.
+	</string>
+	<string name="config_device_name_title">Device Name</string>
+	<string name="config_device_name_description">
+		The name of the device. This is used to identify the device in the admin portal.
+		If unset, device\'s model name will be used.
 	</string>
 </resources>

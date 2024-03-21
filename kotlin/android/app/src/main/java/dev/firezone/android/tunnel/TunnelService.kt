@@ -213,7 +213,7 @@ class TunnelService : VpnService() {
                     apiUrl = config.apiUrl,
                     token = token,
                     deviceId = deviceId(),
-                    deviceName = Build.MODEL,
+                    deviceName = getDeviceName(),
                     osVersion = Build.VERSION.RELEASE,
                     logDir = getLogDir(),
                     logFilter = config.logFilter,
@@ -382,6 +382,15 @@ class TunnelService : VpnService() {
                 .setCategory(Notification.CATEGORY_SERVICE).setContentIntent(configIntent()).build()
 
         startForeground(STATUS_NOTIFICATION_ID, notification)
+    }
+
+    private fun getDeviceName(): String {
+        val deviceName = appRestrictions.getString("deviceName")
+        return if (deviceName.isNullOrBlank() || deviceName == "null") {
+            Build.MODEL
+        } else {
+            deviceName
+        }
     }
 
     companion object {
