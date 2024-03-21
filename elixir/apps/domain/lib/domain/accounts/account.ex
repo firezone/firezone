@@ -16,6 +16,7 @@ defmodule Domain.Accounts.Account do
         field :customer_id, :string
         field :subscription_id, :string
         field :product_name, :string
+        field :billing_email, :string
       end
     end
 

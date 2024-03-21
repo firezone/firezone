@@ -27,7 +27,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Edit do
         Identity Providers Settings
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers/okta/#{@form.data}/edit"}>
-        Edit <%= # {@form.data.name} %>
+        Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.section>

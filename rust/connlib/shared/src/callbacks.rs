@@ -73,14 +73,6 @@ pub trait Callbacks: Clone + Send + Sync {
         std::process::exit(0);
     }
 
-    /// Returns the system's default resolver(s)
-    ///
-    /// It's okay for clients to include Firezone's own DNS here, e.g. 100.100.111.1.
-    /// connlib internally filters them out.
-    fn get_system_default_resolvers(&self) -> Option<Vec<IpAddr>> {
-        None
-    }
-
     /// Protects the socket file descriptor from routing loops.
     #[cfg(target_os = "android")]
     fn protect_file_descriptor(&self, file_descriptor: std::os::fd::RawFd);
