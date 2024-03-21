@@ -568,11 +568,10 @@ mod async_dns {
         }
 
         /// Returns when the registry key has changed
-        // I'm not sure if this needs to be mut, I'm being cautious here.
-        // There is no reason in practice you'd ever want to call it from two
-        // threads at once.
-        //
-        // Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
+        ///
+        /// This is `&mut self` because calling `register_callback` twice
+        /// before the callback fires would cause a resource leak.
+        /// Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
         pub(crate) async fn notified(&mut self) -> Result<()> {
             // Order matters here
             // We want to return to the caller and let them check the DNS
@@ -585,7 +584,10 @@ mod async_dns {
         }
 
         // Be careful with this, if you register twice before the callback fires,
-        // it will probably leak something. Check the MS docs for `RegNotifyChangeKeyValue`.
+        // it will leak some resource.
+        // <https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue#remarks>
+        //
+        // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
             let key_handle = Registry::HKEY(self.key.raw_handle());
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
@@ -620,5 +622,12 @@ mod async_dns {
         // It's not a problem if sending fails. It either means the `Listener`
         // is closing down, or it's already been notified.
         tx.try_send(()).ok();
+    }
+
+    #[cfg(tests)]
+    mod tests {
+        fn registry() {
+
+        }
     }
 }
