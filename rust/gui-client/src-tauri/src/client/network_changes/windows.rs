@@ -406,7 +406,7 @@ fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, ops::Deref};
+    use std::{ffi::c_void, ops::Deref, path::Path};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -423,13 +423,13 @@ mod async_dns {
     /// `HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Services/Tcpip[6]/Parameters/Interfaces`
     fn open_network_registry_keys() -> Result<(RegKey, RegKey)> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-        let path_4 = std::path::Path::new("SYSTEM")
+        let path_4 = Path::new("SYSTEM")
             .join("CurrentControlSet")
             .join("Services")
             .join("Tcpip")
             .join("Parameters")
             .join("Interfaces");
-        let path_6 = std::path::Path::new("SYSTEM")
+        let path_6 = Path::new("SYSTEM")
             .join("CurrentControlSet")
             .join("Services")
             .join("Tcpip6")
@@ -573,9 +573,22 @@ mod async_dns {
         /// before the callback fires would cause a resource leak.
         /// Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
         pub(crate) async fn notified(&mut self) -> Result<()> {
-            // Order matters here
-            // We want to return to the caller and let them check the DNS
-            // while the callback is registered.
+            // We use a particular order here because I initially assumed
+            // `RegNotifyChangeKeyValue` has a gap in this sequence:
+            // - RegNotifyChangeKeyValue
+            // - (Value changes)
+            // - (We catch the notification and read the DNS)
+            // - (Value changes again)
+            // - RegNotifyChangeKeyValue
+            // - (The second change is dropped)
+            //
+            // But Windows seems to actually do some magic so that the 2nd
+            // call of `RegNotifyChangeKeyValue` signals immediately, even though there
+            // was no registered notification when the value changed.
+            // See the unit test below.
+            //
+            // This code is ordered to protect against such a gap, by returning to the
+            // caller only when we are registered, but it's redundant.
             self.rx.recv().await.context("`Listener` is closing down")?;
             self.register_callback()
                 .context("`register_callback` failed")?;
@@ -626,8 +639,88 @@ mod async_dns {
         tx.try_send(()).ok();
     }
 
-    #[cfg(tests)]
+    #[cfg(test)]
     mod tests {
-        fn registry() {}
+        use super::*;
+        use windows::Win32::{
+            Foundation::WAIT_OBJECT_0,
+            System::Threading::{ResetEvent, WaitForSingleObject},
+        };
+
+        fn event_is_signaled(event: HANDLE) -> bool {
+            unsafe { WaitForSingleObject(event, 0) == WAIT_OBJECT_0 }
+        }
+
+        fn reg_notify(key: &winreg::RegKey, event: HANDLE) {
+            assert!(! event_is_signaled(event));
+            let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
+                | Registry::REG_NOTIFY_CHANGE_LAST_SET
+                | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
+            let key_handle = Registry::HKEY(key.raw_handle());
+            unsafe {
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
+            }.ok().expect("`RegNotifyChangeKeyValue` failed");
+        }
+
+        fn set_reg_value(key: &winreg::RegKey, val: u32) {
+            key.set_value("some_key", &val).expect("setting registry value `{val}` failed");
+        }
+
+        fn reset_event(event: HANDLE) {
+            unsafe { ResetEvent(event) }.expect("`ResetEvent` failed");
+            assert!(! event_is_signaled(event));
+        }
+
+        #[test]
+        fn registry() {
+            let flags = winreg::enums::KEY_NOTIFY | winreg::enums::KEY_WRITE;
+            let (key, _disposition) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER).create_subkey_with_flags(Path::new("Software").join("dev.firezone.client").join("test_CZD3JHFS"), flags).expect("`open_subkey_with_flags` failed");
+
+            let event = unsafe { CreateEventA(None, false, false, None) }.expect("`CreateEventA` failed");
+
+            // Registering the notify alone does not signal the event
+            reg_notify(&key, event);
+            assert!(! event_is_signaled(event));
+
+            // Setting the value after we've registered does
+            set_reg_value(&key, 0);
+            assert!(event_is_signaled(event));
+
+            // Do that one more time to prove it wasn't a fluke
+            reset_event(event);
+            reg_notify(&key, event);
+            assert!(! event_is_signaled(event));
+
+            set_reg_value(&key, 0500);
+            assert!(event_is_signaled(event));
+
+            // I thought there was a gap here, but there's actually not -
+            // If we get the notification, then the value changes, then we re-register,
+            // we immediately get notified again. I'm not sure how Windows does this.
+            // Maybe it's storing the state with our regkey handle instead of with the
+            // wait operation. This is convenient but it's confusing since the docs don't
+            // make it clear. I'll leave the workaround in the main code.
+            reset_event(event);
+            set_reg_value(&key, 1000);
+            assert!(! event_is_signaled(event));
+            reg_notify(&key, event);
+            // This is the part I was wrong about
+            assert!(event_is_signaled(event));
+
+            // Signal normally one more time
+            reset_event(event);
+            reg_notify(&key, event);
+            set_reg_value(&key, 2000);
+            assert!(event_is_signaled(event));
+
+            // Close the handle before the notification goes off
+            reset_event(event);
+            reg_notify(&key, event);
+            unsafe { CloseHandle(event) }.expect("`CloseHandle` failed");
+            let _ = event;
+
+            // Setting the value shouldn't break anything or crash here.
+            set_reg_value(&key, 3000);
+        }
     }
 }
