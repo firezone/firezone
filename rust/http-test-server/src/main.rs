@@ -9,6 +9,7 @@ use axum::{
 };
 use futures::StreamExt;
 use std::{convert::Infallible, net::Ipv4Addr};
+use tokio::net::TcpListener;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -16,12 +17,10 @@ async fn main() -> Result<()> {
         .context("Missing env var `PORT`")?
         .parse::<u16>()?;
 
-    // build our application with a single route
-    let app = Router::new().route("/bytes", get(byte_stream));
+    let router = Router::new().route("/bytes", get(byte_stream));
+    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).await?;
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, router).await?;
 
     Ok(())
 }
