@@ -606,8 +606,10 @@ mod async_dns {
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }.expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
-            unsafe { CloseHandle(self.event) }.expect("Should be able to `CloseHandle` in the DNS change listener");
+            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }
+                .expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
+            unsafe { CloseHandle(self.event) }
+                .expect("Should be able to `CloseHandle` in the DNS change listener");
             tracing::debug!("Gracefully closed DNS change listener");
         }
     }
@@ -626,8 +628,6 @@ mod async_dns {
 
     #[cfg(tests)]
     mod tests {
-        fn registry() {
-
-        }
+        fn registry() {}
     }
 }
