@@ -842,8 +842,7 @@ async fn run_controller(
                 r?;
                 if let Some(session) = controller.session.as_mut() {
                     tracing::debug!("New DNS resolvers, calling `Session::reconnect`");
-                    // TODO: Pass DNS resolvers to connlib here
-                    session.connlib.reconnect();
+                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default());
                 }
             },
             req = rx.recv() => {
