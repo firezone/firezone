@@ -328,9 +328,24 @@ mod tests {
 
     // I assume this is not practical to run on macOS because of the tight restrictions on NetworkExtensions
     // It requires sudo on Linux and elevation on Windows, since it creates the tunnel interface
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     #[tokio::test]
-    async fn device() {
+    async fn device_linux() {
+        device_common();
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn device_windows() {
+        // Install wintun so the test can run
+        // CI only needs x86_64 for now
+        let wintun_bytes = include_bytes!("../../../gui-client/wintun/bin/amd64/wintun.dll");
+        tokio::fs::write(&connlib_shared::windows::wintun_dll_path().unwrap(), wintun_bytes).await.unwrap();
+
+        device_common();
+    }
+
+    fn device_common() {
         let mut dev = super::Device::new();
 
         let config = connlib_shared::messages::Interface {
