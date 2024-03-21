@@ -46,9 +46,7 @@ async fn main() -> Result<()> {
     )
     .unwrap();
     // TODO: this should be added dynamically
-    session.set_dns(
-        system_resolvers(get_dns_control_from_env()).expect("Failed to read system's resolvers"),
-    );
+    session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
