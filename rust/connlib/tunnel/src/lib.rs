@@ -77,7 +77,7 @@ where
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
             match self.role_state.poll_event() {
-                Some(client::Event::RefreshInterfance) => {
+                Some(client::Event::RefreshInterface) => {
                     self.update_interface()?;
                     continue;
                 }
