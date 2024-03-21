@@ -702,7 +702,7 @@ mod async_dns {
             reg_notify(&key, event);
             assert!(!event_is_signaled(event));
 
-            set_reg_value(&key, 0500);
+            set_reg_value(&key, 500);
             assert!(event_is_signaled(event));
 
             // I thought there was a gap here, but there's actually not -
