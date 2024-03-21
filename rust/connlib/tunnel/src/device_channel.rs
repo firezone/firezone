@@ -318,3 +318,29 @@ mod ioctl {
         mtu: libc::c_int,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[derive(Clone, Default)]
+    struct Callbacks {}
+
+    impl connlib_shared::Callbacks for Callbacks {}
+
+    #[tokio::test]
+    async fn device() {
+        let mut dev = super::Device::new();
+
+        let config = connlib_shared::messages::Interface {
+            ipv4: [100, 71, 96, 96].into(),
+            ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
+            upstream_dns: vec![connlib_shared::messages::DnsServer::IpPort(
+                connlib_shared::messages::IpDnsServer {
+                    address: ([1, 1, 1, 1], 53).into(),
+                },
+            )],
+        };
+        let dns_config = vec![[100, 100, 111, 1].into()];
+        let callbacks = Callbacks::default();
+        dev.initialize(&config, dns_config, &callbacks).unwrap();
+    }
+}
