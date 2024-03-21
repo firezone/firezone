@@ -326,6 +326,9 @@ mod tests {
 
     impl connlib_shared::Callbacks for Callbacks {}
 
+    // I assume this is not practical to run on macOS because of the tight restrictions on NetworkExtensions
+    // It requires sudo on Linux and elevation on Windows, since it creates the tunnel interface
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[tokio::test]
     async fn device() {
         let mut dev = super::Device::new();
