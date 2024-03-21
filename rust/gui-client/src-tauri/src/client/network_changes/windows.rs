@@ -494,15 +494,17 @@ mod async_dns {
     /// Listens to one registry key for changes. Callers should await `notified`.
     struct Listener {
         key: winreg::RegKey,
-        // Rust never uses `tx` again, but the C callback does. So it must live as long
+        // Rust never uses `tx` again, but the C callback borrows it. So it must live as long
         // as Listener, and then be dropped after the C callback is cancelled and any
         // ongoing callback finishes running.
         //
-        // We `pin` it here to avoid this sequence:
+        // We box it here to avoid this sequence:
         // - `Listener::new` called, pointer to `tx` passed to `RegisterWaitForSingleObject`
         // - `Listener` and `tx` move
         // - The callback fires, using the now-invalid previous location of `tx`
-        _tx: std::pin::Pin<Box<mpsc::Sender<()>>>,
+        //
+        // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
+        _tx: Box<mpsc::Sender<()>>,
         rx: mpsc::Receiver<()>,
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
         ///
@@ -520,7 +522,7 @@ mod async_dns {
     impl Listener {
         pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
             let (tx, rx) = mpsc::channel(1);
-            let tx = Box::pin(tx);
+            let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
             let mut wait_handle = HANDLE(0isize);
@@ -535,7 +537,8 @@ mod async_dns {
             // If he's not, then we're invisibly tying up two worker threads. Can't help it.
 
             // SAFETY: It's complicated.
-            // The callback here can cause a lot of problems. We pin the `Sender` object.
+            // The callback here can cause a lot of problems. We box the `Sender` object
+            // so its memory address won't change.
             // We don't use an `Arc` because sending is already `&self`, and
             // the callback has no way to free an `Arc`, since we will always cancel the callback
             // before it fires when the `Listener` drops.
