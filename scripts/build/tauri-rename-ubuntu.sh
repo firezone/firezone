@@ -30,6 +30,6 @@ sudo dpkg --install "$BINARY_DEST_PATH"_amd64.deb
 
 # Debug-print the files. The icons and both binaries should be in here
 dpkg --listfiles firezone
-which firezone firezone-tunnel
-firezone-tunnel
+which firezone firezone-client-tunnel
+firezone-client-tunnel
 firezone || true

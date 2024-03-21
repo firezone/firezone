@@ -1874,6 +1874,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-client-tunnel"
+version = "0.1.0"
+
+[[package]]
 name = "firezone-gateway"
 version = "1.0.0"
 dependencies = [
@@ -1920,6 +1924,7 @@ dependencies = [
  "crash-handler",
  "dirs",
  "firezone-cli-utils",
+ "firezone-client-tunnel",
  "futures",
  "git-version",
  "hex",
