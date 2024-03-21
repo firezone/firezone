@@ -29,7 +29,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Edit do
       <.breadcrumb path={
         ~p"/#{@account}/settings/identity_providers/microsoft_entra/#{@form.data}/edit"
       }>
-        Edit <%= # {@form.data.name} %>
+        Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.section>

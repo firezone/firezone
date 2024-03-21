@@ -29,7 +29,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Edit do
       <.breadcrumb path={
         ~p"/#{@account}/settings/identity_providers/google_workspace/#{@form.data}/edit"
       }>
-        Edit <%= # {@form.data.name} %>
+        Edit
       </.breadcrumb>
     </.breadcrumbs>
     <.section>

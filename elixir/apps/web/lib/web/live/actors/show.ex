@@ -467,14 +467,7 @@ defmodule Web.Actors.Show do
         %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _actor_id},
         socket
       ) do
-    {:ok, actor} =
-      Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
-        preload: [clients: []]
-      )
-
-    actor = %{socket.assigns.actor | clients: Clients.preload_clients_presence(actor.clients)}
-
-    {:noreply, assign(socket, actor: actor)}
+    {:noreply, reload_live_table!(socket, "clients")}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
