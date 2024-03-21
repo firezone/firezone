@@ -357,6 +357,19 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
+  httptest:
+    build:
+      target: dev
+      context: rust
+      dockerfile: Dockerfile
+      args:
+        PACKAGE: http-test-server
+    environment:
+      PORT: 80
+    networks:
+      resources:
+        ipv4_address: 172.20.0.101
+
   dns.httpbin:
     image: kennethreitz/httpbin
     healthcheck:
