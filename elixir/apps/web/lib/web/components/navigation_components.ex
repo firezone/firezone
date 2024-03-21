@@ -30,6 +30,20 @@ defmodule Web.NavigationComponents do
           </a>
         </div>
         <div class="flex items-center lg:order-2">
+          <a
+            href="https://www.firezone.dev/kb?utm_source=product"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+          >
+            Docs
+          </a>
+          <a
+            target="_blank"
+            href="https://firezone.statuspage.io"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+          >
+            Status
+          </a>
+
           <.dropdown id="user-menu">
             <:button>
               <span class="sr-only">Open user menu</span>
