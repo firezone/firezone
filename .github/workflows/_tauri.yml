@@ -108,4 +108,4 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG_NAME: ${{ inputs.release_tag || env.VERSION }}
         shell: bash
-        run: ${{ matrix.upload_script }}
+        run: ${{ matrix.upload-script }}
