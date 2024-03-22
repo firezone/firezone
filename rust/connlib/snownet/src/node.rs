@@ -888,24 +888,17 @@ where
     }
 
     fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
-        for candidate in self
+        let binding_candidates = self
             .bindings
             .values()
-            .filter_map(|binding| binding.candidate())
-        {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
+            .flat_map(|binding| binding.candidate());
 
-        for candidate in self
+        let allocation_candidates = self
             .allocations
             .values()
-            .flat_map(|allocation| allocation.current_candidates())
-        {
+            .flat_map(|allocation| allocation.current_candidates());
+
+        for candidate in binding_candidates.chain(allocation_candidates) {
             add_local_candidate(
                 connection,
                 agent,
