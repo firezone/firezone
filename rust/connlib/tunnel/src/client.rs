@@ -75,9 +75,6 @@ where
     CB: Callbacks + 'static,
 {
     /// Adds a the given resource to the tunnel.
-    ///
-    /// Once added, when a packet for the resource is intercepted a new data channel will be created
-    /// and packets will be wrapped with wireguard and sent through it.
     pub fn add_resources(
         &mut self,
         resources: &[ResourceDescription],
@@ -189,7 +186,6 @@ where
         self.role_state.update_system_resolvers(new_dns, now);
     }
 
-    /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
         self.role_state.interface_config = Some(config);
@@ -239,11 +235,8 @@ where
         Ok(())
     }
 
-    /// Clean up a connection to a resource.
-    // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&mut self, id: ResourceId) {
         self.role_state.on_connection_failed(id);
-        // self.peer_connections.lock().remove(&id.into());
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

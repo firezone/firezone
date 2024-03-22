@@ -26,7 +26,6 @@ impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
@@ -47,12 +46,6 @@ where
     }
 
     /// Accept a connection request from a client.
-    ///
-    /// Sets a connection to a remote SDP, creates the local SDP
-    /// and returns it.
-    ///
-    /// # Returns
-    /// The connection details
     #[allow(clippy::too_many_arguments)]
     pub fn accept(
         &mut self,
@@ -113,7 +106,6 @@ where
         })
     }
 
-    /// Clean up a connection to a resource.
     pub fn cleanup_connection(&mut self, id: &ClientId) {
         self.role_state.peers.remove(id);
     }
