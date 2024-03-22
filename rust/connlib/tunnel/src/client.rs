@@ -16,7 +16,7 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
 use crate::utils::{earliest, stun, turn};
-use crate::ClientTunnel;
+use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ClientNode;
 use std::collections::hash_map::Entry;
@@ -38,21 +38,6 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // however... this also mean any resource is refresh within a 5 mins interval
 // therefore, only the first time it's added that happens, after that it doesn't matter.
 const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Event {
-    SignalIceCandidate {
-        conn_id: GatewayId,
-        candidate: String,
-    },
-    ConnectionIntent {
-        resource: ResourceId,
-        connected_gateway_ids: HashSet<GatewayId>,
-    },
-    RefreshResources {
-        connections: Vec<ReuseConnection>,
-    },
-}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -342,7 +327,7 @@ pub struct ClientState {
 
     dns_mapping: BiMap<IpAddr, DnsServer>,
 
-    buffered_events: VecDeque<Event>,
+    buffered_events: VecDeque<ClientEvent>,
     interface_config: Option<InterfaceConfig>,
     buffered_packets: VecDeque<IpPacket<'static>>,
 
@@ -763,10 +748,11 @@ impl ClientState {
 
         tracing::debug!("Sending connection intent");
 
-        self.buffered_events.push_back(Event::ConnectionIntent {
-            resource,
-            connected_gateway_ids: gateways,
-        });
+        self.buffered_events
+            .push_back(ClientEvent::ConnectionIntent {
+                resource,
+                connected_gateway_ids: gateways,
+            });
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
@@ -894,7 +880,7 @@ impl ClientState {
                 }
 
                 self.buffered_events
-                    .push_back(Event::RefreshResources { connections });
+                    .push_back(ClientEvent::RefreshResources { connections });
 
                 self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL);
             }
@@ -910,16 +896,18 @@ impl ClientState {
                 snownet::Event::SignalIceCandidate {
                     connection,
                     candidate,
-                } => self.buffered_events.push_back(Event::SignalIceCandidate {
-                    conn_id: connection,
-                    candidate,
-                }),
+                } => self
+                    .buffered_events
+                    .push_back(ClientEvent::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }),
                 _ => {}
             }
         }
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<Event> {
+    pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
         self.buffered_events.pop_front()
     }
 
