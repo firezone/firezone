@@ -261,19 +261,7 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
-    /// Initiate an ice connection request.
-    ///
-    /// Given a resource id and a list of relay creates a [RequestConnection]
-    /// and prepares the tunnel to handle the connection once initiated.
-    ///
-    /// # Parameters
-    /// - `resource_id`: Id of the resource we are going to request the connection to.
-    /// - `relays`: The list of relays used for that connection.
-    ///
-    /// # Returns
-    /// A [RequestConnection] that should be sent to the gateway through the control-plane.
-    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
-    pub fn request_connection(
+    pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
@@ -518,6 +506,7 @@ impl ClientState {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
     fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
@@ -525,7 +514,7 @@ impl ClientState {
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> connlib_shared::Result<Request> {
-        tracing::trace!("request_connection");
+        tracing::trace!("create_or_reuse_connection");
 
         let desc = self
             .resource_ids

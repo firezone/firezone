@@ -258,7 +258,7 @@ where
 
                 match self
                     .tunnel
-                    .request_connection(resource_id, gateway_id, relays)
+                    .create_or_reuse_connection(resource_id, gateway_id, relays)
                 {
                     Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
                         // TODO: keep track for the response
