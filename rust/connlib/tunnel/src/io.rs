@@ -43,17 +43,17 @@ pub enum Input<'a, I> {
 }
 
 impl Io {
-    pub fn new() -> io::Result<Self> {
-        Ok(Self {
+    pub fn new(sockets: Sockets) -> Self {
+        Self {
             device: Device::new(),
             timeout: None,
-            sockets: Sockets::new()?,
+            sockets,
             upstream_dns_servers: HashMap::default(),
             forwarded_dns_queries: FuturesTupleSet::new(
                 Duration::from_secs(60),
                 DNS_QUERIES_QUEUE_SIZE,
             ),
-        })
+        }
     }
 
     pub fn poll<'b>(

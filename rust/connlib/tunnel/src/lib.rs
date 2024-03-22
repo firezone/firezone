@@ -17,6 +17,7 @@ use std::{
 
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
+use sockets::Sockets;
 
 mod client;
 mod device_channel;
@@ -223,20 +224,20 @@ fn new_io<CB>(callbacks: &CB) -> Result<Io>
 where
     CB: Callbacks,
 {
-    let io = Io::new()?;
+    let sockets = Sockets::new()?;
 
     // TODO: Eventually, this should move into the `connlib-client-android` crate.
     #[cfg(target_os = "android")]
     {
-        if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
+        if let Some(ip4_socket) = sockets.ip4_socket_fd() {
             callbacks.protect_file_descriptor(ip4_socket);
         }
-        if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
+        if let Some(ip6_socket) = sockets.ip6_socket_fd() {
             callbacks.protect_file_descriptor(ip6_socket);
         }
     }
 
-    Ok(io)
+    Ok(Io::new(sockets))
 }
 
 #[derive(Debug, PartialEq, Eq)]
