@@ -5,25 +5,26 @@ It is probably similar to the existing Mac / iOS / Android process split.
 
 ## Split boundary
 
-Anything that requires CAP_NET_ADMIN or root privilege will happen inside the privileged tunnel process, which uses systemd auto-start. This acts the same as the current Linux CLI Client, but also acts as an IPC server.
+### Tunnel process
 
-Tunnel process:
+Anything that requires CAP_NET_ADMIN or root privilege must happen inside the privileged tunnel process:
 
 - DNS control
 - Creating the tunnel interface
 - Adding / removing IP routes
 
-Anything that can work with normal user privileges should run in the non-privileged GUI process
+Some things don't need privileges, but it's more convenient to run them on the tunnel side to keep the IPC interface narrow:
 
-GUI process:
-
-- All Tauri code
+- DNS stub resolver
 - `get_system_default_resolvers`
 - Listening for DNS / network changes
 
-Ambiguous:
+Anything that can work with normal user privileges should run in the non-privileged GUI process
 
-- The DNS stub resolver doesn't actually need privileges to do its work. But since it gets packets from the tunnel interface, and it's already inside connlib, and moving it would require extra IPC round-trips, it will stay inside the privileged tunnel process.
+### GUI process
+
+- All GUI code, since GUIs in Linux generally don't work when running as root
+- Storing tokens in the secure keyring, since the desktop environment should be able to encrypt these with the user's password, which is more secure than keeping them in a file or securing them by TPM alone.
 
 ## Decisions
 
@@ -56,6 +57,10 @@ Other than those reasons, the GUI and privileged tunnel could spawn from the sam
 ## Docker
 
 Same as a server, but Docker runs the process directly instead of using systemd.
+
+## Interactive CLI
+
+Same as a server, but a human runs the process instead of systemd.
 
 ## Desktop
 
