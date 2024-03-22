@@ -16,7 +16,7 @@ use std::{
 };
 
 pub use client::{ClientState, Request};
-pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
+pub use gateway::GatewayState;
 
 mod client;
 mod device_channel;
