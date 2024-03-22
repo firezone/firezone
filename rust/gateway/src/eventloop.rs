@@ -44,7 +44,6 @@ impl Eventloop {
 }
 
 impl Eventloop {
-    #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
             match self.tunnel.poll_next_event(cx) {

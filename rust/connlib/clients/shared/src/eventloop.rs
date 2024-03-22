@@ -62,7 +62,6 @@ impl<C> Eventloop<C>
 where
     C: Callbacks + 'static,
 {
-    #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
             match self.rx.poll_recv(cx) {
