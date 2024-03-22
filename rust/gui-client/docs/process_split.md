@@ -1,6 +1,6 @@
 # Process split
 
-This is meant for Linux, but it will probably be similar on Windows.
+This is meant for Linux, but it will be similar on Windows.
 It is probably similar to the existing Mac / iOS / Android process split.
 
 ## Split boundary
@@ -27,34 +27,55 @@ Ambiguous:
 
 ## Decisions
 
-- The CLI Client will not be split for now, it keep the same CLI interface but may be refactored.
+- The CLI Client will not be split for now, it keep the same CLI interface but may be refactored. `firezone-client-tunnel` may replace it.
 - The CLI and GUI client packages will have a `conflicts` tag, at least for now.
 - Eventually, Clients and Gateways will be allowed to run on the same host, so avoid conflicts there
-- If the service account token exists, we are in service mode and won't accept connections from a GUI client, even if the token is invalid.
+- Binary names may change in the future.
 - The GUI stores tokens from interactive auth in a secure keyring provided by the desktop environment. (e.g. gnome-keyring) I assume the tunnel running as root with no desktop env, doesn't have access to that kind of security, since it starts without a password.
 - The GUI and privileged tunnel will live in separate binaries in case we need to set capabilities on the tunnel binary. This will also reduce the amount of code mapped into executable address space of the privileged tunnel process.
 
-## Binaries
+## Files
 
-I gave them new names to clarify.
+1. `$HOME/.config/autostart` - A link that auto-starts the GUI when the user logs in, created by `firezone-gui --register-auto-start`
+1. `/etc/dev.firezone.client/token` - A service account token, owned by root, with permissions 600. (rw- --- ---) Written by a human admin or an MDM on their behalf.
+1. `/usr/bin/firezone-client-tunnel` - A daemon that runs the tunnel, listens for commands from the GUI over IPC, and has elevated privilege. This is a systemd service on Linux and a Windows service on Windows. It takes over the role of the current Linux CLI Client.
+1. `/usr/bin/firezone-gui` - An unprivileged GUI program that keeps an icon in the system tray / notification center and is similar to `firezonectl`
+1. `/usr/lib/systemd/system/firezone-client.service` - The systemd service unit to auto-start the privileged client tunnel. Installed from the deb.
 
-1. `firezone-client-tunnel` - A daemon that runs the tunnel, listens for commands from the GUI over IPC, and has elevated privilege. This is a systemd service on Linux and a Windows service on Windows.
-2. `firezone` - The same daemon binary, but running as a standalone CLI / systemd service instead of listening for GUI commands
-3. `firezone-gui` - An unprivileged GUI program that keeps an icon in the system tray / notification center and is similar to `firezonectl`
+The binaries are separated because:
+
+- If `firezone-client-tunnel` does not run as root, it may need `CAP_NET_ADMIN` set on the binary itself using `setcap`. We must not set that on the GUI binary.
+- Keeping the GUI code out of `firezone-client-tunnel` reduces the amount of code mapped into executable address space in the privileged tunnel process. It may not make a big difference, but all other things being equal, a smaller amount of code should be easier to secure.
+
+Other than those reasons, the GUI and privileged tunnel could spawn from the same binary.
 
 ## Servers
 
-`firezone` (or `firezone-client-tunnel` with special CLI flags) runs all the time as a systemd service. It does not listen for GUI commands and only uses service tokens.
+`/usr/lib/systemd/system/firezone-client.service` starts `firezone-client-tunnel --no-ipc`. Only service account tokens can be used. The only interaction is through SIGHUP or restarting the tunnel.
 
 ## Docker
 
-`firezone-client-tunnel` runs all the time and does not take interactive commands.
+Same as a server, but Docker runs the process directly instead of using systemd.
 
 ## Desktop
 
-`firezone-client-tunnel` runs all the time as a systemd service. It tries to find a service account token and use that. If there is no service account token, it waits for a GUI to connect over IPC.
+Same as a server, but without the `--no-ipc` flag. `firezone-gui` attempts to connect to the tunnel process. If there is a service account token, the IPC connection fails, and `firezone-gui` shows an error. If the IPC connection succeeds, `firezone-gui` can perform interactive auth or reload the token from the secure keyring to share it with `firezone-client-tunnel`.
 
-`firezone-gui` performs auth using deep links and sends the token to `firezone-client-tunnel`.
+`firezone-gui --register-auto-start` puts a link in `$HOME/.config/autostart` to auto-start the program when the user logs in to their desktop.
+
+## Tokens
+
+`firezone-client-tunnel` tries to get a token in this order:
+
+- (The token must not be sent through CLI args)
+- If the `FIREZONE_TOKEN` env var is set, we copy that to memory and call `std::env::remove_var` so it doesn't stay in the environment longer than it needs to. (Per <https://security.stackexchange.com/questions/197784/is-it-unsafe-to-use-environmental-variables-for-secret-data>)
+- If there's a (service account) token in `/etc/dev.firezone.client/token`, and it's only readable by root, it uses that. (If anyone else can read it, it throws an error asking the user to fix the permissions and regenerate the token)
+- If the `--no-ipc` flag is passed, it fails here.
+- It starts an IPC server and waits for the GUI to send it a token from interactive auth.
+
+`firezone-client-tunnel` never writes a token. `firezone-gui` uses a secure keyring to store interactive tokens. Interactive tokens should be secured by the user's password, so they're protected against "evil maid" attacks. Service account tokens must be written by a human administrator or MDM.
+
+If `firezone-client-tunnel` finds a token in its env or in the FS, it does not listen for IPC connections, even if the token turns out to be invalid.
 
 ## Security concerns
 
