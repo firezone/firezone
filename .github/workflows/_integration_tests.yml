@@ -109,7 +109,7 @@ jobs:
       - name: Start docker compose in the background
         run: |
           # Start one-by-one to avoid variability in service startup order
-          docker compose up -d dns.httpbin httpbin
+          docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build
