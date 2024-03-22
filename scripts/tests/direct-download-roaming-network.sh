@@ -4,11 +4,11 @@ set -euo pipefail
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 20 seconds (allows for 10s of restablishing)
+# Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 12 seconds (allows for 2s of restablishing)
 docker compose exec -it client sh -c \
     "curl \
         --fail \
-        --max-time 20 \
+        --max-time 12 \
         --limit-rate 1M http://download.httpbin/bytes?num=10000000" > download.file &
 
 DOWNLOAD_PID=$!
@@ -26,7 +26,7 @@ wait $DOWNLOAD_PID || {
     exit 1
 }
 
-known_checksum="a993f8c574e0fea8c1cdcbcd9408d9e2e107ee6e4d120edcfa11decd53fa0cae"
+known_checksum="f5e02aa71e67f41d79023a128ca35bad86cf7b6656967bfe0884b3a3c4325eaf"
 computed_checksum=$(sha256sum download.file | awk '{ print $1 }')
 
 if [[ "$computed_checksum" != "$known_checksum" ]]; then
