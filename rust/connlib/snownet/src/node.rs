@@ -1236,7 +1236,7 @@ impl Connection {
                 continue;
             }
 
-            add_local_candidate(id, &mut self.agent, candidate.clone(), pending_events)
+            add_local_candidate(id, &mut self.agent, candidate, pending_events)
         }
     }
 
