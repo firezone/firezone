@@ -50,7 +50,7 @@ where
         let callbacks = self.callbacks.clone();
         self.io
             .device_mut()
-            .initialize(config, vec![], &callbacks)?;
+            .set_config(config, vec![], &callbacks)?;
         self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
             &callbacks,
