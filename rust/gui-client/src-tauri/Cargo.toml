@@ -9,7 +9,7 @@ authors = ["Firezone, Inc."]
 
 [[bin]]
 name = "firezone_gui_client_multi_process_test"
-path = "src/multi_process_test.rs"
+path = "src/bin/multi_process_test.rs"
 test = true
 doctest = true
 harness = false

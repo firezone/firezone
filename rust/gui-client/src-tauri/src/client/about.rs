@@ -15,7 +15,6 @@ pub(crate) fn get_git_version() -> String {
 mod tests {
     #[test]
     fn version() {
-        return;
         let cargo = super::get_cargo_version();
         let git = super::get_git_version();
 
