@@ -95,7 +95,7 @@ impl Device {
         // this unregisters the file descriptor with the reactor so we never wake up
         // in case an event is triggered.
         if self.tun.is_none() {
-            self.tun = Some(Tun::new(config, callbacks)?);
+            self.tun = Some(Tun::new()?);
         }
 
         self.mtu = ioctl::interface_mtu_by_name(self.tun.as_ref().unwrap().name())?;

@@ -1,12 +1,11 @@
 use crate::device_channel::{ipv4, ipv6};
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
     O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
-use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -70,7 +69,7 @@ impl Tun {
         }
     }
 
-    pub fn new(config: &InterfaceConfig, callbacks: &impl Callbacks) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
