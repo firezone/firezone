@@ -2926,7 +2926,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.5.6",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -5804,7 +5804,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.4.1"
-source = "git+https://github.com/firezone/str0m?branch=main#5da11ebbceee63997ab6b34d089f107e78d575b3"
+source = "git+https://github.com/firezone/str0m?branch=main#ffb4e4f54936c9745cb2a884be05ba4265af41dc"
 dependencies = [
  "combine",
  "crc",

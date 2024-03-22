@@ -756,8 +756,9 @@ fn update_candidate(
 ) {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
-            *maybe_current = Some(new.clone());
-            events.push_back(CandidateEvent::New(new));
+            events.push_back(CandidateEvent::New(new.clone()));
+            events.push_back(CandidateEvent::Invalid(current.clone()));
+            *maybe_current = Some(new);
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
