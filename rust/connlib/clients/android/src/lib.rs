@@ -470,7 +470,7 @@ pub struct SessionWrapper {
 }
 
 impl SessionWrapper {
-    fn reconnect(&self, env: &mut JNIEnv) -> Result<(), CallbackError> {
+    fn reconnect(&self) -> Result<(), CallbackError> {
         let sockets = Sockets::new()?;
 
         if let Some(ip4_socket) = sockets.ip4_socket_fd() {
@@ -532,7 +532,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_re
     _: JClass,
     session: *const SessionWrapper,
 ) {
-    if let Err(e) = (*session).reconnect(&mut env) {
+    if let Err(e) = (*session).reconnect() {
         throw(&mut env, "java/lang/Exception", e.to_string());
     }
 }
