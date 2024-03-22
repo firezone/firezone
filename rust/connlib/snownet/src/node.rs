@@ -455,8 +455,6 @@ where
             add_local_candidate(id, &mut agent, candidate, &mut self.pending_events);
         }
 
-        self.seed_agent_with_local_candidates(id, &mut agent);
-
         agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
@@ -464,7 +462,7 @@ where
         /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
         const WG_KEEP_ALIVE: Option<u16> = Some(10);
 
-        Connection {
+        let mut connection = Connection {
             agent,
             tunnel: Tunn::new(
                 self.private_key.clone(),
@@ -483,7 +481,16 @@ where
             is_failed: false,
             signalling_completed_at: now,
             remote_pub_key: remote,
-        }
+        };
+
+        connection.seed_agent_with_local_candidates(
+            id,
+            &mut self.bindings,
+            &mut self.allocations,
+            &mut self.pending_events,
+        );
+
+        connection
     }
 
     /// Attempt to add the `local` address as a host candidate.
@@ -886,27 +893,6 @@ where
             tracing::info!(address = %server, "Added new TURN server");
         }
     }
-
-    fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
-        let binding_candidates = self
-            .bindings
-            .values()
-            .flat_map(|binding| binding.candidate());
-
-        let allocation_candidates = self
-            .allocations
-            .values()
-            .flat_map(|allocation| allocation.current_candidates());
-
-        for candidate in binding_candidates.chain(allocation_candidates) {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
-    }
 }
 
 struct Connections<TId> {
@@ -1217,6 +1203,26 @@ impl Connection {
 
     fn duration_since_intent(&self, now: Instant) -> Duration {
         now.duration_since(self.intent_sent_at)
+    }
+
+    fn seed_agent_with_local_candidates<TId>(
+        &mut self,
+        id: TId,
+        bindings: &mut HashMap<SocketAddr, StunBinding>,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display + Copy,
+    {
+        let binding_candidates = bindings.values().flat_map(|binding| binding.candidate());
+
+        let allocation_candidates = allocations
+            .values()
+            .flat_map(|allocation| allocation.current_candidates());
+
+        for candidate in binding_candidates.chain(allocation_candidates) {
+            add_local_candidate(id, &mut self.agent, candidate.clone(), pending_events);
+        }
     }
 
     fn set_remote_from_wg_activity(
