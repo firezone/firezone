@@ -935,22 +935,15 @@ where
         allowed_stun_servers: &HashSet<SocketAddr>,
         allowed_turn_servers: &HashSet<SocketAddr>,
     ) {
-        for candidate in self.bindings.iter().filter_map(|(server, binding)| {
+        let binding_candidates = self.bindings.iter().filter_map(|(server, binding)| {
             let candidate = allowed_stun_servers
                 .contains(server)
                 .then(|| binding.candidate())??;
 
             Some(candidate)
-        }) {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
+        });
 
-        for candidate in self
+        let allocation_candidates = self
             .allocations
             .iter()
             .flat_map(|(server, allocation)| {
@@ -958,8 +951,9 @@ where
                     .contains(server)
                     .then(|| allocation.current_candidates())
             })
-            .flatten()
-        {
+            .flatten();
+
+        for candidate in binding_candidates.chain(allocation_candidates) {
             add_local_candidate(
                 connection,
                 agent,
