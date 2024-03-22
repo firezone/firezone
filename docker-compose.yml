@@ -362,8 +362,11 @@ services:
       target: dev
       context: rust
       dockerfile: Dockerfile
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/http-test-server:main
       args:
         PACKAGE: http-test-server
+    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
     environment:
       PORT: 80
     networks:

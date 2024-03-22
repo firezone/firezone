@@ -183,6 +183,9 @@ jobs:
           - package: snownet-tests
             artifact: snownet-tests
             image_name: snownet-tests
+          - package: http-test-server
+            artifact: http-test-server
+            image_name: http-test-server
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}-${{ matrix.arch.shortname }}
     outputs:

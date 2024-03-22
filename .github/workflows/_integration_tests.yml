@@ -59,6 +59,14 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      http_test_server_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server'
+      http_test_server_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
 
 jobs:
   integration-tests:
