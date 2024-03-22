@@ -63,20 +63,34 @@ impl Session {
 
     /// Attempts to reconnect a [`Session`].
     ///
-    /// This can and should be called by client applications on any network state changes.
-    /// It is a signal to connlib to:
+    /// Reconnecting a session will:
     ///
-    /// - validate all currently used network paths to relays and peers
-    /// - ensure we are connected to the portal
+    /// - Close and re-open a connection to the portal.
+    /// - Refresh all allocations
+    /// - Replace the currently used [`Sockets`] with the provided one
     ///
-    /// Reconnect is non-destructive and can be called several times in a row.
+    /// # Implementation note
     ///
-    /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
-    /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
+    /// The reason we replace [`Sockets`] are:
+    ///
+    /// 1. On MacOS, as socket bound to the unspecified IP cannot send to interfaces attached after the socket has been created.
+    /// 2. Switching between networks changes the 3-tuple of the client.
+    ///    The TURN protocol identifies a client's allocation based on the 3-tuple.
+    ///    Consequently, an allocation is invalid after switching networks and we clear the state.
+    ///    Changing the IP would be enough for that.
+    ///    However, if the user would now change _back_ to the previous network,
+    ///    the TURN server would recognise the old allocation but the client already lost all its state associated with it.
+    ///    To avoid race-conditions like this, we initialize a new [`Sockets`] instance which allocates a new port.
     pub fn reconnect(&self, sockets: Sockets) {
         let _ = self.channel.send(Command::Reconnect(sockets));
     }
 
+    /// Sets a new set of upstream DNS servers for this [`Session`].
+    ///
+    /// Changing the DNS servers clears all cached DNS requests which may be disruptive to the UX.
+    /// Clients should only call this when relevant.
+    ///
+    /// The implementation is idempotent; calling it with the same set of servers is safe.
     pub fn set_dns(&self, new_dns: Vec<IpAddr>) {
         let _ = self.channel.send(Command::SetDns(new_dns));
     }
