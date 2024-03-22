@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "client-tunnel",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",

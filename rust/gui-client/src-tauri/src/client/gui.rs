@@ -84,7 +84,7 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
+pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default
@@ -132,40 +132,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
-
-    // Check for updates
-    let ctlr_tx_clone = ctlr_tx.clone();
-    let always_show_update_notification = cli.always_show_update_notification;
-    tokio::spawn(async move {
-        if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
-        {
-            tracing::error!(?error, "Error in check_for_updates");
-        }
-    });
-
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new()?;
-
-    if let Some(client::Cmd::SmokeTest) = &cli.command {
-        let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
-            if let Err(error) = smoke_test(ctlr_tx).await {
-                tracing::error!(?error, "Error during smoke test");
-                std::process::exit(1);
-            }
-        });
-    }
-
-    tracing::debug!(cli.no_deep_links);
-    if !cli.no_deep_links {
-        // The single-instance check is done, so register our exe
-        // to handle deep links
-        deep_link::register().context("Failed to register deep link handler")?;
-        tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
-    }
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
@@ -173,20 +139,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     };
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
-
-    if let Some(failure) = cli.fail_on_purpose() {
-        let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
-            let delay = 5;
-            tracing::info!(
-                "Will crash / error / panic on purpose in {delay} seconds to test error handling."
-            );
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing / erroring / panicking on purpose");
-            ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
-            Ok::<_, anyhow::Error>(())
-        });
-    }
 
     tracing::debug!("Setting up Tauri app instance...");
     let app = tauri::Builder::default()
@@ -231,6 +183,55 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
         })
         .setup(move |app| {
             tracing::debug!("Entered Tauri's `setup`");
+
+            // Check for updates
+            let ctlr_tx_clone = ctlr_tx.clone();
+            let always_show_update_notification = cli.always_show_update_notification;
+            tokio::spawn(async move {
+                if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+                {
+                    tracing::error!(?error, "Error in check_for_updates");
+                }
+            });
+
+            // Make sure we're single-instance
+            // We register our deep links to call the `open-deep-link` subcommand,
+            // so if we're at this point, we know we've been launched manually
+            let server = deep_link::Server::new()?;
+
+            if let Some(client::Cmd::SmokeTest) = &cli.command {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = smoke_test(ctlr_tx).await {
+                        tracing::error!(?error, "Error during smoke test");
+                        tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                        unsafe { sadness_generator::raise_segfault() }
+                    }
+                });
+            }
+
+            tracing::debug!(cli.no_deep_links);
+            if !cli.no_deep_links {
+                // The single-instance check is done, so register our exe
+                // to handle deep links
+                deep_link::register().context("Failed to register deep link handler")?;
+                tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+            }
+
+            if let Some(failure) = cli.fail_on_purpose() {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    let delay = 5;
+                    tracing::info!(
+                        "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+                    );
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                    tracing::info!("Crashing / erroring / panicking on purpose");
+                    ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                    Ok::<_, anyhow::Error>(())
+                });
+            }
+
             assert_eq!(
                 BUNDLE_ID,
                 app.handle().config().tauri.bundle.identifier,
@@ -248,7 +249,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                         ctlr_rx,
                         logging_handles,
                         advanced_settings,
-                        notify_controller,
                     )
                     .await
                 });
@@ -314,9 +314,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
-    // Write the settings so we can check the path for those
-    settings::save(&settings::AdvancedSettings::default()).await?;
-
     // Test log exporting
     let path = PathBuf::from("smoke_test_log_export.zip");
 
@@ -339,6 +336,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
+
+    // Write the settings so we can check the path for those
+    settings::save(&settings::AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
@@ -489,9 +489,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    /// The UUIDv4 device ID persisted to disk
-    /// Sent verbatim to Session::connect
-    device_id: String,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -525,11 +522,13 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
+        let device_id =
+            connlib_shared::device_id::get().context("Failed to read / create device ID")?;
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
             &token,
-            self.device_id.clone(),
+            device_id.id,
             None,
             public_key.to_bytes(),
         )?;
@@ -772,19 +771,24 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
-    notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    tracing::debug!("Reading / generating device ID...");
-    let device_id =
-        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
-
-    if device_id.is_first_time {
+    let session_dir = crate::client::known_dirs::session().context("Couldn't find session dir")?;
+    let ran_before_path = session_dir.join("ran_before.txt");
+    if !tokio::fs::try_exists(&ran_before_path).await? {
         let win = app
             .get_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
         win.show()?;
+        tokio::fs::create_dir_all(&session_dir).await?;
+        tokio::fs::write(&ran_before_path, &[]).await?;
     }
-    let device_id = device_id.id;
+
+    // TODO: This is temporary until process separation is done
+    // Try to create the device ID and ignore errors if we fail.
+    // This allows Linux to run with the "Generate device ID lazily" behavior,
+    // but Windows, which runs elevated, will write the device ID, and the smoke
+    // tests can cover it.
+    connlib_shared::device_id::get().ok();
 
     let mut controller = Controller {
         advanced_settings,
@@ -792,9 +796,8 @@ async fn run_controller(
         auth: client::auth::Auth::new().context("Failed to set up auth module")?,
         ctlr_tx,
         session: None,
-        device_id,
         logging_handles,
-        notify_controller,
+        notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
     };

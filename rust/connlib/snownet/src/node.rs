@@ -731,6 +731,7 @@ where
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
+        agent.set_max_candidate_pairs(300);
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
