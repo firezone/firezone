@@ -322,6 +322,7 @@ jobs:
           - gateway
           - client
           - snownet-tests
+          - http-test-server
     steps:
       - uses: actions/checkout@v4
         with:
