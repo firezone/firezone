@@ -118,7 +118,7 @@ defmodule Web.Acceptance.AuthTest do
       |> Auth.authenticate(identity)
       |> visit(~p"/#{account}/actors")
 
-    assert text(session) == "Not Found"
+    assert text(session) =~ "Sorry, we couldn't find this page"
 
     assert_path(session, ~p"/#{account}/actors")
   end
