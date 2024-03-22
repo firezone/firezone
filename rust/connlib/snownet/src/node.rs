@@ -1017,16 +1017,12 @@ fn add_local_candidate_to_all<TId>(
 ) where
     TId: Copy + fmt::Display,
 {
-    let initial_connections = connections
-        .initial
-        .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
     let established_connections = connections
         .established
         .iter_mut()
         .map(|(id, c)| (*id, &mut c.agent));
 
-    for (id, agent) in initial_connections.chain(established_connections) {
+    for (id, agent) in established_connections {
         let _span = info_span!("connection", %id).entered();
 
         add_local_candidate(id, agent, candidate.clone(), pending_events);
