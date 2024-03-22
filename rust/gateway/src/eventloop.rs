@@ -6,13 +6,15 @@ use crate::CallbackHandler;
 use anyhow::{bail, Result};
 use boringtun::x25519::PublicKey;
 use connlib_shared::{
-    messages::{GatewayResponse, ResourceAccepted, ResourceDescription},
+    messages::{
+        GatewayResponse, ResolvedResourceDescriptionDns, ResourceAccepted, ResourceDescription,
+    },
     Dname,
 };
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use either::Either;
-use firezone_tunnel::{GatewayTunnel, ResolvedResourceDescriptionDns};
+use firezone_tunnel::GatewayTunnel;
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
 use std::convert::Infallible;

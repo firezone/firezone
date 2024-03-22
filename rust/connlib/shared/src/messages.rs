@@ -207,6 +207,20 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 }
 
+/// Description of a resource that maps to a DNS record which had its domain already resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedResourceDescriptionDns {
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub domain: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub addresses: Vec<IpNetwork>,
+}
+
 impl ResourceDescription {
     pub fn dns_name(&self) -> Option<&str> {
         match self {
