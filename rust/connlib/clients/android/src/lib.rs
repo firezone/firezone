@@ -80,7 +80,7 @@ impl CallbackHandler {
             .and_then(f)
     }
 
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), CallbackError> {
         self.env(|mut env| {
             call_method(
                 &mut env,
@@ -90,7 +90,6 @@ impl CallbackHandler {
                 &[JValue::Int(file_descriptor)],
             )
         })
-        .expect("protectFileDescriptor callback failed");
     }
 }
 
@@ -325,6 +324,8 @@ enum ConnectError {
     InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
     #[error("Unable to create tokio runtime: {0}")]
     UnableToCreateRuntime(#[from] io::Error),
+    #[error(transparent)]
+    CallbackError(#[from] CallbackError),
 }
 
 macro_rules! string_from_jstring {
@@ -388,10 +389,10 @@ fn connect(
     let sockets = Sockets::new()?;
 
     if let Some(ip4_socket) = sockets.ip4_socket_fd() {
-        callback_handler.protect_file_descriptor(ip4_socket);
+        callback_handler.protect_file_descriptor(ip4_socket)?;
     }
     if let Some(ip6_socket) = sockets.ip6_socket_fd() {
-        callback_handler.protect_file_descriptor(ip6_socket);
+        callback_handler.protect_file_descriptor(ip6_socket)?;
     }
 
     let session = Session::connect(
