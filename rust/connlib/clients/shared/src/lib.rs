@@ -3,7 +3,7 @@ pub use connlib_shared::messages::ResourceDescription;
 pub use connlib_shared::{
     keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
-use tokio::sync::mpsc::UnboundedReceiver;
+pub use firezone_tunnel::Sockets;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
@@ -12,6 +12,7 @@ use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::net::IpAddr;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 mod eventloop;
 pub mod file_logger;
@@ -37,6 +38,7 @@ impl Session {
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         url: LoginUrl,
+        sockets: Sockets,
         private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CB,
@@ -47,6 +49,7 @@ impl Session {
 
         let connect_handle = handle.spawn(connect(
             url,
+            sockets,
             private_key,
             os_version_override,
             callbacks.clone(),
@@ -91,6 +94,7 @@ impl Session {
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
     url: LoginUrl,
+    sockets: Sockets,
     private_key: StaticSecret,
     os_version_override: Option<String>,
     callbacks: CB,
@@ -100,7 +104,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, callbacks.clone())?;
+    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone());
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),

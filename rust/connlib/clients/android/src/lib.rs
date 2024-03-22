@@ -5,7 +5,7 @@
 
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
-    ResourceDescription, Session,
+    ResourceDescription, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -78,6 +78,19 @@ impl CallbackHandler {
             .attach_current_thread_as_daemon()
             .map_err(CallbackError::AttachCurrentThreadFailed)
             .and_then(f)
+    }
+
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
+        self.env(|mut env| {
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "protectFileDescriptor",
+                "(I)V",
+                &[JValue::Int(file_descriptor)],
+            )
+        })
+        .expect("protectFileDescriptor callback failed");
     }
 }
 
@@ -227,20 +240,6 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateRoutes callback failed")
     }
 
-    #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "protectFileDescriptor",
-                "(I)V",
-                &[JValue::Int(file_descriptor)],
-            )
-        })
-        .expect("protectFileDescriptor callback failed");
-    }
-
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.env(|mut env| {
             let resource_list = env
@@ -386,8 +385,18 @@ fn connect(
         .enable_all()
         .build()?;
 
+    let sockets = Sockets::new()?;
+
+    if let Some(ip4_socket) = sockets.ip4_socket_fd() {
+        callback_handler.protect_file_descriptor(ip4_socket);
+    }
+    if let Some(ip6_socket) = sockets.ip6_socket_fd() {
+        callback_handler.protect_file_descriptor(ip6_socket);
+    }
+
     let session = Session::connect(
         login,
+        sockets,
         private_key,
         Some(os_version),
         callback_handler,

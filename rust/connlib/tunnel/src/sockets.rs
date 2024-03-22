@@ -52,14 +52,12 @@ impl Sockets {
         }
     }
 
-    #[cfg(target_os = "android")]
     pub fn ip4_socket_fd(&self) -> Option<std::os::fd::RawFd> {
         use std::os::fd::AsRawFd;
 
         self.socket_v4.as_ref().map(|s| s.socket.as_raw_fd())
     }
 
-    #[cfg(target_os = "android")]
     pub fn ip6_socket_fd(&self) -> Option<std::os::fd::RawFd> {
         use std::os::fd::AsRawFd;
 
