@@ -62,7 +62,7 @@ defmodule Web.MixProject do
       {:observer_cli, "~> 1.7"},
 
       # Mailer deps
-      {:hackney, "~> 1.20"},
+      {:multipart, "~> 0.4.0"},
       {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
 

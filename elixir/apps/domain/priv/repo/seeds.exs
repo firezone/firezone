@@ -40,7 +40,8 @@ account =
       stripe: %{
         customer_id: "cus_PZKIfcHB6SSBA4",
         subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",
-        product_name: "Enterprise"
+        product_name: "Enterprise",
+        billing_email: "fin@firez.one"
       }
     },
     limits: %{
@@ -869,8 +870,8 @@ started_at =
   |> DateTime.truncate(:second)
   |> DateTime.add(5, :minute)
 
-{:ok, destination1} = Domain.Types.IPPort.cast("142.250.217.142:443")
-{:ok, destination2} = Domain.Types.IPPort.cast("142.250.217.142:80")
+{:ok, destination1} = Domain.Types.ProtocolIPPort.cast("tcp://142.250.217.142:443")
+{:ok, destination2} = Domain.Types.ProtocolIPPort.cast("udp://142.250.217.142:111")
 
 random_integer = fn ->
   :math.pow(10, 10)
@@ -890,6 +891,7 @@ activities =
       window_started_at: started_at,
       window_ended_at: ended_at,
       destination: Enum.random([destination1, destination2]),
+      connectivity_type: :direct,
       rx_bytes: random_integer.(),
       tx_bytes: random_integer.(),
       flow_id: flow.id,

@@ -31,16 +31,11 @@ defmodule Web.Sites.Index do
 
     with {:ok, groups, metadata} <-
            Gateways.list_groups(socket.assigns.subject, list_opts) do
-      assign(socket,
-        groups: groups,
-        groups_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         groups: groups,
+         groups_metadata: metadata
+       )}
     end
   end
 
@@ -163,13 +158,13 @@ defmodule Web.Sites.Index do
     """
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
-
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
     {:noreply, reload_live_table!(socket, "groups")}
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end

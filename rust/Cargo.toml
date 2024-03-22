@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "client-tunnel",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
@@ -56,10 +57,14 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 [profile.release]
 strip = true
 
-# Override build settings just for the Windows client, so we get a pdb
-[profile.release.package.firezone-gui-client]
-# Generate debug symbols for the crash handler to use, even if the exe itself is optimized
+# Override build settings just for the GUI client, so we get a pdb/dwp
+# Cargo ignores profile settings if they're not in the workspace's Cargo.toml
+[profile.dev.package.firezone-gui-client]
 debug = "full"
-# Split out debug info from the exe. This is already default on Windows.
-# https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 split-debuginfo = "packed"
+strip = "none"
+
+[profile.release.package.firezone-gui-client]
+debug = "full"
+split-debuginfo = "packed"
+strip = "none"

@@ -50,7 +50,7 @@ where
         let callbacks = self.callbacks.clone();
         self.io
             .device_mut()
-            .initialize(config, vec![], &callbacks)?;
+            .set_config(config, vec![], &callbacks)?;
         self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
             &callbacks,
@@ -83,7 +83,7 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> Result<ConnectionAccepted> {
-        let resource_addresses = match &resource {
+        let (resource_addresses, id) = match &resource {
             ResourceDescription::Dns(r) => {
                 let Some(domain) = domain.clone() else {
                     return Err(Error::ControlProtocolError);
@@ -93,9 +93,9 @@ where
                     return Err(Error::InvalidResource);
                 }
 
-                r.addresses.clone()
+                (r.addresses.clone(), r.id)
             }
-            ResourceDescription::Cidr(ref cidr) => vec![cidr.address],
+            ResourceDescription::Cidr(ref cidr) => (vec![cidr.address], cidr.id),
         };
 
         let answer = self.role_state.node.accept_connection(
@@ -113,13 +113,7 @@ where
             Instant::now(),
         );
 
-        self.new_peer(
-            ips,
-            client_id,
-            resource,
-            expires_at,
-            resource_addresses.clone(),
-        )?;
+        self.new_peer(ips, client_id, id, expires_at, resource_addresses.clone())?;
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
@@ -167,7 +161,7 @@ where
 
         for address in &addresses {
             peer.transform
-                .add_resource(*address, resource.clone(), expires_at);
+                .add_resource(*address, resource_id, expires_at);
         }
 
         tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
@@ -203,15 +197,14 @@ where
         &mut self,
         ips: Vec<IpNetwork>,
         client_id: ClientId,
-        resource: ResourceDescription,
+        resource: ResourceId,
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) -> Result<()> {
         let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
 
         for address in resource_addresses {
-            peer.transform
-                .add_resource(address, resource.clone(), expires_at);
+            peer.transform.add_resource(address, resource, expires_at);
         }
 
         self.role_state.peers.insert(peer, &ips);
@@ -283,6 +276,8 @@ impl GatewayState {
         let packet = match peer.untransform(packet.into()) {
             Ok(packet) => packet,
             Err(e) => {
+                // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
+                // source ips can be sticky.
                 tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
 
                 return None;

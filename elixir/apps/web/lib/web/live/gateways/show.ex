@@ -120,7 +120,10 @@ defmodule Web.Gateways.Show do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "gateway_groups:" <> _account_id, payload: payload},
+        %Phoenix.Socket.Broadcast{
+          topic: "presences:group_gateways:" <> _group_id,
+          payload: payload
+        },
         socket
       ) do
     gateway = socket.assigns.gateway

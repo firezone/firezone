@@ -756,8 +756,9 @@ fn update_candidate(
 ) {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
-            *maybe_current = Some(new.clone());
-            events.push_back(CandidateEvent::New(new));
+            events.push_back(CandidateEvent::New(new.clone()));
+            events.push_back(CandidateEvent::Invalid(current.clone()));
+            *maybe_current = Some(new);
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
@@ -961,12 +962,9 @@ impl ChannelBindings {
     }
 
     fn handle_failed_binding(&mut self, c: u16) {
-        let Some(channel) = self.inner.remove(&c) else {
+        if self.inner.remove(&c).is_none() {
             debug_assert!(false, "No channel binding for {c}");
-            return;
-        };
-
-        debug_assert!(!channel.bound, "Channel should not yet be bound")
+        }
     }
 
     fn set_confirmed(&mut self, c: u16, now: Instant) -> bool {

@@ -7,7 +7,6 @@ defmodule Web.RelayGroups.Show do
          {:ok, group} <-
            Relays.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
-               relays: [:online?],
                created_by_identity: [:actor]
              ]
            ) do
@@ -49,16 +48,11 @@ defmodule Web.RelayGroups.Show do
     list_opts = Keyword.put(list_opts, :preload, [:online?])
 
     with {:ok, relays, metadata} <- Relays.list_relays(socket.assigns.subject, list_opts) do
-      assign(socket,
-        relays: relays,
-        relays_metadata: metadata
-      )
-    else
-      {:error, :invalid_cursor} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:unknown_filter, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_type, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, {:invalid_value, _metadata}} -> raise Web.LiveErrors.InvalidRequestError
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      {:ok,
+       assign(socket,
+         relays: relays,
+         relays_metadata: metadata
+       )}
     end
   end
 
@@ -118,7 +112,7 @@ defmodule Web.RelayGroups.Show do
         <div class="relative overflow-x-auto">
           <.live_table
             id="relays"
-            rows={@group.relays}
+            rows={@relays}
             filters={@filters_by_table_id["relays"]}
             filter={@filter_form_by_table_id["relays"]}
             ordered_by={@order_by_table_id["relays"]}
@@ -165,15 +159,7 @@ defmodule Web.RelayGroups.Show do
         %Phoenix.Socket.Broadcast{topic: "presences:" <> _rest},
         socket
       ) do
-    {:ok, group} =
-      Relays.fetch_group_by_id(socket.assigns.group.id, socket.assigns.subject,
-        preload: [
-          relays: [:online?],
-          created_by_identity: [:actor]
-        ]
-      )
-
-    {:noreply, assign(socket, group: group)}
+    {:noreply, reload_live_table!(socket, "relays")}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],

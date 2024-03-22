@@ -19,7 +19,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": ["appimage", "deb", "msi"],
+      "targets": ["deb", "msi"],
       "identifier": "dev.firezone.client",
       "icon": [
         "icons/32x32.png",
@@ -65,7 +65,17 @@
         "resizable": true,
         "width": 640,
         "height": 480,
-        "visible": true
+        "visible": false
+      },
+      {
+        "label": "welcome",
+        "title": "Welcome",
+        "url": "welcome.html",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 640,
+        "height": 480,
+        "visible": false
       }
     ]
   }

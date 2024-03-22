@@ -63,12 +63,12 @@ impl Device {
         }
     }
 
-    #[cfg(target_family = "unix")]
-    pub(crate) fn initialize(
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    pub(crate) fn set_config(
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         let tun = Tun::new(config, dns_config, callbacks)?;
         let mtu = ioctl::interface_mtu_by_name(tun.name())?;
@@ -83,16 +83,44 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(target_family = "windows")]
-    pub(crate) fn initialize(
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    pub(crate) fn set_config(
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
-        _: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
-        let tun = Tun::new(config, dns_config)?;
+        // For macos the filedescriptor is the same throughout its lifetime.
+        // If we reinitialzie tun, we might drop the old tun after the new one is created
+        // this unregisters the file descriptor with the reactor so we never wake up
+        // in case an event is triggered.
+        if self.tun.is_none() {
+            self.tun = Some(Tun::new()?);
+        }
 
-        self.tun = Some(tun);
+        self.mtu = ioctl::interface_mtu_by_name(self.tun.as_ref().unwrap().name())?;
+
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_family = "windows")]
+    pub(crate) fn set_config(
+        &mut self,
+        config: &Interface,
+        dns_config: Vec<IpAddr>,
+        _: &impl Callbacks,
+    ) -> Result<(), ConnlibError> {
+        if self.tun.is_none() {
+            self.tun = Some(Tun::new()?);
+        }
+
+        self.tun.as_ref().unwrap().set_config(config, &dns_config)?;
 
         if let Some(waker) = self.waker.take() {
             waker.wake();
@@ -189,7 +217,7 @@ impl Device {
     pub(crate) fn set_routes(
         &mut self,
         routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks<Error = Error>,
+        callbacks: &impl Callbacks,
     ) -> Result<(), Error> {
         self.tun_mut()?.set_routes(routes, callbacks)?;
         Ok(())

@@ -21,7 +21,8 @@ variable "compute_region" {
 
 variable "compute_instance_availability_zones" {
   type        = list(string)
-  description = "List of zones in the region defined in `compute_region` where replicas should be deployed."
+  default     = []
+  description = "List of zones in the region defined in `compute_region` where replicas should be deployed. Empty list means that all available zones will be used."
 }
 
 variable "compute_instance_replicas" {
@@ -32,6 +33,18 @@ variable "compute_instance_type" {
   type = string
 }
 
+variable "compute_provision_public_ipv4_address" {
+  type        = bool
+  default     = true
+  description = "Whether to provision public IPv4 address for the instances."
+}
+
+variable "compute_provision_public_ipv6_address" {
+  type        = bool
+  default     = true
+  description = "Whether to provision public IPv4 address for the instances."
+}
+
 ################################################################################
 ## Container Registry
 ################################################################################
@@ -39,6 +52,7 @@ variable "compute_instance_type" {
 variable "container_registry" {
   type        = string
   nullable    = false
+  default     = "ghcr.io"
   description = "Container registry URL to pull the image from."
 }
 
@@ -49,6 +63,7 @@ variable "container_registry" {
 variable "image_repo" {
   type     = string
   nullable = false
+  default  = "firezone"
 
   description = "Repo of a container image used to deploy the application."
 }
@@ -56,6 +71,7 @@ variable "image_repo" {
 variable "image" {
   type     = string
   nullable = false
+  default  = "gateway"
 
   description = "Container image used to deploy the application."
 }
@@ -86,7 +102,7 @@ variable "observability_log_level" {
 variable "application_name" {
   type     = string
   nullable = true
-  default  = null
+  default  = "gateway"
 
   description = "Name of the application. Defaults to value of `var.image_name` with `_` replaced to `-`."
 }
@@ -128,6 +144,23 @@ variable "health_check" {
   })
 
   nullable = false
+
+  default = {
+    name     = "health"
+    protocol = "TCP"
+    port     = 8080
+
+    initial_delay_sec = 60
+
+    check_interval_sec  = 15
+    timeout_sec         = 10
+    healthy_threshold   = 1
+    unhealthy_threshold = 3
+
+    http_health_check = {
+      request_path = "/healthz"
+    }
+  }
 
   description = "Health check which will be used for auto healing policy."
 }

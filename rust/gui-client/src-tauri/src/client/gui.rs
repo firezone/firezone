@@ -8,12 +8,12 @@ use crate::client::{
     settings::{self, AdvancedSettings},
     Failure,
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -84,7 +84,7 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
+pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
 
     // If the log filter is unparsable, show an error and use the default
@@ -132,40 +132,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
     let _guard = rt.enter();
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let notify_controller = Arc::new(Notify::new());
-
-    // Check for updates
-    let ctlr_tx_clone = ctlr_tx.clone();
-    let always_show_update_notification = cli.always_show_update_notification;
-    tokio::spawn(async move {
-        if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
-        {
-            tracing::error!(?error, "Error in check_for_updates");
-        }
-    });
-
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let server = deep_link::Server::new()?;
-
-    if let Some(client::Cmd::SmokeTest) = &cli.command {
-        let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
-            if let Err(error) = smoke_test(ctlr_tx).await {
-                tracing::error!(?error, "Error during smoke test");
-                std::process::exit(1);
-            }
-        });
-    }
-
-    tracing::debug!(cli.no_deep_links);
-    if !cli.no_deep_links {
-        // The single-instance check is done, so register our exe
-        // to handle deep links
-        deep_link::register().context("Failed to register deep link handler")?;
-        tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
-    }
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
@@ -174,20 +140,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    if let Some(failure) = cli.fail_on_purpose() {
-        let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
-            let delay = 5;
-            tracing::info!(
-                "Will crash / error / panic on purpose in {delay} seconds to test error handling."
-            );
-            tokio::time::sleep(Duration::from_secs(delay)).await;
-            tracing::info!("Crashing / erroring / panicking on purpose");
-            ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
-            Ok::<_, anyhow::Error>(())
-        });
-    }
-
+    tracing::debug!("Setting up Tauri app instance...");
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -209,6 +162,7 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
             settings::get_advanced_settings,
+            crate::client::welcome::sign_in,
         ])
         .system_tray(tray)
         .on_system_tray_event(|app, event| {
@@ -228,6 +182,56 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             }
         })
         .setup(move |app| {
+            tracing::debug!("Entered Tauri's `setup`");
+
+            // Check for updates
+            let ctlr_tx_clone = ctlr_tx.clone();
+            let always_show_update_notification = cli.always_show_update_notification;
+            tokio::spawn(async move {
+                if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+                {
+                    tracing::error!(?error, "Error in check_for_updates");
+                }
+            });
+
+            // Make sure we're single-instance
+            // We register our deep links to call the `open-deep-link` subcommand,
+            // so if we're at this point, we know we've been launched manually
+            let server = deep_link::Server::new()?;
+
+            if let Some(client::Cmd::SmokeTest) = &cli.command {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = smoke_test(ctlr_tx).await {
+                        tracing::error!(?error, "Error during smoke test");
+                        tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                        unsafe { sadness_generator::raise_segfault() }
+                    }
+                });
+            }
+
+            tracing::debug!(cli.no_deep_links);
+            if !cli.no_deep_links {
+                // The single-instance check is done, so register our exe
+                // to handle deep links
+                deep_link::register().context("Failed to register deep link handler")?;
+                tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+            }
+
+            if let Some(failure) = cli.fail_on_purpose() {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    let delay = 5;
+                    tracing::info!(
+                        "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+                    );
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                    tracing::info!("Crashing / erroring / panicking on purpose");
+                    ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                    Ok::<_, anyhow::Error>(())
+                });
+            }
+
             assert_eq!(
                 BUNDLE_ID,
                 app.handle().config().tauri.bundle.identifier,
@@ -245,7 +249,6 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
                         ctlr_rx,
                         logging_handles,
                         advanced_settings,
-                        notify_controller,
                     )
                     .await
                 });
@@ -274,8 +277,9 @@ pub(crate) fn run(cli: &client::Cli) -> Result<(), Error> {
             });
 
             Ok(())
-        })
-        .build(tauri::generate_context!());
+        });
+    tracing::debug!("Building Tauri app...");
+    let app = app.build(tauri::generate_context!());
 
     let app = match app {
         Ok(x) => x,
@@ -310,9 +314,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
-    // Write the settings so we can check the path for those
-    settings::save(&settings::AdvancedSettings::default()).await?;
-
     // Test log exporting
     let path = PathBuf::from("smoke_test_log_export.zip");
 
@@ -335,6 +336,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
+
+    // Write the settings so we can check the path for those
+    settings::save(&settings::AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
@@ -430,6 +434,7 @@ pub(crate) enum ControllerRequest {
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(SecretString),
+    SignIn,
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
     UpdateAvailable(client::updates::Release),
@@ -444,39 +449,26 @@ struct CallbackHandler {
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
-#[derive(thiserror::Error, Debug)]
-enum CallbackError {
-    #[error("system DNS resolver problem: {0}")]
-    Resolvers(#[from] client::resolvers::Error),
-    #[error("can't send to controller task: {0}")]
-    SendError(#[from] mpsc::error::TrySendError<ControllerRequest>),
-}
-
 // Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
-    type Error = CallbackError;
-
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) -> Result<(), Self::Error> {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx.try_send(ControllerRequest::Disconnected)?;
-        Ok(())
+        self.ctlr_tx
+            .try_send(ControllerRequest::Disconnected)
+            .expect("controller channel failed");
     }
 
-    fn on_tunnel_ready(&self) -> Result<(), Self::Error> {
+    fn on_tunnel_ready(&self) {
         tracing::info!("on_tunnel_ready");
-        self.ctlr_tx.try_send(ControllerRequest::TunnelReady)?;
-        Ok(())
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) -> Result<(), Self::Error> {
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-        Ok(())
-    }
-
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        Ok(Some(client::resolvers::get()?))
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -497,9 +489,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    /// The UUIDv4 device ID persisted to disk
-    /// Sent verbatim to Session::connect
-    device_id: String,
     logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
@@ -533,11 +522,13 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
+        let device_id =
+            connlib_shared::device_id::get().context("Failed to read / create device ID")?;
         let (private_key, public_key) = keypair();
         let login = LoginUrl::client(
             api_url.as_str(),
             &token,
-            self.device_id.clone(),
+            device_id.id,
             None,
             public_key.to_bytes(),
         )?;
@@ -549,6 +540,8 @@ impl Controller {
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
         )?;
+
+        connlib.set_dns(client::resolvers::get().unwrap_or_default());
 
         self.session = Some(Session {
             callback_handler,
@@ -618,6 +611,17 @@ impl Controller {
                 .handle_deep_link(&url)
                 .await
                 .context("Couldn't handle deep link")?,
+            Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
+                if let Some(req) = self.auth.start_sign_in()? {
+                    let url = req.to_url(&self.advanced_settings.auth_base_url);
+                    self.refresh_system_tray_menu()?;
+                    os::open_url(&self.app, &url)?;
+                    self.app
+                        .get_window("welcome")
+                        .context("Couldn't get handle to Welcome window")?
+                        .hide()?;
+                }
+            }
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 if self.session.is_some() {
                     // If the user opened the menu, then sign-in completed, then they
@@ -648,13 +652,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
                 .copy_resource(&id)
                 .context("Couldn't copy resource to clipboard")?,
-            Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self.auth.start_sign_in()? {
-                    let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu()?;
-                    os::open_url(&self.app, &url)?;
-                }
-            }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out()?;
@@ -759,7 +756,7 @@ impl Controller {
         let win = self
             .app
             .get_window(id)
-            .ok_or_else(|| anyhow!("getting handle to `{id}` window"))?;
+            .context("Couldn't get handle to `{id}` window")?;
 
         win.show()?;
         win.unminimize()?;
@@ -774,10 +771,24 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
-    notify_controller: Arc<Notify>,
 ) -> Result<()> {
-    let device_id =
-        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
+    let session_dir = crate::client::known_dirs::session().context("Couldn't find session dir")?;
+    let ran_before_path = session_dir.join("ran_before.txt");
+    if !tokio::fs::try_exists(&ran_before_path).await? {
+        let win = app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?;
+        win.show()?;
+        tokio::fs::create_dir_all(&session_dir).await?;
+        tokio::fs::write(&ran_before_path, &[]).await?;
+    }
+
+    // TODO: This is temporary until process separation is done
+    // Try to create the device ID and ignore errors if we fail.
+    // This allows Linux to run with the "Generate device ID lazily" behavior,
+    // but Windows, which runs elevated, will write the device ID, and the smoke
+    // tests can cover it.
+    connlib_shared::device_id::get().ok();
 
     let mut controller = Controller {
         advanced_settings,
@@ -785,9 +796,8 @@ async fn run_controller(
         auth: client::auth::Auth::new().context("Failed to set up auth module")?,
         ctlr_tx,
         session: None,
-        device_id,
         logging_handles,
-        notify_controller,
+        notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
     };

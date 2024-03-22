@@ -1,12 +1,11 @@
 use crate::device_channel::{ipv4, ipv6};
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
     O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 };
-use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -70,11 +69,7 @@ impl Tun {
         }
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -131,8 +126,6 @@ impl Tun {
             }
 
             if addr.sc_id == info.ctl_id {
-                callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config)?;
-
                 set_non_blocking(fd)?;
 
                 return Ok(Self {
@@ -145,16 +138,12 @@ impl Tun {
         Err(get_last_error())
     }
 
-    pub fn set_routes(
-        &self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks<Error = Error>,
-    ) -> Result<()> {
+    pub fn set_routes(&self, routes: HashSet<IpNetwork>, callbacks: &impl Callbacks) -> Result<()> {
         // This will always be None in macos
         callbacks.on_update_routes(
             routes.iter().copied().filter_map(ipv4).collect(),
             routes.iter().copied().filter_map(ipv6).collect(),
-        )?;
+        );
 
         Ok(())
     }
