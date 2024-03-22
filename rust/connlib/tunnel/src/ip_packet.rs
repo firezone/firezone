@@ -31,10 +31,29 @@ macro_rules! swap_src_dst {
 
 impl<'a> MutableIpPacket<'a> {
     #[inline]
-    pub(crate) fn new(data: &mut [u8]) -> Option<MutableIpPacket> {
+    pub(crate) fn new(data: &'a mut [u8]) -> Option<MutableIpPacket> {
+        if data.is_empty() {
+            return None;
+        };
+
         let packet = match data[0] >> 4 {
             4 => MutableIpv4Packet::new(data)?.into(),
             6 => MutableIpv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
+    #[inline]
+    pub(crate) fn owned(data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+        if data.is_empty() {
+            return None;
+        };
+
+        let packet = match data[0] >> 4 {
+            4 => MutableIpv4Packet::owned(data)?.into(),
+            6 => MutableIpv6Packet::owned(data)?.into(),
             _ => return None,
         };
 
@@ -66,6 +85,15 @@ impl<'a> MutableIpPacket<'a> {
         // Note: Ipv4 checksum should be set after the others,
         // since it's in an upper layer.
         self.set_ipv4_checksum();
+    }
+
+    pub(crate) fn inc_ipv4_identification_by(&mut self, offset: u16) {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => {
+                i.set_identification(i.get_identification() + offset)
+            }
+            MutableIpPacket::MutableIpv6Packet(_) => {}
+        }
     }
 
     pub(crate) fn set_ipv4_checksum(&mut self) {
@@ -202,6 +230,15 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
+impl PacketSize for MutableIpPacket<'_> {
+    fn packet_size(&self) -> usize {
+        match self {
+            MutableIpPacket::MutableIpv4Packet(i) => i.packet_size(),
+            MutableIpPacket::MutableIpv6Packet(i) => i.packet_size(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum IpPacket<'a> {
     Ipv4Packet(Ipv4Packet<'a>),
@@ -228,6 +265,21 @@ impl<'a> From<snownet::MutableIpPacket<'a>> for MutableIpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
+    #[inline]
+    pub(crate) fn new(data: &'a [u8]) -> Option<Self> {
+        if data.is_empty() {
+            return None;
+        };
+
+        let packet = match data[0] >> 4 {
+            4 => Ipv4Packet::new(data)?.into(),
+            6 => Ipv6Packet::new(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub(crate) fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[0] >> 4 {
             4 => Ipv4Packet::owned(data)?.into(),
