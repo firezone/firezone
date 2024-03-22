@@ -1069,18 +1069,12 @@ fn add_local_candidate_to_all<TId>(
 ) where
     TId: Copy + fmt::Display,
 {
-    let initial_connections = connections
-        .initial
-        .iter_mut()
-        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
     let established_connections = connections
         .established
         .iter_mut()
         .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
 
-    for (id, allowed_stun, allowed_turn, agent) in
-        initial_connections.chain(established_connections)
-    {
+    for (id, allowed_stun, allowed_turn, agent) in established_connections {
         let _span = info_span!("connection", %id).entered();
 
         match candidate.kind() {
