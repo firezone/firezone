@@ -151,15 +151,18 @@ where
         None
     }
 
-    pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
-        let Some(peer) = self.role_state.peers.get_mut(id) else {
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource, %client))]
+    pub fn remove_access(&mut self, client: &ClientId, resource: &ResourceId) {
+        let Some(peer) = self.role_state.peers.get_mut(client) else {
             return;
         };
 
-        peer.transform.remove_resource(resource_id);
+        peer.transform.remove_resource(resource);
         if peer.transform.is_emptied() {
-            self.role_state.peers.remove(id);
+            self.role_state.peers.remove(client);
         }
+
+        tracing::debug!("Access removed");
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {

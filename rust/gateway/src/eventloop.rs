@@ -51,8 +51,6 @@ impl Eventloop {
                     conn_id: client,
                     candidate,
                 })) => {
-                    tracing::debug!(%client, %candidate, "Sending ICE candidate to client");
-
                     self.portal.send(
                         PHOENIX_TOPIC,
                         EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
@@ -123,8 +121,6 @@ impl Eventloop {
                     ..
                 }) => {
                     for candidate in candidates {
-                        tracing::debug!(client = %client_id, %candidate, "Adding ICE candidate from client");
-
                         self.tunnel.add_ice_candidate(client_id, candidate);
                     }
                     continue;
@@ -138,8 +134,6 @@ impl Eventloop {
                         }),
                     ..
                 }) => {
-                    tracing::debug!(client = %client_id, resource = %resource_id, "Access removed");
-
                     self.tunnel.remove_access(&client_id, &resource_id);
                     continue;
                 }
