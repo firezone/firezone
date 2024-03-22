@@ -465,6 +465,10 @@ where
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
+        for candidate in self.host_candidates.iter().cloned() {
+            add_local_candidate(id, &mut agent, candidate, &mut self.pending_events);
+        }
+
         self.seed_agent_with_local_candidates(
             id,
             &mut agent,
@@ -931,10 +935,6 @@ where
         allowed_stun_servers: &HashSet<SocketAddr>,
         allowed_turn_servers: &HashSet<SocketAddr>,
     ) {
-        for candidate in self.host_candidates.iter().cloned() {
-            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
         for candidate in self.bindings.iter().filter_map(|(server, binding)| {
             let candidate = allowed_stun_servers
                 .contains(server)
