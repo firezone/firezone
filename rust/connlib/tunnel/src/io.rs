@@ -115,6 +115,10 @@ impl Io {
         &self.sockets
     }
 
+    pub(crate) fn set_sockets(&mut self, sockets: Sockets) {
+        self.sockets = sockets;
+    }
+
     pub fn set_upstream_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = (IpAddr, DnsServer)>,

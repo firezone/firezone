@@ -56,19 +56,19 @@ async fn main() -> Result<()> {
         if sigint.poll_recv(cx).is_ready() {
             tracing::debug!("Received SIGINT");
 
-            return Poll::Ready(());
+            return Poll::Ready(std::io::Result::Ok(()));
         }
 
         if sighup.poll_recv(cx).is_ready() {
             tracing::debug!("Received SIGHUP");
 
-            session.reconnect();
+            session.reconnect(Sockets::new()?);
             continue;
         }
 
         return Poll::Pending;
     })
-    .await;
+    .await?;
 
     session.disconnect();
 

@@ -73,8 +73,8 @@ impl Session {
     ///
     /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
     /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
-    pub fn reconnect(&self) {
-        let _ = self.channel.send(Command::Reconnect);
+    pub fn reconnect(&self, sockets: Sockets) {
+        let _ = self.channel.send(Command::Reconnect(sockets));
     }
 
     pub fn set_dns(&self, new_dns: Vec<IpAddr>) {

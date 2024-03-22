@@ -10,7 +10,7 @@ use connlib_shared::{
     messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, Sockets};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
@@ -37,7 +37,7 @@ pub struct Eventloop<C: Callbacks> {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Stop,
-    Reconnect,
+    Reconnect(Sockets),
     SetDns(Vec<IpAddr>),
 }
 
@@ -71,9 +71,9 @@ where
                         tracing::warn!("Failed to update DNS: {e}");
                     }
                 }
-                Poll::Ready(Some(Command::Reconnect)) => {
+                Poll::Ready(Some(Command::Reconnect(sockets))) => {
                     self.portal.reconnect();
-                    self.tunnel.reconnect();
+                    self.tunnel.reconnect(sockets);
 
                     continue;
                 }

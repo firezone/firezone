@@ -67,6 +67,8 @@ pub enum CallbackError {
         name: &'static str,
         source: jni::errors::Error,
     },
+    #[error(transparent)]
+    Io(#[from] io::Error),
 }
 
 impl CallbackHandler {
@@ -400,13 +402,14 @@ fn connect(
         sockets,
         private_key,
         Some(os_version),
-        callback_handler,
+        callback_handler.clone(),
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     )?;
 
     Ok(SessionWrapper {
         inner: session,
+        callbacks: callback_handler,
         runtime,
     })
 }
@@ -460,9 +463,27 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 
 pub struct SessionWrapper {
     inner: Session,
+    callbacks: CallbackHandler,
 
     #[allow(dead_code)] // Only here so we don't drop the memory early.
     runtime: Runtime,
+}
+
+impl SessionWrapper {
+    fn reconnect(&self, env: &mut JNIEnv) -> Result<(), CallbackError> {
+        let sockets = Sockets::new()?;
+
+        if let Some(ip4_socket) = sockets.ip4_socket_fd() {
+            self.callbacks.protect_file_descriptor(ip4_socket)?;
+        }
+        if let Some(ip6_socket) = sockets.ip6_socket_fd() {
+            self.callbacks.protect_file_descriptor(ip6_socket)?;
+        }
+
+        self.inner.reconnect(sockets);
+
+        Ok(())
+    }
 }
 
 /// # Safety
@@ -507,9 +528,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
-    _: JNIEnv,
+    mut env: JNIEnv,
     _: JClass,
     session: *const SessionWrapper,
 ) {
-    (*session).inner.reconnect();
+    if let Err(e) = (*session).reconnect(&mut env) {
+        throw(&mut env, "java/lang/Exception", e.to_string());
+    }
 }
