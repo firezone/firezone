@@ -37,6 +37,9 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long we will wait for holepunching to succeed before we start trying relays.
+const HOLEPUNCH_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// How long we will at most wait for an [`Answer`] from the remote.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -393,7 +396,13 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
+            connection.handle_timeout(
+                id,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+                &mut self.pending_events,
+            );
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -477,6 +486,7 @@ where
             is_failed: false,
             signalling_completed_at: now,
             remote_pub_key: remote,
+            fallback_relay_candidates: Default::default(),
         };
 
         connection.seed_agent_with_local_candidates(
@@ -1154,6 +1164,9 @@ struct Connection {
     is_failed: bool,
 
     signalling_completed_at: Instant,
+
+    /// Relay candidates we will trickle to the remote if holepunching doesn't succeed within [`HOLEPUNCH_TIMEOUT`].
+    fallback_relay_candidates: Vec<Candidate>,
 }
 
 /// The socket of the peer we are connected to.
@@ -1222,7 +1235,12 @@ impl Connection {
             .chain(binding_candidates)
             .chain(allocation_candidates)
         {
-            add_local_candidate(id, &mut self.agent, candidate.clone(), pending_events);
+            if candidate.kind() == CandidateKind::Relayed {
+                self.fallback_relay_candidates.push(candidate);
+                continue;
+            }
+
+            add_local_candidate(id, &mut self.agent, candidate.clone(), pending_events)
         }
     }
 
@@ -1275,6 +1293,7 @@ impl Connection {
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
+        pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: fmt::Display + Copy,
     {
@@ -1287,6 +1306,22 @@ impl Connection {
             tracing::info!("Connection failed (no candidates received)");
             self.is_failed = true;
             return;
+        }
+
+        let duration_since_signalling = now.duration_since(self.signalling_completed_at);
+
+        if duration_since_signalling > HOLEPUNCH_TIMEOUT
+            && !self.agent.state().is_connected()
+            && !self.fallback_relay_candidates.is_empty()
+        {
+            tracing::info!("Hole-punch did not succeed after {duration_since_signalling:?}, sending relay candidates");
+
+            pending_events.extend(self.fallback_relay_candidates.drain(..).map(|c| {
+                Event::SignalIceCandidate {
+                    connection: id,
+                    candidate: c.to_sdp_string(),
+                }
+            }));
         }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
