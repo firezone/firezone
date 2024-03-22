@@ -444,12 +444,15 @@ where
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
+        id: TId,
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
+        self.seed_agent_with_local_candidates(id, &mut agent);
+
         agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
@@ -756,9 +759,8 @@ where
             pass: answer.credentials.password,
         });
 
-        self.seed_agent_with_local_candidates(id, &mut agent);
-
         let connection = self.init_connection(
+            id,
             agent,
             remote,
             *initial.session_key.expose_secret(),
@@ -819,9 +821,8 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(id, &mut agent);
-
         let connection = self.init_connection(
+            id,
             agent,
             remote,
             *offer.session_key.expose_secret(),
