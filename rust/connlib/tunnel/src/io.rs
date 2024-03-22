@@ -115,8 +115,8 @@ impl Io {
         &self.sockets
     }
 
-    pub(crate) fn set_sockets(&mut self, sockets: Sockets) {
-        self.sockets = sockets;
+    pub fn sockets_mut(&mut self) -> &mut Sockets {
+        &mut self.sockets
     }
 
     pub fn set_upstream_dns_servers(

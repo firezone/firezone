@@ -71,9 +71,11 @@ where
         }
     }
 
-    pub fn reconnect(&mut self, sockets: Sockets) {
+    pub fn reconnect(&mut self) -> std::io::Result<()> {
         self.role_state.reconnect(Instant::now());
-        self.io.set_sockets(sockets);
+        self.io.sockets_mut().rebind()?;
+
+        Ok(())
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {

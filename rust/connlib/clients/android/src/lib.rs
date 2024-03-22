@@ -388,28 +388,27 @@ fn connect(
         .enable_all()
         .build()?;
 
-    let sockets = Sockets::new()?;
-
-    if let Some(ip4_socket) = sockets.ip4_socket_fd() {
-        callback_handler.protect_file_descriptor(ip4_socket)?;
-    }
-    if let Some(ip6_socket) = sockets.ip6_socket_fd() {
-        callback_handler.protect_file_descriptor(ip6_socket)?;
-    }
+    let sockets = Sockets::with_protect({
+        let callbacks = callback_handler.clone();
+        move |fd| {
+            callbacks
+                .protect_file_descriptor(fd)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        }
+    })?;
 
     let session = Session::connect(
         login,
         sockets,
         private_key,
         Some(os_version),
-        callback_handler.clone(),
+        callback_handler,
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     )?;
 
     Ok(SessionWrapper {
         inner: session,
-        callbacks: callback_handler,
         runtime,
     })
 }
@@ -463,27 +462,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 
 pub struct SessionWrapper {
     inner: Session,
-    callbacks: CallbackHandler,
 
     #[allow(dead_code)] // Only here so we don't drop the memory early.
     runtime: Runtime,
-}
-
-impl SessionWrapper {
-    fn reconnect(&self) -> Result<(), CallbackError> {
-        let sockets = Sockets::new()?;
-
-        if let Some(ip4_socket) = sockets.ip4_socket_fd() {
-            self.callbacks.protect_file_descriptor(ip4_socket)?;
-        }
-        if let Some(ip6_socket) = sockets.ip6_socket_fd() {
-            self.callbacks.protect_file_descriptor(ip6_socket)?;
-        }
-
-        self.inner.reconnect(sockets);
-
-        Ok(())
-    }
 }
 
 /// # Safety
@@ -528,11 +509,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
-    mut env: JNIEnv,
+    _: JNIEnv,
     _: JClass,
     session: *const SessionWrapper,
 ) {
-    if let Err(e) = (*session).reconnect() {
-        throw(&mut env, "java/lang/Exception", e.to_string());
-    }
+    (*session).inner.reconnect();
 }
