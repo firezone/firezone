@@ -7,7 +7,7 @@ use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
-    Relay, ResourceId,
+    Relay, ResolvedResourceDescriptionDns, ResourceDescription, ResourceId,
 };
 use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
@@ -21,23 +21,6 @@ const PEERS_IPV4: &str = "100.64.0.0/11";
 const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
-
-/// Description of a resource that maps to a DNS record which had its domain already resolved.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ResolvedResourceDescriptionDns {
-    pub id: ResourceId,
-    /// Internal resource's domain name.
-    pub domain: String,
-    /// Name of the resource.
-    ///
-    /// Used only for display.
-    pub name: String,
-
-    pub addresses: Vec<IpNetwork>,
-}
-
-pub type ResourceDescription =
-    connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
 
 impl<CB> GatewayTunnel<CB>
 where
@@ -81,7 +64,7 @@ where
         relays: Vec<Relay>,
         domain: Option<Dname>,
         expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
         let (resource_addresses, id) = match &resource {
             ResourceDescription::Dns(r) => {
@@ -137,7 +120,7 @@ where
 
     pub fn allow_access(
         &mut self,
-        resource: ResourceDescription,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
