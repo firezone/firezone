@@ -77,10 +77,6 @@ where
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
             match self.role_state.poll_event() {
-                Some(client::Event::RefreshInterface) => {
-                    self.update_interface()?;
-                    continue;
-                }
                 Some(client::Event::SignalIceCandidate { conn_id, candidate }) => {
                     return Poll::Ready(Ok(ClientEvent::SignalIceCandidate { conn_id, candidate }))
                 }

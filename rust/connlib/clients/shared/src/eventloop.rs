@@ -18,7 +18,7 @@ use std::{
     net::IpAddr,
     path::PathBuf,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::time::{Interval, MissedTickBehavior};
 use url::Url;
@@ -66,7 +66,11 @@ where
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
-                Poll::Ready(Some(Command::SetDns(dns))) => self.tunnel.set_dns(dns, Instant::now()),
+                Poll::Ready(Some(Command::SetDns(dns))) => {
+                    if let Err(e) = self.tunnel.set_dns(dns) {
+                        tracing::warn!("Failed to update DNS: {e}");
+                    }
+                }
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
                     self.tunnel.reconnect();
