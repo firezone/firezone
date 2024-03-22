@@ -147,6 +147,10 @@ where
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
+
+        for connection in self.connections.established.values_mut() {
+            connection.created_at = now;
+        }
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -500,7 +504,7 @@ where
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             intent_sent_at,
             is_failed: false,
-            signalling_completed_at: now,
+            created_at: now,
             remote_pub_key: remote,
             fallback_relay_candidates: Default::default(),
         };
@@ -1198,7 +1202,13 @@ struct Connection {
 
     is_failed: bool,
 
-    signalling_completed_at: Instant,
+    /// When this [`Connection`] was created or re-connected.
+    ///
+    /// Created in this case refers to the creation of this data structure.
+    /// That also reflects the point in time when we started ICE.
+    ///
+    /// This timestamp is reset upon [`Node::reconnect`] to allow functionality like trickling of relay candidates to work.
+    created_at: Instant,
 
     /// Relay candidates we will trickle to the remote if holepunching doesn't succeed within [`HOLEPUNCH_TIMEOUT`].
     fallback_relay_candidates: Vec<Candidate>,
@@ -1365,7 +1375,7 @@ impl Connection {
             return None;
         }
 
-        Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
+        Some(self.created_at + CANDIDATE_TIMEOUT)
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
@@ -1390,13 +1400,13 @@ impl Connection {
             return;
         }
 
-        let duration_since_signalling = now.duration_since(self.signalling_completed_at);
+        let duration_since_created = now.duration_since(self.created_at);
 
-        if duration_since_signalling > HOLEPUNCH_TIMEOUT
+        if duration_since_created > HOLEPUNCH_TIMEOUT
             && !self.agent.state().is_connected()
             && !self.fallback_relay_candidates.is_empty()
         {
-            tracing::info!("Hole-punch did not succeed after {duration_since_signalling:?}, sending relay candidates");
+            tracing::info!("Hole-punch did not succeed after {duration_since_created:?}, sending relay candidates");
 
             pending_events.extend(self.fallback_relay_candidates.drain(..).map(|c| {
                 Event::SignalIceCandidate {
