@@ -680,11 +680,9 @@ where
         for event in binding_events.chain(allocation_events) {
             match event {
                 CandidateEvent::New(candidate) => {
-                    add_local_candidate_to_all(
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
+                    for (id, conn) in self.connections.established.iter_mut() {
+                        conn.add_local_candidate(*id, candidate.clone(), &mut self.pending_events)
+                    }
                 }
                 CandidateEvent::Invalid(candidate) => {
                     for (id, agent) in self.connections.agents_mut() {
@@ -1010,25 +1008,6 @@ enum EncodeError {
     NoChannel,
 }
 
-fn add_local_candidate_to_all<TId>(
-    candidate: Candidate,
-    connections: &mut Connections<TId>,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: Copy + fmt::Display,
-{
-    let established_connections = connections
-        .established
-        .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
-
-    for (id, agent) in established_connections {
-        let _span = info_span!("connection", %id).entered();
-
-        add_local_candidate(id, agent, candidate.clone(), pending_events);
-    }
-}
-
 fn add_local_candidate<TId>(
     id: TId,
     agent: &mut IceAgent,
@@ -1237,6 +1216,24 @@ impl Connection {
             }
 
             add_local_candidate(id, &mut self.agent, candidate, pending_events)
+        }
+    }
+
+    fn add_local_candidate<TId>(
+        &mut self,
+        id: TId,
+        candidate: Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display,
+    {
+        let _span = info_span!("connection", %id).entered();
+
+        if self.agent.add_local_candidate(candidate.clone()) {
+            pending_events.push_back(Event::SignalIceCandidate {
+                connection: id,
+                candidate: candidate.to_sdp_string(),
+            })
         }
     }
 
