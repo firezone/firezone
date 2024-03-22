@@ -147,6 +147,25 @@ pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Cidr(ResourceDescriptionCidr),
 }
 
+impl ResourceDescription<ResourceDescriptionDns> {
+    pub fn into_resolved(
+        self,
+        addresses: Vec<IpNetwork>,
+    ) -> ResourceDescription<ResolvedResourceDescriptionDns> {
+        match self {
+            ResourceDescription::Dns(ResourceDescriptionDns { id, address, name }) => {
+                ResourceDescription::Dns(ResolvedResourceDescriptionDns {
+                    id,
+                    domain: address,
+                    name,
+                    addresses,
+                })
+            }
+            ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
+        }
+    }
+}
+
 impl PartialOrd for ResourceDescription {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
