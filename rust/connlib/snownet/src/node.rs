@@ -697,12 +697,14 @@ where
         for (server, event) in binding_events.chain(allocation_events) {
             match event {
                 CandidateEvent::New(candidate) => {
-                    add_local_candidate_to_all(
-                        server,
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
+                    for (id, conn) in self.connections.established.iter_mut() {
+                        conn.add_local_candidate_from(
+                            *id,
+                            server,
+                            candidate.clone(),
+                            &mut self.pending_events,
+                        )
+                    }
                 }
                 CandidateEvent::Invalid(candidate) => {
                     for (id, agent) in self.connections.agents_mut() {
@@ -1061,43 +1063,6 @@ enum EncodeError {
     NoChannel,
 }
 
-fn add_local_candidate_to_all<TId>(
-    server: SocketAddr,
-    candidate: Candidate,
-    connections: &mut Connections<TId>,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: Copy + fmt::Display,
-{
-    let established_connections = connections
-        .established
-        .iter_mut()
-        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
-
-    for (id, allowed_stun, allowed_turn, agent) in established_connections {
-        let _span = info_span!("connection", %id).entered();
-
-        match candidate.kind() {
-            CandidateKind::ServerReflexive => {
-                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
-                    tracing::debug!(%server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
-                    continue;
-                }
-            }
-            CandidateKind::Relayed => {
-                if !allowed_turn.contains(&server) {
-                    tracing::debug!(%server, ?allowed_turn, "Not adding relay candidate");
-
-                    continue;
-                }
-            }
-            CandidateKind::PeerReflexive | CandidateKind::Host => continue,
-        }
-
-        add_local_candidate(id, agent, candidate.clone(), pending_events);
-    }
-}
-
 fn add_local_candidate<TId>(
     id: TId,
     agent: &mut IceAgent,
@@ -1323,6 +1288,41 @@ impl Connection {
             }
 
             add_local_candidate(id, &mut self.agent, candidate, pending_events)
+        }
+    }
+
+    fn add_local_candidate_from<TId>(
+        &mut self,
+        id: TId,
+        server: SocketAddr,
+        candidate: Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display,
+    {
+        let _span = info_span!("connection", %id).entered();
+        let allowed_stun = &self.stun_servers;
+        let allowed_turn = &self.turn_servers;
+
+        match candidate.kind() {
+            CandidateKind::ServerReflexive => {
+                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
+                    tracing::debug!(%server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
+                    return;
+                }
+
+                add_local_candidate(id, &mut self.agent, candidate, pending_events);
+            }
+            CandidateKind::Relayed => {
+                if !allowed_turn.contains(&server) {
+                    tracing::debug!(%server, ?allowed_turn, "Not adding relay candidate");
+
+                    return;
+                }
+
+                self.fallback_relay_candidates.push(candidate);
+            }
+            CandidateKind::PeerReflexive | CandidateKind::Host => {}
         }
     }
 
