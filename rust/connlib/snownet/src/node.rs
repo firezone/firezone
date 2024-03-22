@@ -451,6 +451,10 @@ where
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
+        for candidate in self.host_candidates.iter().cloned() {
+            add_local_candidate(id, &mut agent, candidate, &mut self.pending_events);
+        }
+
         self.seed_agent_with_local_candidates(id, &mut agent);
 
         agent.handle_timeout(now);
@@ -884,10 +888,6 @@ where
     }
 
     fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
-        for candidate in self.host_candidates.iter().cloned() {
-            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
         for candidate in self
             .bindings
             .values()
