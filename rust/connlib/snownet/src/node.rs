@@ -1376,6 +1376,8 @@ impl Connection {
                     source,
                     ..
                 } => {
+                    self.fallback_relay_candidates.clear();
+
                     let candidate = self
                         .local_candidate(source)
                         .expect("to only nominate existing candidates");
