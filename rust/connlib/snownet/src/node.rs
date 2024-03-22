@@ -451,10 +451,6 @@ where
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection {
-        for candidate in self.host_candidates.iter().cloned() {
-            add_local_candidate(id, &mut agent, candidate, &mut self.pending_events);
-        }
-
         agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
@@ -485,6 +481,7 @@ where
 
         connection.seed_agent_with_local_candidates(
             id,
+            self.host_candidates.clone().into_iter(),
             &mut self.bindings,
             &mut self.allocations,
             &mut self.pending_events,
@@ -1208,6 +1205,7 @@ impl Connection {
     fn seed_agent_with_local_candidates<TId>(
         &mut self,
         id: TId,
+        host_candidates: impl Iterator<Item = Candidate>,
         bindings: &mut HashMap<SocketAddr, StunBinding>,
         allocations: &mut HashMap<SocketAddr, Allocation>,
         pending_events: &mut VecDeque<Event<TId>>,
@@ -1220,7 +1218,10 @@ impl Connection {
             .values()
             .flat_map(|allocation| allocation.current_candidates());
 
-        for candidate in binding_candidates.chain(allocation_candidates) {
+        for candidate in host_candidates
+            .chain(binding_candidates)
+            .chain(allocation_candidates)
+        {
             add_local_candidate(id, &mut self.agent, candidate.clone(), pending_events);
         }
     }
