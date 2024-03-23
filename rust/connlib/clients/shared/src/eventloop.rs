@@ -10,7 +10,7 @@ use connlib_shared::{
     messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, Sockets};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
@@ -18,7 +18,7 @@ use std::{
     net::IpAddr,
     path::PathBuf,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::time::{Interval, MissedTickBehavior};
 use url::Url;
@@ -37,7 +37,7 @@ pub struct Eventloop<C: Callbacks> {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Stop,
-    Reconnect,
+    Reconnect(Sockets),
     SetDns(Vec<IpAddr>),
 }
 
@@ -66,10 +66,14 @@ where
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
-                Poll::Ready(Some(Command::SetDns(dns))) => self.tunnel.set_dns(dns, Instant::now()),
-                Poll::Ready(Some(Command::Reconnect)) => {
+                Poll::Ready(Some(Command::SetDns(dns))) => {
+                    if let Err(e) = self.tunnel.set_dns(dns) {
+                        tracing::warn!("Failed to update DNS: {e}");
+                    }
+                }
+                Poll::Ready(Some(Command::Reconnect(sockets))) => {
                     self.portal.reconnect();
-                    self.tunnel.reconnect();
+                    self.tunnel.reconnect(sockets);
 
                     continue;
                 }
