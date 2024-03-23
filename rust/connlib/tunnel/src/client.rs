@@ -843,6 +843,7 @@ impl ClientState {
             return;
         }
 
+        tracing::info!("Found new system resolvers: {new_dns:?}");
         self.next_system_resolver_refresh = Some(now + std::time::Duration::from_millis(500));
         self.system_resolvers = new_dns;
     }
@@ -923,6 +924,7 @@ impl ClientState {
     }
 
     pub(crate) fn reconnect(&mut self, now: Instant) {
+        tracing::info!("Network change detected, refreshing connections");
         self.node.reconnect(now)
     }
 
