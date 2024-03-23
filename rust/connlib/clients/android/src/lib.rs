@@ -5,7 +5,7 @@
 
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
-    ResourceDescription, Session,
+    ResourceDescription, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -67,6 +67,8 @@ pub enum CallbackError {
         name: &'static str,
         source: jni::errors::Error,
     },
+    #[error(transparent)]
+    Io(#[from] io::Error),
 }
 
 impl CallbackHandler {
@@ -78,6 +80,18 @@ impl CallbackHandler {
             .attach_current_thread_as_daemon()
             .map_err(CallbackError::AttachCurrentThreadFailed)
             .and_then(f)
+    }
+
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), CallbackError> {
+        self.env(|mut env| {
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "protectFileDescriptor",
+                "(I)V",
+                &[JValue::Int(file_descriptor)],
+            )
+        })
     }
 }
 
@@ -227,20 +241,6 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateRoutes callback failed")
     }
 
-    #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "protectFileDescriptor",
-                "(I)V",
-                &[JValue::Int(file_descriptor)],
-            )
-        })
-        .expect("protectFileDescriptor callback failed");
-    }
-
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
         self.env(|mut env| {
             let resource_list = env
@@ -326,6 +326,8 @@ enum ConnectError {
     InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
     #[error("Unable to create tokio runtime: {0}")]
     UnableToCreateRuntime(#[from] io::Error),
+    #[error(transparent)]
+    CallbackError(#[from] CallbackError),
 }
 
 macro_rules! string_from_jstring {
@@ -386,17 +388,28 @@ fn connect(
         .enable_all()
         .build()?;
 
+    let sockets = Sockets::new()?;
+
+    if let Some(ip4_socket) = sockets.ip4_socket_fd() {
+        callback_handler.protect_file_descriptor(ip4_socket)?;
+    }
+    if let Some(ip6_socket) = sockets.ip6_socket_fd() {
+        callback_handler.protect_file_descriptor(ip6_socket)?;
+    }
+
     let session = Session::connect(
         login,
+        sockets,
         private_key,
         Some(os_version),
-        callback_handler,
+        callback_handler.clone(),
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     )?;
 
     Ok(SessionWrapper {
         inner: session,
+        callbacks: callback_handler,
         runtime,
     })
 }
@@ -450,9 +463,27 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 
 pub struct SessionWrapper {
     inner: Session,
+    callbacks: CallbackHandler,
 
     #[allow(dead_code)] // Only here so we don't drop the memory early.
     runtime: Runtime,
+}
+
+impl SessionWrapper {
+    fn reconnect(&self) -> Result<(), CallbackError> {
+        let sockets = Sockets::new()?;
+
+        if let Some(ip4_socket) = sockets.ip4_socket_fd() {
+            self.callbacks.protect_file_descriptor(ip4_socket)?;
+        }
+        if let Some(ip6_socket) = sockets.ip6_socket_fd() {
+            self.callbacks.protect_file_descriptor(ip6_socket)?;
+        }
+
+        self.inner.reconnect(sockets);
+
+        Ok(())
+    }
 }
 
 /// # Safety
@@ -497,9 +528,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
-    _: JNIEnv,
+    mut env: JNIEnv,
     _: JClass,
     session: *const SessionWrapper,
 ) {
-    (*session).inner.reconnect();
+    if let Err(e) = (*session).reconnect() {
+        throw(&mut env, "java/lang/Exception", e.to_string());
+    }
 }

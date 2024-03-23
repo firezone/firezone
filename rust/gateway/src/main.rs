@@ -5,7 +5,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
-use firezone_tunnel::GatewayTunnel;
+use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::{future, TryFutureExt};
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
@@ -91,7 +91,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(private_key, CallbackHandler)?;
+    let mut tunnel = GatewayTunnel::new(private_key, Sockets::new()?, CallbackHandler);
 
     let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
         Secret::new(login),
