@@ -55,7 +55,7 @@ str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.22" }
 
 [patch."https://github.com/quinn-rs/quinn"]
-quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main"}
+quinn-udp = { git = "https://github.com/firezone/quinn", branch = "main"}
 
 [profile.release]
 strip = true
