@@ -62,7 +62,6 @@ impl<C> Eventloop<C>
 where
     C: Callbacks + 'static,
 {
-    #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
             match self.rx.poll_recv(cx) {
@@ -259,7 +258,7 @@ where
 
                 match self
                     .tunnel
-                    .request_connection(resource_id, gateway_id, relays)
+                    .create_or_reuse_connection(resource_id, gateway_id, relays)
                 {
                     Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
                         // TODO: keep track for the response

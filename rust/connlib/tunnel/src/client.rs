@@ -75,9 +75,6 @@ where
     CB: Callbacks + 'static,
 {
     /// Adds a the given resource to the tunnel.
-    ///
-    /// Once added, when a packet for the resource is intercepted a new data channel will be created
-    /// and packets will be wrapped with wireguard and sent through it.
     pub fn add_resources(
         &mut self,
         resources: &[ResourceDescription],
@@ -189,7 +186,6 @@ where
         self.role_state.update_system_resolvers(new_dns, now);
     }
 
-    /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
         self.role_state.interface_config = Some(config);
@@ -239,11 +235,8 @@ where
         Ok(())
     }
 
-    /// Clean up a connection to a resource.
-    // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&mut self, id: ResourceId) {
         self.role_state.on_connection_failed(id);
-        // self.peer_connections.lock().remove(&id.into());
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -261,19 +254,7 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
-    /// Initiate an ice connection request.
-    ///
-    /// Given a resource id and a list of relay creates a [RequestConnection]
-    /// and prepares the tunnel to handle the connection once initiated.
-    ///
-    /// # Parameters
-    /// - `resource_id`: Id of the resource we are going to request the connection to.
-    /// - `relays`: The list of relays used for that connection.
-    ///
-    /// # Returns
-    /// A [RequestConnection] that should be sent to the gateway through the control-plane.
-    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
-    pub fn request_connection(
+    pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
@@ -287,9 +268,6 @@ where
         )
     }
 
-    /// Called when a response to [ClientTunnel::request_connection] is ready.
-    ///
-    /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
     pub fn received_offer_response(
         &mut self,
         resource_id: ResourceId,
@@ -518,6 +496,7 @@ impl ClientState {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
     fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
@@ -525,7 +504,7 @@ impl ClientState {
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> connlib_shared::Result<Request> {
-        tracing::trace!("request_connection");
+        tracing::trace!("create_or_reuse_connection");
 
         let desc = self
             .resource_ids
