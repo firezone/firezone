@@ -52,7 +52,7 @@ module "relays" {
   image      = "relay"
   image_tag  = var.image_tag
 
-  observability_log_level = "debug,firezone_relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
+  observability_log_level = "debug,firezone_relay=debug,hyper=off,h2=warn,tower=warn,wire=debug"
 
   application_name    = "relay"
   application_version = replace(var.image_tag, ".", "-")
