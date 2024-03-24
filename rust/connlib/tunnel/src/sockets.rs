@@ -18,6 +18,12 @@ pub struct Sockets {
     protect: Box<dyn Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static>,
 }
 
+impl Default for Sockets {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sockets {
     #[cfg(unix)]
     pub fn with_protect(
