@@ -70,7 +70,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
   ) {
     logger.log("stopTunnel: Reason: \(reason)")
-    
+
     if case .authenticationCanceled = reason {
       do {
         // Remove the passwordReference from our configuration so that it's not used again
@@ -92,11 +92,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     cancelTunnelWithError(nil)
   }
 
-  override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)? = nil) {
-    let query = String(data: messageData, encoding: .utf8) ?? ""
-    adapter?.getDisplayableResourcesIfVersionDifferentFrom(referenceVersionString: query) {
-      displayableResources in
-      completionHandler?(displayableResources?.toData())
+  // TODO: Use a message format to allow requesting different types of data.
+  // This currently assumes we're requesting resources.
+  override func handleAppMessage(_ hash: Data, completionHandler: ((Data?) -> Void)? = nil) {
+    adapter?.getResourcesIfVersionDifferentFrom(hash: hash) {
+      resourceListJSON in
+      completionHandler?(resourceListJSON?.data(using: .utf8))
     }
   }
 }

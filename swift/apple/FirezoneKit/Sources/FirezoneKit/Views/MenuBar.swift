@@ -17,7 +17,8 @@
 
     private var cancellables: Set<AnyCancellable> = []
     private var statusItem: NSStatusItem
-    private var resources: [DisplayableResources.Resource] = []
+
+    private var resources: [Resource]?
     private var isMenuVisible = false {
       didSet { handleMenuVisibilityOrStatusChanged() }
     }
@@ -63,15 +64,32 @@
         }
         .store(in: &cancellables)
 
-      tunnelStore.$displayableResources
+      tunnelStore.$resourceListJSON
         .receive(on: mainQueue)
-        .sink { [weak self] displayableResources in
+        .sink { [weak self] json in
           guard let self = self else { return }
-          self.setResources(displayableResources.resources)
+
+          let newResources = decodeResources(json)
+
+          // Update menu in-place for smooth sexy easy on the eyes UI updates
+          populateResourceMenu(newResources)
+          resourcesTitleMenuItem.title = resourceMenuTitle(newResources)
+
+          // Save what we got so we know when it changes next
+          resources = newResources
         }
         .store(in: &cancellables)
     }
 
+    private func decodeResources(_ json: String?) -> [Resource]? {
+      guard let json = json,
+            let data = json.data(using: .utf8)
+      else { return nil }
+
+      return try? JSONDecoder().decode([Resource].self, from: data)
+    }
+
+    // FIXME: Use SwiftUI for the menubar
     private lazy var menu = NSMenu()
 
     private lazy var signInMenuItem = createMenuItem(
@@ -89,7 +107,7 @@
     )
     private lazy var resourcesTitleMenuItem = createMenuItem(
       menu,
-      title: "No Resources",
+      title: "Loading Resources...",
       action: nil,
       isHidden: true,
       target: self
@@ -298,7 +316,7 @@
         resourcesTitleMenuItem.isHidden = false
         resourcesUnavailableMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.isHidden = true
-        resourcesTitleMenuItem.title = "Resources"
+        resourcesTitleMenuItem.title = resourceMenuTitle(resources)
         resourcesSeparatorMenuItem.isHidden = false
       case .reasserting:
         resourcesTitleMenuItem.isHidden = true
@@ -336,6 +354,16 @@
       }()
     }
 
+    private func resourceMenuTitle(_ newResources: [Resource]?) -> String {
+      guard let newResources = newResources else { return "Loading Resources..." }
+
+      if newResources.isEmpty {
+        return "No Resources"
+      } else {
+        return "Resources"
+      }
+    }
+
     private func handleMenuVisibilityOrStatusChanged() {
       if isMenuVisible && tunnelStore.status == .connected {
         tunnelStore.beginUpdatingResources()
@@ -344,29 +372,23 @@
       }
     }
 
-    private func setResources(_ newResources: [DisplayableResources.Resource]) {
-      if resourcesTitleMenuItem.isHidden && resourcesSeparatorMenuItem.isHidden {
-        guard newResources.isEmpty else {
-          return
-        }
-      }
-      let diff = newResources.difference(
-        from: self.resources,
+    private func populateResourceMenu(_ newResources: [Resource]?) {
+      // the menu contains other things besides resources, so update it in-place
+      let diff = (newResources ?? []).difference(
+        from: resources ?? [],
         by: { $0.name == $1.name && $0.address == $1.address }
       )
-      let baseIndex = menu.index(of: resourcesTitleMenuItem) + 1
+      let index = menu.index(of: resourcesTitleMenuItem) + 1
       for change in diff {
+        logger.log("Changed: \(change)")
         switch change {
         case .insert(let offset, let element, associatedWith: _):
           let menuItem = createResourceMenuItem(title: element.name, submenuTitle: element.address)
-          menu.insertItem(menuItem, at: baseIndex + offset)
-          resources.insert(element, at: offset)
+          menu.insertItem(menuItem, at: index + offset)
         case .remove(let offset, element: _, associatedWith: _):
-          menu.removeItem(at: baseIndex + offset)
-          resources.remove(at: offset)
+          menu.removeItem(at: index + offset)
         }
       }
-      resourcesTitleMenuItem.title = resources.isEmpty ? "No Resources" : "Resources"
     }
 
     private func createResourceMenuItem(title: String, submenuTitle: String) -> NSMenuItem {
