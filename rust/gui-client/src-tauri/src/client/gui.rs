@@ -534,7 +534,7 @@ impl Controller {
         )?;
         let connlib = connlib_client_shared::Session::connect(
             login,
-            Sockets::new()?,
+            Sockets::new(),
             private_key,
             None,
             callback_handler.clone(),

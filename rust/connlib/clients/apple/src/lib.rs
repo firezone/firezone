@@ -193,7 +193,7 @@ impl WrappedSession {
 
         let session = Session::connect(
             login,
-            Sockets::new().map_err(|err| err.to_string())?,
+            Sockets::new(),
             private_key,
             os_version_override,
             CallbackHandler {
