@@ -48,8 +48,6 @@ impl Sockets {
     }
 
     pub fn rebind(&mut self) -> io::Result<()> {
-        use std::os::fd::AsRawFd;
-
         let socket_v4 = Socket::ip4();
         let socket_v6 = Socket::ip6();
 
@@ -73,13 +71,16 @@ impl Sockets {
         }
 
         #[cfg(unix)]
-        if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
-            (self.protect)(fd)?;
-        }
+        {
+            use std::os::fd::AsRawFd;
 
-        #[cfg(unix)]
-        if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
-            (self.protect)(fd)?;
+            if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
+                (self.protect)(fd)?;
+            }
+
+            if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
+                (self.protect)(fd)?;
+            }
         }
 
         self.socket_v4 = socket_v4.ok();
