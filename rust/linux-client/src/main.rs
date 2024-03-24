@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
 
     let session = Session::connect(
         login,
-        Sockets::new()?,
+        Sockets::new(),
         private_key,
         None,
         callbacks.clone(),

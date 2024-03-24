@@ -22,74 +22,22 @@ impl Sockets {
     #[cfg(unix)]
     pub fn with_protect(
         protect: impl Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static,
-    ) -> io::Result<Self> {
-        use std::os::fd::AsRawFd;
-
-        let socket_v4 = Socket::ip4();
-        let socket_v6 = Socket::ip6();
-
-        match (socket_v4.as_ref(), socket_v6.as_ref()) {
-            (Err(e), Ok(_)) => {
-                tracing::warn!("Failed to bind IPv4 socket: {e}");
-            }
-            (Ok(_), Err(e)) => {
-                tracing::warn!("Failed to bind IPv6 socket: {e}");
-            }
-            (Err(e4), Err(e6)) => {
-                tracing::error!("Failed to bind IPv4 socket: {e4}");
-                tracing::error!("Failed to bind IPv6 socket: {e6}");
-
-                return Err(io::Error::new(
-                    io::ErrorKind::AddrNotAvailable,
-                    "Unable to bind to interfaces",
-                ));
-            }
-            _ => (),
-        }
-
-        if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
-            protect(fd)?;
-        }
-
-        if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
-            protect(fd)?;
-        }
-
-        Ok(Self {
-            socket_v4: socket_v4.ok(),
-            socket_v6: socket_v6.ok(),
+    ) -> Self {
+        Self {
+            socket_v4: None,
+            socket_v6: None,
+            #[cfg(unix)]
             protect: Box::new(protect),
-        })
+        }
     }
 
-    pub fn new() -> io::Result<Self> {
-        let socket_v4 = Socket::ip4();
-        let socket_v6 = Socket::ip6();
-
-        match (socket_v4.as_ref(), socket_v6.as_ref()) {
-            (Err(e), Ok(_)) => {
-                tracing::warn!("Failed to bind IPv4 socket: {e}");
-            }
-            (Ok(_), Err(e)) => {
-                tracing::warn!("Failed to bind IPv6 socket: {e}");
-            }
-            (Err(e4), Err(e6)) => {
-                tracing::error!("Failed to bind IPv4 socket: {e4}");
-                tracing::error!("Failed to bind IPv6 socket: {e6}");
-
-                return Err(io::Error::new(
-                    io::ErrorKind::AddrNotAvailable,
-                    "Unable to bind to interfaces",
-                ));
-            }
-            _ => (),
-        }
-
-        Ok(Self {
-            socket_v4: socket_v4.ok(),
-            socket_v6: socket_v6.ok(),
+    pub fn new() -> Self {
+        Self {
+            socket_v4: None,
+            socket_v6: None,
+            #[cfg(unix)]
             protect: Box::new(|_| Ok(())),
-        })
+        }
     }
 
     pub fn can_handle(&self, addr: &SocketAddr) -> bool {
@@ -124,10 +72,12 @@ impl Sockets {
             _ => (),
         }
 
+        #[cfg(unix)]
         if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
             (self.protect)(fd)?;
         }
 
+        #[cfg(unix)]
         if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
             (self.protect)(fd)?;
         }

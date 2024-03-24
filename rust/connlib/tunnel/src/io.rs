@@ -43,8 +43,10 @@ pub enum Input<'a, I> {
 }
 
 impl Io {
-    pub fn new(sockets: Sockets) -> Self {
-        Self {
+    pub fn new(mut sockets: Sockets) -> io::Result<Self> {
+        sockets.rebind()?; // Bind sockets on startup. Must happen within a tokio runtime context.
+
+        Ok(Self {
             device: Device::new(),
             timeout: None,
             sockets,
@@ -53,7 +55,7 @@ impl Io {
                 Duration::from_secs(60),
                 DNS_QUERIES_QUEUE_SIZE,
             ),
-        }
+        })
     }
 
     pub fn poll<'b>(

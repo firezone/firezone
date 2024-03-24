@@ -118,7 +118,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone());
+    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),

@@ -59,16 +59,20 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn new(private_key: StaticSecret, sockets: Sockets, callbacks: CB) -> Self {
-        Self {
-            io: Io::new(sockets),
+    pub fn new(
+        private_key: StaticSecret,
+        sockets: Sockets,
+        callbacks: CB,
+    ) -> std::io::Result<Self> {
+        Ok(Self {
+            io: Io::new(sockets)?,
             callbacks,
             role_state: ClientState::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-        }
+        })
     }
 
     pub fn reconnect(&mut self) -> std::io::Result<()> {
@@ -151,16 +155,20 @@ impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn new(private_key: StaticSecret, sockets: Sockets, callbacks: CB) -> Self {
-        Self {
-            io: Io::new(sockets),
+    pub fn new(
+        private_key: StaticSecret,
+        sockets: Sockets,
+        callbacks: CB,
+    ) -> std::io::Result<Self> {
+        Ok(Self {
+            io: Io::new(sockets)?,
             callbacks,
             role_state: GatewayState::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-        }
+        })
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {

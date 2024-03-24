@@ -395,7 +395,7 @@ fn connect(
                 .protect_file_descriptor(fd)
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
         }
-    })?;
+    });
 
     let session = Session::connect(
         login,
