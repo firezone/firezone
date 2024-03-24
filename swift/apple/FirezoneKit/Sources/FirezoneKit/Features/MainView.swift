@@ -15,11 +15,11 @@ import SwiftUI
   final class MainViewModel: ObservableObject {
     private let logger: AppLogger
     private var cancellables: Set<AnyCancellable> = []
-
     let tunnelStore: TunnelStore
+
     @Dependency(\.mainQueue) private var mainQueue
 
-    @Published var displayableResources: [DisplayableResources.Resource] = []
+    @Published private(set) var resources: [Resource]?
 
     init(tunnelStore: TunnelStore, logger: AppLogger) {
       self.tunnelStore = tunnelStore
@@ -40,13 +40,15 @@ import SwiftUI
         }
         .store(in: &cancellables)
 
-      tunnelStore.$displayableResources
+      tunnelStore.$resourceListJSON
         .receive(on: mainQueue)
-        .sink { [weak self] displayableResources in
-          guard let self = self else { return }
-          self.displayableResources = displayableResources.resources.map {
-            DisplayableResources.Resource(name: $0.name, address: $0.address)
-          }
+        .sink { [weak self] json in
+          guard let self = self,
+                let json = json,
+                let data = json.data(using: .utf8)
+          else { return }
+
+          resources = try? JSONDecoder().decode([Resource].self, from: data)
         }
         .store(in: &cancellables)
     }
@@ -86,28 +88,32 @@ import SwiftUI
         }
         if case .connected = model.tunnelStore.status {
           Section(header: Text("Resources")) {
-            if model.displayableResources.isEmpty {
-              Text("No resources")
-            } else {
-              ForEach(model.displayableResources) { displayableResource in
-                Menu(
-                  content: {
-                    Button {
-                      copyResourceTapped(displayableResource)
-                    } label: {
-                      Label("Copy Address", systemImage: "doc.on.doc")
-                    }
-                  },
-                  label: {
-                    HStack {
-                      Text(displayableResource.name)
-                        .foregroundColor(.primary)
-                      Spacer()
-                      Text(displayableResource.address)
-                        .foregroundColor(.secondary)
-                    }
-                  })
+            if let resources = model.resources {
+              if resources.isEmpty {
+                Text("No Resources")
+              } else {
+                ForEach(resources) { resource in
+                  Menu(
+                    content: {
+                      Button {
+                        copyResourceTapped(resource)
+                      } label: {
+                        Label("Copy Address", systemImage: "doc.on.doc")
+                      }
+                    },
+                    label: {
+                      HStack {
+                        Text(resource.name)
+                          .foregroundColor(.primary)
+                        Spacer()
+                        Text(resource.address)
+                          .foregroundColor(.secondary)
+                      }
+                    })
+                }
               }
+            } else {
+              Text("Loading Resources...")
             }
           }
         }
@@ -116,7 +122,7 @@ import SwiftUI
       .navigationTitle("Firezone")
     }
 
-    private func copyResourceTapped(_ resource: DisplayableResources.Resource) {
+    private func copyResourceTapped(_ resource: Resource) {
       let pasteboard = UIPasteboard.general
       pasteboard.string = resource.address
     }

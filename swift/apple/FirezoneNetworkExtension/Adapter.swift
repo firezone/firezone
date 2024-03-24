@@ -6,6 +6,7 @@ import FirezoneKit
 import Foundation
 import NetworkExtension
 import OSLog
+import CryptoKit
 
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
@@ -58,6 +59,7 @@ class Adapter {
   private var primaryInterfaceName: String?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
+  /// This is the primary async primitive used in this class.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
   /// Adapter state.
@@ -68,12 +70,11 @@ class Adapter {
   }
 
   /// Keep track of resources
-  private var displayableResources = DisplayableResources()
+  private var resourceListJSON: String?
 
   /// Starting parameters
   private var apiURL: String
   private var token: String
-
   private let logFilter: String
   private let connlibLogFolderPath: String
 
@@ -97,7 +98,7 @@ class Adapter {
   // Could happen abruptly if the process is killed.
   deinit {
     logger.log("Adapter.deinit")
-    
+
     // Cancel network monitor
     networkMonitor?.cancel()
 
@@ -127,6 +128,7 @@ class Adapter {
 
     self.logger.log("Adapter.start: Starting connlib")
     do {
+      // Grab a session pointer
       let session =
         try WrappedSession.connect(
           apiURL,
@@ -138,8 +140,16 @@ class Adapter {
           logFilter,
           callbackHandler
         )
+      // Update our internal state
       self.state = .tunnelStarted(session: session)
+
+      // Start listening for network change events. The first few will be our
+      // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
+      // connlib.
       beginPathMonitoring()
+
+      // Tell the system the tunnel is up, moving the tunnelManager status to
+      // `connected`.
       completionHandler(nil)
     } catch let error {
       logger.error("\(#function): Adapter.start: Error: \(error)")
@@ -171,18 +181,20 @@ class Adapter {
     networkMonitor = nil
   }
 
-  /// Get the current set of resources in the completionHandler.
-  /// If unchanged since referenceVersionString, call completionHandler(nil).
-  public func getDisplayableResourcesIfVersionDifferentFrom(
-    referenceVersionString: String, completionHandler: @escaping (DisplayableResources?) -> Void
+  /// Get the current set of resources in the completionHandler, only returning
+  /// them if the resource list has changed.
+  public func getResourcesIfVersionDifferentFrom(
+    hash: Data, completionHandler: @escaping (String?) -> Void
   ) {
+    // This is async to avoid blocking the main UI thread
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      
-      if referenceVersionString == displayableResources.versionString {
+
+      if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
+        // nothing changed
         completionHandler(nil)
       } else {
-        completionHandler(displayableResources)
+        completionHandler(resourceListJSON)
       }
     }
   }
@@ -238,6 +250,8 @@ extension Adapter {
   /// - https://github.com/firezone/firezone/issues/3235
   /// - https://github.com/firezone/firezone/issues/3175
   private func didReceivePathUpdate(path: Network.NWPath) {
+    // Ignore path updates if we're not started. Prevents responding to path updates
+    // we may receive when shutting down.
     guard case .tunnelStarted(let session) = state else { return }
 
     if path.status == .unsatisfied {
@@ -307,10 +321,11 @@ extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
     tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
   ) {
+    // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
       if networkSettings == nil {
-        // First time receiving this callback
+        // First time receiving this callback, so initialize our network settings
         networkSettings = NetworkSettings(packetTunnelProvider: packetTunnelProvider, logger: logger)
       }
 
@@ -332,6 +347,7 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onUpdateRoutes(routeList4: String, routeList6: String) {
+    // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
       guard let networkSettings = networkSettings
@@ -353,36 +369,39 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onUpdateResources(resourceList: String) {
+    // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
       logger.log("\(#function)")
 
-      let networkResources = try! JSONDecoder().decode(
-        [NetworkResource].self, from: resourceList.data(using: .utf8)!)
-
-      // Update resource list
-      displayableResources.update(resources: networkResources.map { $0.displayableResource })
+      // Update resource List. We don't care what's inside.
+      resourceListJSON = resourceList
     }
   }
 
   public func onDisconnect(error: String) {
+    // Since connlib has already shutdown by this point, we queue this callback
+    // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
       guard let self = self else { return }
       logger.log("\(#function)")
 
+      // Set a default stop reason. In the future, we may have more to act upon in
+      // different ways.
       var reason: NEProviderStopReason = .connectionFailed
 
-      // connlib-initiated; session is already disconnected, move directly to .tunnelStopped
+      // connlib-initiated -- session is already disconnected, move directly to .tunnelStopped
       // provider will call our stop() at the end.
       state = .tunnelStopped
 
       // HACK: Define more connlib error types across the FFI so we can switch on them
-      // directly and not just sign the user out every time this is called.
+      // directly and not parse error strings here.
       if error.contains("401 Unauthorized") {
         reason = .authenticationCanceled
       }
 
+      // Start the process of telling the system to shut us down
       self.packetTunnelProvider?.stopTunnel(with: reason) {}
     }
   }
@@ -392,16 +411,8 @@ extension Adapter: CallbackHandlerDelegate {
       let resolvers = SystemConfigurationResolvers(logger: logger).getDefaultDNSServers(
         interfaceName: interfaceName)
     #elseif os(iOS)
-      let resolvers =
-        if case .tunnelStarted = state {
-          resetToSystemDNSGettingBindResolvers()
-        } else {
-          // NetworkSettings isn't applied yet, so we can grab them directly
-          BindResolvers().getservers().map(BindResolvers.getnameinfo)
-        }
+      let resolvers = resetToSystemDNSGettingBindResolvers()
     #endif
-
-    logger.log("\(#function): \(resolvers)")
 
     return resolvers
   }
@@ -418,13 +429,15 @@ extension Adapter: CallbackHandlerDelegate {
       guard let networkSettings = networkSettings
       else {
         // Network Settings hasn't been applied yet, so our sentinal isn't
-        // the system's resolver and we can grab it directly.
+        // the system's resolver and we can grab the system resolvers directly.
         // If we try to continue below without valid tunnel addresses assigned
         // to the interface, we'll crash.
         return BindResolvers().getservers().map(BindResolvers.getnameinfo)
       }
 
       var resolvers: [String] = []
+
+      // The caller is in an async context, so it's ok to block this thread here.
       let semaphore = DispatchSemaphore(value: 0)
 
       // Set tunnel's matchDomains to a dummy string that will never match any name
@@ -433,6 +446,7 @@ extension Adapter: CallbackHandlerDelegate {
       // Call apply to populate /etc/resolv.conf with the system's default resolvers
       networkSettings.apply {
         guard let networkSettings = self.networkSettings else { return }
+
         // Only now can we get the system resolvers
         resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
 
