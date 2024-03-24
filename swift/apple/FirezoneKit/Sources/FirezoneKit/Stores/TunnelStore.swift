@@ -5,6 +5,7 @@
 //
 
 import Combine
+import CryptoKit
 import Dependencies
 import Foundation
 import NetworkExtension
@@ -41,7 +42,7 @@ public final class TunnelStore: ObservableObject {
     didSet { self.logger.log("status changed: \(self.status.description)") }
   }
 
-  @Published private(set) var displayableResources = DisplayableResources()
+  @Published private(set) var resourceListJSON: String?
 
   public var manager: NETunnelProviderManager?
 
@@ -316,21 +317,12 @@ public final class TunnelStore: ObservableObject {
       return
     }
 
-    guard status == .connected
-    else {
-      self.displayableResources = DisplayableResources()
-      return
-    }
-
     let session = castToSession(manager.connection)
-    let resourcesQuery = displayableResources.versionStringToData()
-
+    let hash = Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8)))
     do {
-      try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
-        if let reply = reply {  // If reply is nil, then the resources have not changed
-          if let updatedResources = DisplayableResources(from: reply) {
-            self?.displayableResources = updatedResources
-          }
+      try session.sendProviderMessage(hash) { [weak self] reply in
+        if let reply = reply {
+          self?.resourceListJSON = String(data: reply, encoding: .utf8)
         }
       }
     } catch {
@@ -370,7 +362,7 @@ public final class TunnelStore: ObservableObject {
 
           if status != .connected {
             // Reset resources list
-            self.displayableResources = DisplayableResources()
+            resourceListJSON = nil
           }
         }
       }
