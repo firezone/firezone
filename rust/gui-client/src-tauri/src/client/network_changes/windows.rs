@@ -1,5 +1,13 @@
 //! A module for getting callbacks from Windows when we gain / lose Internet connectivity
 //!
+//! # Use
+//!
+//! - Call `check_internet`
+//! - Inside a Tokio context, construct a `Worker`
+//! - Await `Worker::notified`
+//! - Call `check_internet` again
+//! - Loop
+//!
 //! # Changes detected / not detected
 //!
 //! Tested manually one time each, with `RUST_LOG=info cargo run -p firezone-gui-client -- debug network-changes`
@@ -65,9 +73,11 @@ use windows::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
             NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
         },
-        System::{Com, Registry},
+        System::Com,
     },
 };
+
+pub(crate) use async_dns::CombinedListener as DnsListener;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -132,43 +142,7 @@ pub(crate) fn run_debug() -> Result<()> {
 /// including when connlib changes anything on the Firezone tunnel.
 /// It will often fire multiple events in quick succession.
 pub(crate) fn run_dns_debug() -> Result<()> {
-    tracing_subscriber::fmt::init();
-    tracing::info!("Listening for network events...");
-
-    // TODO: Use WaitForMultipleObjects or whatever to async await both IPv4 and IPv6 DNS changes
-
-    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-    let path = std::path::Path::new("SYSTEM")
-        .join("CurrentControlSet")
-        .join("Services")
-        .join("Tcpip")
-        .join("Parameters")
-        .join("Interfaces");
-    let key = hklm.open_subkey_with_flags(path, winreg::enums::KEY_NOTIFY)?;
-    let key_handle = Registry::HKEY(key.raw_handle());
-    let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME | Registry::REG_NOTIFY_CHANGE_LAST_SET;
-
-    loop {
-        // SAFETY: No buffers or pointers involved, just the handle to the reg key.
-        unsafe {
-            Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, None, false);
-        }
-
-        // TODO: It's possible we could miss an event here:
-        //
-        // - We call `RegNotifyChangeKeyValue`
-        // - Some un-important change happens and spuriously wake up
-        // - We notify connlib
-        // - Connlib does nothing since the change didn't matter
-        // - An important change happens but our thread hasn't looped over yet
-        // - We call `RegNotifyChangeKeyValue` again, having missed the second change
-        //
-        // Switching to async may offer a way to close this gap, since we can re-register
-        // the notify before notifying connlib. Then the second change should cause us to
-        // immediately re-notify connlib.
-
-        tracing::info!("Something changed.");
-    }
+    async_dns::run_debug()
 }
 
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
@@ -372,7 +346,7 @@ impl<'a> Listener<'a> {
         Ok(this)
     }
 
-    /// Like `drop` but you can catch errors
+    /// Like `drop`, but you can catch errors
     ///
     /// Unregisters the network change callbacks
     pub fn close(&mut self) -> Result<(), Error> {
@@ -428,4 +402,338 @@ fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
     // so Windows shouldn't store the pointers.
     unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
     Ok((apt_type, apt_qualifier))
+}
+
+mod async_dns {
+    use anyhow::{Context, Result};
+    use std::{ffi::c_void, ops::Deref, path::Path};
+    use tokio::sync::mpsc;
+    use windows::Win32::{
+        Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
+        System::Registry,
+        System::Threading::{
+            CreateEventA, RegisterWaitForSingleObject, UnregisterWaitEx, INFINITE,
+            WT_EXECUTEINWAITTHREAD,
+        },
+    };
+    use winreg::RegKey;
+
+    /// Opens and returns the IPv4 and IPv6 registry keys
+    ///
+    /// `HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Services/Tcpip[6]/Parameters/Interfaces`
+    fn open_network_registry_keys() -> Result<(RegKey, RegKey)> {
+        let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+        let path_4 = Path::new("SYSTEM")
+            .join("CurrentControlSet")
+            .join("Services")
+            .join("Tcpip")
+            .join("Parameters")
+            .join("Interfaces");
+        let path_6 = Path::new("SYSTEM")
+            .join("CurrentControlSet")
+            .join("Services")
+            .join("Tcpip6")
+            .join("Parameters")
+            .join("Interfaces");
+        let flags = winreg::enums::KEY_NOTIFY;
+        Ok((
+            hklm.open_subkey_with_flags(path_4, flags)?,
+            hklm.open_subkey_with_flags(path_6, flags)?,
+        ))
+    }
+
+    pub(crate) fn run_debug() -> Result<()> {
+        tracing_subscriber::fmt::init();
+        let rt = tokio::runtime::Runtime::new()?;
+
+        let mut listener = CombinedListener::new()?;
+
+        rt.block_on(async move {
+            loop {
+                tokio::select! {
+                    _r = tokio::signal::ctrl_c() => break,
+                    r = listener.notified() => r?,
+                }
+
+                let resolvers = crate::client::resolvers::get()?;
+                tracing::info!(?resolvers);
+            }
+
+            Ok::<_, anyhow::Error>(())
+        })?;
+
+        Ok(())
+    }
+
+    pub(crate) struct CombinedListener {
+        listener_4: Listener,
+        listener_6: Listener,
+    }
+
+    impl CombinedListener {
+        pub(crate) fn new() -> Result<Self> {
+            let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
+            let listener_4 = Listener::new(key_ipv4)?;
+            let listener_6 = Listener::new(key_ipv6)?;
+
+            Ok(Self {
+                listener_4,
+                listener_6,
+            })
+        }
+
+        pub(crate) async fn notified(&mut self) -> Result<()> {
+            tokio::select! {
+                r = self.listener_4.notified() => r?,
+                r = self.listener_6.notified() => r?,
+            }
+            Ok(())
+        }
+    }
+
+    /// Listens to one registry key for changes. Callers should await `notified`.
+    struct Listener {
+        key: winreg::RegKey,
+        // Rust never uses `tx` again, but the C callback borrows it. So it must live as long
+        // as Listener, and then be dropped after the C callback is cancelled and any
+        // ongoing callback finishes running.
+        //
+        // We box it here to avoid this sequence:
+        // - `Listener::new` called, pointer to `tx` passed to `RegisterWaitForSingleObject`
+        // - `Listener` and `tx` move
+        // - The callback fires, using the now-invalid previous location of `tx`
+        //
+        // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
+        _tx: Box<mpsc::Sender<()>>,
+        rx: mpsc::Receiver<()>,
+        /// A handle representing our registered callback from `RegisterWaitForSingleObject`
+        ///
+        /// This doesn't get signalled, it's just used so we can unregister and stop the
+        /// callbacks gracefully when dropping the `Listener`.
+        wait_handle: HANDLE,
+        /// An event that's 'signalled' when the registry key changes
+        ///
+        /// `RegNotifyChangeKeyValue` can't call a callback directly, so it signals this
+        /// event, and we use `RegisterWaitForSingleObject` to adapt that signal into
+        /// a C callback.
+        event: HANDLE,
+    }
+
+    impl Listener {
+        pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
+            let (tx, rx) = mpsc::channel(1);
+            let tx = Box::new(tx);
+            let tx_ptr: *const _ = tx.deref();
+            let event = unsafe { CreateEventA(None, false, false, None) }?;
+            let mut wait_handle = HANDLE(0isize);
+
+            // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
+            // "the thread pool".
+            // Raymond Chen, who is an authority on Windows internals, says RegisterWaitForSingleObject
+            // does multiple waits on the same worker thread internally:
+            // <https://devblogs.microsoft.com/oldnewthing/20081117-00/?p=20183>
+            // There is a different function in the CLR called `RegisterWaitForSingleObject`,
+            // so he might be talking about that.
+            // If he's not, then we're invisibly tying up two worker threads. Can't help it.
+
+            // SAFETY: It's complicated.
+            // The callback here can cause a lot of problems. We box the `Sender` object
+            // so its memory address won't change.
+            // We don't use an `Arc` because sending is already `&self`, and
+            // the callback has no way to free an `Arc`, since we will always cancel the callback
+            // before it fires when the `Listener` drops.
+            // When we call `UnregisterWaitEx` later, we wait for all callbacks to finish running
+            // before we drop everything, to prevent the callback from seeing a dangling pointer.
+            unsafe {
+                RegisterWaitForSingleObject(
+                    &mut wait_handle,
+                    event,
+                    Some(callback),
+                    Some(tx_ptr as *const _),
+                    INFINITE,
+                    WT_EXECUTEINWAITTHREAD,
+                )
+            }?;
+
+            let mut that = Self {
+                key,
+                _tx: tx,
+                rx,
+                wait_handle,
+                event,
+            };
+            that.register_callback()?;
+
+            Ok(that)
+        }
+
+        /// Returns when the registry key has changed
+        ///
+        /// This is `&mut self` because calling `register_callback` twice
+        /// before the callback fires would cause a resource leak.
+        /// Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
+        pub(crate) async fn notified(&mut self) -> Result<()> {
+            // We use a particular order here because I initially assumed
+            // `RegNotifyChangeKeyValue` has a gap in this sequence:
+            // - RegNotifyChangeKeyValue
+            // - (Value changes)
+            // - (We catch the notification and read the DNS)
+            // - (Value changes again)
+            // - RegNotifyChangeKeyValue
+            // - (The second change is dropped)
+            //
+            // But Windows seems to actually do some magic so that the 2nd
+            // call of `RegNotifyChangeKeyValue` signals immediately, even though there
+            // was no registered notification when the value changed.
+            // See the unit test below.
+            //
+            // This code is ordered to protect against such a gap, by returning to the
+            // caller only when we are registered, but it's redundant.
+            self.rx.recv().await.context("`Listener` is closing down")?;
+            self.register_callback()
+                .context("`register_callback` failed")?;
+
+            Ok(())
+        }
+
+        // Be careful with this, if you register twice before the callback fires,
+        // it will leak some resource.
+        // <https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue#remarks>
+        //
+        // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
+        fn register_callback(&mut self) -> Result<()> {
+            let key_handle = Registry::HKEY(self.key.raw_handle());
+            let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
+                | Registry::REG_NOTIFY_CHANGE_LAST_SET
+                | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
+            // Ask Windows to signal our event once when anything inside this key changes.
+            // We can't ask for repeated signals.
+            unsafe {
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, self.event, true)
+            }
+            .ok()
+            .context("`RegNotifyChangeKeyValue` failed")?;
+            Ok(())
+        }
+    }
+
+    impl Drop for Listener {
+        fn drop(&mut self) {
+            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }
+                .expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
+            unsafe { CloseHandle(self.event) }
+                .expect("Should be able to `CloseHandle` in the DNS change listener");
+            tracing::debug!("Gracefully closed DNS change listener");
+        }
+    }
+
+    // SAFETY: The `Sender` should be alive, because we only `Drop` it after waiting
+    // for any run of this callback to finish.
+    // This function runs on a worker thread in a Windows-managed thread pool where
+    // many API calls are illegal, so try not to do anything in here. Right now
+    // all we do is wake up our Tokio task.
+    unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
+        let tx = &*(ctx as *const mpsc::Sender<()>);
+        // It's not a problem if sending fails. It either means the `Listener`
+        // is closing down, or it's already been notified.
+        tx.try_send(()).ok();
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use windows::Win32::{
+            Foundation::WAIT_OBJECT_0,
+            System::Threading::{ResetEvent, WaitForSingleObject},
+        };
+
+        fn event_is_signaled(event: HANDLE) -> bool {
+            unsafe { WaitForSingleObject(event, 0) == WAIT_OBJECT_0 }
+        }
+
+        fn reg_notify(key: &winreg::RegKey, event: HANDLE) {
+            assert!(!event_is_signaled(event));
+            let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
+                | Registry::REG_NOTIFY_CHANGE_LAST_SET
+                | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
+            let key_handle = Registry::HKEY(key.raw_handle());
+            unsafe {
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
+            }
+            .ok()
+            .expect("`RegNotifyChangeKeyValue` failed");
+        }
+
+        fn set_reg_value(key: &winreg::RegKey, val: u32) {
+            key.set_value("some_key", &val)
+                .expect("setting registry value `{val}` failed");
+        }
+
+        fn reset_event(event: HANDLE) {
+            unsafe { ResetEvent(event) }.expect("`ResetEvent` failed");
+            assert!(!event_is_signaled(event));
+        }
+
+        #[test]
+        fn registry() {
+            let flags = winreg::enums::KEY_NOTIFY | winreg::enums::KEY_WRITE;
+            let key_path = Path::new("Software")
+                .join("dev.firezone.client")
+                .join("test_CZD3JHFS");
+            let (key, _disposition) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+                .create_subkey_with_flags(&key_path, flags)
+                .expect("`open_subkey_with_flags` failed");
+
+            let event =
+                unsafe { CreateEventA(None, false, false, None) }.expect("`CreateEventA` failed");
+
+            // Registering the notify alone does not signal the event
+            reg_notify(&key, event);
+            assert!(!event_is_signaled(event));
+
+            // Setting the value after we've registered does
+            set_reg_value(&key, 0);
+            assert!(event_is_signaled(event));
+
+            // Do that one more time to prove it wasn't a fluke
+            reset_event(event);
+            reg_notify(&key, event);
+            assert!(!event_is_signaled(event));
+
+            set_reg_value(&key, 500);
+            assert!(event_is_signaled(event));
+
+            // I thought there was a gap here, but there's actually not -
+            // If we get the notification, then the value changes, then we re-register,
+            // we immediately get notified again. I'm not sure how Windows does this.
+            // Maybe it's storing the state with our regkey handle instead of with the
+            // wait operation. This is convenient but it's confusing since the docs don't
+            // make it clear. I'll leave the workaround in the main code.
+            reset_event(event);
+            set_reg_value(&key, 1000);
+            assert!(!event_is_signaled(event));
+            reg_notify(&key, event);
+            // This is the part I was wrong about
+            assert!(event_is_signaled(event));
+
+            // Signal normally one more time
+            reset_event(event);
+            reg_notify(&key, event);
+            set_reg_value(&key, 2000);
+            assert!(event_is_signaled(event));
+
+            // Close the handle before the notification goes off
+            reset_event(event);
+            reg_notify(&key, event);
+            unsafe { CloseHandle(event) }.expect("`CloseHandle` failed");
+            let _ = event;
+
+            // Setting the value shouldn't break anything or crash here.
+            set_reg_value(&key, 3000);
+
+            winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+                .delete_subkey_all(&key_path)
+                .expect("Should be able to delete test key");
+        }
+    }
 }
