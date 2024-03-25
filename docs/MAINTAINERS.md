@@ -37,7 +37,7 @@ Table of Contents:
 
 ### Android Client
 
-- 
+-
 
 ### Apple Client
 
