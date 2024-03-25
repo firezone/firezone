@@ -78,7 +78,7 @@ pub struct MissedLastHeartbeat {}
 mod tests {
     use super::*;
     use futures::future::Either;
-    use std::{future::poll_fn, pin::pin, time::Instant};
+    use std::{future::poll_fn, time::Instant};
 
     const INTERVAL: Duration = Duration::from_millis(30);
     const TIMEOUT: Duration = Duration::from_millis(5);
