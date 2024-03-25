@@ -842,7 +842,7 @@ async fn run_controller(
             r = dns_listener.notified() => {
                 r?;
                 if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!("New DNS resolvers, calling `Session::reconnect`");
+                    tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
                     session.connlib.set_dns(client::resolvers::get().unwrap_or_default());
                 }
             },
