@@ -281,13 +281,12 @@ extension Adapter {
           let resolvers = getSystemDefaultResolvers(
             interfaceName: path.availableInterfaces.first?.name)
 
-          if lastFetchedResolvers != resolvers {
-            session.setDns(
-              try! String(
-                decoding: JSONEncoder().encode(resolvers),
-                as: UTF8.self
-              ).intoRustString()
-            )
+          if lastFetchedResolvers != resolvers,
+             let dnsStr = (try? String(
+              decoding: JSONEncoder().encode(resolvers),
+              as: UTF8.self
+            ))?.intoRustString() {
+            session.setDns(dnsStr)
 
             lastFetchedResolvers = resolvers
           }
@@ -335,7 +334,7 @@ extension Adapter: CallbackHandlerDelegate {
         "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
 
       switch state {
-      case .tunnelStarted(session: _):
+      case .tunnelStarted:
         guard let networkSettings = networkSettings else { return }
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
@@ -359,12 +358,17 @@ extension Adapter: CallbackHandlerDelegate {
 
       logger.log("\(#function): \(routeList4) \(routeList6)")
 
-      networkSettings.routes4 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv4Route }
-      networkSettings.routes6 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv6Route }
+      guard let routes4Data = routeList4.data(using: .utf8),
+            let routes4Obj = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routes4Data),
+            let routes6Data = routeList6.data(using: .utf8),
+            let routes6Obj = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routes6Data)
+      else {
+        logger.error("\(#function): Invalid routes!")
+        return
+      }
+
+      networkSettings.routes4 = routes4Obj.compactMap({ $0.asNEIPv4Route })
+      networkSettings.routes6 = routes6Obj.compactMap({ $0.asNEIPv6Route })
 
       networkSettings.apply()
     }

@@ -334,7 +334,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8DCC024328D512AE007E12D2 /* Build configuration list for PBXNativeTarget "Firezone" */;
 			buildPhases = (
-				8DE721892ACA295200E395D5 /* swift-format */,
+				8DE440EB2BB1ACE6005394F2 /* ShellScript */,
 				8DCC021528D512AC007E12D2 /* Sources */,
 				8DCC021628D512AC007E12D2 /* Frameworks */,
 				8DCC021728D512AC007E12D2 /* Resources */,
@@ -472,9 +472,8 @@
 			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
 			showEnvVarsInLog = 0;
 		};
-		8DE721892ACA295200E395D5 /* swift-format */ = {
+		8DE440EB2BB1ACE6005394F2 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -482,7 +481,6 @@
 			);
 			inputPaths = (
 			);
-			name = "swift-format";
 			outputFileListPaths = (
 			);
 			outputPaths = (

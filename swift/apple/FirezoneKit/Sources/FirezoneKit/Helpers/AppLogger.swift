@@ -241,8 +241,7 @@ private final class LogWriter {
           if resourceValues.isRegularFile ?? false {
             if let fileName = resourceValues.name {
               if fileName.hasPrefix("\(logFileNameBase).")
-                && fileName.hasSuffix(".\(logIndex).\(Self.logFileNameExtension)")
-              {
+                && fileName.hasSuffix(".\(logIndex).\(Self.logFileNameExtension)") {
                 existingLogFiles.append(url)
               }
             }
