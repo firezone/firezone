@@ -140,6 +140,12 @@ class Adapter {
           logFilter,
           callbackHandler
         )
+      // Attempt to set DNS right away
+      if let jsonResolvers = try? String(
+        decoding: JSONEncoder().encode(getSystemDefaultResolvers()), as: UTF8.self
+      ).intoRustString() {
+        session.setDns(jsonResolvers)
+      }
       // Update our internal state
       self.state = .tunnelStarted(session: session)
 
@@ -281,14 +287,16 @@ extension Adapter {
           let resolvers = getSystemDefaultResolvers(
             interfaceName: path.availableInterfaces.first?.name)
 
-          if lastFetchedResolvers != resolvers {
-            session.setDns(
-              try! String(
-                decoding: JSONEncoder().encode(resolvers),
-                as: UTF8.self
-              ).intoRustString()
-            )
+          if lastFetchedResolvers != resolvers,
+            let jsonResolvers = try? String(
+              decoding: JSONEncoder().encode(resolvers), as: UTF8.self
+            ).intoRustString()
+          {
 
+            // Update connlib DNS
+            session.setDns(jsonResolvers)
+
+            // Update our state tracker
             lastFetchedResolvers = resolvers
           }
         }
