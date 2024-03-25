@@ -1,21 +1,35 @@
 use crate::{EgressControlMessage, OutboundRequestId};
 use std::{
     pin::Pin,
+    sync::{atomic::AtomicU64, Arc},
     task::{ready, Context, Poll},
     time::Duration,
 };
 use tokio::time::MissedTickBehavior;
 
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+pub const INTERVAL: Duration = Duration::from_secs(30);
 
 pub struct Heartbeat {
     /// When to send the next heartbeat.
     interval: Pin<Box<tokio::time::Interval>>,
     /// The ID of our heatbeat if we haven't received a reply yet.
     id: Option<OutboundRequestId>,
+
+    next_request_id: Arc<AtomicU64>,
 }
 
 impl Heartbeat {
+    pub fn new(interval: Duration, next_request_id: Arc<AtomicU64>) -> Self {
+        let mut interval = tokio::time::interval(interval);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        Self {
+            interval: Box::pin(interval),
+            id: Default::default(),
+            next_request_id,
+        }
+    }
+
     pub fn maybe_handle_reply(&mut self, id: OutboundRequestId) -> bool {
         match self.id.as_ref() {
             Some(pending) if pending == &id => {
@@ -27,14 +41,10 @@ impl Heartbeat {
         }
     }
 
-    pub fn set_id(&mut self, id: OutboundRequestId) {
-        self.id = Some(id);
-    }
-
     pub fn poll(
         &mut self,
         cx: &mut Context,
-    ) -> Poll<Result<EgressControlMessage<()>, MissedLastHeartbeat>> {
+    ) -> Poll<Result<(OutboundRequestId, EgressControlMessage<()>), MissedLastHeartbeat>> {
         ready!(self.interval.poll_tick(cx));
 
         if self.id.is_some() {
@@ -42,28 +52,19 @@ impl Heartbeat {
             return Poll::Ready(Err(MissedLastHeartbeat {}));
         }
 
-        Poll::Ready(Ok(EgressControlMessage::Heartbeat(crate::Empty {})))
-    }
+        let next_id = self
+            .next_request_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-    fn new(interval: Duration) -> Self {
-        let mut interval = tokio::time::interval(interval);
-        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-        Self {
-            interval: Box::pin(interval),
-            id: Default::default(),
-        }
+        Poll::Ready(Ok((
+            OutboundRequestId(next_id),
+            EgressControlMessage::Heartbeat(crate::Empty {}),
+        )))
     }
 }
 
 #[derive(Debug)]
 pub struct MissedLastHeartbeat {}
-
-impl Default for Heartbeat {
-    fn default() -> Self {
-        Self::new(HEARTBEAT_INTERVAL)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -72,7 +73,7 @@ mod tests {
 
     #[tokio::test]
     async fn returns_heartbeat_after_interval() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(30));
+        let mut heartbeat = Heartbeat::new(Duration::from_millis(30), Arc::new(AtomicU64::new(0)));
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await; // Tick once at startup.
 
         let start = Instant::now();
@@ -87,10 +88,9 @@ mod tests {
 
     #[tokio::test]
     async fn fails_if_response_is_not_provided_before_next_poll() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+        let mut heartbeat = Heartbeat::new(Duration::from_millis(10), Arc::new(AtomicU64::new(0)));
 
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::for_test(1));
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
         assert!(result.is_err());
@@ -98,11 +98,9 @@ mod tests {
 
     #[tokio::test]
     async fn ignores_other_ids() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+        let mut heartbeat = Heartbeat::new(Duration::from_millis(10), Arc::new(AtomicU64::new(0)));
 
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::for_test(1));
-
         heartbeat.maybe_handle_reply(OutboundRequestId::for_test(2));
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
@@ -111,11 +109,10 @@ mod tests {
 
     #[tokio::test]
     async fn succeeds_if_response_is_provided_inbetween_polls() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+        let mut heartbeat = Heartbeat::new(Duration::from_millis(10), Arc::new(AtomicU64::new(0)));
 
-        let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::for_test(1));
-        heartbeat.maybe_handle_reply(OutboundRequestId::for_test(1));
+        let (id, _) = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap();
+        heartbeat.maybe_handle_reply(id);
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
         assert!(result.is_ok());
