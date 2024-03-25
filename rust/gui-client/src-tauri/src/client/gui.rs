@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, ResourceDescription};
+use connlib_client_shared::{file_logger, ResourceDescription, Sockets};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -534,6 +534,7 @@ impl Controller {
         )?;
         let connlib = connlib_client_shared::Session::connect(
             login,
+            Sockets::new()?,
             private_key,
             None,
             callback_handler.clone(),

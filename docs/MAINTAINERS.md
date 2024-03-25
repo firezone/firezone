@@ -35,6 +35,10 @@ Table of Contents:
 
 ## Publish Clients
 
+### Android Client
+
+- 
+
 ### Apple Client
 
 - Log in to the following URL: https://appstoreconnect.apple.com/
@@ -65,3 +69,7 @@ Table of Contents:
   the `+` icon
 - From here it's the same as the instructions above to type a description,
   etc...
+
+## Breaking API changes
+
+We should notify customers 2 weeks in advance for any API-breaking changes.
