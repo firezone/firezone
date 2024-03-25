@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
 
     let session = Session::connect(
         login,
-        Sockets::new()?,
+        Sockets::new(),
         private_key,
         None,
         callbacks.clone(),
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
         if sighup.poll_recv(cx).is_ready() {
             tracing::debug!("Received SIGHUP");
 
-            session.reconnect(Sockets::new()?);
+            session.reconnect();
             continue;
         }
 
