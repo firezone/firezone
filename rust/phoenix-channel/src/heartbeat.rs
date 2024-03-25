@@ -99,6 +99,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ignores_other_ids() {
+        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+
+        let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
+        heartbeat.set_id(OutboundRequestId::for_test(1));
+
+        heartbeat.maybe_handle_reply(OutboundRequestId::for_test(2));
+
+        let result = poll_fn(|cx| heartbeat.poll(cx)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn succeeds_if_response_is_provided_inbetween_polls() {
         let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
 
