@@ -922,7 +922,18 @@ impl ClientState {
 }
 
 fn dns_updated(old_dns: &[IpAddr], new_dns: &[IpAddr]) -> bool {
-    HashSet::<&IpAddr>::from_iter(old_dns.iter()) != HashSet::<&IpAddr>::from_iter(new_dns.iter())
+    let sentinel_range_v4 = IpNetwork::from_str(DNS_SENTINELS_V4).unwrap();
+    let sentinel_range_v6 = IpNetwork::from_str(DNS_SENTINELS_V6).unwrap();
+
+    HashSet::<&IpAddr>::from_iter(
+        old_dns
+            .iter()
+            .filter(|ip| !sentinel_range_v4.contains(**ip) && !sentinel_range_v6.contains(**ip)),
+    ) != HashSet::<&IpAddr>::from_iter(
+        new_dns
+            .iter()
+            .filter(|ip| !sentinel_range_v4.contains(**ip) && !sentinel_range_v6.contains(**ip)),
+    )
 }
 
 fn effective_dns_servers(
@@ -1084,6 +1095,18 @@ mod tests {
             &[ip("1.0.0.1"), ip("1.1.1.1")],
             &[ip("1.1.1.1"), ip("1.0.0.1")]
         ))
+    }
+
+    #[test]
+    fn dns_updated_ignores_sentinels() {
+        assert!(!dns_updated(
+            &[ip("100.100.111.1"), ip("1.1.1.1")],
+            &[ip("100.100.111.2"), ip("1.1.1.1")],
+        ));
+        assert!(!dns_updated(
+            &[ip("fd00:2021:1111:8000:100:100:111:0"), ip("1.1.1.1")],
+            &[ip("fd00:2021:1111:8000:100:100:111:1"), ip("1.1.1.1")],
+        ));
     }
 
     #[test]
