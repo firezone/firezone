@@ -8,8 +8,6 @@ interface ConnlibCallback {
         dnsAddresses: String,
     ): Int
 
-    fun onTunnelReady(): Boolean
-
     fun onUpdateRoutes(
         routes4JSON: String,
         routes6JSON: String,

@@ -116,15 +116,7 @@ class TunnelService : VpnService() {
                 return buildVpnService()
             }
 
-            override fun onTunnelReady(): Boolean {
-                Log.d(TAG, "onTunnelReady")
-                Firebase.crashlytics.log("onTunnelReady")
 
-                tunnelState = State.UP
-                updateStatusNotification("Status: Connected")
-
-                return true
-            }
 
             override fun onUpdateRoutes(
                 routes4JSON: String,
@@ -376,6 +368,12 @@ class TunnelService : VpnService() {
             setSession(SESSION_NAME)
             setMtu(MTU)
         }.establish()!!.let {
+            // For Android we consider that we need to get the DNS to be up and running
+            if (tunnelDnsAddresses.isNotEmpty()) {
+                tunnelState = State.UP
+                updateStatusNotification("Status: Connected")
+            }
+
             return it.detachFd()
         }
     }
