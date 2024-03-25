@@ -16,7 +16,7 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
 use crate::utils::{earliest, stun, turn};
-use crate::ClientTunnel;
+use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ClientNode;
 use std::collections::hash_map::Entry;
@@ -39,22 +39,6 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // therefore, only the first time it's added that happens, after that it doesn't matter.
 const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Event {
-    SignalIceCandidate {
-        conn_id: GatewayId,
-        candidate: String,
-    },
-    ConnectionIntent {
-        resource: ResourceId,
-        connected_gateway_ids: HashSet<GatewayId>,
-    },
-    RefreshResources {
-        connections: Vec<ReuseConnection>,
-    },
-    RefreshInterface,
-}
-
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
     pub id: ResourceId,
@@ -75,9 +59,6 @@ where
     CB: Callbacks + 'static,
 {
     /// Adds a the given resource to the tunnel.
-    ///
-    /// Once added, when a packet for the resource is intercepted a new data channel will be created
-    /// and packets will be wrapped with wireguard and sent through it.
     pub fn add_resources(
         &mut self,
         resources: &[ResourceDescription],
@@ -185,11 +166,18 @@ where
     }
 
     /// Updates the system's dns
-    pub fn set_dns(&mut self, new_dns: Vec<IpAddr>, now: Instant) {
-        self.role_state.update_system_resolvers(new_dns, now);
+    pub fn set_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
+        let dns_changed = self.role_state.update_system_resolvers(new_dns);
+
+        if !dns_changed {
+            return Ok(());
+        }
+
+        self.update_interface()?;
+
+        Ok(())
     }
 
-    /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
         self.role_state.interface_config = Some(config);
@@ -206,13 +194,21 @@ where
             self.role_state.system_resolvers.clone(),
         );
 
-        let dns_mapping = sentinel_dns_mapping(&effective_dns_servers);
+        let dns_mapping = sentinel_dns_mapping(
+            &effective_dns_servers,
+            self.role_state
+                .dns_mapping()
+                .left_values()
+                .copied()
+                .map(Into::into)
+                .collect_vec(),
+        );
         self.role_state.set_dns_mapping(dns_mapping.clone());
         self.io.set_upstream_dns_servers(dns_mapping.clone());
 
         let callbacks = self.callbacks.clone();
 
-        self.io.device_mut().initialize(
+        self.io.device_mut().set_config(
             &config,
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
@@ -231,11 +227,8 @@ where
         Ok(())
     }
 
-    /// Clean up a connection to a resource.
-    // FIXME: this cleanup connection is wrong!
     pub fn cleanup_connection(&mut self, id: ResourceId) {
         self.role_state.on_connection_failed(id);
-        // self.peer_connections.lock().remove(&id.into());
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -253,19 +246,7 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
-    /// Initiate an ice connection request.
-    ///
-    /// Given a resource id and a list of relay creates a [RequestConnection]
-    /// and prepares the tunnel to handle the connection once initiated.
-    ///
-    /// # Parameters
-    /// - `resource_id`: Id of the resource we are going to request the connection to.
-    /// - `relays`: The list of relays used for that connection.
-    ///
-    /// # Returns
-    /// A [RequestConnection] that should be sent to the gateway through the control-plane.
-    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id, %gateway_id))]
-    pub fn request_connection(
+    pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
@@ -279,9 +260,6 @@ where
         )
     }
 
-    /// Called when a response to [ClientTunnel::request_connection] is ready.
-    ///
-    /// Once this is called, if everything goes fine, a new tunnel should be started between the 2 peers.
     pub fn received_offer_response(
         &mut self,
         resource_id: ResourceId,
@@ -349,7 +327,7 @@ pub struct ClientState {
 
     dns_mapping: BiMap<IpAddr, DnsServer>,
 
-    buffered_events: VecDeque<Event>,
+    buffered_events: VecDeque<ClientEvent>,
     interface_config: Option<InterfaceConfig>,
     buffered_packets: VecDeque<IpPacket<'static>>,
 
@@ -357,7 +335,6 @@ pub struct ClientState {
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
 
     next_dns_refresh: Option<Instant>,
-    next_system_resolver_refresh: Option<Instant>,
 
     system_resolvers: Vec<IpAddr>,
 }
@@ -389,7 +366,6 @@ impl ClientState {
             next_dns_refresh: Default::default(),
             node: ClientNode::new(private_key),
             system_resolvers: Default::default(),
-            next_system_resolver_refresh: Default::default(),
         }
     }
 
@@ -510,6 +486,7 @@ impl ClientState {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
     fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
@@ -517,7 +494,7 @@ impl ClientState {
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
     ) -> connlib_shared::Result<Request> {
-        tracing::trace!("request_connection");
+        tracing::trace!("create_or_reuse_connection");
 
         let desc = self
             .resource_ids
@@ -771,10 +748,11 @@ impl ClientState {
 
         tracing::debug!("Sending connection intent");
 
-        self.buffered_events.push_back(Event::ConnectionIntent {
-            resource,
-            connected_gateway_ids: gateways,
-        });
+        self.buffered_events
+            .push_back(ClientEvent::ConnectionIntent {
+                resource,
+                connected_gateway_ids: gateways,
+            });
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
@@ -850,14 +828,16 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>, now: Instant) {
+    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         if !dns_updated(&self.system_resolvers, &new_dns) {
             tracing::debug!("Updated dns called but no change to system's resolver");
-            return;
+            return false;
         }
 
-        self.next_system_resolver_refresh = Some(now + std::time::Duration::from_millis(500));
+        tracing::info!("Found new system resolvers: {new_dns:?}");
         self.system_resolvers = new_dns;
+
+        true
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
@@ -869,8 +849,7 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let timeout = earliest(self.next_dns_refresh, self.node.poll_timeout());
-        earliest(timeout, self.next_system_resolver_refresh)
+        earliest(self.next_dns_refresh, self.node.poll_timeout())
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -901,17 +880,12 @@ impl ClientState {
                 }
 
                 self.buffered_events
-                    .push_back(Event::RefreshResources { connections });
+                    .push_back(ClientEvent::RefreshResources { connections });
 
                 self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL);
             }
             None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
             Some(_) => {}
-        }
-
-        if self.next_system_resolver_refresh.is_some_and(|e| now >= e) {
-            self.buffered_events.push_back(Event::RefreshInterface);
-            self.next_system_resolver_refresh = None;
         }
 
         while let Some(event) = self.node.poll_event() {
@@ -922,20 +896,23 @@ impl ClientState {
                 snownet::Event::SignalIceCandidate {
                     connection,
                     candidate,
-                } => self.buffered_events.push_back(Event::SignalIceCandidate {
-                    conn_id: connection,
-                    candidate,
-                }),
+                } => self
+                    .buffered_events
+                    .push_back(ClientEvent::SignalIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }),
                 _ => {}
             }
         }
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<Event> {
+    pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
         self.buffered_events.pop_front()
     }
 
     pub(crate) fn reconnect(&mut self, now: Instant) {
+        tracing::info!("Network change detected, refreshing connections");
         self.node.reconnect(now)
     }
 
@@ -976,8 +953,11 @@ fn effective_dns_servers(
         .collect()
 }
 
-fn sentinel_dns_mapping(dns: &[DnsServer]) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::for_stub_dns_servers();
+fn sentinel_dns_mapping(
+    dns: &[DnsServer],
+    old_sentinels: Vec<IpNetwork>,
+) -> BiMap<IpAddr, DnsServer> {
+    let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
 
     dns.iter()
         .cloned()
@@ -1025,36 +1005,34 @@ impl IpProvider {
         IpProvider::new(
             IPV4_RESOURCES.parse().unwrap(),
             IPV6_RESOURCES.parse().unwrap(),
-            Some(DNS_SENTINELS_V4.parse().unwrap()),
-            Some(DNS_SENTINELS_V6.parse().unwrap()),
+            vec![
+                DNS_SENTINELS_V4.parse().unwrap(),
+                DNS_SENTINELS_V6.parse().unwrap(),
+            ],
         )
     }
 
-    pub fn for_stub_dns_servers() -> Self {
+    pub fn for_stub_dns_servers(exclusions: Vec<IpNetwork>) -> Self {
         IpProvider::new(
             DNS_SENTINELS_V4.parse().unwrap(),
             DNS_SENTINELS_V6.parse().unwrap(),
-            None,
-            None,
+            exclusions,
         )
     }
 
-    fn new(
-        ipv4: Ipv4Network,
-        ipv6: Ipv6Network,
-        exclusion_v4: Option<Ipv4Network>,
-        exclusion_v6: Option<Ipv6Network>,
-    ) -> Self {
+    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network, exclusions: Vec<IpNetwork>) -> Self {
         Self {
-            ipv4: Box::new(
+            ipv4: Box::new({
+                let exclusions = exclusions.clone();
                 ipv4.hosts()
-                    .filter(move |ip| !exclusion_v4.is_some_and(|e| e.contains(*ip))),
-            ),
-            ipv6: Box::new(
+                    .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))
+            }),
+            ipv6: Box::new({
+                let exclusions = exclusions.clone();
                 ipv6.subnets_with_prefix(128)
                     .map(|ip| ip.network_address())
-                    .filter(move |ip| !exclusion_v6.is_some_and(|e| e.contains(*ip))),
-            ),
+                    .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))
+            }),
         }
     }
 
@@ -1112,50 +1090,87 @@ mod tests {
     fn update_system_dns_works() {
         let mut client_state = ClientState::for_test();
 
-        let now = Instant::now();
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
-        let now = now + Duration::from_millis(500);
-        client_state.handle_timeout(now);
+        let changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
 
-        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterface));
+        assert!(changed);
     }
 
     #[test]
     fn update_system_dns_without_change_is_a_no_op() {
         let mut client_state = ClientState::for_test();
 
-        let now = Instant::now();
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
-        let now = now + Duration::from_millis(500);
-        client_state.handle_timeout(now);
-        client_state.poll_event();
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
-        let now = now + Duration::from_millis(500);
-        client_state.handle_timeout(now);
-        assert!(client_state.poll_event().is_none());
+        assert!(!changed)
     }
 
     #[test]
     fn update_system_dns_with_change_works() {
         let mut client_state = ClientState::for_test();
 
-        let now = Instant::now();
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")], now);
-        let now = now + Duration::from_millis(500);
-        client_state.handle_timeout(now);
-        client_state.poll_event();
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
-        client_state.update_system_resolvers(vec![ip("1.0.0.1")], now);
-        let now = now + Duration::from_millis(500);
-        client_state.handle_timeout(now);
-        assert_eq!(client_state.poll_event(), Some(Event::RefreshInterface));
+        assert!(changed)
+    }
+
+    #[test]
+    fn sentinel_dns_works() {
+        let servers = dns_list();
+        let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
+
+        for server in servers {
+            assert!(sentinel_dns
+                .get_by_right(&server)
+                .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s))))
+        }
+    }
+
+    #[test]
+    fn sentinel_dns_excludes_old_ones() {
+        let servers = dns_list();
+        let sentinel_dns_old = sentinel_dns_mapping(&servers, vec![]);
+        let sentinel_dns_new = sentinel_dns_mapping(
+            &servers,
+            sentinel_dns_old
+                .left_values()
+                .copied()
+                .map(Into::into)
+                .collect_vec(),
+        );
+
+        assert!(
+            HashSet::<&IpAddr>::from_iter(sentinel_dns_old.left_values())
+                .is_disjoint(&HashSet::from_iter(sentinel_dns_new.left_values()))
+        )
     }
 
     impl ClientState {
         fn for_test() -> ClientState {
             ClientState::new(StaticSecret::random_from_rng(OsRng))
         }
+    }
+
+    fn sentinel_ranges() -> Vec<IpNetwork> {
+        vec![
+            IpNetwork::from_str(DNS_SENTINELS_V4).unwrap(),
+            IpNetwork::from_str(DNS_SENTINELS_V6).unwrap(),
+        ]
+    }
+
+    fn dns_list() -> Vec<DnsServer> {
+        vec![
+            DnsServer::IpPort(IpDnsServer {
+                address: "1.1.1.1:53".parse().unwrap(),
+            }),
+            DnsServer::IpPort(IpDnsServer {
+                address: "1.0.0.1:53".parse().unwrap(),
+            }),
+            DnsServer::IpPort(IpDnsServer {
+                address: "[2606:4700:4700::1111]:53".parse().unwrap(),
+            }),
+        ]
     }
 
     fn ip(addr: &str) -> IpAddr {
