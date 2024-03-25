@@ -391,6 +391,6 @@ mod tests {
         };
         let dns_config = vec![[100, 100, 111, 1].into()];
         let callbacks = Callbacks::default();
-        dev.initialize(&config, dns_config, &callbacks).unwrap();
+        dev.set_config(&config, dns_config, &callbacks).unwrap();
     }
 }
