@@ -83,7 +83,7 @@
 
     private func decodeResources(_ json: String?) -> [Resource]? {
       guard let json = json,
-            let data = json.data(using: .utf8)
+        let data = json.data(using: .utf8)
       else { return nil }
 
       return try? JSONDecoder().decode([Resource].self, from: data)
@@ -289,7 +289,13 @@
         signInMenuItem.isEnabled = true
         signOutMenuItem.isHidden = true
         settingsMenuItem.target = self
-      case .connected, .reasserting, .connecting, .disconnecting:
+      case .disconnecting:
+        signInMenuItem.title = "Signing out..."
+        signInMenuItem.target = self
+        signInMenuItem.isEnabled = false
+        signOutMenuItem.isHidden = true
+        settingsMenuItem.target = self
+      case .connected, .reasserting, .connecting:
         let title =
           if let actorName = tunnelStore.actorName() {
             "Signed in as \(actorName)"
