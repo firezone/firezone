@@ -75,22 +75,7 @@ struct FirezoneApp: App {
     private var isAppLaunched = false
     private var menuBar: MenuBar?
 
-    public var appStore: AppStore? {
-      didSet {
-        if self.isAppLaunched {
-          // This is not expected to happen because appStore
-          // should be set before the app finishes launching.
-          // This code is only a contingency.
-          if let appStore = self.appStore {
-            self.menuBar = MenuBar(
-              tunnelStore: appStore.tunnelStore,
-              settingsViewModel: appStore.settingsViewModel,
-              logger: appStore.logger
-            )
-          }
-        }
-      }
-    }
+    public var appStore: AppStore?
 
     func applicationDidFinishLaunching(_: Notification) {
       self.isAppLaunched = true
