@@ -235,7 +235,11 @@ where
             waker: None,
             pending_messages: Default::default(),
             _phantom: PhantomData,
-            heartbeat: Heartbeat::new(heartbeat::INTERVAL, next_request_id.clone()),
+            heartbeat: Heartbeat::new(
+                heartbeat::INTERVAL,
+                heartbeat::TIMEOUT,
+                next_request_id.clone(),
+            ),
             next_request_id,
             pending_join_requests: Default::default(),
             login,
