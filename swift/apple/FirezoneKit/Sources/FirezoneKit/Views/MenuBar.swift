@@ -386,7 +386,6 @@
       )
       let index = menu.index(of: resourcesTitleMenuItem) + 1
       for change in diff {
-        logger.log("Changed: \(change)")
         switch change {
         case .insert(let offset, let element, associatedWith: _):
           let menuItem = createResourceMenuItem(title: element.name, submenuTitle: element.address)
