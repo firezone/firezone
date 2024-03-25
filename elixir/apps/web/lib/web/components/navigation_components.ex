@@ -31,6 +31,7 @@ defmodule Web.NavigationComponents do
         </div>
         <div class="flex items-center lg:order-2">
           <a
+            target="_blank"
             href="https://www.firezone.dev/kb?utm_source=product"
             class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
           >
