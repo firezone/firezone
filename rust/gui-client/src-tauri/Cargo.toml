@@ -66,6 +66,7 @@ dirs = "5.0.1"
 futures = "0.3.30"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+futures = { version = "0.3", default-features = false }
 tauri-winrt-notification = "0.1.3"
 windows-implement = "0.53.0"
 winreg = "0.52.0"
