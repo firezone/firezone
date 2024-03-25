@@ -1,5 +1,7 @@
-//! The Tauri GUI for Windows
-//! This is not checked or compiled on other platforms.
+//! The Tauri-based GUI Client for Windows and Linux
+//!
+//! Most of this Client is stubbed out with panics on macOS.
+//! The real macOS Client is in `firezone/swift`
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
