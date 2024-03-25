@@ -335,18 +335,26 @@ where
             };
 
             // Priority 1: Keep local buffers small and send pending messages.
-            if stream.poll_ready_unpin(cx).is_ready() {
-                if let Some(message) = self.pending_messages.pop_front() {
-                    tracing::trace!(target: "wire", to="portal", %message);
-
-                    match stream.start_send_unpin(Message::Text(message)) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            self.reconnect_on_transient_error(InternalError::WebSocket(e));
+            match stream.poll_ready_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    if let Some(message) = self.pending_messages.pop_front() {
+                        match stream.start_send_unpin(Message::Text(message.clone())) {
+                            Ok(()) => {
+                                tracing::trace!(target: "wire", to="portal", %message);
+                            }
+                            Err(e) => {
+                                self.pending_messages.push_front(message);
+                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                            }
                         }
+                        continue;
                     }
+                }
+                Poll::Ready(Err(e)) => {
+                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
+                Poll::Pending => {}
             }
 
             // Priority 2: Handle incoming messages.
