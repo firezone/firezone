@@ -837,7 +837,7 @@ async fn run_controller(
                     have_internet = new_have_internet;
                     if let Some(session) = controller.session.as_mut() {
                         tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        session.connlib.reconnect(Sockets::new()?);
+                        session.connlib.reconnect();
                     }
                 }
             },
