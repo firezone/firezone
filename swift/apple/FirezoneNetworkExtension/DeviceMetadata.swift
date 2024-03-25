@@ -16,23 +16,18 @@ public class DeviceMetadata {
   public static func getDeviceName() -> String? {
     // Returns a generic device name on iOS 16 and higher
     // See https://github.com/firezone/firezone/issues/3034
-    #if os(iOS)
-      return UIDevice.current.name
-    #else
-      // Fallback to connlib's gethostname()
-      return nil
-    #endif
+      #if os(iOS)
+        return UIDevice.current.name
+      #else
+        // Fallback to connlib's gethostname()
+        return nil
+      #endif
   }
 
   public static func getOSVersion() -> String? {
     // Returns the OS version
     // See https://github.com/firezone/firezone/issues/3034
-    #if os(iOS)
-      return UIDevice.current.systemVersion
-    #else
-      // Fallback to connlib's osinfo
-      return nil
-    #endif
+    return ProcessInfo.processInfo.operatingSystemVersionString
   }
 
   // Returns the Firezone ID as cached by the application or generates and persists a new one

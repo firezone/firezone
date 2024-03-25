@@ -343,10 +343,10 @@
         // down but the user is signed in, but we have
         // code to handle it just for the sake of completion.
         resourcesTitleMenuItem.isHidden = true
-        resourcesUnavailableMenuItem.isHidden = false
-        resourcesUnavailableReasonMenuItem.isHidden = false
+        resourcesUnavailableMenuItem.isHidden = true
+        resourcesUnavailableReasonMenuItem.isHidden = true
         resourcesUnavailableReasonMenuItem.title = "Disconnected"
-        resourcesSeparatorMenuItem.isHidden = false
+        resourcesSeparatorMenuItem.isHidden = true
       @unknown default:
         break
       }
