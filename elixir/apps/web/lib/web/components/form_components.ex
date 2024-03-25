@@ -119,7 +119,8 @@ defmodule Web.FormComponents do
           value={@value}
           checked={@checked}
           class={[
-            "rounded border-zinc-300 text-zinc-900",
+            "bg-neutral-50",
+            "border border-neutral-300 text-neutral-900 rounded",
             "checked:bg-accent-500 checked:hover:bg-accent-500",
             @class
           ]}
@@ -142,7 +143,8 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block w-full p-2.5"
+          "block w-full p-2.5",
+          @errors != [] && "border-rose-400"
         ]}
         multiple={@multiple}
         {@rest}
@@ -174,7 +176,8 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block w-full p-2.5"
+          "block w-full p-2.5",
+          @errors != [] && "border-rose-400"
         ]}
         multiple={@multiple}
         {@rest}
@@ -195,9 +198,11 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "mt-2 block w-full rounded text-zinc-900 sm:text-sm sm:leading-6",
-          "phx-no-feedback:border-zinc-300",
-          "min-h-[6rem] border-zinc-300",
+          "mt-2 block w-full rounded sm:text-sm sm:leading-6",
+          "bg-neutral-50",
+          "border border-neutral-300 text-neutral-900 rounded",
+          "phx-no-feedback:border-neutral-300",
+          "min-h-[6rem] border-neutral-300",
           @errors != [] && "border-rose-400"
         ]}
         {@rest}
@@ -550,49 +555,5 @@ defmodule Web.FormComponents do
     }
 
     [text[size], spacing[size]]
-  end
-
-  ### Forms ###
-
-  @doc """
-  Renders a simple form.
-
-  ## Examples
-
-      <.simple_form for={@form} phx-change="validate" phx-submit="save">
-        <.input field={@form[:email]} label="Email"/>
-        <.input field={@form[:username]} label="Username" />
-        <:actions>
-          <.button>Save</.button>
-        </:actions>
-      </.simple_form>
-  """
-  attr :for, :any, required: true, doc: "the datastructure for the form"
-  attr :as, :any, default: nil, doc: "the server side parameter to collect all input under"
-
-  attr :rest, :global,
-    include: ~w(autocomplete name rel action enctype method novalidate target),
-    doc: "the arbitrary HTML attributes to apply to the form tag"
-
-  slot :inner_block, required: true
-  slot :actions, doc: "the slot for form actions, such as a submit button"
-
-  def simple_form(assigns) do
-    ~H"""
-    <.form :let={f} for={@for} as={@as} {@rest}>
-      <div class="space-y-8 bg-white">
-        <%= render_slot(@inner_block, f) %>
-        <div
-          :for={action <- @actions}
-          class={[
-            "mt-2 flex items-center gap-6",
-            (length(@actions) > 1 && "justify-between") || "justify-end"
-          ]}
-        >
-          <%= render_slot(action, f) %>
-        </div>
-      </div>
-    </.form>
-    """
   end
 end

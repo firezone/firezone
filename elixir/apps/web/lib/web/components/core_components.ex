@@ -16,7 +16,7 @@ defmodule Web.CoreComponents do
 
   def logo(assigns) do
     ~H"""
-    <a href="https://www.firezone.dev/?utm_source=product" class="flex items-center mb-6 text-2xl">
+    <a href={~p"/"} class="flex items-center mb-6 text-2xl">
       <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
       <span class="self-center text-2xl font-medium whitespace-nowrap">
         Firezone

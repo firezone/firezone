@@ -22,10 +22,7 @@ defmodule Web.NavigationComponents do
             <.icon name="hero-bars-3-center-left" class="w-6 h-6" />
             <span class="sr-only">Toggle sidebar</span>
           </button>
-          <a
-            href="https://www.firezone.dev/?utm_source=product"
-            class="flex items-center justify-between mr-4"
-          >
+          <a href={~p"/"} class="flex items-center justify-between mr-4">
             <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
             <span class="self-center text-2xl font-medium whitespace-nowrap">
               Firezone
@@ -33,6 +30,21 @@ defmodule Web.NavigationComponents do
           </a>
         </div>
         <div class="flex items-center lg:order-2">
+          <a
+            target="_blank"
+            href="https://www.firezone.dev/kb?utm_source=product"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+          >
+            Docs
+          </a>
+          <a
+            target="_blank"
+            href="https://firezone.statuspage.io"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+          >
+            Status
+          </a>
+
           <.dropdown id="user-menu">
             <:button>
               <span class="sr-only">Open user menu</span>

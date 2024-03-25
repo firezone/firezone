@@ -53,53 +53,49 @@ defmodule Web.Policies.New do
             </p>
           </div>
 
-          <.simple_form
-            :if={@actor_groups != []}
-            for={@form}
-            phx-submit="submit"
-            phx-change="validate"
-          >
+          <.form :if={@actor_groups != []} for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
-            <.input
-              field={@form[:actor_group_id]}
-              label="Group"
-              type="group_select"
-              options={Web.Groups.Components.select_options(@actor_groups)}
-              value={@actor_group_id || @form[:actor_group_id].value}
-              disabled={not is_nil(@actor_group_id)}
-              required
-            />
-            <.input
-              field={@form[:resource_id]}
-              label="Resource"
-              type="select"
-              options={
-                Enum.map(@resources, fn resource ->
-                  group_names = resource.gateway_groups |> Enum.map(& &1.name)
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.input
+                field={@form[:actor_group_id]}
+                label="Group"
+                type="group_select"
+                options={Web.Groups.Components.select_options(@actor_groups)}
+                value={@actor_group_id || @form[:actor_group_id].value}
+                disabled={not is_nil(@actor_group_id)}
+                required
+              />
+              <.input
+                field={@form[:resource_id]}
+                label="Resource"
+                type="select"
+                options={
+                  Enum.map(@resources, fn resource ->
+                    group_names = resource.gateway_groups |> Enum.map(& &1.name)
 
-                  [
-                    key: "#{resource.name} - #{Enum.join(group_names, ",")}",
-                    value: resource.id
-                  ]
-                end)
-              }
-              value={@resource_id || @form[:resource_id].value}
-              disabled={not is_nil(@resource_id)}
-              required
-            />
-            <.input
-              field={@form[:description]}
-              type="textarea"
-              label="Description"
-              placeholder="Enter a reason for creating a policy here"
-              phx-debounce="300"
-            />
-            <:actions>
-              <.button phx-disable-with="Creating Policy..." class="w-full">
-                Create Policy
-              </.button>
-            </:actions>
-          </.simple_form>
+                    [
+                      key: "#{resource.name} - #{Enum.join(group_names, ",")}",
+                      value: resource.id
+                    ]
+                  end)
+                }
+                value={@resource_id || @form[:resource_id].value}
+                disabled={not is_nil(@resource_id)}
+                required
+              />
+              <.input
+                field={@form[:description]}
+                type="textarea"
+                label="Description"
+                placeholder="Enter a reason for creating a policy here"
+                phx-debounce="300"
+              />
+            </div>
+
+            <.submit_button phx-disable-with="Creating Policy..." class="w-full">
+              Create Policy
+            </.submit_button>
+          </.form>
         </div>
       </:content>
     </.section>

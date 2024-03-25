@@ -202,53 +202,54 @@ defmodule Web.SignUp do
     <h3 class="text-center text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
       Sign Up Now
     </h3>
-    <.simple_form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
-      <.input
-        field={@form[:email]}
-        type="text"
-        label="Email"
-        placeholder="Enter your work email here"
-        required
-        autofocus
-        phx-debounce="300"
-      />
-
-      <.inputs_for :let={account} field={@form[:account]}>
+    <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
+      <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
         <.input
-          field={account[:name]}
+          field={@form[:email]}
           type="text"
-          label="Account Name"
-          placeholder="Enter an account name"
+          label="Email"
+          placeholder="Enter your work email here"
           required
+          autofocus
           phx-debounce="300"
         />
-        <.input field={account[:slug]} type="hidden" />
-      </.inputs_for>
 
-      <.inputs_for :let={actor} field={@form[:actor]}>
-        <.input
-          field={actor[:name]}
-          type="text"
-          label="Your Name"
-          placeholder="Enter your name here"
-          required
-          phx-debounce="300"
-        />
-        <.input field={actor[:type]} type="hidden" />
-      </.inputs_for>
+        <.inputs_for :let={account} field={@form[:account]}>
+          <.input
+            field={account[:name]}
+            type="text"
+            label="Account Name"
+            placeholder="Enter an account name"
+            required
+            phx-debounce="300"
+          />
+          <.input field={account[:slug]} type="hidden" />
+        </.inputs_for>
 
-      <:actions>
-        <.button phx-disable-with="Creating Account..." class="w-full">
-          Create Account
-        </.button>
-      </:actions>
+        <.inputs_for :let={actor} field={@form[:actor]}>
+          <.input
+            field={actor[:name]}
+            type="text"
+            label="Your Name"
+            placeholder="Enter your name here"
+            required
+            phx-debounce="300"
+          />
+          <.input field={actor[:type]} type="hidden" />
+        </.inputs_for>
+      </div>
+
+      <.button phx-disable-with="Creating Account..." class="w-full">
+        Create Account
+      </.button>
+
       <p class="text-xs text-center">
         By signing up you agree to our <.link
           href="https://www.firezone.dev/terms"
           class={link_style()}
         >Terms of Use</.link>.
       </p>
-    </.simple_form>
+    </.form>
     """
   end
 
