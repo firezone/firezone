@@ -100,11 +100,10 @@ defmodule Web.Live.Clients.ShowTest do
   test "shows client online status", %{
     account: account,
     client: client,
-    actor: actor,
     identity: identity,
     conn: conn
   } do
-    Domain.Clients.connect_client(client) == :ok
+    :ok = Domain.Clients.connect_client(client)
 
     {:ok, lv, _html} =
       conn
