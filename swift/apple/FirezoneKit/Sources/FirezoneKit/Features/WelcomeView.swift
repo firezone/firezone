@@ -66,19 +66,20 @@ import SwiftUINavigationCore
       .sink(receiveValue: { [weak self] status, notificationDecision in
         guard let self = self else { return }
         switch (status, notificationDecision) {
-        case (.disconnected, .determined):
-          self.state = .unauthenticated(AuthViewModel(tunnelStore: appStore.tunnelStore))
-        case (_, .determined):
-          self.state = .authenticated(MainViewModel(tunnelStore: appStore.tunnelStore, logger: appStore.logger))
-        case (_, .uninitialized):
-          self.state = .uninitialized
-        case (_, .notDetermined):
+        case (.invalid, _), (_, .notDetermined):
           self.state = .needsPermission(
             AskPermissionViewModel(
               tunnelStore: self.appStore.tunnelStore,
               sessionNotificationHelper: sessionNotificationHelper
             )
           )
+        case (.disconnected, .determined):
+          self.state = .unauthenticated(AuthViewModel(tunnelStore: appStore.tunnelStore))
+        case (_, .determined):
+          self.state = .authenticated(MainViewModel(tunnelStore: appStore.tunnelStore, logger: appStore.logger))
+        case (_, .uninitialized):
+          self.state = .uninitialized
+
         }
       })
       .store(in: &cancellables)
