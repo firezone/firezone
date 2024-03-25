@@ -43,6 +43,9 @@ pub enum Input<'a, I> {
 }
 
 impl Io {
+    /// Creates a new I/O abstraction
+    ///
+    /// Must be called within a Tokio runtime context so we can bind the sockets.
     pub fn new(mut sockets: Sockets) -> io::Result<Self> {
         sockets.rebind()?; // Bind sockets on startup. Must happen within a tokio runtime context.
 
