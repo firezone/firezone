@@ -168,3 +168,36 @@ where
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[derive(Clone, Default)]
+    struct Callbacks {}
+    impl connlib_shared::Callbacks for Callbacks {}
+
+    #[tokio::test]
+    #[ignore = "Performs system-wide I/O"]
+    async fn client_tunnel() {
+        let (private_key, _public_key) = connlib_shared::keypair();
+        let sockets = crate::Sockets::new().unwrap();
+        let callbacks = Callbacks::default();
+        let mut tunnel = firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks);
+        let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
+        let interface = connlib_shared::messages::Interface {
+            ipv4: [100, 71, 96, 96].into(),
+            ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
+            upstream_dns,
+        };
+        tunnel.set_interface(interface).unwrap();
+        let resources = vec![];
+        tunnel.add_resources(&resources).unwrap();
+
+        let tunnel = tokio::spawn(async move { std::future::poll_fn(|cx| tunnel.poll_next_event(cx)).await.unwrap() });
+
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        if tunnel.is_finished() {
+            tunnel.await.unwrap();
+        }
+    }
+}
