@@ -17,16 +17,14 @@ pub struct Heartbeat {
 
 impl Heartbeat {
     pub fn maybe_handle_reply(&mut self, id: OutboundRequestId) -> bool {
-        let Some(pending) = self.id.take() else {
-            return false;
-        };
+        match self.id.as_ref() {
+            Some(pending) if pending == &id => {
+                self.id = None;
 
-        if pending != id {
-            return false;
+                true
+            }
+            _ => false,
         }
-
-        self.id = None;
-        true
     }
 
     pub fn set_id(&mut self, id: OutboundRequestId) {
