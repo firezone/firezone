@@ -175,9 +175,8 @@ defmodule Web.Sites.NewToken do
            "connlib_shared=info",
            "tunnel_state=info",
            "phoenix_channel=info",
-           "boringtun=info",
            "str0m=info",
-           "snownet=debug",
+           "snownet=info",
            "warn"
          ],
          ","

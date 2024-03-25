@@ -127,7 +127,7 @@ android {
                 "String",
                 "LOG_FILTER",
                 "\"connlib_client_android=info,firezone_tunnel=info,phoenix_channel=info,connlib_shared=info," +
-                    "boringtun=info,snownet=info,str0m=info,connlib_client_shared=info,warn\"",
+                    "snownet=info,str0m=info,connlib_client_shared=info,warn\"",
             )
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
