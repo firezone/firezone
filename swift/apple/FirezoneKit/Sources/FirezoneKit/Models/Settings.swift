@@ -12,8 +12,17 @@ struct Settings: Equatable {
   var logFilter: String
 
   var isValid: Bool {
-    URL(string: authBaseURL) != nil
-      && URL(string: apiURL) != nil
+    let authBaseURL = URL(string: authBaseURL)
+    let apiURL = URL(string: apiURL)
+    // Technically strings like "foo" are valid URLs, but their host component
+    // would be nil which crashes the ASWebAuthenticationSession view when
+    // signing in. We should also validate the scheme, otherwise ftp://
+    // could be used for example which tries to open the Finder when signing
+    // in. 🙃
+    return authBaseURL?.host != nil
+      && apiURL?.host != nil
+      && ["http", "https"].contains(authBaseURL?.scheme)
+      && ["ws", "wss"].contains(apiURL?.scheme)
       && !logFilter.isEmpty
   }
 

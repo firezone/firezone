@@ -97,7 +97,6 @@ public final class SettingsViewModel: ObservableObject {
   func clearAllLogs(logger: AppLogger) throws {
     logger.log("\(#function)")
 
-    let startTime = DispatchTime.now()
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       logger.error("\(#function): Log folder is unavailable")
       return
@@ -121,10 +120,6 @@ public final class SettingsViewModel: ObservableObject {
         }
       }
     }
-
-    let elapsedTime =
-      (DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-    logger.log("\(#function): Finished removing log files in \(elapsedTime) ms")
 
     if unremovedFilesCount > 0 {
       logger.log("\(#function): Unable to remove \(unremovedFilesCount) files")
