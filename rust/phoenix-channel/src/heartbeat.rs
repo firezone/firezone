@@ -1,4 +1,4 @@
-use crate::{EgressControlMessage, OutboundRequestId};
+use crate::OutboundRequestId;
 use std::{
     pin::Pin,
     sync::{atomic::AtomicU64, Arc},
@@ -44,7 +44,7 @@ impl Heartbeat {
     pub fn poll(
         &mut self,
         cx: &mut Context,
-    ) -> Poll<Result<(OutboundRequestId, EgressControlMessage<()>), MissedLastHeartbeat>> {
+    ) -> Poll<Result<OutboundRequestId, MissedLastHeartbeat>> {
         ready!(self.interval.poll_tick(cx));
 
         if self.id.is_some() {
@@ -56,10 +56,7 @@ impl Heartbeat {
             .next_request_id
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-        Poll::Ready(Ok((
-            OutboundRequestId(next_id),
-            EgressControlMessage::Heartbeat(crate::Empty {}),
-        )))
+        Poll::Ready(Ok(OutboundRequestId(next_id)))
     }
 }
 
@@ -111,7 +108,7 @@ mod tests {
     async fn succeeds_if_response_is_provided_inbetween_polls() {
         let mut heartbeat = Heartbeat::new(Duration::from_millis(10), Arc::new(AtomicU64::new(0)));
 
-        let (id, _) = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap();
+        let id = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap();
         heartbeat.maybe_handle_reply(id);
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;

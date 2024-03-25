@@ -452,9 +452,12 @@ where
 
             // Priority 3: Handle heartbeats.
             match self.heartbeat.poll(cx) {
-                Poll::Ready(Ok((id, msg))) => {
-                    self.pending_messages
-                        .push_back(serialize_msg("phoenix", msg, id.copy()));
+                Poll::Ready(Ok(id)) => {
+                    self.pending_messages.push_back(serialize_msg(
+                        "phoenix",
+                        EgressControlMessage::<()>::Heartbeat(Empty {}),
+                        id.copy(),
+                    ));
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
