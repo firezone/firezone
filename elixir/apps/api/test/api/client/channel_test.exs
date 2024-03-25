@@ -604,23 +604,15 @@ defmodule API.Client.ChannelTest do
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
-                 password: password1,
-                 username: username1,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :turn,
-                 expires_at: expires_at_unix,
-                 password: password2,
-                 username: username2,
-                 addr: ^ipv6_turn_uri
+                 password: _password,
+                 username: username,
+                 ipv4_addr: ^ipv4_turn_uri,
+                 ipv6_addr: ^ipv6_turn_uri
                }
              ] = relays
 
-      assert username1 != username2
-      assert password1 != password2
-
-      assert [expires_at, salt] = String.split(username1, ":", parts: 2)
+      assert [expires_at, salt] = String.split(username, ":", parts: 2)
+      assert String.to_integer(expires_at) == expires_at_unix
       expires_at = expires_at |> String.to_integer() |> DateTime.from_unix!()
       socket_expires_at = DateTime.truncate(socket.assigns.subject.expires_at, :second)
       assert expires_at == socket_expires_at
@@ -679,8 +671,6 @@ defmodule API.Client.ChannelTest do
         resource_id: ^resource_id
       }
 
-      assert length(relays) == 2
-
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
@@ -691,23 +681,15 @@ defmodule API.Client.ChannelTest do
                %{
                  type: :turn,
                  expires_at: expires_at_unix,
-                 password: password1,
-                 username: username1,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :turn,
-                 expires_at: expires_at_unix,
-                 password: password2,
-                 username: username2,
-                 addr: ^ipv6_turn_uri
+                 password: _password,
+                 username: username,
+                 ipv4_addr: ^ipv4_turn_uri,
+                 ipv6_addr: ^ipv6_turn_uri
                }
              ] = relays
 
-      assert username1 != username2
-      assert password1 != password2
-
-      assert [expires_at, salt] = String.split(username1, ":", parts: 2)
+      assert [expires_at, salt] = String.split(username, ":", parts: 2)
+      assert String.to_integer(expires_at) == expires_at_unix
       expires_at = expires_at |> String.to_integer() |> DateTime.from_unix!()
       socket_expires_at = DateTime.truncate(socket.assigns.subject.expires_at, :second)
       assert expires_at == socket_expires_at
@@ -766,8 +748,6 @@ defmodule API.Client.ChannelTest do
         resource_id: ^resource_id
       }
 
-      assert length(relays) == 2
-
       assert gateway_id == gateway.id
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
 
@@ -777,11 +757,8 @@ defmodule API.Client.ChannelTest do
       assert [
                %{
                  type: :stun,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :stun,
-                 addr: ^ipv6_turn_uri
+                 ipv4_addr: ^ipv4_turn_uri,
+                 ipv6_addr: ^ipv6_turn_uri
                }
              ] = relays
     end
