@@ -338,11 +338,12 @@ where
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
                     if let Some(message) = self.pending_messages.pop_front() {
-                        tracing::trace!(target: "wire", to="portal", %message);
-
-                        match stream.start_send_unpin(Message::Text(message)) {
-                            Ok(()) => {}
+                        match stream.start_send_unpin(Message::Text(message.clone())) {
+                            Ok(()) => {
+                                tracing::trace!(target: "wire", to="portal", %message);
+                            }
                             Err(e) => {
+                                self.pending_messages.push_front(message);
                                 self.reconnect_on_transient_error(InternalError::WebSocket(e));
                             }
                         }
