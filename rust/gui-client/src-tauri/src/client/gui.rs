@@ -1,7 +1,7 @@
 //! The Tauri-based GUI Client for Windows and Linux
 //!
 //! Most of this Client is stubbed out with panics on macOS.
-//! The real macOS Client is in `firezone/swift`
+//! The real macOS Client is in `swift/apple`
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
