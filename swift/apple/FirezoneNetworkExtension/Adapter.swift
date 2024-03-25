@@ -1,3 +1,4 @@
+import CryptoKit
 //  Adapter.swift
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
@@ -6,7 +7,6 @@ import FirezoneKit
 import Foundation
 import NetworkExtension
 import OSLog
-import CryptoKit
 
 public enum AdapterError: Error {
   /// Failure to perform an operation in such state.
@@ -270,7 +270,7 @@ extension Adapter {
       // out of a different interface even when 0.0.0.0 is used as the source.
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
-      if (path.availableInterfaces.first?.name != primaryInterfaceName) {
+      if path.availableInterfaces.first?.name != primaryInterfaceName {
         session.reconnect()
         primaryInterfaceName = path.availableInterfaces.first?.name
       }
@@ -278,7 +278,8 @@ extension Adapter {
       if shouldFetchSystemResolvers(path: path) {
         // Spawn a new thread to avoid blocking the UI on iOS
         Task {
-          let resolvers = getSystemDefaultResolvers(interfaceName: path.availableInterfaces.first?.name)
+          let resolvers = getSystemDefaultResolvers(
+            interfaceName: path.availableInterfaces.first?.name)
 
           if lastFetchedResolvers != resolvers {
             session.setDns(
@@ -326,7 +327,8 @@ extension Adapter: CallbackHandlerDelegate {
       guard let self = self else { return }
       if networkSettings == nil {
         // First time receiving this callback, so initialize our network settings
-        networkSettings = NetworkSettings(packetTunnelProvider: packetTunnelProvider, logger: logger)
+        networkSettings = NetworkSettings(
+          packetTunnelProvider: packetTunnelProvider, logger: logger)
       }
 
       logger.log(
@@ -428,7 +430,7 @@ extension Adapter: CallbackHandlerDelegate {
     private func resetToSystemDNSGettingBindResolvers() -> [String] {
       guard let networkSettings = networkSettings
       else {
-        // Network Settings hasn't been applied yet, so our sentinal isn't
+        // Network Settings hasn't been applied yet, so our sentinel isn't
         // the system's resolver and we can grab the system resolvers directly.
         // If we try to continue below without valid tunnel addresses assigned
         // to the interface, we'll crash.
