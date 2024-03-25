@@ -12,18 +12,29 @@ struct Settings: Equatable {
   var logFilter: String
 
   var isValid: Bool {
-    URL(string: authBaseURL) != nil
-      && URL(string: apiURL) != nil
-      && !logFilter.isEmpty
+    let authBaseURL = URL(string: authBaseURL)
+    let apiURL = URL(string: apiURL)
+    // Technically strings like "foo" are valid URLs, but their host component
+    // would be nil which crashes the ASWebAuthenticationSession view when
+    // signing in. We should also validate the scheme, otherwise ftp://
+    // could be used for example which tries to open the Finder when signing
+    // in. 🙃
+    return authBaseURL?.host != nil
+    && apiURL?.host != nil
+    && ["http", "https"].contains(authBaseURL?.scheme)
+    && ["ws", "wss"].contains(apiURL?.scheme)
+    && !logFilter.isEmpty
   }
 
   // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
-  static func fromProviderConfiguration(providerConfiguration: Dictionary<String, String>?) -> Settings {
+  static func fromProviderConfiguration(providerConfiguration: [String: String]?) -> Settings {
     if let providerConfiguration = providerConfiguration {
       return Settings(
-        authBaseURL: providerConfiguration[TunnelStoreKeys.authBaseURL] ?? Settings.defaultValue.authBaseURL,
+        authBaseURL: providerConfiguration[TunnelStoreKeys.authBaseURL]
+        ?? Settings.defaultValue.authBaseURL,
         apiURL: providerConfiguration[TunnelStoreKeys.apiURL] ?? Settings.defaultValue.apiURL,
-        logFilter: providerConfiguration[TunnelStoreKeys.logFilter] ?? Settings.defaultValue.logFilter
+        logFilter: providerConfiguration[TunnelStoreKeys.logFilter]
+        ?? Settings.defaultValue.logFilter
       )
     } else {
       return Settings.defaultValue
@@ -35,28 +46,28 @@ struct Settings: Equatable {
     return [
       "authBaseURL": authBaseURL,
       "apiURL": apiURL,
-      "logFilter": logFilter
+      "logFilter": logFilter,
     ]
   }
 
   static let defaultValue: Settings = {
     // Note: To see what the connlibLogFilterString values mean, see:
     // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
-    #if DEBUG
-      Settings(
-        authBaseURL: "https://app.firez.one",
-        apiURL: "wss://api.firez.one",
-        logFilter:
-          "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
-      )
-    #else
-      Settings(
-        authBaseURL: "https://app.firezone.dev",
-        apiURL: "wss://api.firezone.dev",
-        logFilter:
-          "firezone_tunnel=info,connlib_shared=info,phoenix_channel=info,connlib_client_shared=info,boringtun=info,snownet=info,str0m=info,warn"
-      )
-    #endif
+#if DEBUG
+    Settings(
+      authBaseURL: "https://app.firez.one",
+      apiURL: "wss://api.firez.one",
+      logFilter:
+        "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
+    )
+#else
+    Settings(
+      authBaseURL: "https://app.firezone.dev",
+      apiURL: "wss://api.firezone.dev",
+      logFilter:
+        "firezone_tunnel=info,connlib_shared=info,phoenix_channel=info,connlib_client_shared=info,boringtun=info,snownet=info,str0m=info,warn"
+    )
+#endif
   }()
 }
 
