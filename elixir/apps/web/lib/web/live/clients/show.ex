@@ -6,7 +6,7 @@ defmodule Web.Clients.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <-
            Clients.fetch_client_by_id(id, socket.assigns.subject,
-             preload: [:actor, last_used_token: [identity: [:provider]]]
+             preload: [:online?, :actor, last_used_token: [identity: [:provider]]]
            ) do
       if connected?(socket) do
         :ok = Clients.subscribe_to_clients_presence_for_actor(client.actor)

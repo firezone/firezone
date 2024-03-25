@@ -97,6 +97,28 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["user agent"] =~ client.last_seen_user_agent
   end
 
+  test "shows client online status", %{
+    account: account,
+    client: client,
+    identity: identity,
+    conn: conn
+  } do
+    :ok = Domain.Clients.connect_client(client)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    table =
+      lv
+      |> element("#client")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["status"] =~ "Online"
+  end
+
   test "updates client online status using presence", %{
     account: account,
     client: client,
