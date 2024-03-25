@@ -48,30 +48,26 @@ public actor Keychain {
   public init() {}
 
   func add(token: Token) async throws -> PersistentRef {
-    var query: [CFString: Any] = [
-      // Common for both iOS and macOS:
-      kSecClass: kSecClassGenericPassword,
-      kSecAttrLabel: label,
-      kSecAttrDescription: description,
-      kSecAttrAccount: account,
-      kSecAttrService: service,
-      kSecValueData: token.data(using: .utf8) as Any,
-      kSecReturnPersistentRef: true,
-      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
-    ]
-
-    #if os(iOS)
-    query.merge([
-      kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
-    ], uniquingKeysWith: {_, _ in })
-    #elseif os(macOS)
-    query.merge([
-      kSecAttrAccess: try secAccessForAppAndNetworkExtension()
-    ], uniquingKeysWith: {_, _ in })
-    #endif
-
     return try await withCheckedThrowingContinuation { [weak self] continuation in
-      self?.workQueue.async {
+      self?.workQueue.async { [weak self] in
+        guard let self = self else {
+          continuation.resume(throwing: KeychainError.securityError(.unexpectedError))
+          return
+        }
+
+        let query: [CFString: Any] = [
+          // Common for both iOS and macOS:
+          kSecClass: kSecClassGenericPassword,
+          kSecAttrLabel: label,
+          kSecAttrDescription: description,
+          kSecAttrAccount: account,
+          kSecAttrService: service,
+          kSecValueData: token.data(using: .utf8) as Any,
+          kSecReturnPersistentRef: true,
+          kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+          kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any,
+        ]
+
         var ref: CFTypeRef?
         let ret = SecStatus(SecItemAdd(query as CFDictionary, &ref))
         guard ret.isSuccess else {
@@ -79,6 +75,7 @@ public actor Keychain {
             throwing: KeychainError.appleSecError(call: "SecItemAdd", status: ret))
           return
         }
+
         guard let savedPersistentRef = ref as? Data else {
           continuation.resume(throwing: KeychainError.nilResultFromAppleSecCall(call: "SecItemAdd"))
           return
@@ -90,29 +87,24 @@ public actor Keychain {
   }
 
   func update(token: Token) async throws {
-    var query: [CFString: Any] = [
-      kSecClass: kSecClassGenericPassword,
-      kSecAttrAccount: account,
-      kSecAttrService: service,
-    ]
-
-    let attributesToUpdate = [
-      kSecValueData: token.data(using: .utf8) as Any,
-    ]
-
-    #if os(iOS)
-    query.merge([
-      kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any
-    ], uniquingKeysWith: {_, _ in })
-    #elseif os(macOS)
-    query.merge([
-      kSecAttrAccess: try secAccessForAppAndNetworkExtension()
-    ], uniquingKeysWith: {_, _ in })
-    #endif
 
     return try await withCheckedThrowingContinuation { [weak self] continuation in
-      self?.workQueue.async {
-        let ret = SecStatus(SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
+      self?.workQueue.async { [weak self] in
+        guard let self = self else {
+          continuation.resume(throwing: KeychainError.securityError(.unexpectedError))
+          return
+        }
+
+        let query: [CFString: Any] = [
+          kSecClass: kSecClassGenericPassword,
+          kSecAttrAccount: self.account,
+          kSecAttrService: self.service,
+        ]
+        let attributesToUpdate = [
+          kSecValueData: token.data(using: .utf8) as Any
+        ]
+        let ret = SecStatus(
+          SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
         guard ret.isSuccess else {
           continuation.resume(
             throwing: KeychainError.appleSecError(call: "SecItemUpdate", status: ret))
@@ -122,51 +114,6 @@ public actor Keychain {
       }
     }
   }
-
-  #if os(macOS)
-    private func secAccessForAppAndNetworkExtension() throws -> SecAccess {
-      // Creating a trusted-application-based SecAccess APIs are deprecated in favour of
-      // data-protection keychain APIs. However, data-protection keychain doesn't support
-      // accessing from non-userspace processes, like the tunnel process, so we can only
-      // use the deprecated APIs for now.
-      func secTrustedApplicationForPath(_ path: String?) throws -> SecTrustedApplication? {
-        var trustedApp: SecTrustedApplication?
-        let ret = SecStatus(SecTrustedApplicationCreateFromPath(path, &trustedApp))
-        guard ret.isSuccess else {
-          throw KeychainError.appleSecError(
-            call: "SecTrustedApplicationCreateFromPath", status: ret)
-        }
-        if let trustedApp = trustedApp {
-          return trustedApp
-        } else {
-          throw KeychainError.nilResultFromAppleSecCall(
-            call: "SecTrustedApplicationCreateFromPath(\(path ?? "nil"))")
-        }
-      }
-      guard let pluginsURL = Bundle.main.builtInPlugInsURL else {
-        throw KeychainError.unableToGetPluginsPath
-      }
-      let extensionPath =
-        pluginsURL
-        .appendingPathComponent("FirezoneNetworkExtensionmacOS.appex", isDirectory: true)
-        .path
-      let trustedApps = [
-        try secTrustedApplicationForPath(nil),
-        try secTrustedApplicationForPath(extensionPath),
-      ]
-      var access: SecAccess?
-      let ret = SecStatus(
-        SecAccessCreate("Firezone Token" as CFString, trustedApps as CFArray, &access))
-      guard ret.isSuccess else {
-        throw KeychainError.appleSecError(call: "SecAccessCreate", status: ret)
-      }
-      if let access = access {
-        return access
-      } else {
-        throw KeychainError.nilResultFromAppleSecCall(call: "SecAccessCreate")
-      }
-    }
-  #endif
 
   // This function is public because the tunnel needs to call it to get the token
   public func load(persistentRef: PersistentRef) async -> Token? {
