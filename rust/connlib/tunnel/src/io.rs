@@ -43,8 +43,13 @@ pub enum Input<'a, I> {
 }
 
 impl Io {
-    pub fn new(sockets: Sockets) -> Self {
-        Self {
+    /// Creates a new I/O abstraction
+    ///
+    /// Must be called within a Tokio runtime context so we can bind the sockets.
+    pub fn new(mut sockets: Sockets) -> io::Result<Self> {
+        sockets.rebind()?; // Bind sockets on startup. Must happen within a tokio runtime context.
+
+        Ok(Self {
             device: Device::new(),
             timeout: None,
             sockets,
@@ -53,7 +58,7 @@ impl Io {
                 Duration::from_secs(60),
                 DNS_QUERIES_QUEUE_SIZE,
             ),
-        }
+        })
     }
 
     pub fn poll<'b>(
@@ -115,8 +120,8 @@ impl Io {
         &self.sockets
     }
 
-    pub(crate) fn set_sockets(&mut self, sockets: Sockets) {
-        self.sockets = sockets;
+    pub fn sockets_mut(&mut self) -> &mut Sockets {
+        &mut self.sockets
     }
 
     pub fn set_upstream_dns_servers(
