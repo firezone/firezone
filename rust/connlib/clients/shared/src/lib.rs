@@ -176,7 +176,7 @@ mod tests {
     impl connlib_shared::Callbacks for Callbacks {}
 
     #[tokio::test]
-    #[ignore = "Performs system-wide I/O"]
+    #[ignore = "Performs system-wide I/O, needs sudo"]
     async fn client_tunnel() {
         let (private_key, _public_key) = connlib_shared::keypair();
         let sockets = crate::Sockets::new().unwrap();
@@ -194,7 +194,7 @@ mod tests {
 
         let tunnel = tokio::spawn(async move { std::future::poll_fn(|cx| tunnel.poll_next_event(cx)).await.unwrap() });
 
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
         if tunnel.is_finished() {
             tunnel.await.unwrap();
