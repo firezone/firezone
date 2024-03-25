@@ -189,15 +189,6 @@ impl fmt::Display for OutboundRequestId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct InboundRequestId(u64);
-
-impl fmt::Display for InboundRequestId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "InReq-{}", self.0)
-    }
-}
-
 impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
     TInitReq: Serialize + Clone,
