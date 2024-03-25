@@ -13,7 +13,7 @@ defmodule Web.Policies.Edit do
 
       socket =
         assign(socket,
-          page_title: "Edit #{policy.id}",
+          page_title: "Edit Policy #{policy.id}",
           policy: policy,
           form: form
         )
@@ -37,29 +37,25 @@ defmodule Web.Policies.Edit do
     </.breadcrumbs>
 
     <.section>
-      <:title><%= "#{@page_title}: #{@policy.id}" %></:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">Edit Policy details</h2>
-          <.simple_form
-            for={@form}
-            class="space-y-4 lg:space-y-6"
-            phx-submit="submit"
-            phx-change="validate"
-          >
-            <.input
-              field={@form[:description]}
-              type="textarea"
-              label="Policy Description"
-              placeholder="Enter a policy description here"
-              phx-debounce="300"
-            />
-            <:actions>
-              <.submit_button phx-disable-with="Updating Policy...">
-                Save
-              </.submit_button>
-            </:actions>
-          </.simple_form>
+          <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.input
+                field={@form[:description]}
+                type="textarea"
+                label="Policy Description"
+                placeholder="Enter a policy description here"
+                phx-debounce="300"
+              />
+            </div>
+
+            <.submit_button phx-disable-with="Updating Policy...">
+              Save
+            </.submit_button>
+          </.form>
         </div>
       </:content>
     </.section>

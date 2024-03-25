@@ -1,5 +1,7 @@
-//! The Tauri GUI for Windows
-//! This is not checked or compiled on other platforms.
+//! The Tauri-based GUI Client for Windows and Linux
+//!
+//! Most of this Client is stubbed out with panics on macOS.
+//! The real macOS Client is in `swift/apple`
 
 // TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
 
@@ -10,7 +12,7 @@ use crate::client::{
 };
 use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, ResourceDescription};
+use connlib_client_shared::{file_logger, ResourceDescription, Sockets};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -534,6 +536,7 @@ impl Controller {
         )?;
         let connlib = connlib_client_shared::Session::connect(
             login,
+            Sockets::new()?,
             private_key,
             None,
             callback_handler.clone(),
@@ -821,6 +824,8 @@ async fn run_controller(
     let mut com_worker =
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
+    let mut dns_listener = network_changes::DnsListener::new()?;
+
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => if let Err(error) = controller.refresh_system_tray_menu() {
@@ -830,8 +835,17 @@ async fn run_controller(
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
-                    // TODO: Stop / start / restart connlib as needed here
-                    tracing::info!(?have_internet);
+                    if let Some(session) = controller.session.as_mut() {
+                        tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
+                        session.connlib.reconnect(Sockets::new()?);
+                    }
+                }
+            },
+            r = dns_listener.notified() => {
+                r?;
+                if let Some(session) = controller.session.as_mut() {
+                    tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
+                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default());
                 }
             },
             req = rx.recv() => {
@@ -851,7 +865,7 @@ async fn run_controller(
                         tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }
                 }
-            }
+            },
         }
     }
 
