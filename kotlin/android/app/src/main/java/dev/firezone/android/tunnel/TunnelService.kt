@@ -116,8 +116,6 @@ class TunnelService : VpnService() {
                 return buildVpnService()
             }
 
-
-
             override fun onUpdateRoutes(
                 routes4JSON: String,
                 routes6JSON: String,
