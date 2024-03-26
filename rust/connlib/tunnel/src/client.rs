@@ -73,12 +73,12 @@ where
 
         self.add_resources(
             &HashSet::<ResourceDescription>::from_iter(
-                self.role_state.resource_ids.values().copied(),
+                self.role_state.resource_ids.values().cloned(),
             )
-            .difference(&HashSet::from_iter(resources.iter()))
-            .copied()
+            .difference(&HashSet::from_iter(resources.iter().cloned()))
+            .cloned()
             .collect_vec(),
-        );
+        )?;
 
         Ok(())
     }
