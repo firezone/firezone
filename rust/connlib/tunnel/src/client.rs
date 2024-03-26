@@ -58,6 +58,31 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
+    pub fn set_resources(
+        &mut self,
+        resources: &[ResourceDescription],
+    ) -> connlib_shared::Result<()> {
+        self.remove_resources(
+            &HashSet::<ResourceId>::from_iter(resources.iter().map(|r| r.id()))
+                .difference(&HashSet::from_iter(
+                    self.role_state.resource_ids.keys().copied(),
+                ))
+                .copied()
+                .collect_vec(),
+        );
+
+        self.add_resources(
+            &HashSet::<ResourceDescription>::from_iter(
+                self.role_state.resource_ids.values().copied(),
+            )
+            .difference(&HashSet::from_iter(resources.iter()))
+            .copied()
+            .collect_vec(),
+        );
+
+        Ok(())
+    }
+
     /// Adds a the given resource to the tunnel.
     pub fn add_resources(
         &mut self,
@@ -94,8 +119,20 @@ where
         Ok(())
     }
 
+    pub fn remove_resources(&mut self, ids: &[ResourceId]) {
+        for id in ids {
+            self.remove_resource(*id);
+        }
+
+        if let Err(err) = self.update_routes() {
+            tracing::error!(?ids, "Failed to update routes: {err:?}");
+        }
+
+        self.update_resource_list();
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(%id))]
-    pub fn remove_resource(&mut self, id: ResourceId) {
+    fn remove_resource(&mut self, id: ResourceId) {
         self.role_state.awaiting_connection.remove(&id);
         self.role_state
             .dns_resources_internal_ips
@@ -107,12 +144,6 @@ where
             .retain(|(r, _), _| r.id != id);
 
         self.role_state.resource_ids.remove(&id);
-
-        if let Err(err) = self.update_routes() {
-            tracing::error!(%id, "Failed to update routes: {err:?}");
-        }
-
-        self.update_resource_list();
 
         let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
             tracing::debug!("No gateway associated with resource");
