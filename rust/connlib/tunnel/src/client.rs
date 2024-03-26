@@ -167,12 +167,11 @@ where
 
     /// Updates the system's dns
     pub fn set_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
-        let dns_changed = self.role_state.update_system_resolvers(new_dns);
-
+        self.role_state.update_system_resolvers(new_dns);
+        let dns_changed = self.update_dns_mapping();
         if !dns_changed {
             return Ok(());
         }
-
         self.update_interface()?;
 
         Ok(())
@@ -181,6 +180,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
         self.role_state.interface_config = Some(config);
+        self.update_dns_mapping();
         self.update_interface()
     }
 
@@ -189,29 +189,17 @@ where
             return Ok(());
         };
 
-        let effective_dns_servers = effective_dns_servers(
-            config.upstream_dns.clone(),
-            self.role_state.system_resolvers.clone(),
-        );
-
-        let dns_mapping = sentinel_dns_mapping(
-            &effective_dns_servers,
-            self.role_state
-                .dns_mapping()
-                .left_values()
-                .copied()
-                .map(Into::into)
-                .collect_vec(),
-        );
-        self.role_state.set_dns_mapping(dns_mapping.clone());
-        self.io.set_upstream_dns_servers(dns_mapping.clone());
-
         let callbacks = self.callbacks.clone();
 
         self.io.device_mut().set_config(
             &config,
             // We can just sort in here because sentinel ips are created in order
-            dns_mapping.left_values().copied().sorted().collect(),
+            self.role_state
+                .dns_mapping
+                .left_values()
+                .copied()
+                .sorted()
+                .collect(),
             &callbacks,
         )?;
 
@@ -283,6 +271,39 @@ where
             .received_domain_parameters(resource_id, domain_response)?;
 
         Ok(())
+    }
+
+    fn update_dns_mapping(&mut self) -> bool {
+        let Some(config) = &self.role_state.interface_config else {
+            return false;
+        };
+
+        let effective_dns_servers = effective_dns_servers(
+            config.upstream_dns.clone(),
+            self.role_state.system_resolvers.clone(),
+        );
+
+        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
+            == HashSet::from_iter(self.role_state.dns_mapping.right_values())
+        {
+            return false;
+        }
+
+        let dns_mapping = sentinel_dns_mapping(
+            &effective_dns_servers,
+            self.role_state
+                .dns_mapping()
+                .left_values()
+                .copied()
+                .map(Into::into)
+                .collect_vec(),
+        );
+
+        self.role_state.set_dns_mapping(dns_mapping.clone());
+        self.io.set_upstream_dns_servers(dns_mapping.clone());
+
+        tracing::info!("Setting new DNS resolvers");
+        true
     }
 }
 
@@ -828,17 +849,8 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
-        if !dns_updated(&self.system_resolvers, &new_dns) {
-            tracing::debug!("Updated dns called but no change to system's resolver");
-            return false;
-        }
-
-        tracing::info!("Found new system resolvers");
+    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
         self.system_resolvers = new_dns;
-
-        true
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
