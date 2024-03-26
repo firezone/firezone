@@ -13,19 +13,19 @@ import XCTestDynamicOverlay
 @MainActor
 final class AuthViewModel: ObservableObject {
 
-  let authStore: AuthStore
+  let tunnelStore: TunnelStore
 
   var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
 
   private var cancellables = Set<AnyCancellable>()
 
-  init(authStore: AuthStore) {
-    self.authStore = authStore
+  init(tunnelStore: TunnelStore) {
+    self.tunnelStore = tunnelStore
   }
 
   func signInButtonTapped() async {
     do {
-      try await authStore.signIn()
+      try await tunnelStore.signIn()
     } catch {
       dump(error)
     }

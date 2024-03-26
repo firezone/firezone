@@ -212,10 +212,10 @@ where
 
             CandidateKind::Relayed => {
                 // Optimisatically try to bind the channel only on the same relay as the remote peer.
-                if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
-                    allocation.bind_channel(candidate.addr(), now);
-                    return;
-                }
+                // if let Some(allocation) = self.same_relay_as_peer(id, &candidate) {
+                //     allocation.bind_channel(candidate.addr(), now);
+                //     return;
+                // }
             }
             CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
         }

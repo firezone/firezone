@@ -6,7 +6,7 @@
 //
 // Reads system resolvers from libresolv, similar to reading /etc/resolv.conf but this also works on iOS
 
-public class Resolv {
+public class BindResolvers {
   var state = __res_9_state()
 
   public init() {
@@ -27,7 +27,7 @@ public class Resolv {
   }
 }
 
-extension Resolv {
+extension BindResolvers {
   public static func getnameinfo(_ s: res_9_sockaddr_union) -> String {
     var s = s
     var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
