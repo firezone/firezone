@@ -54,12 +54,12 @@ class TunnelService : VpnService() {
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
-    private var connlibSessionPtr: Long? = null
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var networkCallback: NetworkMonitor? = null
 
     var startedByUser: Boolean = false
+    var connlibSessionPtr: Long? = null
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -114,16 +114,6 @@ class TunnelService : VpnService() {
 
                 // start VPN
                 return buildVpnService()
-            }
-
-            override fun onTunnelReady(): Boolean {
-                Log.d(TAG, "onTunnelReady")
-                Firebase.crashlytics.log("onTunnelReady")
-
-                tunnelState = State.UP
-                updateStatusNotification("Status: Connected")
-
-                return true
             }
 
             override fun onUpdateRoutes(
@@ -262,7 +252,7 @@ class TunnelService : VpnService() {
     }
 
     private fun startNetworkMonitoring() {
-        networkCallback = NetworkMonitor(connlibSessionPtr!!)
+        networkCallback = NetworkMonitor(this)
 
         val networkRequest =
             NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -398,7 +388,7 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun updateStatusNotification(message: String?) {
+    fun updateStatusNotification(message: String?) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val chan =
