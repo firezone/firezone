@@ -54,12 +54,12 @@ class TunnelService : VpnService() {
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
-    private var connlibSessionPtr: Long? = null
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var networkCallback: NetworkMonitor? = null
 
     var startedByUser: Boolean = false
+    var connlibSessionPtr: Long? = null
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -111,12 +111,6 @@ class TunnelService : VpnService() {
                 tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
-
-                // For Android we consider that we need to get the DNS to be up and running
-                if (tunnelDnsAddresses.isNotEmpty() && tunnelState != State.UP) {
-                    tunnelState = State.UP
-                    updateStatusNotification("Status: Connected")
-                }
 
                 // start VPN
                 return buildVpnService()
@@ -258,7 +252,7 @@ class TunnelService : VpnService() {
     }
 
     private fun startNetworkMonitoring() {
-        networkCallback = NetworkMonitor(connlibSessionPtr!!)
+        networkCallback = NetworkMonitor(this)
 
         val networkRequest =
             NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -394,7 +388,7 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun updateStatusNotification(message: String?) {
+    fun updateStatusNotification(message: String?) {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val chan =
