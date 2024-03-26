@@ -353,6 +353,15 @@ defmodule Domain.Actors do
     end
   end
 
+  def list_actors_by_type(%Auth.Subject{} = subject, type, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Actor.Query.not_deleted()
+      |> Actor.Query.by_type(type)
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Actor.Query, opts)
+    end
+  end
+
   def new_actor(attrs \\ %{memberships: []}) do
     Actor.Changeset.create(attrs)
   end
@@ -531,6 +540,9 @@ defmodule Domain.Actors do
 
   def actor_disabled?(%Actor{disabled_at: nil}), do: false
   def actor_disabled?(%Actor{}), do: true
+
+  def actor_active?(%Actor{disabled_at: nil, deleted_at: nil}), do: true
+  def actor_active?(%Actor{}), do: false
 
   defp other_enabled_admins_exist?(%Actor{
          type: :account_admin_user,
