@@ -167,20 +167,7 @@ defmodule Web.Sites.NewToken do
       {"FIREZONE_ID", Ecto.UUID.generate()},
       {"FIREZONE_TOKEN", encoded_token},
       api_url_override,
-      {"RUST_LOG",
-       Enum.join(
-         [
-           "firezone_gateway=info",
-           "firezone_tunnel=info",
-           "connlib_shared=info",
-           "tunnel_state=info",
-           "phoenix_channel=info",
-           "str0m=info",
-           "snownet=info",
-           "warn"
-         ],
-         ","
-       )}
+      {"RUST_LOG", "info"}
     ]
     |> Enum.reject(&is_nil/1)
   end
