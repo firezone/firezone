@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-      - run: cargo test --all-features --include-ignored ${{ matrix.packages }}
+      - run: cargo test --all-features ${{ matrix.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
