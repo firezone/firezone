@@ -28,7 +28,7 @@ Anything that can work with normal user privileges should run in the non-privile
 
 ## Decisions
 
-- The CLI Client will not be split for now, it keep the same CLI interface but may be refactored. `firezone-client-tunnel` may replace it.
+- The CLI Client will not be split for now, it keep the same CLI interface but may be refactored. `firezone-client-tunnel` will be an evolution of the CLI client, and they will share most code.
 - The CLI and GUI client packages will have a `conflicts` tag, at least for now.
 - Eventually, Clients and Gateways will be allowed to run on the same host, so avoid conflicts there
 - Binary names may change in the future.
@@ -39,7 +39,7 @@ Anything that can work with normal user privileges should run in the non-privile
 
 1. `$HOME/.config/autostart` - A link that auto-starts the GUI when the user logs in, created by `firezone-gui --register-auto-start`
 1. `/etc/dev.firezone.client/token` - A service account token, owned by root, with permissions 600. (rw- --- ---) Written by a human admin or an MDM on their behalf.
-1. `/usr/bin/firezone-client-tunnel` - A daemon that runs the tunnel, listens for commands from the GUI over IPC, and has elevated privilege. This is a systemd service on Linux and a Windows service on Windows. It takes over the role of the current Linux CLI Client.
+1. `/usr/bin/firezone-client-tunnel` - A daemon that runs the tunnel, listens for commands from the GUI over IPC, and has elevated privilege. This is a systemd service on Linux and a Windows service on Windows. This will evolve from the current Linux CLI Client.
 1. `/usr/bin/firezone-gui` - An unprivileged GUI program that keeps an icon in the system tray / notification center and is similar to `firezonectl`
 1. `/usr/lib/systemd/system/firezone-client.service` - The systemd service unit to auto-start the privileged client tunnel. Installed from the deb.
 
