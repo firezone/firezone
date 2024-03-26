@@ -5,9 +5,10 @@ import android.net.Network
 import android.util.Log
 import com.google.gson.Gson
 import dev.firezone.android.tunnel.ConnlibSession
+import dev.firezone.android.tunnel.TunnelService
 import java.net.InetAddress
 
-class NetworkMonitor(private val connlibSessionPtr: Long) : ConnectivityManager.NetworkCallback() {
+class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityManager.NetworkCallback() {
     private var lastNetwork: Network? = null
     private var lastDns: List<InetAddress>? = null
 
@@ -16,15 +17,19 @@ class NetworkMonitor(private val connlibSessionPtr: Long) : ConnectivityManager.
         linkProperties: LinkProperties,
     ) {
         Log.d("NetworkMonitor", "OnLinkPropertiesChanged: $network: $linkProperties")
+        if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
+            tunnelService.tunnelState = TunnelService.Companion.State.UP
+            tunnelService.updateStatusNotification("Status: Connected")
+        }
 
         if (lastDns != linkProperties.dnsServers) {
             lastDns = linkProperties.dnsServers
-            ConnlibSession.setDns(connlibSessionPtr, Gson().toJson(linkProperties.dnsServers))
+            ConnlibSession.setDns(tunnelService.connlibSessionPtr!!, Gson().toJson(linkProperties.dnsServers))
         }
 
         if (lastNetwork != network) {
             lastNetwork = network
-            ConnlibSession.reconnect(connlibSessionPtr)
+            ConnlibSession.reconnect(tunnelService.connlibSessionPtr!!)
         }
         super.onLinkPropertiesChanged(network, linkProperties)
     }
