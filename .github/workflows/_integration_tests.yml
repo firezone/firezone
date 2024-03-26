@@ -59,6 +59,14 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      http_test_server_image:
+        required: false
+        type: string
+        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server'
+      http_test_server_tag:
+        required: false
+        type: string
+        default: ${{ github.sha }}
 
 jobs:
   integration-tests:
@@ -83,6 +91,8 @@ jobs:
       CLIENT_TAG: ${{ inputs.client_tag }}
       ELIXIR_IMAGE: ${{ inputs.elixir_image }}
       ELIXIR_TAG: ${{ inputs.elixir_tag }}
+      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
+      HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +103,7 @@ jobs:
           direct-curl-portal-down,
           relayed-curl-portal-down,
           direct-curl-portal-relay-down,
+          direct-download-roaming-network,
           dns-etc-resolvconf,
           dns-nm,
           systemd/dns-systemd-resolved,
@@ -108,7 +119,7 @@ jobs:
       - name: Start docker compose in the background
         run: |
           # Start one-by-one to avoid variability in service startup order
-          docker compose up -d dns.httpbin httpbin
+          docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build

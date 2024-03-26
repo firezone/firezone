@@ -357,6 +357,22 @@ services:
       resources:
         ipv4_address: 172.20.0.100
 
+  download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
+    build:
+      target: dev
+      context: rust
+      dockerfile: Dockerfile
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/http-test-server:main
+      args:
+        PACKAGE: http-test-server
+    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
+    environment:
+      PORT: 80
+    networks:
+      dns_resources:
+        ipv4_address: 172.21.0.101
+
   dns.httpbin:
     image: kennethreitz/httpbin
     healthcheck:

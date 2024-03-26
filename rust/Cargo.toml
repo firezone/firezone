@@ -15,6 +15,7 @@ members = [
   "relay",
   "gui-client/src-tauri",
   "http-health-check",
+  "http-test-server",
 ]
 
 resolver = "2"
