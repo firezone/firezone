@@ -103,6 +103,81 @@ defmodule Web.LiveTable do
     """
   end
 
+  def datetime_input(assigns) do
+    ~H"""
+    <div phx-feedback-for={@field.name} class={["flex items-center"]}>
+      <input
+        placeholder={"#{@filter.title} Started At"}
+        type="date"
+        name={"#{@field.name}[#{@from_or_to}][date]"}
+        id={"#{@field.id}[#{@from_or_to}][date]"}
+        value={normalize_value("date", Map.get(@field.value || %{}, @from_or_to))}
+        max={@max}
+        min="2023-01-01"
+        autocomplete="off"
+        class={[
+          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
+          "block w-1/2 mr-1",
+          "phx-no-feedback:border-neutral-300",
+          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+          "focus:outline-none focus:border-1 focus:ring-0",
+          "border-neutral-300",
+          @field.errors != [] && "border-rose-400"
+        ]}
+      />
+      <input
+        type="time"
+        step="1"
+        placeholder={"#{@filter.title} Started At"}
+        name={@field.name <> "[#{@from_or_to}][time]"}
+        id={@field.id <> "[#{@from_or_to}][time]"}
+        value={normalize_value("time", Map.get(@field.value || %{}, @from_or_to)) || "00:00:00"}
+        class={[
+          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
+          "block w-1/2",
+          "phx-no-feedback:border-neutral-300",
+          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+          "focus:outline-none focus:border-1 focus:ring-0",
+          "border-neutral-300",
+          @field.errors != [] && "border-rose-400"
+        ]}
+      />
+      <.error :for={msg <- @field.errors} data-validation-error-for={@field.name}>
+        <%= msg %>
+      </.error>
+    </div>
+    """
+  end
+
+  defp normalize_value("date", %DateTime{} = datetime),
+    do: DateTime.to_date(datetime) |> Date.to_iso8601()
+
+  defp normalize_value("time", %DateTime{} = datetime),
+    do: DateTime.to_time(datetime) |> Time.to_iso8601()
+
+  defp normalize_value(_, nil),
+    do: nil
+
+  defp filter(%{filter: %{type: {:range, :datetime}}} = assigns) do
+    ~H"""
+    <div class="flex items-center">
+      <.datetime_input
+        field={@form[@filter.name]}
+        filter={@filter}
+        from_or_to={:from}
+        max={Date.utc_today()}
+      />
+      <div class="mx-2 text-neutral-500">to</div>
+      <.datetime_input
+        field={@form[@filter.name]}
+        filter={@filter}
+        from_or_to={:to}
+        max={Date.utc_today()}
+      />
+    </div>
+    """
+  end
+
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
     <div class={["relative w-full"]} phx-feedback-for={@form[@filter.name].name}>
@@ -459,73 +534,90 @@ defmodule Web.LiveTable do
   with the new state.
   """
   def handle_live_tables_params(socket, params, uri) do
-    socket =
-      Enum.reduce(socket.assigns.live_table_ids, socket, fn id, socket ->
-        handle_live_table_params(socket, params, id)
-      end)
+    socket = assign(socket, uri: uri)
 
-    assign(socket, uri: uri)
+    Enum.reduce(socket.assigns.live_table_ids, socket, fn id, socket ->
+      handle_live_table_params(socket, params, id)
+    end)
   end
 
   defp handle_live_table_params(socket, params, id) do
     enforced_filters = Map.fetch!(socket.assigns.enforced_filters_by_table_id, id)
-    filter = enforced_filters ++ params_to_filter(id, params)
+    sortable_fields = Map.fetch!(socket.assigns.sortable_fields_by_table_id, id)
     limit = Map.fetch!(socket.assigns.limit_by_table_id, id)
-    page = params_to_page(id, limit, params)
 
-    order_by =
-      socket.assigns.sortable_fields_by_table_id
-      |> Map.fetch!(id)
-      |> params_to_order_by(id, params)
+    with {:ok, filter} <- params_to_filter(id, params),
+         filter = enforced_filters ++ filter,
+         {:ok, page} <- params_to_page(id, limit, params),
+         {:ok, order_by} <- params_to_order_by(sortable_fields, id, params) do
+      list_opts = [
+        page: page,
+        filter: filter,
+        order_by: List.wrap(order_by)
+      ]
 
-    list_opts = [
-      page: page,
-      filter: filter,
-      order_by: List.wrap(order_by)
-    ]
+      case maybe_apply_callback(socket, id, list_opts) do
+        {:ok, socket} ->
+          socket
+          |> assign(
+            filter_form_by_table_id:
+              put_table_state(
+                socket,
+                id,
+                :filter_form_by_table_id,
+                filter_to_form(filter, id)
+              ),
+            order_by_table_id:
+              put_table_state(
+                socket,
+                id,
+                :order_by_table_id,
+                order_by
+              ),
+            list_opts_by_table_id:
+              put_table_state(
+                socket,
+                id,
+                :list_opts_by_table_id,
+                list_opts
+              )
+          )
 
-    case maybe_apply_callback(socket, id, list_opts) do
-      {:ok, socket} ->
-        socket
-        |> assign(
-          filter_form_by_table_id:
-            put_table_state(
-              socket,
-              id,
-              :filter_form_by_table_id,
-              filter_to_form(filter, id)
-            ),
-          order_by_table_id:
-            put_table_state(
-              socket,
-              id,
-              :order_by_table_id,
-              order_by
-            ),
-          list_opts_by_table_id:
-            put_table_state(
-              socket,
-              id,
-              :list_opts_by_table_id,
-              list_opts
-            )
-        )
+        {:error, :invalid_cursor} ->
+          message = "The page was reset due to invalid pagination cursor."
+          reset_live_table_params(socket, id, message)
 
-      {:error, :invalid_cursor} ->
-        raise Web.LiveErrors.InvalidRequestError
+        {:error, {:unknown_filter, _metadata}} ->
+          message = "The page was reset due to use of undefined pagination filter."
+          reset_live_table_params(socket, id, message)
 
-      {:error, {:unknown_filter, _metadata}} ->
-        raise Web.LiveErrors.InvalidRequestError
+        {:error, {:invalid_type, _metadata}} ->
+          message = "The page was reset due to invalid value of a pagination filter."
+          reset_live_table_params(socket, id, message)
 
-      {:error, {:invalid_type, _metadata}} ->
-        raise Web.LiveErrors.InvalidRequestError
+        {:error, {:invalid_value, _metadata}} ->
+          message = "The page was reset due to invalid value of a pagination filter."
+          reset_live_table_params(socket, id, message)
 
-      {:error, {:invalid_value, _metadata}} ->
-        raise Web.LiveErrors.InvalidRequestError
-
-      {:error, _reason} ->
-        raise Web.LiveErrors.NotFoundError
+        {:error, _reason} ->
+          raise Web.LiveErrors.NotFoundError
+      end
+    else
+      {:error, :invalid_filter} ->
+        message = "The page was reset due to invalid pagination filter."
+        reset_live_table_params(socket, id, message)
     end
+  end
+
+  defp reset_live_table_params(socket, id, message) do
+    {:noreply, socket} =
+      socket
+      |> put_flash(:error, message)
+      |> update_query_params(fn query_params ->
+        Map.reject(query_params, fn {key, _} -> String.starts_with?(key, "#{id}_") end)
+      end)
+
+    socket
   end
 
   defp maybe_apply_callback(socket, id, list_opts) do
@@ -558,19 +650,59 @@ defmodule Web.LiveTable do
 
   defp params_to_page(id, limit, params) do
     if cursor = Map.get(params, "#{id}_cursor") do
-      [cursor: cursor, limit: limit]
+      {:ok, [cursor: cursor, limit: limit]}
     else
-      [limit: limit]
+      {:ok, [limit: limit]}
     end
   end
 
   defp params_to_filter(id, params) do
-    for {key, value} <- Map.get(params, "#{id}_filter", []),
-        value != "" do
-      {String.to_existing_atom(key), value}
+    params
+    |> Map.get("#{id}_filter", [])
+    |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, acc} ->
+      case cast_filter(value) do
+        {:ok, nil} -> {:cont, acc}
+        {:ok, value} -> {:cont, {:ok, [{String.to_existing_atom(key), value}] ++ acc}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp cast_filter(%{"from" => from, "to" => to}) do
+    with {:ok, from, 0} <- DateTime.from_iso8601(from),
+         {:ok, to, 0} <- DateTime.from_iso8601(to) do
+      {:ok, %Domain.Repo.Filter.Range{from: from, to: to}}
+    else
+      _other -> {:error, :invalid_filter}
     end
-  rescue
-    ArgumentError -> []
+  end
+
+  defp cast_filter(%{"to" => to}) do
+    with {:ok, to, 0} <- DateTime.from_iso8601(to) do
+      {:ok, %Domain.Repo.Filter.Range{to: to}}
+    else
+      _other -> {:error, :invalid_filter}
+    end
+  end
+
+  defp cast_filter(%{"from" => from}) do
+    with {:ok, from, 0} <- DateTime.from_iso8601(from) do
+      {:ok, %Domain.Repo.Filter.Range{from: from}}
+    else
+      _other -> {:error, :invalid_filter}
+    end
+  end
+
+  defp cast_filter("") do
+    {:ok, nil}
+  end
+
+  defp cast_filter(binary) when is_binary(binary) do
+    {:ok, binary}
+  end
+
+  defp cast_filter(_other) do
+    {:error, :invalid_filter}
   end
 
   @doc false
@@ -583,8 +715,11 @@ defmodule Web.LiveTable do
   end
 
   defp params_to_order_by(sortable_fields, id, params) do
-    Map.get(params, "#{id}_order_by", "")
-    |> parse_order_by(sortable_fields)
+    order_by =
+      Map.get(params, "#{id}_order_by", "")
+      |> parse_order_by(sortable_fields)
+
+    {:ok, order_by}
   end
 
   defp parse_order_by(order_by, sortable_fields) do
@@ -680,16 +815,61 @@ defmodule Web.LiveTable do
   end
 
   defp put_filter_to_params(params, id, filter) do
-    filter_params =
-      for {key, value} <- filter,
-          value != "",
-          value != "__all__",
-          into: %{} do
-        {"#{id}_filter[#{key}]", value}
-      end
+    filter_params = flatten_filter(filter, "#{id}_filter", %{})
 
     params
     |> Map.reject(fn {key, _} -> String.starts_with?(key, "#{id}_filter") end)
     |> Map.merge(filter_params)
+  end
+
+  defp flatten_filter([], _key_prefix, acc) do
+    acc
+  end
+
+  defp flatten_filter(map, key_prefix, acc) when is_map(map) do
+    flatten_filter(Map.to_list(map), key_prefix, acc)
+  end
+
+  defp flatten_filter([{_key, ""} | rest], key_prefix, acc) do
+    flatten_filter(rest, key_prefix, acc)
+  end
+
+  defp flatten_filter([{_key, "__all__"} | rest], key_prefix, acc) do
+    flatten_filter(rest, key_prefix, acc)
+  end
+
+  defp flatten_filter([{key, %{"date" => _} = datetime_range_filter} | rest], key_prefix, acc) do
+    if value = normalize_datetime_filter(datetime_range_filter) do
+      flatten_filter(rest, key_prefix, Map.put(acc, "#{key_prefix}[#{key}]", value))
+    else
+      flatten_filter(rest, key_prefix, acc)
+    end
+  end
+
+  defp flatten_filter([{key, value} | rest], key_prefix, acc)
+       when is_list(value) or is_map(value) do
+    acc = Map.merge(acc, flatten_filter(value, "#{key_prefix}[#{key}]", %{}))
+    flatten_filter(rest, key_prefix, acc)
+  end
+
+  defp flatten_filter([{key, value} | rest], key_prefix, acc) do
+    flatten_filter(rest, key_prefix, Map.put(acc, "#{key_prefix}[#{key}]", value))
+  end
+
+  defp normalize_datetime_filter(params) do
+    with {:ok, date} <- Date.from_iso8601(params["date"]),
+         {:ok, time} <- normalize_time_filter(params["time"] || "00:00:00") do
+      DateTime.new!(date, time) |> DateTime.to_iso8601()
+    else
+      _other -> nil
+    end
+  end
+
+  defp normalize_time_filter(time) when byte_size(time) == 5 do
+    Time.from_iso8601(time <> ":00")
+  end
+
+  defp normalize_time_filter(time) do
+    Time.from_iso8601(time)
   end
 end
