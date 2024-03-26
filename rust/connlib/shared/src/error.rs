@@ -118,7 +118,7 @@ pub enum ConnlibError {
     /// Any parse error
     #[error("parse error")]
     ParseError,
-    /// Connection is still being stablished, retry later
+    /// Connection is still being established, retry later
     #[error("Pending connection")]
     PendingConnection,
     #[error(transparent)]
