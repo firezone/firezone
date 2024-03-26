@@ -175,9 +175,30 @@ mod tests {
     struct Callbacks {}
     impl connlib_shared::Callbacks for Callbacks {}
 
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     #[ignore = "Performs system-wide I/O, needs sudo"]
-    async fn client_tunnel() {
+    async fn device_linux() {
+        device_common().await;
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    #[ignore = "Performs system-wide I/O, needs sudo"]
+    async fn device_windows() {
+        // Install wintun so the test can run
+        // CI only needs x86_64 for now
+        let wintun_bytes = include_bytes!("../../../../gui-client/wintun/bin/amd64/wintun.dll");
+        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&wintun_path, wintun_bytes).await.unwrap();
+
+        device_common().await;
+    }
+
+    async fn device_common() {
         let (private_key, _public_key) = connlib_shared::keypair();
         let sockets = crate::Sockets::new().unwrap();
         let callbacks = Callbacks::default();
