@@ -195,19 +195,6 @@ impl Callbacks for CallbackHandler {
         .expect("onSetInterfaceConfig callback failed")
     }
 
-    fn on_tunnel_ready(&self) {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onTunnelReady",
-                "()Z",
-                &[],
-            )
-        })
-        .expect("onTunnelReady callback failed")
-    }
-
     fn on_update_routes(
         &self,
         route_list_4: Vec<Cidrv4>,
