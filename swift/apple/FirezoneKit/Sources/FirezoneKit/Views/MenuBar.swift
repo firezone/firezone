@@ -20,7 +20,7 @@
 
     private var resources: [Resource]?
     private var isMenuVisible = false {
-      didSet { handleMenuVisibilityOrStatusChanged() }
+      didSet { handleMenuVisibilityOrStatusChanged(status: tunnelStore.status) }
     }
     private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
@@ -57,9 +57,9 @@
         .receive(on: mainQueue)
         .sink { [weak self] status in
           guard let self = self else { return }
-          self.updateStatusItemIcon()
-          self.handleTunnelStatusChanged()
-          self.handleMenuVisibilityOrStatusChanged()
+          self.updateStatusItemIcon(status: status)
+          self.handleTunnelStatusChanged(status: status)
+          self.handleMenuVisibilityOrStatusChanged(status: status)
         }
         .store(in: &cancellables)
 
@@ -230,9 +230,9 @@
       }
     }
 
-    private func updateStatusItemIcon() {
+    private func updateStatusItemIcon(status: NEVPNStatus) {
       self.statusItem.button?.image = {
-        switch tunnelStore.status {
+        switch status {
         case .invalid, .disconnected:
           self.stopConnectingAnimation()
           return self.signedOutIcon
@@ -261,10 +261,8 @@
     }
 
     private func stopConnectingAnimation() {
-      if let connectingAnimationTimer = connectingAnimationTimer {
-        connectingAnimationTimer.invalidate()
-        self.connectingAnimationTimer = nil
-      }
+      connectingAnimationTimer?.invalidate()
+      self.connectingAnimationTimer = nil
     }
 
     private func connectingAnimationShowNextFrame() {
@@ -274,9 +272,9 @@
         (self.connectingAnimationImageIndex + 1) % self.connectingAnimationImages.count
     }
 
-    private func handleTunnelStatusChanged() {
+    private func handleTunnelStatusChanged(status: NEVPNStatus) {
       // Update "Sign In" / "Sign Out" menu items
-      switch tunnelStore.status {
+      switch status {
       case .invalid:
         signInMenuItem.title = "Requires VPN permission"
         signInMenuItem.target = nil
@@ -350,7 +348,7 @@
         break
       }
       quitMenuItem.title = {
-        switch tunnelStore.status {
+        switch status {
         case .connected, .connecting:
           return "Disconnect and Quit"
         default:
@@ -369,8 +367,8 @@
       }
     }
 
-    private func handleMenuVisibilityOrStatusChanged() {
-      if isMenuVisible && tunnelStore.status == .connected {
+    private func handleMenuVisibilityOrStatusChanged(status: NEVPNStatus) {
+      if isMenuVisible && status == .connected {
         tunnelStore.beginUpdatingResources()
       } else {
         tunnelStore.endUpdatingResources()
