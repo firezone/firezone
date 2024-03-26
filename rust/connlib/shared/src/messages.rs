@@ -140,7 +140,7 @@ impl PartialEq for RequestConnection {
 
 impl Eq for RequestConnection {}
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Dns(TDNS),
@@ -285,7 +285,7 @@ impl ResourceDescription {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
