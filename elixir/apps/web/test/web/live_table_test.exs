@@ -474,7 +474,7 @@ defmodule Web.LiveTableTest do
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{subject: subject, uri: "/current_uri", __changed__: %{}}
+          assigns: %{subject: subject, uri: "http://foo.bar/current_uri", __changed__: %{}}
         }
         |> assign_live_table("table-id",
           query_module: Actors.Actor.Query,

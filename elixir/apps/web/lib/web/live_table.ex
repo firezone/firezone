@@ -432,7 +432,8 @@ defmodule Web.LiveTable do
 
     case callback.(socket, list_opts) do
       {:error, _reason} ->
-        push_navigate(socket, to: socket.assigns.uri)
+        uri = URI.parse(socket.assigns.uri)
+        push_navigate(socket, to: uri.path)
 
       {:ok, socket} ->
         :ok = maybe_notify_test_pid(id)
