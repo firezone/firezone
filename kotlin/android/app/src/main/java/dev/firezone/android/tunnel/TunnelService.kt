@@ -112,6 +112,12 @@ class TunnelService : VpnService() {
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
 
+                // For Android we consider that we need to get the DNS to be up and running
+                if (tunnelDnsAddresses.isNotEmpty() && tunnelState != State.UP) {
+                    tunnelState = State.UP
+                    updateStatusNotification("Status: Connected")
+                }
+
                 // start VPN
                 return buildVpnService()
             }
@@ -366,12 +372,6 @@ class TunnelService : VpnService() {
             setSession(SESSION_NAME)
             setMtu(MTU)
         }.establish()!!.let {
-            // For Android we consider that we need to get the DNS to be up and running
-            if (tunnelDnsAddresses.isNotEmpty()) {
-                tunnelState = State.UP
-                updateStatusNotification("Status: Connected")
-            }
-
             return it.detachFd()
         }
     }
