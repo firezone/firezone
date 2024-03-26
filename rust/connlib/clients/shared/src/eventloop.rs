@@ -25,7 +25,6 @@ use url::Url;
 
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel<C>,
-    tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
@@ -50,7 +49,6 @@ impl<C: Callbacks> Eventloop<C> {
         Self {
             tunnel,
             portal,
-            tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
             log_upload_interval: upload_interval(),
             rx,
@@ -189,18 +187,13 @@ where
                 interface,
                 resources,
             }) => {
-                if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(interface) {
-                        tracing::warn!("Failed to set interface on tunnel: {e}");
-                        return;
-                    }
-
-                    self.tunnel_init = true;
-                    tracing::info!("Firezone Started!");
-                    let _ = self.tunnel.add_resources(&resources);
-                } else {
-                    tracing::info!("Firezone reinitializated");
+                if let Err(e) = self.tunnel.set_interface(interface) {
+                    tracing::warn!("Failed to set interface on tunnel: {e}");
+                    return;
                 }
+
+                tracing::info!("Firezone Started!");
+                let _ = self.tunnel.add_resources(&resources);
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
@@ -210,7 +203,7 @@ where
                 }
             }
             IngressMessages::ResourceDeleted(RemoveResource(resource)) => {
-                self.tunnel.remove_resource(resource);
+                self.tunnel.remove_resources(&[resource]);
             }
         }
     }
