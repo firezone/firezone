@@ -192,7 +192,11 @@ mod tests {
         let resources = vec![];
         tunnel.add_resources(&resources).unwrap();
 
-        let tunnel = tokio::spawn(async move { std::future::poll_fn(|cx| tunnel.poll_next_event(cx)).await.unwrap() });
+        let tunnel = tokio::spawn(async move {
+            std::future::poll_fn(|cx| tunnel.poll_next_event(cx))
+                .await
+                .unwrap()
+        });
 
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
