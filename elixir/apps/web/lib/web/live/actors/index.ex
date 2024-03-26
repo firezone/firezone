@@ -9,6 +9,8 @@ defmodule Web.Actors.Index do
       |> assign(page_title: "Actors")
       |> assign_live_table("actors",
         query_module: Actors.Actor.Query,
+        # TODO[bmanifold]: Enable this filter once we start collapsing them
+        hide_filters: [:type],
         sortable_fields: [
           {:actors, :name}
         ],
