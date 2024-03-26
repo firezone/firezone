@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, Session};
+use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
 use connlib_shared::{
     keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
 
     let session = Session::connect(
         login,
+        Sockets::new(),
         private_key,
         None,
         callbacks.clone(),
@@ -55,7 +56,7 @@ async fn main() -> Result<()> {
         if sigint.poll_recv(cx).is_ready() {
             tracing::debug!("Received SIGINT");
 
-            return Poll::Ready(());
+            return Poll::Ready(std::io::Result::Ok(()));
         }
 
         if sighup.poll_recv(cx).is_ready() {
@@ -67,7 +68,7 @@ async fn main() -> Result<()> {
 
         return Poll::Pending;
     })
-    .await;
+    .await?;
 
     session.disconnect();
 

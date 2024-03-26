@@ -3,7 +3,7 @@ pub use connlib_shared::messages::ResourceDescription;
 pub use connlib_shared::{
     keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
-use tokio::sync::mpsc::UnboundedReceiver;
+pub use firezone_tunnel::Sockets;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
@@ -12,6 +12,7 @@ use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
 use std::net::IpAddr;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 mod eventloop;
 pub mod file_logger;
@@ -37,6 +38,7 @@ impl Session {
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         url: LoginUrl,
+        sockets: Sockets,
         private_key: StaticSecret,
         os_version_override: Option<String>,
         callbacks: CB,
@@ -47,6 +49,7 @@ impl Session {
 
         let connect_handle = handle.spawn(connect(
             url,
+            sockets,
             private_key,
             os_version_override,
             callbacks.clone(),
@@ -60,20 +63,34 @@ impl Session {
 
     /// Attempts to reconnect a [`Session`].
     ///
-    /// This can and should be called by client applications on any network state changes.
-    /// It is a signal to connlib to:
+    /// Reconnecting a session will:
     ///
-    /// - validate all currently used network paths to relays and peers
-    /// - ensure we are connected to the portal
+    /// - Close and re-open a connection to the portal.
+    /// - Refresh all allocations
+    /// - Rebind local UDP sockets
     ///
-    /// Reconnect is non-destructive and can be called several times in a row.
+    /// # Implementation note
     ///
-    /// In case of destructive network state changes, i.e. the user switched from wifi to cellular,
-    /// reconnect allows connlib to re-establish connections faster because we don't have to wait for timeouts first.
+    /// The reason we rebind the UDP sockets are:
+    ///
+    /// 1. On MacOS, as socket bound to the unspecified IP cannot send to interfaces attached after the socket has been created.
+    /// 2. Switching between networks changes the 3-tuple of the client.
+    ///    The TURN protocol identifies a client's allocation based on the 3-tuple.
+    ///    Consequently, an allocation is invalid after switching networks and we clear the state.
+    ///    Changing the IP would be enough for that.
+    ///    However, if the user would now change _back_ to the previous network,
+    ///    the TURN server would recognise the old allocation but the client already lost all its state associated with it.
+    ///    To avoid race-conditions like this, we rebind the sockets to a new port.
     pub fn reconnect(&self) {
         let _ = self.channel.send(Command::Reconnect);
     }
 
+    /// Sets a new set of upstream DNS servers for this [`Session`].
+    ///
+    /// Changing the DNS servers clears all cached DNS requests which may be disruptive to the UX.
+    /// Clients should only call this when relevant.
+    ///
+    /// The implementation is idempotent; calling it with the same set of servers is safe.
     pub fn set_dns(&self, new_dns: Vec<IpAddr>) {
         let _ = self.channel.send(Command::SetDns(new_dns));
     }
@@ -91,6 +108,7 @@ impl Session {
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
     url: LoginUrl,
+    sockets: Sockets,
     private_key: StaticSecret,
     os_version_override: Option<String>,
     callbacks: CB,
@@ -100,7 +118,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, callbacks.clone())?;
+    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),

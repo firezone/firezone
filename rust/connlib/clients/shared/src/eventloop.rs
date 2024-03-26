@@ -18,7 +18,7 @@ use std::{
     net::IpAddr,
     path::PathBuf,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::time::{Interval, MissedTickBehavior};
 use url::Url;
@@ -62,15 +62,20 @@ impl<C> Eventloop<C>
 where
     C: Callbacks + 'static,
 {
-    #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
-                Poll::Ready(Some(Command::SetDns(dns))) => self.tunnel.set_dns(dns, Instant::now()),
+                Poll::Ready(Some(Command::SetDns(dns))) => {
+                    if let Err(e) = self.tunnel.set_dns(dns) {
+                        tracing::warn!("Failed to update DNS: {e}");
+                    }
+                }
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
-                    self.tunnel.reconnect();
+                    if let Err(e) = self.tunnel.reconnect() {
+                        tracing::warn!("Failed to reconnect tunnel: {e}");
+                    }
 
                     continue;
                 }
@@ -259,7 +264,7 @@ where
 
                 match self
                     .tunnel
-                    .request_connection(resource_id, gateway_id, relays)
+                    .create_or_reuse_connection(resource_id, gateway_id, relays)
                 {
                     Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
                         // TODO: keep track for the response

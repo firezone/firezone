@@ -13,10 +13,47 @@ use crate::Result;
 pub struct Sockets {
     socket_v4: Option<Socket>,
     socket_v6: Option<Socket>,
+
+    #[cfg(unix)]
+    protect: Box<dyn Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static>,
+}
+
+impl Default for Sockets {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Sockets {
-    pub fn new() -> io::Result<Self> {
+    #[cfg(unix)]
+    pub fn with_protect(
+        protect: impl Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static,
+    ) -> Self {
+        Self {
+            socket_v4: None,
+            socket_v6: None,
+            #[cfg(unix)]
+            protect: Box::new(protect),
+        }
+    }
+
+    pub fn new() -> Self {
+        Self {
+            socket_v4: None,
+            socket_v6: None,
+            #[cfg(unix)]
+            protect: Box::new(|_| Ok(())),
+        }
+    }
+
+    pub fn can_handle(&self, addr: &SocketAddr) -> bool {
+        match addr {
+            SocketAddr::V4(_) => self.socket_v4.is_some(),
+            SocketAddr::V6(_) => self.socket_v6.is_some(),
+        }
+    }
+
+    pub fn rebind(&mut self) -> io::Result<()> {
         let socket_v4 = Socket::ip4();
         let socket_v6 = Socket::ip6();
 
@@ -39,31 +76,23 @@ impl Sockets {
             _ => (),
         }
 
-        Ok(Self {
-            socket_v4: socket_v4.ok(),
-            socket_v6: socket_v6.ok(),
-        })
-    }
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
 
-    pub fn can_handle(&self, addr: &SocketAddr) -> bool {
-        match addr {
-            SocketAddr::V4(_) => self.socket_v4.is_some(),
-            SocketAddr::V6(_) => self.socket_v6.is_some(),
+            if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
+                (self.protect)(fd)?;
+            }
+
+            if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
+                (self.protect)(fd)?;
+            }
         }
-    }
 
-    #[cfg(target_os = "android")]
-    pub fn ip4_socket_fd(&self) -> Option<std::os::fd::RawFd> {
-        use std::os::fd::AsRawFd;
+        self.socket_v4 = socket_v4.ok();
+        self.socket_v6 = socket_v6.ok();
 
-        self.socket_v4.as_ref().map(|s| s.socket.as_raw_fd())
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn ip6_socket_fd(&self) -> Option<std::os::fd::RawFd> {
-        use std::os::fd::AsRawFd;
-
-        self.socket_v6.as_ref().map(|s| s.socket.as_raw_fd())
+        Ok(())
     }
 
     /// Flushes all buffered data on the sockets.

@@ -3,6 +3,7 @@
 
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, ResourceDescription, Session,
+    Sockets,
 };
 use secrecy::SecretString;
 use std::{
@@ -204,6 +205,7 @@ impl WrappedSession {
 
         let session = Session::connect(
             login,
+            Sockets::new(),
             private_key,
             os_version_override,
             CallbackHandler {

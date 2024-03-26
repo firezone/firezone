@@ -7,7 +7,7 @@ use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
-    Relay, ResourceId,
+    Relay, ResolvedResourceDescriptionDns, ResourceDescription, ResourceId,
 };
 use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
@@ -22,28 +22,10 @@ const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
-/// Description of a resource that maps to a DNS record which had its domain already resolved.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ResolvedResourceDescriptionDns {
-    pub id: ResourceId,
-    /// Internal resource's domain name.
-    pub domain: String,
-    /// Name of the resource.
-    ///
-    /// Used only for display.
-    pub name: String,
-
-    pub addresses: Vec<IpNetwork>,
-}
-
-pub type ResourceDescription =
-    connlib_shared::messages::ResourceDescription<ResolvedResourceDescriptionDns>;
-
 impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    /// Sets the interface configuration and starts background tasks.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
@@ -64,12 +46,6 @@ where
     }
 
     /// Accept a connection request from a client.
-    ///
-    /// Sets a connection to a remote SDP, creates the local SDP
-    /// and returns it.
-    ///
-    /// # Returns
-    /// The connection details
     #[allow(clippy::too_many_arguments)]
     pub fn accept(
         &mut self,
@@ -81,7 +57,7 @@ where
         relays: Vec<Relay>,
         domain: Option<Dname>,
         expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
         let (resource_addresses, id) = match &resource {
             ResourceDescription::Dns(r) => {
@@ -130,14 +106,13 @@ where
         })
     }
 
-    /// Clean up a connection to a resource.
     pub fn cleanup_connection(&mut self, id: &ClientId) {
         self.role_state.peers.remove(id);
     }
 
     pub fn allow_access(
         &mut self,
-        resource: ResourceDescription,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
@@ -176,15 +151,18 @@ where
         None
     }
 
-    pub fn remove_access(&mut self, id: &ClientId, resource_id: &ResourceId) {
-        let Some(peer) = self.role_state.peers.get_mut(id) else {
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource, %client))]
+    pub fn remove_access(&mut self, client: &ClientId, resource: &ResourceId) {
+        let Some(peer) = self.role_state.peers.get_mut(client) else {
             return;
         };
 
-        peer.transform.remove_resource(resource_id);
+        peer.transform.remove_resource(resource);
         if peer.transform.is_emptied() {
-            self.role_state.peers.remove(id);
+            self.role_state.peers.remove(client);
         }
+
+        tracing::debug!("Access removed");
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {

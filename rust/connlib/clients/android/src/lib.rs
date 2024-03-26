@@ -5,7 +5,7 @@
 
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
-    ResourceDescription, Session,
+    ResourceDescription, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -67,6 +67,8 @@ pub enum CallbackError {
         name: &'static str,
         source: jni::errors::Error,
     },
+    #[error(transparent)]
+    Io(#[from] io::Error),
 }
 
 impl CallbackHandler {
@@ -78,6 +80,18 @@ impl CallbackHandler {
             .attach_current_thread_as_daemon()
             .map_err(CallbackError::AttachCurrentThreadFailed)
             .and_then(f)
+    }
+
+    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), CallbackError> {
+        self.env(|mut env| {
+            call_method(
+                &mut env,
+                &self.callback_handler,
+                "protectFileDescriptor",
+                "(I)V",
+                &[JValue::Int(file_descriptor)],
+            )
+        })
     }
 }
 
@@ -181,19 +195,6 @@ impl Callbacks for CallbackHandler {
         .expect("onSetInterfaceConfig callback failed")
     }
 
-    fn on_tunnel_ready(&self) {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "onTunnelReady",
-                "()Z",
-                &[],
-            )
-        })
-        .expect("onTunnelReady callback failed")
-    }
-
     fn on_update_routes(
         &self,
         route_list_4: Vec<Cidrv4>,
@@ -225,20 +226,6 @@ impl Callbacks for CallbackHandler {
             .map_err(|source| CallbackError::CallMethodFailed { name, source })
         })
         .expect("onUpdateRoutes callback failed")
-    }
-
-    #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) {
-        self.env(|mut env| {
-            call_method(
-                &mut env,
-                &self.callback_handler,
-                "protectFileDescriptor",
-                "(I)V",
-                &[JValue::Int(file_descriptor)],
-            )
-        })
-        .expect("protectFileDescriptor callback failed");
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -326,6 +313,8 @@ enum ConnectError {
     InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
     #[error("Unable to create tokio runtime: {0}")]
     UnableToCreateRuntime(#[from] io::Error),
+    #[error(transparent)]
+    CallbackError(#[from] CallbackError),
 }
 
 macro_rules! string_from_jstring {
@@ -386,8 +375,18 @@ fn connect(
         .enable_all()
         .build()?;
 
+    let sockets = Sockets::with_protect({
+        let callbacks = callback_handler.clone();
+        move |fd| {
+            callbacks
+                .protect_file_descriptor(fd)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        }
+    });
+
     let session = Session::connect(
         login,
+        sockets,
         private_key,
         Some(os_version),
         callback_handler,

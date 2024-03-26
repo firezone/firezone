@@ -23,6 +23,8 @@ use tokio_tungstenite::{
 };
 
 pub use login_url::{LoginUrl, LoginUrlError};
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
@@ -30,7 +32,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
-    next_request_id: u64,
+    next_request_id: Arc<AtomicU64>,
 
     heartbeat: Heartbeat,
 
@@ -189,15 +191,6 @@ impl fmt::Display for OutboundRequestId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct InboundRequestId(u64);
-
-impl fmt::Display for InboundRequestId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "InReq-{}", self.0)
-    }
-}
-
 impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
     TInitReq: Serialize + Clone,
@@ -217,6 +210,8 @@ where
         init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
     ) -> Self {
+        let next_request_id = Arc::new(AtomicU64::new(0));
+
         Self {
             reconnect_backoff,
             url: url.clone(),
@@ -231,8 +226,12 @@ where
             waker: None,
             pending_messages: Default::default(),
             _phantom: PhantomData,
-            next_request_id: 0,
-            heartbeat: Default::default(),
+            heartbeat: Heartbeat::new(
+                heartbeat::INTERVAL,
+                heartbeat::TIMEOUT,
+                next_request_id.clone(),
+            ),
+            next_request_id,
             pending_join_requests: Default::default(),
             login,
             init_req: init_req.clone(),
@@ -335,18 +334,26 @@ where
             };
 
             // Priority 1: Keep local buffers small and send pending messages.
-            if stream.poll_ready_unpin(cx).is_ready() {
-                if let Some(message) = self.pending_messages.pop_front() {
-                    tracing::trace!(target: "wire", to="portal", %message);
-
-                    match stream.start_send_unpin(Message::Text(message)) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            self.reconnect_on_transient_error(InternalError::WebSocket(e));
+            match stream.poll_ready_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    if let Some(message) = self.pending_messages.pop_front() {
+                        match stream.start_send_unpin(Message::Text(message.clone())) {
+                            Ok(()) => {
+                                tracing::trace!(target: "wire", to="portal", %message);
+                            }
+                            Err(e) => {
+                                self.pending_messages.push_front(message);
+                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                            }
                         }
+                        continue;
                     }
+                }
+                Poll::Ready(Err(e)) => {
+                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
+                Poll::Pending => {}
             }
 
             // Priority 2: Handle incoming messages.
@@ -448,10 +455,12 @@ where
 
             // Priority 3: Handle heartbeats.
             match self.heartbeat.poll(cx) {
-                Poll::Ready(Ok(msg)) => {
-                    let (id, msg) = self.make_message("phoenix", msg);
-                    self.pending_messages.push_back(msg);
-                    self.heartbeat.set_id(id);
+                Poll::Ready(Ok(id)) => {
+                    self.pending_messages.push_back(serialize_msg(
+                        "phoenix",
+                        EgressControlMessage::<()>::Heartbeat(Empty {}),
+                        id.copy(),
+                    ));
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
                 }
@@ -493,19 +502,15 @@ where
         let request_id = self.fetch_add_request_id();
 
         // We don't care about the reply type when serializing
-        let msg = serde_json::to_string(&PhoenixMessage::<_, ()>::new_message(
-            topic,
-            payload,
-            Some(request_id.copy()),
-        ))
-        .expect("we should always be able to serialize a join topic message");
+        let msg = serialize_msg(topic, payload, request_id.copy());
 
         (request_id, msg)
     }
 
     fn fetch_add_request_id(&mut self) -> OutboundRequestId {
-        let next_id = self.next_request_id;
-        self.next_request_id += 1;
+        let next_id = self
+            .next_request_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         OutboundRequestId(next_id)
     }
@@ -684,6 +689,19 @@ fn make_request(url: Secret<LoginUrl>, user_agent: String) -> Request {
 enum EgressControlMessage<T> {
     PhxJoin(T),
     Heartbeat(Empty),
+}
+
+fn serialize_msg(
+    topic: impl Into<String>,
+    payload: impl Serialize,
+    request_id: OutboundRequestId,
+) -> String {
+    serde_json::to_string(&PhoenixMessage::<_, ()>::new_message(
+        topic,
+        payload,
+        Some(request_id),
+    ))
+    .expect("we should always be able to serialize a join topic message")
 }
 
 #[cfg(test)]

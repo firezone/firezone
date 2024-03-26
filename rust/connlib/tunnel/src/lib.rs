@@ -16,7 +16,8 @@ use std::{
 };
 
 pub use client::{ClientState, Request};
-pub use gateway::{GatewayState, ResolvedResourceDescriptionDns};
+pub use gateway::GatewayState;
+pub use sockets::Sockets;
 
 mod client;
 mod device_channel;
@@ -58,9 +59,13 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+    pub fn new(
+        private_key: StaticSecret,
+        sockets: Sockets,
+        callbacks: CB,
+    ) -> std::io::Result<Self> {
         Ok(Self {
-            io: new_io(&callbacks)?,
+            io: Io::new(sockets)?,
             callbacks,
             role_state: ClientState::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -70,33 +75,17 @@ where
         })
     }
 
-    pub fn reconnect(&mut self) {
+    pub fn reconnect(&mut self) -> std::io::Result<()> {
         self.role_state.reconnect(Instant::now());
+        self.io.sockets_mut().rebind()?;
+
+        Ok(())
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         loop {
-            match self.role_state.poll_event() {
-                Some(client::Event::RefreshInterface) => {
-                    self.update_interface()?;
-                    continue;
-                }
-                Some(client::Event::SignalIceCandidate { conn_id, candidate }) => {
-                    return Poll::Ready(Ok(ClientEvent::SignalIceCandidate { conn_id, candidate }))
-                }
-                Some(client::Event::ConnectionIntent {
-                    resource,
-                    connected_gateway_ids,
-                }) => {
-                    return Poll::Ready(Ok(ClientEvent::ConnectionIntent {
-                        resource,
-                        connected_gateway_ids,
-                    }))
-                }
-                Some(client::Event::RefreshResources { connections }) => {
-                    return Poll::Ready(Ok(ClientEvent::RefreshResources { connections }))
-                }
-                None => {}
+            if let Some(e) = self.role_state.poll_event() {
+                return Poll::Ready(Ok(e));
             }
 
             if let Some(packet) = self.role_state.poll_packets() {
@@ -166,9 +155,13 @@ impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn new(private_key: StaticSecret, callbacks: CB) -> Result<Self> {
+    pub fn new(
+        private_key: StaticSecret,
+        sockets: Sockets,
+        callbacks: CB,
+    ) -> std::io::Result<Self> {
         Ok(Self {
-            io: new_io(&callbacks)?,
+            io: Io::new(sockets)?,
             callbacks,
             role_state: GatewayState::new(private_key),
             write_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -235,27 +228,6 @@ where
             return Poll::Pending;
         }
     }
-}
-
-#[cfg_attr(not(target_os = "android"), allow(unused_variables))]
-fn new_io<CB>(callbacks: &CB) -> Result<Io>
-where
-    CB: Callbacks,
-{
-    let io = Io::new()?;
-
-    // TODO: Eventually, this should move into the `connlib-client-android` crate.
-    #[cfg(target_os = "android")]
-    {
-        if let Some(ip4_socket) = io.sockets_ref().ip4_socket_fd() {
-            callbacks.protect_file_descriptor(ip4_socket);
-        }
-        if let Some(ip6_socket) = io.sockets_ref().ip6_socket_fd() {
-            callbacks.protect_file_descriptor(ip6_socket);
-        }
-    }
-
-    Ok(io)
 }
 
 #[derive(Debug, PartialEq, Eq)]
