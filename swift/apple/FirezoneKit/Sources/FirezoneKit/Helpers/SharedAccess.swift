@@ -73,7 +73,7 @@ public struct SharedAccess {
     baseFolderURL.appendingPathComponent("reason")
   }
 
-  private static func ensureDirectoryExists(at path: String) -> Bool {
+  public static func ensureDirectoryExists(at path: String) -> Bool {
     let fileManager = FileManager.default
     do {
       var isDirectory: ObjCBool = false
