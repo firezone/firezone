@@ -165,8 +165,8 @@ where
         );
     }
 
-    /// Updates the system's dns
-    pub fn set_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
+    /// Updates our list of system default DNS resolvers
+    pub fn set_dns(&mut self, new_dns: &[IpAddr]) -> connlib_shared::Result<()> {
         let dns_changed = self.role_state.update_system_resolvers(new_dns);
 
         if !dns_changed {
@@ -828,7 +828,15 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+    fn update_system_resolvers(&mut self, new_dns: &[IpAddr]) -> bool {
+        let sentinel_range_v4 = IpNetwork::from_str(DNS_SENTINELS_V4).unwrap();
+        let sentinel_range_v6 = IpNetwork::from_str(DNS_SENTINELS_V6).unwrap();
+        let new_dns = new_dns
+            .iter()
+            .filter(|ip| !sentinel_range_v4.contains(**ip) && !sentinel_range_v6.contains(**ip))
+            .copied()
+            .collect_vec();
+
         if !dns_updated(&self.system_resolvers, &new_dns) {
             tracing::debug!("Updated dns called but no change to system's resolver");
             return false;
@@ -922,18 +930,7 @@ impl ClientState {
 }
 
 fn dns_updated(old_dns: &[IpAddr], new_dns: &[IpAddr]) -> bool {
-    let sentinel_range_v4 = IpNetwork::from_str(DNS_SENTINELS_V4).unwrap();
-    let sentinel_range_v6 = IpNetwork::from_str(DNS_SENTINELS_V6).unwrap();
-
-    HashSet::<&IpAddr>::from_iter(
-        old_dns
-            .iter()
-            .filter(|ip| !sentinel_range_v4.contains(**ip) && !sentinel_range_v6.contains(**ip)),
-    ) != HashSet::<&IpAddr>::from_iter(
-        new_dns
-            .iter()
-            .filter(|ip| !sentinel_range_v4.contains(**ip) && !sentinel_range_v6.contains(**ip)),
-    )
+    HashSet::<&IpAddr>::from_iter(old_dns.iter()) != HashSet::<&IpAddr>::from_iter(new_dns.iter())
 }
 
 fn effective_dns_servers(
@@ -1098,22 +1095,10 @@ mod tests {
     }
 
     #[test]
-    fn dns_updated_ignores_sentinels() {
-        assert!(!dns_updated(
-            &[ip("100.100.111.1"), ip("1.1.1.1")],
-            &[ip("100.100.111.2"), ip("1.1.1.1")],
-        ));
-        assert!(!dns_updated(
-            &[ip("fd00:2021:1111:8000:100:100:111:0"), ip("1.1.1.1")],
-            &[ip("fd00:2021:1111:8000:100:100:111:1"), ip("1.1.1.1")],
-        ));
-    }
-
-    #[test]
     fn update_system_dns_works() {
         let mut client_state = ClientState::for_test();
 
-        let changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let changed = client_state.update_system_resolvers(&[ip("1.1.1.1")]);
 
         assert!(changed);
     }
@@ -1122,20 +1107,33 @@ mod tests {
     fn update_system_dns_without_change_is_a_no_op() {
         let mut client_state = ClientState::for_test();
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        let changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        client_state.update_system_resolvers(&[ip("1.1.1.1")]);
+        let changed = client_state.update_system_resolvers(&[ip("1.1.1.1")]);
 
-        assert!(!changed)
+        assert!(!changed);
     }
 
     #[test]
     fn update_system_dns_with_change_works() {
         let mut client_state = ClientState::for_test();
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        let changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
+        client_state.update_system_resolvers(&[ip("1.1.1.1")]);
+        let changed = client_state.update_system_resolvers(&[ip("1.0.0.1")]);
 
-        assert!(changed)
+        assert!(changed);
+    }
+
+    #[test]
+    fn update_system_dns_ignores_sentinels() {
+        let mut client_state = ClientState::for_test();
+
+        client_state.update_system_resolvers(&[ip("1.1.1.1")]);
+        let changed = client_state.update_system_resolvers(&[ip("1.1.1.1"), ip("100.100.111.1")]);
+        assert!(!changed);
+
+        let changed = client_state
+            .update_system_resolvers(&[ip("1.1.1.1"), ip("fd00:2021:1111:8000:100:100:111:1")]);
+        assert!(!changed);
     }
 
     #[test]

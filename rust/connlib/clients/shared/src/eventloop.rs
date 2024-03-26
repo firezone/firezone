@@ -67,7 +67,7 @@ where
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
-                    if let Err(e) = self.tunnel.set_dns(dns) {
+                    if let Err(e) = self.tunnel.set_dns(&dns) {
                         tracing::warn!("Failed to update DNS: {e}");
                     }
                 }
