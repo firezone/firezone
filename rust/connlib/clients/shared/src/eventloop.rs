@@ -172,8 +172,10 @@ where
 
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
-            IngressMessages::ConfigChanged(_) => {
-                tracing::warn!("Config changes are not yet implemented");
+            IngressMessages::ConfigChanged(config) => {
+                if let Err(e) = self.tunnel.set_interface(config.interface.clone()) {
+                    tracing::warn!(?config, "Failed to update configuration: {e:?}");
+                }
             }
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
