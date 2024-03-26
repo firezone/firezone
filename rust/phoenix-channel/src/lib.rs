@@ -32,6 +32,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
+    join_messages: VecDeque<String>,
     next_request_id: Arc<AtomicU64>,
 
     heartbeat: Heartbeat,
@@ -194,8 +195,8 @@ impl fmt::Display for OutboundRequestId {
 impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
     TInitReq: Serialize + Clone,
-    TInboundMsg: DeserializeOwned,
-    TOutboundRes: DeserializeOwned,
+    TInboundMsg: DeserializeOwned + std::fmt::Debug,
+    TOutboundRes: DeserializeOwned + std::fmt::Debug,
 {
     /// Creates a new [PhoenixChannel] to the given endpoint.
     ///
@@ -225,6 +226,7 @@ where
             })),
             waker: None,
             pending_messages: Default::default(),
+            join_messages: Default::default(),
             _phantom: PhantomData,
             heartbeat: Heartbeat::new(
                 heartbeat::INTERVAL,
@@ -242,8 +244,11 @@ where
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
     pub fn join(&mut self, topic: impl Into<String>, payload: impl Serialize) {
-        let (request_id, msg) = self.make_message(topic, EgressControlMessage::PhxJoin(payload));
-        self.pending_messages.push_front(msg); // Must send the join message before all others.
+        let topic: String = topic.into();
+        let (request_id, msg) =
+            self.make_message(topic.clone(), EgressControlMessage::PhxJoin(payload));
+        tracing::info!("Joining {topic} with {request_id}");
+        self.join_messages.push_front(msg); // Must send the join message before all others.
 
         self.pending_join_requests.insert(request_id);
     }
@@ -336,13 +341,13 @@ where
             // Priority 1: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    if let Some(message) = self.pending_messages.pop_front() {
+                    if let Some(message) = self.join_messages.pop_front() {
                         match stream.start_send_unpin(Message::Text(message.clone())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire", to="portal", %message);
                             }
                             Err(e) => {
-                                self.pending_messages.push_front(message);
+                                self.join_messages.push_front(message);
                                 self.reconnect_on_transient_error(InternalError::WebSocket(e));
                             }
                         }
@@ -354,6 +359,30 @@ where
                     continue;
                 }
                 Poll::Pending => {}
+            }
+
+            if self.pending_join_requests.is_empty() {
+                match stream.poll_ready_unpin(cx) {
+                    Poll::Ready(Ok(())) => {
+                        if let Some(message) = self.pending_messages.pop_front() {
+                            match stream.start_send_unpin(Message::Text(message.clone())) {
+                                Ok(()) => {
+                                    tracing::trace!(target: "wire", to="portal", %message);
+                                }
+                                Err(e) => {
+                                    self.pending_messages.push_front(message);
+                                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                    Poll::Ready(Err(e)) => {
+                        self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                        continue;
+                    }
+                    Poll::Pending => {}
+                }
             }
 
             // Priority 2: Handle incoming messages.
@@ -381,6 +410,7 @@ where
                         }
                     };
 
+                    tracing::trace!(target: "wire", from="portal", "reference {:?} message {:?}", message.reference, message.payload);
                     match (message.payload, message.reference) {
                         (Payload::Message(msg), _) => {
                             return Poll::Ready(Ok(Event::InboundMessage {
@@ -400,6 +430,7 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::Message(reply))), Some(req_id)) => {
+                            tracing::trace!(target: "wire", from="portal", "{reply:?}");
                             if self.pending_join_requests.remove(&req_id) {
                                 tracing::info!("Joined {} room on portal", message.topic);
 
@@ -416,8 +447,18 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
+                            tracing::trace!(target: "wire", from="portal", "it's not a heartbeat");
                             if self.heartbeat.maybe_handle_reply(req_id.copy()) {
                                 continue;
+                            }
+
+                            if self.pending_join_requests.remove(&req_id) {
+                                tracing::info!("Joined {} room on portal", message.topic);
+
+                                // For `phx_join` requests, `reply` is empty so we can safely ignore it.
+                                return Poll::Ready(Ok(Event::JoinedRoom {
+                                    topic: message.topic,
+                                }));
                             }
 
                             tracing::trace!("Received empty reply for request {req_id:?}");
@@ -522,6 +563,7 @@ where
         PhoenixChannel {
             state: self.state,
             pending_messages: self.pending_messages,
+            join_messages: self.join_messages,
             next_request_id: self.next_request_id,
             heartbeat: self.heartbeat,
             _phantom: PhantomData,
