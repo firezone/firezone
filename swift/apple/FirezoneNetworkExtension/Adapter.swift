@@ -140,12 +140,6 @@ class Adapter {
           logFilter,
           callbackHandler
         )
-      // Attempt to set DNS right away
-      if let jsonResolvers = try? String(
-        decoding: JSONEncoder().encode(getSystemDefaultResolvers()), as: UTF8.self
-      ).intoRustString() {
-        session.setDns(jsonResolvers)
-      }
       // Update our internal state
       self.state = .tunnelStarted(session: session)
 
@@ -416,7 +410,7 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  private func getSystemDefaultResolvers(interfaceName: String? = nil) -> [String] {
+  private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
     #if os(macOS)
       let resolvers = SystemConfigurationResolvers(logger: logger).getDefaultDNSServers(
         interfaceName: interfaceName)

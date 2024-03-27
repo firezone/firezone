@@ -28,15 +28,6 @@ class SystemConfigurationResolvers {
     self.dynamicStore = dynamicStore
   }
 
-  func getDefaultDNSServers(interfaceName: String?) -> [String] {
-    if let interfaceName = interfaceName {
-      return getDefaultDNSServersForInterface(interfaceName)
-    } else {
-      return getGlobalDefaultDNSServers()
-    }
-  }
-
-
   /// 1. First, find the service ID that corresponds to the interface we're interested in.
   ///    We do this by searching the configuration store at "Setup:/Network/Service/<service-id>/Interface"
   ///    for a matching "InterfaceName".
@@ -48,8 +39,9 @@ class SystemConfigurationResolvers {
   ///      State:/Network/Service/<service-id>/DNS
   /// 4. We assume manually-set DNS servers take precedence over DHCP ones,
   ///    so return those if found. Otherwise, return the DHCP ones.
-  private func getDefaultDNSServersForInterface(_ interfaceName: String) -> [String] {
-    guard let dynamicStore = dynamicStore
+  public func getDefaultDNSServers(interfaceName: String?) -> [String] {
+    guard let dynamicStore = dynamicStore,
+          let interfaceName = interfaceName
     else {
       return []
     }
@@ -94,31 +86,5 @@ class SystemConfigurationResolvers {
     else { return nil }
 
     return value
-  }
-
-  private func getGlobalDefaultDNSServers() -> [String] {
-    guard let dynamicStore = dynamicStore
-    else {
-      return []
-    }
-
-    var dnsServers: [String] = []
-
-    // Specify the DNS key to fetch the current DNS servers
-    let dnsKey = "State:/Network/Global/DNS" as CFString
-
-    // Retrieve the current DNS server configuration from the dynamic store
-    guard let dnsInfo = SCDynamicStoreCopyValue(dynamicStore, dnsKey) as? [String: Any],
-      let servers = dnsInfo[kSCPropNetDNSServerAddresses as String] as? [String]
-    else {
-      self.logger.error("\(#function): Failed to retrieve DNS server information")
-      return []
-    }
-
-    // Append the retrieved DNS servers to the result array
-    dnsServers.append(contentsOf: servers)
-
-    return dnsServers
-
   }
 }
