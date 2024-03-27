@@ -60,7 +60,7 @@ where
 {
     pub fn set_resources(
         &mut self,
-        resources: &[ResourceDescription],
+        resources: Vec<ResourceDescription>,
     ) -> connlib_shared::Result<()> {
         self.role_state.set_resources(resources);
 
@@ -853,7 +853,7 @@ impl ClientState {
         self.node.poll_transmit()
     }
 
-    fn set_resources(&mut self, new_resources: &[ResourceDescription]) {
+    fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
         self.remove_resources(
             &HashSet::from_iter(self.resource_ids.keys().copied())
                 .difference(&HashSet::<ResourceId>::from_iter(
@@ -877,7 +877,7 @@ impl ClientState {
         for resource_description in resources {
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
                 if resource.has_different_address(resource_description) {
-                    self.remove_resource(resource.id());
+                    self.remove_resources(&[resource.id()]);
                 }
             }
 
@@ -895,60 +895,56 @@ impl ClientState {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(?ids))]
     fn remove_resources(&mut self, ids: &[ResourceId]) {
         for id in ids {
-            self.remove_resource(*id);
-        }
-    }
+            self.awaiting_connection.remove(id);
+            self.dns_resources_internal_ips.retain(|r, _| r.id != *id);
+            self.dns_resources.retain(|_, r| r.id != *id);
+            self.cidr_resources.retain(|_, r| r.id != *id);
+            self.deferred_dns_queries.retain(|(r, _), _| r.id != *id);
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
-    fn remove_resource(&mut self, id: ResourceId) {
-        self.awaiting_connection.remove(&id);
-        self.dns_resources_internal_ips.retain(|r, _| r.id != id);
-        self.dns_resources.retain(|_, r| r.id != id);
-        self.cidr_resources.retain(|_, r| r.id != id);
-        self.deferred_dns_queries.retain(|(r, _), _| r.id != id);
+            self.resource_ids.remove(id);
 
-        self.resource_ids.remove(&id);
-
-        let Some(gateway_id) = self.resources_gateways.remove(&id) else {
-            tracing::debug!("No gateway associated with resource");
-            return;
-        };
-
-        let Some(peer) = self.peers.get_mut(&gateway_id) else {
-            return;
-        };
-
-        // First we remove the id from all allowed ips
-        for (network, resources) in peer
-            .allowed_ips
-            .iter_mut()
-            .filter(|(_, resources)| resources.contains(&id))
-        {
-            resources.remove(&id);
-
-            if !resources.is_empty() {
+            let Some(gateway_id) = self.resources_gateways.remove(id) else {
+                tracing::debug!("No gateway associated with resource");
                 continue;
+            };
+
+            let Some(peer) = self.peers.get_mut(&gateway_id) else {
+                continue;
+            };
+
+            // First we remove the id from all allowed ips
+            for (network, resources) in peer
+                .allowed_ips
+                .iter_mut()
+                .filter(|(_, resources)| resources.contains(id))
+            {
+                resources.remove(id);
+
+                if !resources.is_empty() {
+                    continue;
+                }
+
+                // If the allowed_ips doesn't correspond to any resource anymore we
+                // clean up any related translation.
+                peer.transform
+                    .translations
+                    .remove_by_left(&network.network_address());
             }
 
-            // If the allowed_ips doesn't correspond to any resource anymore we
-            // clean up any related translation.
-            peer.transform
-                .translations
-                .remove_by_left(&network.network_address());
+            // We remove all empty allowed ips entry since there's no resource that corresponds to it
+            peer.allowed_ips.retain(|_, r| !r.is_empty());
+
+            // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
+            if peer.allowed_ips.is_empty() {
+                self.peers.remove(&gateway_id);
+                // TODO: should we have a Node::remove_connection?
+            }
         }
 
-        // We remove all empty allowed ips entry since there's no resource that corresponds to it
-        peer.allowed_ips.retain(|_, r| !r.is_empty());
-
-        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
-        if peer.allowed_ips.is_empty() {
-            self.peers.remove(&gateway_id);
-            // TODO: should we have a Node::remove_connection?
-        }
-
-        tracing::debug!("Resource removed")
+        tracing::debug!("Resources removed")
     }
 
     fn update_dns_mapping(&mut self) -> bool {
@@ -1387,7 +1383,7 @@ mod tests {
     #[test]
     fn set_resource_works() {
         let mut client_state = ClientState::for_test();
-        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         assert_eq!(
             HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
             HashSet::from_iter([cidr_resource("10.0.0.0/24"), dns_resource("baz.com")].iter())
@@ -1401,8 +1397,8 @@ mod tests {
     #[test]
     fn set_resource_replaces_old_resources() {
         let mut client_state = ClientState::for_test();
-        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(&[additional_resource()]);
+        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(vec![additional_resource()]);
         assert_eq!(
             HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
             HashSet::from_iter([additional_resource()].iter())
@@ -1416,8 +1412,8 @@ mod tests {
     #[test]
     fn set_resource_works_updates_resource() {
         let mut client_state = ClientState::for_test();
-        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(&[cidr_resource("11.0.0.0/24")]);
+        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(vec![cidr_resource("11.0.0.0/24")]);
         assert_eq!(
             HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
             HashSet::from_iter([cidr_resource("11.0.0.0/24")].iter())
@@ -1431,8 +1427,8 @@ mod tests {
     #[test]
     fn set_resource_replaces_keeps_resource() {
         let mut client_state = ClientState::for_test();
-        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(&[cidr_resource("10.0.0.0/24")]);
+        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(vec![cidr_resource("10.0.0.0/24")]);
         assert_eq!(
             HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
             HashSet::from_iter([cidr_resource("10.0.0.0/24")].iter())

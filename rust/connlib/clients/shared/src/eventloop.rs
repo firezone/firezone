@@ -193,7 +193,7 @@ where
                 }
 
                 tracing::info!("Firezone Started!");
-                let _ = self.tunnel.set_resources(&resources);
+                let _ = self.tunnel.set_resources(resources);
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();

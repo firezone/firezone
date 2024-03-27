@@ -277,7 +277,6 @@ impl ResourceDescription {
                 dns_a.address != dns_b.address
             }
             (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
-                println!("{} {}", cidr_a.address, cidr_b.address);
                 cidr_a.address != cidr_b.address
             }
             _ => true,
