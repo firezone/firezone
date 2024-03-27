@@ -7,7 +7,7 @@ defmodule Web.Actors.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
-             preload: [:last_seen_at, groups: [:provider]]
+             preload: [:last_seen_at, :identities, groups: [:provider]]
            ) do
       :ok = Clients.subscribe_to_clients_presence_for_actor(actor)
 
