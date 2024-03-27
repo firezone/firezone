@@ -58,111 +58,44 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
+    pub fn set_resources(
+        &mut self,
+        resources: &[ResourceDescription],
+    ) -> connlib_shared::Result<()> {
+        self.role_state.set_resources(resources);
+
+        self.update_routes()?;
+        self.update_resource_list();
+
+        Ok(())
+    }
+
     /// Adds a the given resource to the tunnel.
     pub fn add_resources(
         &mut self,
         resources: &[ResourceDescription],
     ) -> connlib_shared::Result<()> {
-        for resource_description in resources {
-            if let Some(resource) = self.role_state.resource_ids.get(&resource_description.id()) {
-                if resource.has_different_address(resource) {
-                    self.remove_resource(resource.id());
-                }
-            }
+        self.role_state.add_resources(resources);
 
-            match &resource_description {
-                ResourceDescription::Dns(dns) => {
-                    self.role_state
-                        .dns_resources
-                        .insert(dns.address.clone(), dns.clone());
-                }
-                ResourceDescription::Cidr(cidr) => {
-                    self.role_state
-                        .cidr_resources
-                        .insert(cidr.address, cidr.clone());
-                }
-            }
-
-            self.role_state
-                .resource_ids
-                .insert(resource_description.id(), resource_description.clone());
-        }
-
-        self.update_resource_list();
         self.update_routes()?;
+        self.update_resource_list();
 
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
-    pub fn remove_resource(&mut self, id: ResourceId) {
-        self.role_state.awaiting_connection.remove(&id);
-        self.role_state
-            .dns_resources_internal_ips
-            .retain(|r, _| r.id != id);
-        self.role_state.dns_resources.retain(|_, r| r.id != id);
-        self.role_state.cidr_resources.retain(|_, r| r.id != id);
-        self.role_state
-            .deferred_dns_queries
-            .retain(|(r, _), _| r.id != id);
-
-        self.role_state.resource_ids.remove(&id);
+    pub fn remove_resources(&mut self, ids: &[ResourceId]) {
+        self.role_state.remove_resources(ids);
 
         if let Err(err) = self.update_routes() {
-            tracing::error!(%id, "Failed to update routes: {err:?}");
+            tracing::error!(?ids, "Failed to update routes: {err:?}");
         }
 
         self.update_resource_list();
-
-        let Some(gateway_id) = self.role_state.resources_gateways.remove(&id) else {
-            tracing::debug!("No gateway associated with resource");
-            return;
-        };
-
-        let Some(peer) = self.role_state.peers.get_mut(&gateway_id) else {
-            return;
-        };
-
-        // First we remove the id from all allowed ips
-        for (network, resources) in peer
-            .allowed_ips
-            .iter_mut()
-            .filter(|(_, resources)| resources.contains(&id))
-        {
-            resources.remove(&id);
-
-            if !resources.is_empty() {
-                continue;
-            }
-
-            // If the allowed_ips doesn't correspond to any resource anymore we
-            // clean up any related translation.
-            peer.transform
-                .translations
-                .remove_by_left(&network.network_address());
-        }
-
-        // We remove all empty allowed ips entry since there's no resource that corresponds to it
-        peer.allowed_ips.retain(|_, r| !r.is_empty());
-
-        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
-        if peer.allowed_ips.is_empty() {
-            self.role_state.peers.remove(&gateway_id);
-            // TODO: should we have a Node::remove_connection?
-        }
-
-        tracing::debug!("Resource removed")
     }
 
     fn update_resource_list(&self) {
-        self.callbacks.on_update_resources(
-            self.role_state
-                .resource_ids
-                .values()
-                .sorted()
-                .cloned()
-                .collect_vec(),
-        );
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
     }
 
     /// Updates the system's dns
@@ -367,6 +300,10 @@ impl ClientState {
             node: ClientNode::new(private_key),
             system_resolvers: Default::default(),
         }
+    }
+
+    fn resources(&self) -> Vec<ResourceDescription> {
+        self.resource_ids.values().sorted().cloned().collect_vec()
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -920,6 +857,104 @@ impl ClientState {
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
         self.node.poll_transmit()
     }
+
+    fn set_resources(&mut self, new_resources: &[ResourceDescription]) {
+        self.remove_resources(
+            &HashSet::from_iter(self.resource_ids.keys().copied())
+                .difference(&HashSet::<ResourceId>::from_iter(
+                    new_resources.iter().map(|r| r.id()),
+                ))
+                .copied()
+                .collect_vec(),
+        );
+
+        self.add_resources(
+            &HashSet::from_iter(new_resources.iter().cloned())
+                .difference(&HashSet::<ResourceDescription>::from_iter(
+                    self.resource_ids.values().cloned(),
+                ))
+                .cloned()
+                .collect_vec(),
+        );
+    }
+
+    fn add_resources(&mut self, resources: &[ResourceDescription]) {
+        for resource_description in resources {
+            if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
+                if resource.has_different_address(resource_description) {
+                    self.remove_resource(resource.id());
+                }
+            }
+
+            match &resource_description {
+                ResourceDescription::Dns(dns) => {
+                    self.dns_resources.insert(dns.address.clone(), dns.clone());
+                }
+                ResourceDescription::Cidr(cidr) => {
+                    self.cidr_resources.insert(cidr.address, cidr.clone());
+                }
+            }
+
+            self.resource_ids
+                .insert(resource_description.id(), resource_description.clone());
+        }
+    }
+
+    fn remove_resources(&mut self, ids: &[ResourceId]) {
+        for id in ids {
+            self.remove_resource(*id);
+        }
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(%id))]
+    fn remove_resource(&mut self, id: ResourceId) {
+        self.awaiting_connection.remove(&id);
+        self.dns_resources_internal_ips.retain(|r, _| r.id != id);
+        self.dns_resources.retain(|_, r| r.id != id);
+        self.cidr_resources.retain(|_, r| r.id != id);
+        self.deferred_dns_queries.retain(|(r, _), _| r.id != id);
+
+        self.resource_ids.remove(&id);
+
+        let Some(gateway_id) = self.resources_gateways.remove(&id) else {
+            tracing::debug!("No gateway associated with resource");
+            return;
+        };
+
+        let Some(peer) = self.peers.get_mut(&gateway_id) else {
+            return;
+        };
+
+        // First we remove the id from all allowed ips
+        for (network, resources) in peer
+            .allowed_ips
+            .iter_mut()
+            .filter(|(_, resources)| resources.contains(&id))
+        {
+            resources.remove(&id);
+
+            if !resources.is_empty() {
+                continue;
+            }
+
+            // If the allowed_ips doesn't correspond to any resource anymore we
+            // clean up any related translation.
+            peer.transform
+                .translations
+                .remove_by_left(&network.network_address());
+        }
+
+        // We remove all empty allowed ips entry since there's no resource that corresponds to it
+        peer.allowed_ips.retain(|_, r| !r.is_empty());
+
+        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
+        if peer.allowed_ips.is_empty() {
+            self.peers.remove(&gateway_id);
+            // TODO: should we have a Node::remove_connection?
+        }
+
+        tracing::debug!("Resource removed")
+    }
 }
 
 fn dns_updated(old_dns: &[IpAddr], new_dns: &[IpAddr]) -> bool {
@@ -1147,6 +1182,157 @@ mod tests {
         )
     }
 
+    #[test]
+    fn add_resources_works() {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("10.0.0.0/24"), dns_resource("baz.com")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
+        );
+        client_state.add_resources(&[additional_resource()]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter(
+                [
+                    cidr_resource("10.0.0.0/24"),
+                    dns_resource("baz.com"),
+                    additional_resource()
+                ]
+                .iter()
+            )
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![
+                IpNetwork::from_str("10.0.0.0/24").unwrap(),
+                IpNetwork::from_str("11.0.0.0/24").unwrap()
+            ])
+        );
+    }
+
+    #[test]
+    fn add_resources_update_works_cidr() {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.add_resources(&[cidr_resource("11.0.0.0/24")]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("11.0.0.0/24"), dns_resource("baz.com")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
+        );
+    }
+
+    #[test]
+    fn add_resources_update_works_to_dns() {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.add_resources(&[cidr_resource_dns_id("11.0.0.0/24")]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter(
+                [
+                    cidr_resource_dns_id("11.0.0.0/24"),
+                    cidr_resource("10.0.0.0/24")
+                ]
+                .iter()
+            )
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![
+                IpNetwork::from_str("10.0.0.0/24").unwrap(),
+                IpNetwork::from_str("11.0.0.0/24").unwrap()
+            ])
+        );
+    }
+
+    #[test]
+    fn remove_resources_works() {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.remove_resources(&[cidr_id()]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([dns_resource("baz.com")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![])
+        );
+    }
+
+    #[test]
+    fn set_resource_works() {
+        let mut client_state = ClientState::for_test();
+        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("10.0.0.0/24"), dns_resource("baz.com")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
+        );
+    }
+
+    #[test]
+    fn set_resource_replaces_old_resources() {
+        let mut client_state = ClientState::for_test();
+        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(&[additional_resource()]);
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([additional_resource()].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
+        );
+    }
+
+    #[test]
+    fn set_resource_works_updates_resource() {
+        let mut client_state = ClientState::for_test();
+        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(&[cidr_resource("11.0.0.0/24")]);
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("11.0.0.0/24")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
+        );
+    }
+
+    #[test]
+    fn set_resource_replaces_keeps_resource() {
+        let mut client_state = ClientState::for_test();
+        client_state.set_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(&[cidr_resource("10.0.0.0/24")]);
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("10.0.0.0/24")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
+        );
+    }
+
     impl ClientState {
         fn for_test() -> ClientState {
             ClientState::new(StaticSecret::random_from_rng(OsRng))
@@ -1174,7 +1360,64 @@ mod tests {
         ]
     }
 
+    fn cidr_resource(addr: &str) -> ResourceDescription {
+        ResourceDescription::Cidr(ResourceDescriptionCidr {
+            id: cidr_id(),
+            address: addr.parse().unwrap(),
+            name: "foo".to_string(),
+        })
+    }
+
+    fn cidr_resource_dns_id(addr: &str) -> ResourceDescription {
+        ResourceDescription::Cidr(ResourceDescriptionCidr {
+            id: dns_id(),
+            address: addr.parse().unwrap(),
+            name: "foo".to_string(),
+        })
+    }
+
+    fn dns_resource(addr: &str) -> ResourceDescription {
+        ResourceDescription::Dns(ResourceDescriptionDns {
+            id: dns_id(),
+            address: addr.to_string(),
+            name: "bar".to_string(),
+        })
+    }
+
+    fn additional_resource() -> ResourceDescription {
+        ResourceDescription::Cidr(ResourceDescriptionCidr {
+            id: additional_id(),
+            address: "11.0.0.0/24".parse().unwrap(),
+            name: "baz".to_string(),
+        })
+    }
+
+    fn additional_id() -> ResourceId {
+        resource_id("4e0bf4ea-4175-4cdb-a7c2-cbeffa8ccc5d")
+    }
+
+    fn cidr_id() -> ResourceId {
+        resource_id("fb51081a-2e06-4b59-b5a8-33592de9ebb1")
+    }
+
+    fn dns_id() -> ResourceId {
+        resource_id("868483b6-431e-484d-bdd6-dad60ed26418")
+    }
+
     fn ip(addr: &str) -> IpAddr {
         addr.parse().unwrap()
+    }
+
+    fn resource_id(id: &str) -> ResourceId {
+        id.parse().unwrap()
+    }
+
+    fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
+        HashSet::from_iter(
+            resource_routes
+                .into_iter()
+                .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
+                .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap())),
+        )
     }
 }
