@@ -30,7 +30,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         var token = options?["token"] as? String
         let keychain = Keychain()
-        var tokenRef = await keychain.search()
+        let tokenRef = await keychain.search()
 
         if let token = token {
           // 1. If we're passed a token, save it to keychain
@@ -38,7 +38,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           // Apple recommends updating Keychain items in place if possible
           // In reality this won't happen unless there's some kind of race condition
           // because we would have deleted the item upon sign out.
-          if let ref = tokenRef {
+          if tokenRef != nil {
             try await keychain.update(token: token)
           } else {
             try await keychain.add(token: token)
