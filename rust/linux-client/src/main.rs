@@ -136,6 +136,7 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     Ok(nameservers)
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
     tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
     Ok(vec![])

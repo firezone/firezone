@@ -54,6 +54,7 @@ http-health-check = { path = "http-health-check"}
 clippy.dbg_macro = "warn"
 clippy.print_stdout = "warn"
 clippy.print_stderr = "warn"
+clippy.unnecessary_wraps = "warn"
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }

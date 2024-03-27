@@ -138,6 +138,7 @@ impl Tun {
         Err(get_last_error())
     }
 
+    #[allow(clippy::unnecessary_wraps)] // fn signature needs to align with other platforms.
     pub fn set_routes(&self, routes: HashSet<IpNetwork>, callbacks: &impl Callbacks) -> Result<()> {
         // This will always be None in macos
         callbacks.on_update_routes(
