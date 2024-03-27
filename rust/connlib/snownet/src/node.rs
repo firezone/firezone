@@ -1434,6 +1434,8 @@ impl Connection {
                     source,
                     ..
                 } => {
+                    tracing::debug!(%destination, %source, "New nomination");
+
                     let candidate = self
                         .local_candidate(source)
                         .expect("to only nominate existing candidates");
