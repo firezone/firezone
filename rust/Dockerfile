@@ -6,6 +6,7 @@ ARG RUSTUP_x86_DOWNLOAD_SHA256="7aa9e2a380a9958fc1fc426a3323209b2c86181c68166409
 ARG RUSTUP_aarch64_DOWNLOAD_SHA256="b1962dfc18e1fd47d01341e6897cace67cddfabf547ef394e8883939bd6e002e"
 # Keep synced with `rust-toolchain.toml`
 ARG RUST_VERSION="1.76.0"
+ARG FIREZONE_DNS_CONTROL=""
 
 # TODO: Document why we don't use `rust:1.76.0-alpine` here
 FROM alpine:${ALPINE_VERSION} as rust
