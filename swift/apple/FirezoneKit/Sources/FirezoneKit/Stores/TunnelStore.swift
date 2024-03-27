@@ -97,10 +97,8 @@ public final class TunnelStore: ObservableObject {
         }
       }
 
-      // Connect on app launch unless we're already connected
-      if let _ = manager?.protocolConfiguration?.passwordReference,
-        self.status == .disconnected
-      {
+      // Try to connect on app launch
+      if self.status == .disconnected {
         try await start()
       }
 
@@ -123,36 +121,27 @@ public final class TunnelStore: ObservableObject {
 
   // Initialize and save a new VPN profile in system Preferences
   func createManager() async throws {
-    if let manager = manager {
-      // Someone deleted the manager while Fireone is running!
-      // Let's assume that was an accident and recreate it from
-      // our current state.
-      try await manager.saveToPreferences()
-      try await manager.loadFromPreferences()
-    } else {
-      let protocolConfiguration = NETunnelProviderProtocol()
-      let manager = NETunnelProviderManager()
-      let providerConfiguration =
-        protocolConfiguration.providerConfiguration
-        as? [String: String]
-        ?? Settings.defaultValue.toProviderConfiguration()
+    let protocolConfiguration = NETunnelProviderProtocol()
+    let manager = NETunnelProviderManager()
+    let providerConfiguration =
+      protocolConfiguration.providerConfiguration
+      as? [String: String]
+      ?? Settings.defaultValue.toProviderConfiguration()
 
-      protocolConfiguration.providerConfiguration = providerConfiguration
-      protocolConfiguration.providerBundleIdentifier = bundleIdentifier
-      protocolConfiguration.serverAddress = providerConfiguration[TunnelStoreKeys.apiURL]
-      manager.localizedDescription = bundleDescription
-      manager.protocolConfiguration = protocolConfiguration
+    protocolConfiguration.providerConfiguration = providerConfiguration
+    protocolConfiguration.providerBundleIdentifier = bundleIdentifier
+    protocolConfiguration.serverAddress = providerConfiguration[TunnelStoreKeys.apiURL]
+    manager.localizedDescription = bundleDescription
+    manager.protocolConfiguration = protocolConfiguration
 
-      // Save the new VPN profile to System Preferences
-      try await manager.saveToPreferences()
-      try await manager.loadFromPreferences()
+    // Save the new VPN profile to System Preferences
+    try await manager.saveToPreferences()
 
-      self.manager = manager
-      self.status = .disconnected
-    }
+    self.manager = manager
+    self.status = .disconnected
   }
 
-  func start() async throws {
+  func start(token: String? = nil) async throws {
     logger.log("\(#function)")
 
     guard let manager = manager
@@ -169,17 +158,22 @@ public final class TunnelStore: ObservableObject {
 
     manager.isEnabled = true
     try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
 
     let session = castToSession(manager.connection)
     do {
-      try session.startTunnel()
+      var options: [String: NSObject]? = nil
+      if let token = token {
+        options = ["token": token as NSObject]
+      }
+
+      try session.startTunnel(options: options)
     } catch {
+      logger.error("Error starting tunnel: \(error)")
       throw TunnelStoreError.startTunnelErrored(error)
     }
   }
 
-  func stop() async throws {
+  func stop(clearToken: Bool = false) async throws {
     logger.log("\(#function)")
 
     guard let manager = manager else {
@@ -193,7 +187,13 @@ public final class TunnelStore: ObservableObject {
       return
     }
     let session = castToSession(manager.connection)
-    session.stopTunnel()
+    if clearToken {
+      try session.sendProviderMessage("signOut".data(using: .utf8)!) { _ in
+        session.stopTunnel()
+      }
+    } else {
+      session.stopTunnel()
+    }
   }
 
   public func cancelSignIn() {
@@ -213,44 +213,26 @@ public final class TunnelStore: ObservableObject {
     let authURL = URL(string: settings.authBaseURL)!
     let authResponse = try await auth.signIn(authURL)
 
-    // Apple recommends updating Keychain items in place if possible
-    var tokenRef: Keychain.PersistentRef
-    if let ref = await keychain.search() {
-      try await keychain.update(authResponse.token)
-      tokenRef = ref
-    } else {
-      tokenRef = try await keychain.add(authResponse.token)
-    }
-
-    // Save token and actorName
+    // Save actorName
     providerConfiguration[TunnelStoreKeys.actorName] = authResponse.actorName
     protocolConfiguration.providerConfiguration = providerConfiguration
-    protocolConfiguration.passwordReference = tokenRef
     manager.protocolConfiguration = protocolConfiguration
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
 
-    // Start tunnel
-    try await start()
+    try await manager.saveToPreferences()
+
+    // Bring the tunnel up and send it a token to start
+    do {
+      try await start(token: authResponse.token)
+    } catch {
+      logger.error("Error signing in: \(error)")
+    }
   }
 
   func signOut() async throws {
     logger.log("\(#function)")
-    guard let manager = manager,
-      ![.disconnecting, .disconnected].contains(status),
-      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
-    else {
-      logger.error("\(#function): Tunnel seems to be already disconnected")
-      return
-    }
-
-    // Clear token from VPN profile, but keep it in Keychain because the user
-    // may have customized the Keychain Item.
-    protocolConfiguration.passwordReference = nil
-    try await manager.saveToPreferences()
 
     // Stop tunnel
-    try await stop()
+    try await stop(clearToken: true)
   }
 
   func beginUpdatingResources() {
@@ -418,17 +400,6 @@ public final class TunnelStore: ObservableObject {
         SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, tunnelStore: self)
       }
     #endif
-
-    // Clear tokenRef
-    guard let manager = manager else { return }
-    let protocolConfiguration = manager.protocolConfiguration
-    protocolConfiguration?.passwordReference = nil
-    manager.protocolConfiguration = protocolConfiguration
-    do {
-      try await manager.saveToPreferences()
-    } catch {
-      logger.error("\(#function): Couldn't clear tokenRef")
-    }
   }
 }
 
