@@ -146,7 +146,5 @@ COPY ${PACKAGE} .
 FROM runtime AS release
 
 ARG TARGET
-ARG FIREZONE_DNS_CONTROL=""
-ENV FIREZONE_DNS_CONTROL=${FIREZONE_DNS_CONTROL}
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release && mv /target/${TARGET}/release/${PACKAGE} .`
 COPY ${PACKAGE} .
