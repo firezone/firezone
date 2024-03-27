@@ -101,6 +101,12 @@ public final class TunnelStore: ObservableObject {
       if self.status == .disconnected {
         try await start()
       }
+
+      // If no tunnel configuration was found, update state to
+      // prompt user to create one.
+      if manager == nil {
+        status = .invalid
+      }
     }
   }
 
