@@ -29,17 +29,22 @@ pub(crate) enum Error {
     InvalidId,
 }
 
+const ABOUT_KEY: &str = "/about";
+const SETTINGS_KEY: &str = "/settings";
+const QUIT_KEY: &str = "/quit";
+const QUIT_ACCELERATOR: &str = "Ctrl+Q";
+
 impl FromStr for Event {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Error> {
         Ok(match s {
-            "/about" => Self::ShowWindow(Window::About),
+            ABOUT_KEY => Self::ShowWindow(Window::About),
             "/cancel_sign_in" => Self::CancelSignIn,
-            "/settings" => Self::ShowWindow(Window::Settings),
+            SETTINGS_KEY => Self::ShowWindow(Window::Settings),
             "/sign_in" => Self::SignIn,
             "/sign_out" => Self::SignOut,
-            "/quit" => Self::Quit,
+            QUIT_KEY => Self::Quit,
             s => {
                 let id = s.strip_prefix("/resource/").ok_or(Error::InvalidId)?;
                 Self::Resource { id: id.to_string() }
@@ -68,11 +73,11 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
 
     menu = menu
         .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("/about".to_string(), "About"))
-        .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
+        .add_item(about())
+        .add_item(settings())
         .add_item(
-            CustomMenuItem::new("/quit".to_string(), "Disconnect and quit Firezone")
-                .accelerator("Ctrl+Q"),
+            CustomMenuItem::new(QUIT_KEY.to_string(), "Disconnect and quit Firezone")
+                .accelerator(QUIT_ACCELERATOR),
         );
 
     menu
@@ -86,18 +91,30 @@ pub(crate) fn signing_in(waiting_message: &str) -> SystemTrayMenu {
             "Cancel sign-in",
         ))
         .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("/about".to_string(), "About"))
-        .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
-        .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"))
+        .add_item(about())
+        .add_item(settings())
+        .add_item(quit())
 }
 
 pub(crate) fn signed_out() -> SystemTrayMenu {
     SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("/sign_in".to_string(), "Sign In"))
         .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("/about".to_string(), "About"))
-        .add_item(CustomMenuItem::new("/settings".to_string(), "Settings"))
-        .add_item(CustomMenuItem::new("/quit".to_string(), "Quit Firezone").accelerator("Ctrl+Q"))
+        .add_item(about())
+        .add_item(settings())
+        .add_item(quit())
+}
+
+fn about() -> CustomMenuItem {
+    CustomMenuItem::new(ABOUT_KEY.to_string(), "About Firezone")
+}
+
+fn settings() -> CustomMenuItem {
+    CustomMenuItem::new(SETTINGS_KEY.to_string(), "Settings")
+}
+
+fn quit() -> CustomMenuItem {
+    CustomMenuItem::new(QUIT_KEY.to_string(), "Quit Firezone").accelerator(QUIT_ACCELERATOR)
 }
 
 #[cfg(test)]
@@ -108,7 +125,7 @@ mod tests {
     #[test]
     fn systray_parse() {
         assert_eq!(
-            Event::from_str("/about").unwrap(),
+            Event::from_str(super::ABOUT_KEY).unwrap(),
             Event::ShowWindow(Window::About)
         );
         assert_eq!(
@@ -124,7 +141,7 @@ mod tests {
             }
         );
         assert_eq!(Event::from_str("/sign_out").unwrap(), Event::SignOut);
-        assert_eq!(Event::from_str("/quit").unwrap(), Event::Quit);
+        assert_eq!(Event::from_str(super::QUIT_KEY).unwrap(), Event::Quit);
 
         assert!(Event::from_str("/unknown").is_err());
     }
