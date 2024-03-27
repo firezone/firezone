@@ -855,17 +855,21 @@ impl ClientState {
         self.node.poll_transmit()
     }
 
-    pub fn set_resources(&mut self, resources: &[ResourceDescription]) {
+    pub fn set_resources(&mut self, new_resources: &[ResourceDescription]) {
         self.remove_resources(
-            &HashSet::<ResourceId>::from_iter(resources.iter().map(|r| r.id()))
-                .difference(&HashSet::from_iter(self.resource_ids.keys().copied()))
+            &HashSet::from_iter(self.resource_ids.keys().copied())
+                .difference(&HashSet::<ResourceId>::from_iter(
+                    new_resources.iter().map(|r| r.id()),
+                ))
                 .copied()
                 .collect_vec(),
         );
 
         self.add_resources(
-            &HashSet::<ResourceDescription>::from_iter(self.resource_ids.values().cloned())
-                .difference(&HashSet::from_iter(resources.iter().cloned()))
+            &HashSet::from_iter(new_resources.iter().cloned())
+                .difference(&HashSet::<ResourceDescription>::from_iter(
+                    self.resource_ids.values().cloned(),
+                ))
                 .cloned()
                 .collect_vec(),
         );
