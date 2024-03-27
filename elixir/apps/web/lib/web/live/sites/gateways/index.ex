@@ -3,19 +3,49 @@ defmodule Web.Sites.Gateways.Index do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    subject = socket.assigns.subject
+    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
+      if connected?(socket) do
+        :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
+      end
 
-    with {:ok, group} <-
-           Gateways.fetch_group_by_id(id, socket.assigns.subject),
-         # TODO: add LIMIT 100 ORDER BY last_seen_at DESC once we support filters
-         {:ok, gateways} <-
-           Gateways.list_gateways_for_group(group, subject) do
-      gateways = Enum.sort_by(gateways, & &1.online?, :desc)
-      :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
-      socket = assign(socket, group: group, gateways: gateways, page_title: "Site Gateways")
+      socket =
+        socket
+        |> assign(
+          page_title: "Site Gateways",
+          group: group
+        )
+        |> assign_live_table("gateways",
+          query_module: Gateways.Gateway.Query,
+          enforce_filters: [
+            {:gateway_group_id, group.id}
+          ],
+          sortable_fields: [
+            {:gateways, :name},
+            {:gateways, :last_seen_at}
+          ],
+          callback: &handle_gateways_update!/2
+        )
+
       {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_gateways_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:online?])
+
+    with {:ok, gateways, metadata} <- Gateways.list_gateways(socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         gateways: gateways,
+         gateways_metadata: metadata
+       )}
     end
   end
 
@@ -41,8 +71,15 @@ defmodule Web.Sites.Gateways.Index do
         its resources.
       </:help>
       <:content>
-        <.table id="gateways" rows={@gateways}>
-          <:col :let={gateway} label="INSTANCE">
+        <.live_table
+          id="gateways"
+          rows={@gateways}
+          filters={@filters_by_table_id["gateways"]}
+          filter={@filter_form_by_table_id["gateways"]}
+          ordered_by={@order_by_table_id["gateways"]}
+          metadata={@gateways_metadata}
+        >
+          <:col :let={gateway} field={{:gateways, :name}} label="INSTANCE">
             <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
               <%= gateway.name %>
             </.link>
@@ -65,23 +102,26 @@ defmodule Web.Sites.Gateways.Index do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
     """
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
+        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id} = event,
         socket
       ) do
-    subject = socket.assigns.subject
+    rendered_gateway_ids = Enum.map(socket.assigns.gateways, & &1.id)
 
-    {:ok, gateways} =
-      Gateways.list_gateways_for_group(socket.assigns.group, subject,
-        preload: [token: [created_by_identity: [:actor]]]
-      )
-
-    {:noreply, assign(socket, gateways: gateways)}
+    if presence_updates_any_id?(event, rendered_gateway_ids) do
+      socket = reload_live_table!(socket, "gateways")
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end

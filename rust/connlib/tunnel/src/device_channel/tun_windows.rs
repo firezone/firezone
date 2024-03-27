@@ -1,6 +1,7 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Result};
+use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Result};
 use ip_network::IpNetwork;
 use std::{
+    collections::HashSet,
     io,
     net::{IpAddr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
@@ -26,7 +27,7 @@ const TUNNEL_NAME: &str = "Firezone";
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
-    _adapter: Arc<wintun::Adapter>,
+    adapter: Arc<wintun::Adapter>,
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
@@ -34,6 +35,7 @@ pub struct Tun {
     packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
+    routes: HashSet<IpNetwork>,
 }
 
 impl Drop for Tun {
@@ -51,7 +53,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const DEFAULT_MTU: u32 = 1280;
 
 impl Tun {
-    pub fn new(config: &InterfaceConfig, dns_config: Vec<IpAddr>) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
@@ -71,6 +73,39 @@ impl Tun {
                 }
             };
 
+        let iface_idx = adapter.get_adapter_index()?;
+
+        // Remove any routes that were previously associated with us
+        // TODO: Pick a more elegant way to do this
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg(format!(
+                "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
+            ))
+            .stdout(Stdio::null())
+            .status()?;
+
+        set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
+
+        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+
+        let (packet_tx, packet_rx) = mpsc::channel(5);
+
+        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
+        let packet_rx = std::sync::Mutex::new(packet_rx);
+
+        Ok(Self {
+            adapter,
+            iface_idx,
+            _recv_thread: recv_thread,
+            packet_rx,
+            session: Arc::clone(&session),
+            routes: HashSet::new(),
+        })
+    }
+
+    pub fn set_config(&self, config: &InterfaceConfig, dns_config: &[IpAddr]) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", config.ipv4);
         tracing::debug!("Setting our IPv6 = {}", config.ipv6);
 
@@ -100,22 +135,9 @@ impl Tun {
             .stdout(Stdio::null())
             .status()?;
 
-        tracing::debug!("Our IPs are {:?}", adapter.get_addresses()?);
+        tracing::debug!("Our IPs are {:?}", self.adapter.get_addresses()?);
 
-        let iface_idx = adapter.get_adapter_index()?;
-
-        // Remove any routes that were previously associated with us
-        // TODO: Pick a more elegant way to do this
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("-Command")
-            .arg(format!(
-                "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
-            ))
-            .stdout(Stdio::null())
-            .status()?;
-
-        set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
+        let iface_idx = self.adapter.get_adapter_index()?;
 
         // Set our DNS IP as the DNS server for our interface
         // TODO: Known issue where web browsers will keep a connection open to a site,
@@ -137,24 +159,30 @@ impl Tun {
             .stdout(Stdio::null())
             .status()?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
-
-        let (packet_tx, packet_rx) = mpsc::channel(5);
-
-        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
-        let packet_rx = std::sync::Mutex::new(packet_rx);
-
-        Ok(Self {
-            _adapter: adapter,
-            iface_idx,
-            _recv_thread: recv_thread,
-            packet_rx,
-            session: Arc::clone(&session),
-        })
+        Ok(())
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn add_route(&self, route: IpNetwork) -> Result<()> {
+    pub fn set_routes(
+        &mut self,
+        new_routes: HashSet<IpNetwork>,
+        _callbacks: &impl Callbacks,
+    ) -> Result<()> {
+        for new_route in new_routes.difference(&self.routes) {
+            self.add_route(*new_route)?;
+        }
+
+        for old_route in self.routes.difference(&new_routes) {
+            self.remove_route(*old_route)?;
+        }
+
+        self.routes = new_routes;
+
+        Ok(())
+    }
+
+    // It's okay if this blocks until the route is added in the OS.
+    fn add_route(&self, route: IpNetwork) -> Result<()> {
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -169,8 +197,8 @@ impl Tun {
         }
     }
 
-    // It's okay if this blocks until the route is added in the OS.
-    pub fn remove_route(&self, route: IpNetwork) -> Result<()> {
+    // It's okay if this blocks until the route is removed in the OS.
+    fn remove_route(&self, route: IpNetwork) -> Result<()> {
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.

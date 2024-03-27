@@ -7,7 +7,7 @@ locals {
 module "gateways" {
   count = var.gateway_token != null ? 1 : 0
 
-  source     = "../../modules/gateway-google-cloud-compute"
+  source     = "../../modules/google-cloud/apps/gateway-region-instance-group"
   project_id = module.google-cloud-project.project.project_id
 
   compute_network    = module.google-cloud-vpc.id
@@ -27,25 +27,7 @@ module "gateways" {
 
   observability_log_level = "debug"
 
-  application_name    = "gateway"
-  application_version = replace(var.image_tag, ".", "-")
-
-  health_check = {
-    name     = "health"
-    protocol = "TCP"
-    port     = 8080
-
-    initial_delay_sec = 60
-
-    check_interval_sec  = 15
-    timeout_sec         = 10
-    healthy_threshold   = 1
-    unhealthy_threshold = 3
-
-    http_health_check = {
-      request_path = "/healthz"
-    }
-  }
+  application_name = "gateway"
 
   api_url = "wss://api.${local.tld}"
   token   = var.gateway_token
@@ -69,8 +51,6 @@ resource "google_compute_firewall" "gateways-metabase-access" {
   }
 }
 
-# curl "http://metabase.c.firezone-prod.internal:3000/" -v
-
 # Allow outbound traffic
 resource "google_compute_firewall" "gateways-egress-ipv4" {
   count = var.gateway_token != null ? 1 : 0
@@ -85,7 +65,7 @@ resource "google_compute_firewall" "gateways-egress-ipv4" {
   destination_ranges = ["0.0.0.0/0"]
 
   allow {
-    protocol = "udp"
+    protocol = "all"
   }
 }
 
@@ -102,7 +82,7 @@ resource "google_compute_firewall" "gateways-egress-ipv6" {
   destination_ranges = ["::/0"]
 
   allow {
-    protocol = "udp"
+    protocol = "all"
   }
 }
 

@@ -3,27 +3,40 @@ defmodule Web.Sites.NewToken do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
-      {group, env} =
+    with {:ok, group} <-
+           Gateways.fetch_group_by_id(id, socket.assigns.subject,
+             filter: [
+               deleted?: false
+             ]
+           ) do
+      {group, token, env} =
         if connected?(socket) do
-          {:ok, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
+          {:ok, token, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
           :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
-          {group, env(encoded_token)}
+          {group, token, env(encoded_token)}
         else
-          {group, nil}
+          {group, nil, nil}
         end
 
       {:ok,
        assign(socket,
+         page_title: "New Site Gateway",
          group: group,
+         token: token,
          env: env,
-         connected?: false,
-         selected_tab: "systemd-instructions",
-         page_title: "New Site Gateway"
+         connected?: false
        )}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
+  end
+
+  def handle_params(params, uri, socket) do
+    {:noreply,
+     assign(socket,
+       uri: uri,
+       selected_tab: Map.get(params, "method", "systemd-instructions")
+     )}
   end
 
   def render(assigns) do
@@ -154,21 +167,7 @@ defmodule Web.Sites.NewToken do
       {"FIREZONE_ID", Ecto.UUID.generate()},
       {"FIREZONE_TOKEN", encoded_token},
       api_url_override,
-      {"RUST_LOG",
-       Enum.join(
-         [
-           "firezone_gateway=info",
-           "firezone_tunnel=info",
-           "connlib_shared=info",
-           "tunnel_state=info",
-           "phoenix_channel=info",
-           "boringtun=info",
-           "str0m=info",
-           "snownet=debug",
-           "warn"
-         ],
-         ","
-       )}
+      {"RUST_LOG", "info"}
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -311,13 +310,33 @@ defmodule Web.Sites.NewToken do
   end
 
   def handle_event("tab_selected", %{"id" => id}, socket) do
-    {:noreply, assign(socket, selected_tab: id)}
+    socket
+    |> assign(selected_tab: id)
+    |> update_query_params(fn query_params ->
+      Map.put(query_params, "method", id)
+    end)
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id},
+        %Phoenix.Socket.Broadcast{
+          event: "presence_diff",
+          topic: "presences:group_gateways:" <> _group_id,
+          payload: %{joins: joins}
+        },
         socket
       ) do
-    {:noreply, assign(socket, connected?: true)}
+    if socket.assigns.connected? do
+      {:noreply, socket}
+    else
+      connected? =
+        joins
+        |> Map.keys()
+        |> Enum.any?(fn id ->
+          gateway = Gateways.fetch_gateway_by_id!(id)
+          socket.assigns.token.id == gateway.last_used_token_id
+        end)
+
+      {:noreply, assign(socket, connected?: connected?)}
+    end
   end
 end

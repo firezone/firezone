@@ -12,6 +12,8 @@ defmodule Domain.Accounts.Account.Changeset do
     admin user system internal
   ]
 
+  @slug_regex ~r/^[a-zA-Z0-9_]+$/
+
   def create(attrs) do
     %Account{}
     |> cast(attrs, [:name, :slug])
@@ -28,6 +30,7 @@ defmodule Domain.Accounts.Account.Changeset do
   def update(%Account{} = account, attrs) do
     account
     |> cast(attrs, [
+      :slug,
       :name,
       :disabled_reason,
       :disabled_at,
@@ -60,7 +63,7 @@ defmodule Domain.Accounts.Account.Changeset do
     changeset
     |> validate_length(:slug, min: 3, max: 100)
     |> update_change(:slug, &String.downcase/1)
-    |> validate_format(:slug, ~r/^[a-zA-Z0-9_]+$/,
+    |> validate_format(:slug, @slug_regex,
       message: "can only contain letters, numbers, and underscores"
     )
     |> validate_exclusion(:slug, @blacklisted_slugs)
@@ -86,6 +89,19 @@ defmodule Domain.Accounts.Account.Changeset do
 
   def stripe_metadata_changeset(stripe \\ %Account.Metadata.Stripe{}, attrs) do
     stripe
-    |> cast(attrs, [:customer_id, :subscription_id, :product_name])
+    |> cast(attrs, [:customer_id, :subscription_id, :product_name, :billing_email])
+  end
+
+  def validate_account_id_or_slug(account_id_or_slug) do
+    cond do
+      valid_uuid?(account_id_or_slug) ->
+        {:ok, String.downcase(account_id_or_slug)}
+
+      String.match?(account_id_or_slug, @slug_regex) ->
+        {:ok, String.downcase(account_id_or_slug)}
+
+      true ->
+        {:error, "Account ID or Slug contains invalid characters"}
+    end
   end
 end

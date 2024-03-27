@@ -17,6 +17,7 @@ use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use rtnetlink::{RouteAddRequest, RuleAddRequest};
+use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::task::{Context, Poll};
@@ -48,9 +49,11 @@ const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/
 pub struct Tun {
     handle: Handle,
     connection: tokio::task::JoinHandle<()>,
+    dns_control_method: Option<DnsControlMethod>,
     fd: AsyncFd<RawFd>,
 
     worker: Option<BoxFuture<'static, Result<()>>>,
+    routes: HashSet<IpNetwork>,
 }
 
 impl fmt::Debug for Tun {
@@ -67,6 +70,10 @@ impl Drop for Tun {
     fn drop(&mut self) {
         unsafe { close(self.fd.as_raw_fd()) };
         self.connection.abort();
+        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+            // TODO: Check that nobody else modified the file while we were running.
+            etc_resolv_conf::revert().ok();
+        }
     }
 }
 
@@ -133,17 +140,31 @@ impl Tun {
         Ok(Self {
             handle: handle.clone(),
             connection: join_handle,
+            dns_control_method: dns_control_method.clone(),
             fd: AsyncFd::new(fd)?,
             worker: Some(
-                set_iface_config(config.clone(), dns_config, handle, dns_control_method).boxed(),
+                set_iface_config(
+                    config.clone(),
+                    dns_config,
+                    handle,
+                    dns_control_method.clone(),
+                )
+                .boxed(),
             ),
+            routes: HashSet::new(),
         })
     }
 
-    pub fn add_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
-        let handle = self.handle.clone();
+    pub fn set_routes(&mut self, new_routes: HashSet<IpNetwork>, _: &impl Callbacks) -> Result<()> {
+        if new_routes == self.routes {
+            return Ok(());
+        }
 
-        let add_route_worker = async move {
+        let handle = self.handle.clone();
+        let current_routes = self.routes.clone();
+        self.routes = new_routes.clone();
+
+        let set_routes_worker = async move {
             let index = handle
                 .link()
                 .get()
@@ -155,30 +176,24 @@ impl Tun {
                 .header
                 .index;
 
-            let res = match route {
-                IpNetwork::V4(ipnet) => make_route_v4(index, &handle, ipnet).execute().await,
-                IpNetwork::V6(ipnet) => make_route_v6(index, &handle, ipnet).execute().await,
-            };
-
-            match res {
-                Ok(_) => Ok(()),
-                Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => Ok(()),
-                // TODO: we should be able to surface this error and handle it depending on
-                // if any of the added routes succeeded.
-                Err(err) => {
-                    tracing::error!(%route, "failed to add route: {err:#?}");
-                    Ok(())
-                }
+            for route in new_routes.difference(&current_routes) {
+                add_route(route, index, &handle).await;
             }
+
+            for route in current_routes.difference(&new_routes) {
+                delete_route(route, index, &handle).await;
+            }
+
+            Ok(())
         };
 
         match self.worker.take() {
-            None => self.worker = Some(add_route_worker.boxed()),
+            None => self.worker = Some(set_routes_worker.boxed()),
             Some(current_worker) => {
                 self.worker = Some(
                     async move {
                         current_worker.await?;
-                        add_route_worker.await?;
+                        set_routes_worker.await?;
 
                         Ok(())
                     }
@@ -187,54 +202,7 @@ impl Tun {
             }
         }
 
-        Ok(None)
-    }
-
-    pub fn remove_route(&mut self, route: IpNetwork, _: &impl Callbacks) -> Result<Option<Self>> {
-        let handle = self.handle.clone();
-
-        let add_route_worker = async move {
-            let index = handle
-                .link()
-                .get()
-                .match_name(IFACE_NAME.to_string())
-                .execute()
-                .try_next()
-                .await?
-                .ok_or(Error::NoIface)?
-                .header
-                .index;
-
-            let message = match route {
-                IpNetwork::V4(ipnet) => make_route_v4(index, &handle, ipnet).message_mut().clone(),
-                IpNetwork::V6(ipnet) => make_route_v6(index, &handle, ipnet).message_mut().clone(),
-            };
-
-            match handle.route().del(message).execute().await {
-                Ok(_) => Ok(()),
-                Err(err) => {
-                    tracing::error!(%route, "failed to add route: {err:#?}");
-                    Ok(())
-                }
-            }
-        };
-
-        match self.worker.take() {
-            None => self.worker = Some(add_route_worker.boxed()),
-            Some(current_worker) => {
-                self.worker = Some(
-                    async move {
-                        current_worker.await?;
-                        add_route_worker.await?;
-
-                        Ok(())
-                    }
-                    .boxed(),
-                )
-            }
-        }
-
-        Ok(None)
+        Ok(())
     }
 
     pub fn name(&self) -> &str {
@@ -314,9 +282,9 @@ async fn set_iface_config(
 
     match dns_control_method {
         None => {}
-        Some(DnsControlMethod::EtcResolvConf) => {
-            etc_resolv_conf::configure_dns(&dns_config).await?
-        }
+        Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config)
+            .await
+            .map_err(Error::ResolvConf)?,
         Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config).await?,
         Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
     }
@@ -434,6 +402,34 @@ fn write(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
     match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize),
+    }
+}
+
+async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+    let res = match route {
+        IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).execute().await,
+        IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).execute().await,
+    };
+
+    match res {
+        Ok(_) => {}
+        Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => {}
+        // TODO: we should be able to surface this error and handle it depending on
+        // if any of the added routes succeeded.
+        Err(err) => {
+            tracing::error!(%route, "failed to add route: {err}");
+        }
+    }
+}
+
+async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+    let message = match route {
+        IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).message_mut().clone(),
+        IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
+    };
+
+    if let Err(err) = handle.route().del(message).execute().await {
+        tracing::error!(%route, "failed to add route: {err:#?}");
     }
 }
 

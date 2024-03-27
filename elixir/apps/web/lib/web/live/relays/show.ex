@@ -5,9 +5,17 @@ defmodule Web.Relays.Show do
   def mount(%{"id" => id}, _session, socket) do
     with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
          {:ok, relay} <-
-           Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: :group) do
-      :ok = Relays.subscribe_to_relays_presence_in_group(relay.group)
-      socket = assign(socket, relay: relay, page_title: "Relay #{relay.name}")
+           Relays.fetch_relay_by_id(id, socket.assigns.subject, preload: [:group, :online?]) do
+      if connected?(socket) do
+        :ok = Relays.subscribe_to_relays_presence_in_group(relay.group)
+      end
+
+      socket =
+        assign(socket,
+          page_title: "Relay #{relay.name}",
+          relay: relay
+        )
+
       {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
@@ -110,13 +118,15 @@ defmodule Web.Relays.Show do
           Delete Relay
         </.delete_button>
       </:action>
-      <:content></:content>
     </.danger_zone>
     """
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "relay_groups:" <> _account_id, payload: payload},
+        %Phoenix.Socket.Broadcast{
+          topic: "presences:group_relays:" <> _group_id,
+          payload: payload
+        },
         socket
       ) do
     relay = socket.assigns.relay

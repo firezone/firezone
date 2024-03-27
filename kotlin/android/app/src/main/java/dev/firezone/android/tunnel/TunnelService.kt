@@ -1,13 +1,19 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
+import NetworkMonitor
 import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -27,7 +33,6 @@ import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.util.DnsServersDetector
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
@@ -49,11 +54,12 @@ class TunnelService : VpnService() {
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
-    private var connlibSessionPtr: Long? = null
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
+    private var networkCallback: NetworkMonitor? = null
 
     var startedByUser: Boolean = false
+    var connlibSessionPtr: Long? = null
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -125,50 +131,20 @@ class TunnelService : VpnService() {
                 return buildVpnService()
             }
 
-            override fun onTunnelReady(): Boolean {
-                Log.d(TAG, "onTunnelReady")
-                Firebase.crashlytics.log("onTunnelReady")
-
-                tunnelState = State.UP
-                updateStatusNotification("Status: Connected")
-
-                return true
-            }
-
-            override fun onAddRoute(
-                addr: String,
-                prefix: Int,
+            override fun onUpdateRoutes(
+                routes4JSON: String,
+                routes6JSON: String,
             ): Int {
-                Log.d(TAG, "onAddRoute: $addr/$prefix")
-                Firebase.crashlytics.log("onAddRoute: $addr/$prefix")
+                Log.d(TAG, "onUpdateRoutes: $routes4JSON, $routes6JSON")
+                Firebase.crashlytics.log("onUpdateRoutes: $routes4JSON, $routes6JSON")
+                val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
+                val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
-                val route = Cidr(addr, prefix)
-                tunnelRoutes.add(route)
+                tunnelRoutes.clear()
+                tunnelRoutes.addAll(routes4)
+                tunnelRoutes.addAll(routes6)
 
                 return buildVpnService()
-            }
-
-            override fun onRemoveRoute(
-                addr: String,
-                prefix: Int,
-            ): Int {
-                Log.d(TAG, "onRemoveRoute: $addr/$prefix")
-                Firebase.crashlytics.log("onRemoveRoute: $addr/$prefix")
-
-                val route = Cidr(addr, prefix)
-                tunnelRoutes.remove(route)
-
-                return buildVpnService()
-            }
-
-            override fun getSystemDefaultResolvers(): Array<ByteArray> {
-                val found = DnsServersDetector(this@TunnelService).servers
-                Log.d(TAG, "getSystemDefaultResolvers: $found")
-                Firebase.crashlytics.log("getSystemDefaultResolvers: $found")
-
-                return found.map {
-                    it.address
-                }.toTypedArray()
             }
 
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
@@ -193,6 +169,30 @@ class TunnelService : VpnService() {
             }
         }
 
+    private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
+
+    private val restrictionsReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                Log.d(TAG, "onReceive")
+                val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
+                val newAppRestrictions = restrictionsManager.applicationRestrictions
+                val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
+                if (!changed) {
+                    return
+                }
+
+                if (connlibSessionPtr != null) {
+                    disconnect()
+                }
+                appRestrictions = newAppRestrictions
+                connect()
+            }
+        }
+
     // Primary callback used to start and stop the VPN service
     // This can be called either from the UI or from the system
     // via AlwaysOnVpn.
@@ -205,9 +205,20 @@ class TunnelService : VpnService() {
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
         }
-
         connect()
         return START_STICKY
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "onCreate")
+        registerReceiver(restrictionsReceiver, restrictionsFilter)
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG, "onDestroy")
+        unregisterReceiver(restrictionsReceiver)
+        super.onDestroy()
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
@@ -215,7 +226,7 @@ class TunnelService : VpnService() {
         Log.d(TAG, "disconnect")
 
         // Connlib should call onDisconnect() when it's done, with no error.
-        connlibSessionPtr!!.let {
+        connlibSessionPtr?.let {
             ConnlibSession.disconnect(it)
         }
 
@@ -224,6 +235,8 @@ class TunnelService : VpnService() {
 
     private fun shutdown() {
         Log.d(TAG, "shutdown")
+
+        stopNetworkMonitoring()
 
         connlibSessionPtr = null
         stopSelf()
@@ -244,12 +257,35 @@ class TunnelService : VpnService() {
                     apiUrl = config.apiUrl,
                     token = token,
                     deviceId = deviceId(),
-                    deviceName = Build.MODEL,
+                    deviceName = getDeviceName(),
                     osVersion = Build.VERSION.RELEASE,
                     logDir = getLogDir(),
                     logFilter = config.logFilter,
                     callback = callback,
                 )
+
+            startNetworkMonitoring()
+        }
+    }
+
+    private fun startNetworkMonitoring() {
+        networkCallback = NetworkMonitor(this)
+
+        val networkRequest =
+            NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .build()
+        val connectivityManager =
+            getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+        connectivityManager.requestNetwork(networkRequest, networkCallback!!)
+    }
+
+    private fun stopNetworkMonitoring() {
+        networkCallback?.let {
+            val connectivityManager =
+                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+            connectivityManager.unregisterNetworkCallback(it)
+
+            networkCallback = null
         }
     }
 
@@ -339,7 +375,10 @@ class TunnelService : VpnService() {
             addAddress(tunnelIpv6Address!!, 128)
 
             updateAllowedDisallowedApplications("allowedApplications", ::addAllowedApplication)
-            updateAllowedDisallowedApplications("disallowedApplications", ::addDisallowedApplication)
+            updateAllowedDisallowedApplications(
+                "disallowedApplications",
+                ::addDisallowedApplication,
+            )
 
             setSession(SESSION_NAME)
             setMtu(MTU)
@@ -366,36 +405,36 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun updateStatusNotification(message: String?) {
-        val notificationBuilder = NotificationCompat.Builder(this, notificationChannel.id)
+    fun updateStatusNotification(message: String?) {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val chan =
+            NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                NOTIFICATION_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+        chan.description = "Firezone connection status"
+
+        manager.createNotificationChannel(chan)
+
+        val notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
         val notification =
-            notificationBuilder.setOngoing(true)
-                .setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(STATUS_NOTIFICATION_TITLE)
-                .setContentText(message)
+            notificationBuilder.setOngoing(true).setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle(NOTIFICATION_TITLE).setContentText(message)
                 .setPriority(NotificationManager.IMPORTANCE_MIN)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(configIntent())
-                .build()
+                .setCategory(Notification.CATEGORY_SERVICE).setContentIntent(configIntent()).build()
 
         startForeground(STATUS_NOTIFICATION_ID, notification)
     }
 
-    // Indicates to the user that they should sign in again.
-    private fun signedOutNotification() {
-        val notificationBuilder = NotificationCompat.Builder(this, notificationChannel.id)
-        val notification =
-            notificationBuilder
-                .setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(SIGN_IN_NOTIFICATION_TITLE)
-                .setContentText(SIGN_IN_NOTIFICATION_TEXT)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setContentIntent(configIntent())
-                .setAutoCancel(true)
-                .build()
-
-        startForeground(SIGN_IN_NOTIFICATION_ID, notification)
+    private fun getDeviceName(): String {
+        val deviceName = appRestrictions.getString("deviceName")
+        return if (deviceName.isNullOrBlank() || deviceName == "null") {
+            Build.MODEL
+        } else {
+            deviceName
+        }
     }
 
     companion object {
@@ -417,6 +456,8 @@ class TunnelService : VpnService() {
         private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
+
+        private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")

@@ -4,36 +4,115 @@ defmodule Web.Actors.Show do
   alias Domain.{Accounts, Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
-  def mount(%{"id" => id}, _token, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
-             preload: [
-               identities: [:provider, created_by_identity: [:actor]],
-               groups: [:provider],
-               clients: []
-             ]
-           ),
-         {:ok, tokens} <-
-           Tokens.list_tokens_for(actor, socket.assigns.subject,
-             preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
-           ),
-         {:ok, flows} <-
-           Flows.list_flows_for(actor, socket.assigns.subject,
-             preload: [gateway: [:group], client: [], policy: [:resource, :actor_group]]
+             preload: [:last_seen_at, groups: [:provider]]
            ) do
-      actor = %{actor | clients: Clients.preload_online_statuses(actor.clients)}
       :ok = Clients.subscribe_to_clients_presence_for_actor(actor)
 
-      {:ok,
-       assign(socket,
-         actor: actor,
-         flows: flows,
-         tokens: tokens,
-         page_title: "Actor #{actor.name}",
-         flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account)
-       )}
+      socket =
+        socket
+        |> assign(
+          page_title: "Actor #{actor.name}",
+          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
+          actor: actor
+        )
+        |> assign_live_table("identities",
+          query_module: Auth.Identity.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_identities_update!/2
+        )
+        |> assign_live_table("tokens",
+          query_module: Tokens.Token.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_tokens_update!/2
+        )
+        |> assign_live_table("clients",
+          query_module: Clients.Client.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_clients_update!/2
+        )
+        |> assign_live_table("flows",
+          query_module: Flows.Flow.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_flows_update!/2
+        )
+
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_identities_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:provider, created_by_identity: [:actor]])
+
+    with {:ok, identities, metadata} <-
+           Auth.list_identities_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         identities: identities,
+         identities_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_tokens_update!(socket, list_opts) do
+    list_opts =
+      Keyword.put(list_opts, :preload,
+        identity: [:provider],
+        created_by_identity: [:actor],
+        clients: []
+      )
+
+    with {:ok, tokens, metadata} <-
+           Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         tokens: tokens,
+         tokens_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_clients_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:online?])
+
+    with {:ok, clients, metadata} <-
+           Clients.list_clients_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         clients: clients,
+         clients_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_flows_update!(socket, list_opts) do
+    list_opts =
+      Keyword.put(list_opts, :preload,
+        gateway: [:group],
+        client: [],
+        policy: [:resource, :actor_group]
+      )
+
+    with {:ok, flows, metadata} <-
+           Flows.list_flows_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
     end
   end
 
@@ -106,7 +185,7 @@ defmodule Web.Actors.Show do
 
           <.vertical_table_row>
             <:label>Last Signed In</:label>
-            <:value><.relative_datetime datetime={last_seen_at(@actor.identities)} /></:value>
+            <:value><.relative_datetime datetime={@actor.last_seen_at} /></:value>
           </.vertical_table_row>
 
           <.vertical_table_row :if={Actors.actor_synced?(@actor)}>
@@ -133,14 +212,22 @@ defmodule Web.Actors.Show do
       </:action>
 
       <:content>
-        <.table id="actors" rows={@actor.identities} row_id={&"identity-#{&1.id}"}>
-          <:col :let={identity} label="IDENTITY" sortable="false">
+        <.live_table
+          id="identities"
+          rows={@identities}
+          row_id={&"identity-#{&1.id}"}
+          filters={@filters_by_table_id["identities"]}
+          filter={@filter_form_by_table_id["identities"]}
+          ordered_by={@order_by_table_id["identities"]}
+          metadata={@identities_metadata}
+        >
+          <:col :let={identity} label="IDENTITY">
             <.identity_identifier account={@account} identity={identity} />
           </:col>
-          <:col :let={identity} label="CREATED" sortable="false">
+          <:col :let={identity} label="CREATED">
             <.created_by account={@account} schema={identity} />
           </:col>
-          <:col :let={identity} label="LAST SIGNED IN" sortable="false">
+          <:col :let={identity} label="LAST SIGNED IN">
             <.relative_datetime datetime={identity.last_seen_at} />
           </:col>
           <:action :let={identity}>
@@ -191,7 +278,7 @@ defmodule Web.Actors.Show do
               </div>
             </div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
 
@@ -220,14 +307,22 @@ defmodule Web.Actors.Show do
       </:action>
 
       <:content>
-        <.table id="tokens" rows={@tokens} row_id={&"tokens-#{&1.id}"}>
-          <:col :let={token} label="TYPE" sortable="false">
+        <.live_table
+          id="tokens"
+          rows={@tokens}
+          row_id={&"tokens-#{&1.id}"}
+          filters={@filters_by_table_id["tokens"]}
+          filter={@filter_form_by_table_id["tokens"]}
+          ordered_by={@order_by_table_id["tokens"]}
+          metadata={@tokens_metadata}
+        >
+          <:col :let={token} label="TYPE" class="w-1/12">
             <%= token.type %>
           </:col>
-          <:col :let={token} :if={@actor.type != :service_account} label="IDENTITY" sortable="false">
+          <:col :let={token} :if={@actor.type != :service_account} label="IDENTITY" class="w-3/12">
             <.identity_identifier account={@account} identity={token.identity} />
           </:col>
-          <:col :let={token} :if={@actor.type == :service_account} label="NAME" sortable="false">
+          <:col :let={token} :if={@actor.type == :service_account} label="NAME" class="w-2/12">
             <%= token.name %>
           </:col>
           <:col :let={token} label="CREATED">
@@ -273,7 +368,7 @@ defmodule Web.Actors.Show do
           <:empty>
             <div class="text-center text-neutral-500 p-4">No authentication tokens to display.</div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
 
@@ -281,7 +376,15 @@ defmodule Web.Actors.Show do
       <:title>Clients</:title>
 
       <:content>
-        <.table id="clients" rows={@actor.clients} row_id={&"client-#{&1.id}"}>
+        <.live_table
+          id="clients"
+          rows={@clients}
+          row_id={&"client-#{&1.id}"}
+          filters={@filters_by_table_id["clients"]}
+          filter={@filter_form_by_table_id["clients"]}
+          ordered_by={@order_by_table_id["clients"]}
+          metadata={@clients_metadata}
+        >
           <:col :let={client} label="NAME">
             <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
               <%= client.name %>
@@ -293,7 +396,7 @@ defmodule Web.Actors.Show do
           <:empty>
             <div class="text-center text-neutral-500 p-4">No clients to display.</div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
 
@@ -303,7 +406,15 @@ defmodule Web.Actors.Show do
         Attempts to access resources by this actor.
       </:help>
       <:content>
-        <.table id="flows" rows={@flows} row_id={&"flows-#{&1.id}"}>
+        <.live_table
+          id="flows"
+          rows={@flows}
+          row_id={&"flows-#{&1.id}"}
+          filters={@filters_by_table_id["flows"]}
+          filter={@filter_form_by_table_id["flows"]}
+          ordered_by={@order_by_table_id["flows"]}
+          metadata={@flows_metadata}
+        >
           <:col :let={flow} label="AUTHORIZED AT">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
@@ -335,7 +446,7 @@ defmodule Web.Actors.Show do
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
-        </.table>
+        </.live_table>
       </:content>
     </.section>
 
@@ -356,15 +467,11 @@ defmodule Web.Actors.Show do
         %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _actor_id},
         socket
       ) do
-    {:ok, actor} =
-      Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
-        preload: [clients: []]
-      )
-
-    actor = %{socket.assigns.actor | clients: Clients.preload_online_statuses(actor.clients)}
-
-    {:noreply, assign(socket, actor: actor)}
+    {:noreply, reload_live_table!(socket, "clients")}
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 
   def handle_event("delete", _params, socket) do
     with {:ok, _actor} <- Actors.delete_actor(socket.assigns.actor, socket.assigns.subject) do
@@ -460,15 +567,10 @@ defmodule Web.Actors.Show do
   def handle_event("revoke_all_tokens", _params, socket) do
     {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
 
-    {:ok, tokens} =
-      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
-      )
-
     socket =
       socket
+      |> reload_live_table!("tokens")
       |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
-      |> assign(tokens: tokens)
 
     {:noreply, socket}
   end
@@ -477,26 +579,11 @@ defmodule Web.Actors.Show do
     {:ok, token} = Tokens.fetch_token_by_id(id, socket.assigns.subject)
     {:ok, _token} = Tokens.delete_token(token, socket.assigns.subject)
 
-    {:ok, tokens} =
-      Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject,
-        preload: [identity: [:provider], created_by_identity: [:actor], clients: []]
-      )
-
     socket =
       socket
+      |> reload_live_table!("tokens")
       |> put_flash(:info, "Token was revoked.")
-      |> assign(tokens: tokens)
 
     {:noreply, socket}
-  end
-
-  defp last_seen_at(identities) do
-    identities
-    |> Enum.reject(&is_nil(&1.last_seen_at))
-    |> Enum.max_by(& &1.last_seen_at, DateTime, fn -> nil end)
-    |> case do
-      nil -> nil
-      identity -> identity.last_seen_at
-    end
   end
 end

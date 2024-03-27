@@ -12,37 +12,9 @@ defmodule Domain.Mocks.Stripe do
 
     resp =
       Map.merge(
-        %{
-          "id" => "cus_NffrFeUfNV2Hib",
-          "object" => "customer",
-          "address" => nil,
-          "balance" => 0,
-          "created" => 1_680_893_993,
-          "currency" => nil,
-          "default_source" => nil,
-          "delinquent" => false,
-          "description" => nil,
-          "discount" => nil,
-          "email" => nil,
-          "invoice_prefix" => "0759376C",
-          "invoice_settings" => %{
-            "custom_fields" => nil,
-            "default_payment_method" => nil,
-            "footer" => nil,
-            "rendering_options" => nil
-          },
-          "livemode" => false,
-          "metadata" => %{
-            "account_id" => account.id
-          },
-          "name" => account.name,
-          "next_invoice_sequence" => 1,
-          "phone" => nil,
-          "preferred_locales" => [],
-          "shipping" => nil,
-          "tax_exempt" => "none",
-          "test_clock" => nil
-        },
+        customer_object("cus_NffrFeUfNV2Hib", account.name, "foo@example.com", %{
+          "account_id" => account.id
+        }),
         resp
       )
 
@@ -60,42 +32,39 @@ defmodule Domain.Mocks.Stripe do
     bypass
   end
 
+  def mock_update_customer_endpoint(bypass, account, resp \\ %{}) do
+    customer_endpoint_path = "v1/customers/#{account.metadata.stripe.customer_id}"
+
+    resp =
+      Map.merge(
+        customer_object(account.metadata.stripe.customer_id, account.name, "foo@example.com", %{
+          "account_id" => account.id
+        }),
+        resp
+      )
+
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", customer_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      conn = fetch_request_params(conn)
+      send(test_pid, {:bypass_request, conn})
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+    end)
+
+    override_endpoint_url("http://localhost:#{bypass.port}")
+
+    bypass
+  end
+
   def mock_fetch_customer_endpoint(bypass, account, resp \\ %{}) do
     customer_endpoint_path = "v1/customers/#{account.metadata.stripe.customer_id}"
 
     resp =
       Map.merge(
-        %{
-          "id" => "cus_NffrFeUfNV2Hib",
-          "object" => "customer",
-          "address" => nil,
-          "balance" => 0,
-          "created" => 1_680_893_993,
-          "currency" => nil,
-          "default_source" => nil,
-          "delinquent" => false,
-          "description" => nil,
-          "discount" => nil,
-          "email" => nil,
-          "invoice_prefix" => "0759376C",
-          "invoice_settings" => %{
-            "custom_fields" => nil,
-            "default_payment_method" => nil,
-            "footer" => nil,
-            "rendering_options" => nil
-          },
-          "livemode" => false,
-          "metadata" => %{
-            "account_id" => account.id
-          },
-          "name" => account.name,
-          "next_invoice_sequence" => 1,
-          "phone" => nil,
-          "preferred_locales" => [],
-          "shipping" => nil,
-          "tax_exempt" => "none",
-          "test_clock" => nil
-        },
+        customer_object(account.metadata.stripe.customer_id, account.name, "foo@example.com", %{
+          "account_id" => account.id
+        }),
         resp
       )
 
@@ -210,6 +179,38 @@ defmodule Domain.Mocks.Stripe do
     override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
+  end
+
+  def customer_object(id, name, email \\ nil, metadata \\ %{}) do
+    %{
+      "id" => id,
+      "object" => "customer",
+      "address" => nil,
+      "balance" => 0,
+      "created" => 1_680_893_993,
+      "currency" => nil,
+      "default_source" => nil,
+      "delinquent" => false,
+      "description" => nil,
+      "discount" => nil,
+      "email" => email,
+      "invoice_prefix" => "0759376C",
+      "invoice_settings" => %{
+        "custom_fields" => nil,
+        "default_payment_method" => nil,
+        "footer" => nil,
+        "rendering_options" => nil
+      },
+      "livemode" => false,
+      "metadata" => metadata,
+      "name" => name,
+      "next_invoice_sequence" => 1,
+      "phone" => nil,
+      "preferred_locales" => [],
+      "shipping" => nil,
+      "tax_exempt" => "none",
+      "test_clock" => nil
+    }
   end
 
   def subscription_object(customer_id, subscription_metadata, plan_metadata, quantity) do

@@ -2,15 +2,21 @@ pub(crate) use imp::{check, elevate};
 
 #[cfg(target_os = "linux")]
 mod imp {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
 
     pub(crate) fn check() -> Result<bool> {
-        // TODO
+        // Must use `eprintln` here because `tracing` won't be initialized yet.
+
+        let user = std::env::var("USER").context("USER env var should be set")?;
+        if user == "root" {
+            eprintln!("Firezone must run as a normal user, not with `sudo` or as root");
+            return Ok(false);
+        }
         Ok(true)
     }
 
     pub(crate) fn elevate() -> Result<()> {
-        todo!()
+        anyhow::bail!("Firezone must not elevate on Linux.");
     }
 }
 

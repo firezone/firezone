@@ -7,9 +7,9 @@ use firezone_relay::{
 };
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
-use opentelemetry::{sdk, KeyValue};
+use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
-use phoenix_channel::{Error, Event, PhoenixChannel, SecureUrl};
+use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
@@ -36,11 +36,6 @@ struct Args {
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
-    /// The address of the local interface where we should serve our health-check endpoint.
-    ///
-    /// The actual health-check endpoint will be at `http://<health_check_addr>/healthz`.
-    #[arg(long, env, hide = true, default_value = "0.0.0.0:8080")]
-    health_check_addr: SocketAddr,
     // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
     /// The lowest port used for TURN allocations.
     #[arg(long, env, hide = true, default_value = "49152")]
@@ -86,6 +81,9 @@ struct Args {
     /// OTLP is vendor-agnostic but for spans to be correctly recognised by Google Cloud, they need the project ID to be set.
     #[arg(long, env, hide = true)]
     google_cloud_project_id: Option<String>,
+
+    #[command(flatten)]
+    health_check: http_health_check::HealthCheckArgs,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -134,7 +132,9 @@ async fn main() -> Result<()> {
 
     let mut eventloop = Eventloop::new(server, channel, public_addr)?;
 
-    tokio::spawn(firezone_relay::health_check::serve(args.health_check_addr));
+    tokio::spawn(http_health_check::serve(
+        args.health_check.health_check_addr,
+    ));
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port 3478");
 
@@ -170,15 +170,14 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint.clone());
 
-            let tracer =
-                opentelemetry_otlp::new_pipeline()
-                    .tracing()
-                    .with_exporter(exporter)
-                    .with_trace_config(sdk::trace::Config::default().with_resource(
-                        sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
-                    ))
-                    .install_batch(opentelemetry::runtime::Tokio)
-                    .context("Failed to create OTLP trace pipeline")?;
+            let tracer = opentelemetry_otlp::new_pipeline()
+                .tracing()
+                .with_exporter(exporter)
+                .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
+                    opentelemetry_sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
+                ))
+                .install_batch(opentelemetry_sdk::runtime::Tokio)
+                .context("Failed to create OTLP trace pipeline")?;
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
@@ -187,7 +186,7 @@ async fn setup_tracing(args: &Args) -> Result<()> {
                 .with_endpoint(grpc_endpoint);
 
             opentelemetry_otlp::new_pipeline()
-                .metrics(opentelemetry::runtime::Tokio)
+                .metrics(opentelemetry_sdk::runtime::Tokio)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
@@ -250,33 +249,21 @@ fn env_filter() -> EnvFilter {
 async fn connect_to_portal(
     args: &Args,
     token: &SecretString,
-    mut url: Url,
+    url: Url,
     stamp_secret: &SecretString,
 ) -> Result<Option<PhoenixChannel<JoinMessage, (), ()>>> {
     use secrecy::ExposeSecret;
 
-    if !url.path().is_empty() {
-        tracing::warn!(target: "relay", "Overwriting path component of portal URL with '/relay/websocket'");
-    }
-
-    url.set_path("relay/websocket");
-    url.query_pairs_mut()
-        .append_pair("token", token.expose_secret().as_str());
-
-    if let Some(public_ip4_addr) = args.public_ip4_addr {
-        url.query_pairs_mut()
-            .append_pair("ipv4", &public_ip4_addr.to_string());
-    }
-    if let Some(public_ip6_addr) = args.public_ip6_addr {
-        url.query_pairs_mut()
-            .append_pair("ipv6", &public_ip6_addr.to_string());
-    }
-    if let Some(name) = args.name.as_ref() {
-        url.query_pairs_mut().append_pair("name", name);
-    }
+    let login = LoginUrl::relay(
+        url,
+        token,
+        args.name.clone(),
+        args.public_ip4_addr,
+        args.public_ip6_addr,
+    )?;
 
     let (channel, Init {}) = phoenix_channel::init::<_, Init, _, _>(
-        Secret::from(SecureUrl::from_url(url)),
+        Secret::new(login),
         format!("relay/{}", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
@@ -501,13 +488,6 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Ok(Event::Disconnect(reason)))) => {
-                    return Poll::Ready(Err(anyhow!("Connection closed by portal: {reason}")));
-                }
-                Some(Poll::Ready(Err(Error::Serde(e)))) => {
-                    tracing::warn!(target: "relay", "Failed to deserialize portal message: {e}");
-                    continue; // This is not a hard-error, we can continue.
-                }
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
                 }
@@ -518,12 +498,8 @@ where
                     tracing::info!(target: "relay", "Successfully joined room '{topic}'");
                     continue;
                 }
-                Some(Poll::Ready(Ok(Event::ErrorResponse {
-                    topic,
-                    req_id,
-                    reason,
-                }))) => {
-                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {reason:?}");
+                Some(Poll::Ready(Ok(Event::ErrorResponse { topic, req_id, res }))) => {
+                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
                     continue;
                 }
                 Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {

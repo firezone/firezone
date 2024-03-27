@@ -17,20 +17,20 @@ jobs:
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
       TF_WORKSPACE: "staging"
     steps:
-      - name: Get Terraform Version
-        run: |
-          TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
-          echo "TERRAFORM_VERSION=${TERRAFORM_VERSION}" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
+      - name: Tool Versions
+        id: versions
+        uses: marocchino/tool-versions-action@v1.2.0
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_version: ${{ steps.versions.outputs.terraform }}
       - uses: actions/checkout@v4
       - name: Validate cloud-init
         run: |
           sudo apt-get install -y cloud-init
-          sudo cloud-init schema --config-file terraform/modules/relay-app/templates/cloud-init.yaml
-          sudo cloud-init schema --config-file terraform/modules/elixir-app/templates/cloud-init.yaml
-          sudo cloud-init schema --config-file terraform/modules/gateway-google-cloud-compute/templates/cloud-init.yaml
+          sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/relay/templates/cloud-init.yaml
+          sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/elixir/templates/cloud-init.yaml
+          sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/gateway-region-instance-group/templates/cloud-init.yaml
       - name: Check Formatting
         working-directory: terraform
         run: |

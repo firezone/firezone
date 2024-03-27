@@ -16,63 +16,44 @@ enum SettingsViewError: Error {
 }
 
 public final class SettingsViewModel: ObservableObject {
-  let authStore: AuthStore
+  let tunnelStore: TunnelStore
 
-  var tunnelAuthStatus: TunnelAuthStatus {
-    authStore.tunnelStore.tunnelAuthStatus
-  }
-
-  @Published var advancedSettings: AdvancedSettings
+  @Published var settings: Settings
 
   let logger: AppLogger
-  public var onSettingsSaved: () -> Void = unimplemented()
   private var cancellables = Set<AnyCancellable>()
 
-  public init(authStore: AuthStore, logger: AppLogger) {
-    self.authStore = authStore
+  public init(tunnelStore: TunnelStore, logger: AppLogger) {
+    self.tunnelStore = tunnelStore
     self.logger = logger
-    advancedSettings = AdvancedSettings.defaultValue
+    settings = Settings.defaultValue
+
     loadSettings()
   }
 
   func loadSettings() {
+    // Load settings from saved VPN Profile
     Task {
-      authStore.tunnelStore.$tunnelAuthStatus
-        .first { $0.isInitialized }
+      tunnelStore.$settings
         .receive(on: RunLoop.main)
-        .sink { [weak self] tunnelAuthStatus in
+        .sink { [weak self] settings in
           guard let self = self else { return }
-          self.advancedSettings =
-            authStore.tunnelStore.advancedSettings() ?? AdvancedSettings.defaultValue
+
+          self.settings = settings
         }
         .store(in: &cancellables)
     }
   }
 
-  func saveAdvancedSettings() {
-    let isChanged = (authStore.tunnelStore.advancedSettings() != advancedSettings)
-    guard isChanged else {
-      advancedSettings.isSavedToDisk = true
-      return
-    }
+  func saveSettings() {
     Task {
-      if case .signedIn = self.tunnelAuthStatus {
-        await authStore.signOut()
-      }
-      let authBaseURLString = advancedSettings.authBaseURLString
-      guard URL(string: authBaseURLString) != nil else {
-        logger.error(
-          "Not saving advanced settings because authBaseURL '\(authBaseURLString)' is invalid"
-        )
-        return
+      if [.connected, .connecting, .reasserting].contains(tunnelStore.status) {
+        _ = try await tunnelStore.signOut()
       }
       do {
-        try await authStore.tunnelStore.saveAdvancedSettings(advancedSettings)
+        try await tunnelStore.save(settings)
       } catch {
-        logger.error("Error saving advanced settings to tunnel store: \(error)")
-      }
-      await MainActor.run {
-        advancedSettings.isSavedToDisk = true
+        logger.error("Error saving settings to tunnel store: \(error)")
       }
     }
   }
@@ -80,7 +61,6 @@ public final class SettingsViewModel: ObservableObject {
   func calculateLogDirSize(logger: AppLogger) -> String? {
     logger.log("\(#function)")
 
-    let startTime = DispatchTime.now()
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       logger.error("\(#function): Log folder is unavailable")
       return nil
@@ -107,10 +87,6 @@ public final class SettingsViewModel: ObservableObject {
       return nil
     }
 
-    let elapsedTime =
-      (DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-    logger.log("\(#function): Finished calculating (\(totalSize) bytes) in \(elapsedTime) ms")
-
     let byteCountFormatter = ByteCountFormatter()
     byteCountFormatter.countStyle = .file
     byteCountFormatter.allowsNonnumericFormatting = false
@@ -121,7 +97,6 @@ public final class SettingsViewModel: ObservableObject {
   func clearAllLogs(logger: AppLogger) throws {
     logger.log("\(#function)")
 
-    let startTime = DispatchTime.now()
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       logger.error("\(#function): Log folder is unavailable")
       return
@@ -145,10 +120,6 @@ public final class SettingsViewModel: ObservableObject {
         }
       }
     }
-
-    let elapsedTime =
-      (DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000
-    logger.log("\(#function): Finished removing log files in \(elapsedTime) ms")
 
     if unremovedFilesCount > 0 {
       logger.log("\(#function): Unable to remove \(unremovedFilesCount) files")
@@ -196,15 +167,15 @@ public struct SettingsView: View {
 
   enum ConfirmationAlertContinueAction: Int {
     case none
-    case saveAdvancedSettings
+    case saveSettings
     case saveAllSettingsAndDismiss
 
     func performAction(on view: SettingsView) {
       switch self {
       case .none:
         break
-      case .saveAdvancedSettings:
-        view.saveAdvancedSettings()
+      case .saveSettings:
+        view.saveSettings()
       case .saveAllSettingsAndDismiss:
         view.saveAllSettingsAndDismiss()
       }
@@ -235,7 +206,7 @@ public struct SettingsView: View {
     static let forAdvanced = try! AttributedString(
       markdown: """
         **WARNING:** These settings are intended for internal debug purposes **only**. \
-        Changing these is not supported and will disrupt access to your Firezone resources.
+        Changing these will disrupt access to your Firezone resources.
         """)
   }
 
@@ -253,7 +224,7 @@ public struct SettingsView: View {
               Image(systemName: "slider.horizontal.3")
               Text("Advanced")
             }
-            .badge(model.advancedSettings.isValid ? nil : "!")
+            .badge(model.settings.isValid ? nil : "!")
           logsTab
             .tabItem {
               Image(systemName: "doc.text")
@@ -264,7 +235,7 @@ public struct SettingsView: View {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
               let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-              if case .signedIn = model.tunnelAuthStatus {
+              if case .connected = model.tunnelStore.status {
                 self.confirmationAlertContinueAction = action
                 self.isShowingConfirmationAlert = true
               } else {
@@ -272,7 +243,7 @@ public struct SettingsView: View {
               }
             }
             .disabled(
-              (model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
+              (model.settings == model.tunnelStore.settings || !model.settings.isValid)
             )
           }
           ToolbarItem(placement: .navigationBarLeading) {
@@ -347,8 +318,8 @@ public struct SettingsView: View {
             TextField(
               "Auth Base URL:",
               text: Binding(
-                get: { model.advancedSettings.authBaseURLString },
-                set: { model.advancedSettings.authBaseURLString = $0 }
+                get: { model.settings.authBaseURL },
+                set: { model.settings.authBaseURL = $0 }
               ),
               prompt: Text(PlaceholderText.authBaseURL)
             )
@@ -356,8 +327,8 @@ public struct SettingsView: View {
             TextField(
               "API URL:",
               text: Binding(
-                get: { model.advancedSettings.apiURLString },
-                set: { model.advancedSettings.apiURLString = $0 }
+                get: { model.settings.apiURL },
+                set: { model.settings.apiURL = $0 }
               ),
               prompt: Text(PlaceholderText.apiURL)
             )
@@ -365,8 +336,8 @@ public struct SettingsView: View {
             TextField(
               "Log Filter:",
               text: Binding(
-                get: { model.advancedSettings.connlibLogFilterString },
-                set: { model.advancedSettings.connlibLogFilterString = $0 }
+                get: { model.settings.logFilter },
+                set: { model.settings.logFilter = $0 }
               ),
               prompt: Text(PlaceholderText.logFilter)
             )
@@ -378,8 +349,8 @@ public struct SettingsView: View {
               Button(
                 "Apply",
                 action: {
-                  let action = ConfirmationAlertContinueAction.saveAdvancedSettings
-                  if case .signedIn = model.tunnelAuthStatus {
+                  let action = ConfirmationAlertContinueAction.saveSettings
+                  if [.connected, .connecting, .reasserting].contains(model.tunnelStore.status) {
                     self.confirmationAlertContinueAction = action
                     self.isShowingConfirmationAlert = true
                   } else {
@@ -387,15 +358,15 @@ public struct SettingsView: View {
                   }
                 }
               )
-              .disabled(model.advancedSettings.isSavedToDisk || !model.advancedSettings.isValid)
+              .disabled(model.settings == model.tunnelStore.settings || !model.settings.isValid)
 
               Button(
                 "Reset to Defaults",
                 action: {
-                  self.restoreAdvancedSettingsToDefaults()
+                  model.settings = Settings.defaultValue
                 }
               )
-              .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
+              .disabled(model.settings == Settings.defaultValue)
             }
             .padding(.top, 5)
           }
@@ -416,8 +387,8 @@ public struct SettingsView: View {
                 TextField(
                   PlaceholderText.authBaseURL,
                   text: Binding(
-                    get: { model.advancedSettings.authBaseURLString },
-                    set: { model.advancedSettings.authBaseURLString = $0 }
+                    get: { model.settings.authBaseURL },
+                    set: { model.settings.authBaseURL = $0 }
                   )
                 )
                 .autocorrectionDisabled()
@@ -431,8 +402,8 @@ public struct SettingsView: View {
                 TextField(
                   PlaceholderText.apiURL,
                   text: Binding(
-                    get: { model.advancedSettings.apiURLString },
-                    set: { model.advancedSettings.apiURLString = $0 }
+                    get: { model.settings.apiURL },
+                    set: { model.settings.apiURL = $0 }
                   )
                 )
                 .autocorrectionDisabled()
@@ -446,8 +417,8 @@ public struct SettingsView: View {
                 TextField(
                   PlaceholderText.logFilter,
                   text: Binding(
-                    get: { model.advancedSettings.connlibLogFilterString },
-                    set: { model.advancedSettings.connlibLogFilterString = $0 }
+                    get: { model.settings.logFilter },
+                    set: { model.settings.logFilter = $0 }
                   )
                 )
                 .autocorrectionDisabled()
@@ -459,10 +430,10 @@ public struct SettingsView: View {
                 Button(
                   "Reset to Defaults",
                   action: {
-                    self.restoreAdvancedSettingsToDefaults()
+                    model.settings = Settings.defaultValue
                   }
                 )
-                .disabled(model.advancedSettings == AdvancedSettings.defaultValue)
+                .disabled(model.settings == Settings.defaultValue)
                 Spacer()
               }
             },
@@ -577,26 +548,18 @@ public struct SettingsView: View {
     #endif
   }
 
-  func saveAdvancedSettings() {
-    model.saveAdvancedSettings()
+  func saveSettings() {
+    model.saveSettings()
   }
 
   func saveAllSettingsAndDismiss() {
-    model.saveAdvancedSettings()
+    model.saveSettings()
     dismiss()
   }
 
   func loadSettings() {
     model.loadSettings()
     dismiss()
-  }
-
-  func restoreAdvancedSettingsToDefaults() {
-    let defaultValue = AdvancedSettings.defaultValue
-    model.advancedSettings.authBaseURLString = defaultValue.authBaseURLString
-    model.advancedSettings.apiURLString = defaultValue.apiURLString
-    model.advancedSettings.connlibLogFilterString = defaultValue.connlibLogFilterString
-    model.saveAdvancedSettings()
   }
 
   #if os(macOS)

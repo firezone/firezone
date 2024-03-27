@@ -9,6 +9,10 @@ pub(crate) fn run_debug() -> Result<()> {
     unimplemented!()
 }
 
+pub(crate) fn run_dns_debug() -> Result<()> {
+    unimplemented!()
+}
+
 pub(crate) fn check_internet() -> Result<bool> {
     tracing::error!("This is not the real macOS client, so `network_changes` is not implemented");
     Ok(true)
@@ -26,6 +30,17 @@ impl Worker {
     }
 
     pub(crate) async fn notified(&self) {
+        futures::future::pending().await
+    }
+}
+
+pub(crate) struct DnsListener {}
+
+impl DnsListener {
+    pub(crate) fn new() -> Result<Self> {
+        Ok(Self {})
+    }
+    pub(crate) async fn notified(&mut self) -> Result<()> {
         futures::future::pending().await
     }
 }

@@ -7,6 +7,7 @@ use std::time::SystemTime;
 ///
 /// It is the caller's responsibility to keep track of actual time passing.
 /// They should call [`TimeEvents::next_trigger`] to find out when to next call [`TimeEvents::pending_actions`].
+#[derive(Debug)]
 pub struct TimeEvents<A> {
     events: Vec<TimeEvent<A>>,
 }
@@ -18,6 +19,7 @@ where
     /// Add an action to be executed at the specified time.
     ///
     /// Returns the new wake deadline for convenience.
+    #[must_use]
     pub fn add(&mut self, trigger: SystemTime, action: A) -> SystemTime {
         self.events.retain(|event| event.action != action);
         self.events.push(TimeEvent {
@@ -85,6 +87,7 @@ impl<A> PartialOrd for TimeEvent<A> {
 }
 
 #[cfg(test)]
+#[allow(unused_must_use)]
 mod tests {
     use super::*;
     use std::time::Duration;

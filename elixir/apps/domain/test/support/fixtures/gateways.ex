@@ -63,10 +63,10 @@ defmodule Domain.Fixtures.Gateways do
         |> Fixtures.Auth.create_subject()
       end)
 
-    {:ok, encoded_token} = Gateways.create_token(group, attrs, subject)
+    {:ok, token, encoded_token} = Gateways.create_token(group, attrs, subject)
     context = Fixtures.Auth.build_context(type: :gateway_group)
-    {:ok, {_account_id, id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
-    %{Repo.get(Domain.Tokens.Token, id) | secret_nonce: nonce, secret_fragment: secret}
+    {:ok, {_account_id, _id, nonce, secret}} = Domain.Tokens.peek_token(encoded_token, context)
+    %{token | secret_nonce: nonce, secret_fragment: secret}
   end
 
   def gateway_attrs(attrs \\ %{}) do
@@ -92,6 +92,13 @@ defmodule Domain.Fixtures.Gateways do
         |> create_group()
       end)
 
+    {token, attrs} =
+      pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, group: group})
+        |> create_token()
+      end)
+
     {context, attrs} =
       pop_assoc_fixture(attrs, :context, fn assoc_attrs ->
         assoc_attrs
@@ -99,7 +106,7 @@ defmodule Domain.Fixtures.Gateways do
         |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, gateway} = Gateways.upsert_gateway(group, attrs, context)
+    {:ok, gateway} = Gateways.upsert_gateway(group, token, attrs, context)
     %{gateway | online?: false}
   end
 

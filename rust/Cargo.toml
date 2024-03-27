@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "client-tunnel",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
@@ -13,6 +14,8 @@ members = [
   "phoenix-channel",
   "relay",
   "gui-client/src-tauri",
+  "http-health-check",
+  "http-test-server",
 ]
 
 resolver = "2"
@@ -45,22 +48,24 @@ firezone-relay = { path = "relay"}
 connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
+http-health-check = { path = "http-health-check"}
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
-str0m = { git = "https://github.com/firezone/str0m", branch = "reduce-ice-timeout" }
-
-[patch."https://github.com/quinn-rs/quinn"]
-# waiting for https://github.com/quinn-rs/quinn/pull/1758
-quinn-udp = { git = "https://github.com/conectado/quinn", branch = "main" }
+str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.22" }
 
 [profile.release]
 strip = true
 
-# Override build settings just for the Windows client, so we get a pdb
-[profile.release.package.firezone-gui-client]
-# Generate debug symbols for the crash handler to use, even if the exe itself is optimized
+# Override build settings just for the GUI client, so we get a pdb/dwp
+# Cargo ignores profile settings if they're not in the workspace's Cargo.toml
+[profile.dev.package.firezone-gui-client]
 debug = "full"
-# Split out debug info from the exe. This is already default on Windows.
-# https://doc.rust-lang.org/rustc/codegen-options/index.html#split-debuginfo
 split-debuginfo = "packed"
+strip = "none"
+
+[profile.release.package.firezone-gui-client]
+debug = "full"
+split-debuginfo = "packed"
+strip = "none"
