@@ -72,13 +72,14 @@ Options:
 
 ## Split DNS
 
-The Linux Client supports Split DNS, which you can enable by setting the
-`FIREZONE_DNS_CONTROL` environment variable to `systemd-resolved` or
-`etc-resolv-conf`. If you don't set this variable, Split DNS will be disabled.
+By default, Split DNS is **disabled** for the Linux Client. This means that
+access to DNS-based Resources won't be routed through Firezone.
 
-When Split DNS is enabled, the Linux Client will override the system's DNS
-resolver with its internal proxy. To do this, the Linux client needs to know how
-DNS resolution is currently being handled on your system.
+To enable Split DNS for the Linux Client, set the `FIREZONE_DNS_CONTROL`
+environment variable to `systemd-resolved` or `etc-resolv-conf`.
+
+Read more below to figure out which DNS control method is appropriate for your
+system.
 
 ### systemd-resolved
 
@@ -99,12 +100,15 @@ using `systemd-resolved`, and you should set `FIREZONE_DNS_CONTROL` to
 to `/run/systemd/resolve/stub-resolv.conf`:
 
 ```bash
+# Check if /etc/resolv.conf is already a symlink to /run/systemd/resolve/stub-resolv.conf
 stat /etc/resolv.conf
+
+# If it's not, create the symlink
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 ```
 
 When NetworkManager detects that symlink exists, it will automatically use
-`systemd-resolved` for DNS resolution.
+`systemd-resolved` for DNS resolution and no other configuration is necessary.
 
 ### /etc/resolv.conf
 
@@ -113,11 +117,13 @@ If you're not using `systemd-resolved`, Firezone supports using the
 `FIREZONE_DNS_CONTROL` to `etc-resolv-conf`, and the Linux Client will override
 the `/etc/resolv.conf` file with the Firezone internal proxy.
 
-<Alert color="warning">
-  The Linux Client **will not revert** `/etc/resolv.conf` when it exits, so this
-  is best for disposable "cattle" systems like Docker containers or VMs that can
-  be rebuilt from scripts.
-</Alert>
+When the Linux Client process exits, it will revert the `/etc/resolv.conf` file
+back to its original state. If for some reason this isn't the case, you can
+easily restore it by running the following command:
+
+```bash
+sudo mv /etc/resolv.conf.before-firezone /etc/resolv.conf
+```
 
 [Read more](/kb/deploy/dns) about how DNS works in Firezone.
 
