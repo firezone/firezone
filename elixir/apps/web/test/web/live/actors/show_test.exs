@@ -640,6 +640,29 @@ defmodule Web.Live.Actors.ShowTest do
       assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
     end
 
+    test "allows deleting synced actors that don't have any identities left", %{
+      account: account,
+      identity: identity,
+      conn: conn
+    } do
+      actor =
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      lv
+      |> element("button", "Delete User")
+      |> render_click()
+
+      assert_redirect(lv, ~p"/#{account}/actors")
+
+      assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
+    end
+
     test "renders error when trying to delete last admin", %{
       account: account,
       actor: actor,
