@@ -120,7 +120,7 @@ defmodule Web.Resources.Show do
               <%= @resource.address %>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={false}>
             <:label>
               Address Description
             </:label>
