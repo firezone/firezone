@@ -38,7 +38,7 @@ impl Heartbeat {
 
     pub fn maybe_handle_reply(&mut self, id: OutboundRequestId) -> bool {
         match self.pending.as_ref() {
-            Some((pending, timeout)) if pending == &id && !dbg!(timeout.is_elapsed()) => {
+            Some((pending, timeout)) if pending == &id && !timeout.is_elapsed() => {
                 self.pending = None;
 
                 true
