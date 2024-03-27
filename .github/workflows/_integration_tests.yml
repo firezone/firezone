@@ -123,12 +123,14 @@ jobs:
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
+          echo "FIREZONE_DNS_CONTROL=${{ matrix.dns-control }}" >> .env
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build
-          docker compose up -d client --no-build -e FIREZONE_DNS_CONTROL=${{ matrix.dns-control }}
+          docker compose --env-file .env up -d client --no-build
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
 
