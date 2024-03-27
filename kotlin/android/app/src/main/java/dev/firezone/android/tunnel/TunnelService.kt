@@ -81,6 +81,21 @@ class TunnelService : VpnService() {
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
 
+    private val notificationChannel: NotificationChannel by lazy {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val chan =
+            NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                NOTIFICATION_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+        chan.description = "Firezone connection status"
+
+        manager.createNotificationChannel(chan)
+        chan
+    }
+
     inner class LocalBinder : Binder() {
         fun getService(): TunnelService = this@TunnelService
     }
@@ -143,7 +158,9 @@ class TunnelService : VpnService() {
                 repo.clearActorName()
 
                 shutdown()
-
+                if (startedByUser) {
+                    signedOutNotification()
+                }
                 return true
             }
 
@@ -430,7 +447,11 @@ class TunnelService : VpnService() {
         private const val NOTIFICATION_CHANNEL_ID = "firezone-connection-status"
         private const val NOTIFICATION_CHANNEL_NAME = "firezone-connection-status"
         private const val STATUS_NOTIFICATION_ID = 1337
-        private const val NOTIFICATION_TITLE = "Firezone Connection Status"
+        private const val STATUS_NOTIFICATION_TITLE = "Firezone Connection Status"
+
+        private const val SIGN_IN_NOTIFICATION_ID = 1338
+        private const val SIGN_IN_NOTIFICATION_TITLE = "Firezone Signed Out"
+        private const val SIGN_IN_NOTIFICATION_TEXT = "Please sign in to continue using Firezone."
 
         private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
