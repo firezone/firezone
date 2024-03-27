@@ -52,6 +52,9 @@ defmodule Web.Groups.Index do
           Add Group
         </.add_button>
       </:action>
+      <:help>
+        Groups organize Actors and form the basis of the Firezone access control model.
+      </:help>
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
@@ -95,8 +98,8 @@ defmodule Web.Groups.Index do
               </:tail>
             </.peek>
           </:col>
-          <:col :let={group} field={{:groups, :inserted_at}} label="SOURCE">
-            <.created_by account={@account} schema={group} />
+          <:col :let={group} field={{:groups, :inserted_at}} label="Created">
+            <.relative_datetime datetime={group.inserted_at} />
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
