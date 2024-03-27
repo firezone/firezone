@@ -14,7 +14,7 @@ class NetworkSettings {
   // so just use the minimum.
   let mtu: NSNumber = 1280
 
-  // Constants
+  // These will only be initialized once and then don't change
   private weak var packetTunnelProvider: NEPacketTunnelProvider?
   private(set) var logger: AppLogger
 
