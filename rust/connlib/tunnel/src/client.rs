@@ -1291,6 +1291,7 @@ mod tests {
     #[test]
     fn add_resources_works() {
         let mut client_state = ClientState::for_test();
+
         client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
 
         assert_eq!(
@@ -1327,6 +1328,7 @@ mod tests {
     #[test]
     fn add_resources_update_works_cidr() {
         let mut client_state = ClientState::for_test();
+
         client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         client_state.add_resources(&[cidr_resource("11.0.0.0/24")]);
 
@@ -1343,6 +1345,7 @@ mod tests {
     #[test]
     fn add_resources_update_works_to_dns() {
         let mut client_state = ClientState::for_test();
+
         client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         client_state.add_resources(&[cidr_resource_dns_id("11.0.0.0/24")]);
 
@@ -1368,6 +1371,7 @@ mod tests {
     #[test]
     fn remove_resources_works() {
         let mut client_state = ClientState::for_test();
+
         client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         client_state.remove_resources(&[cidr_id()]);
 
@@ -1381,6 +1385,7 @@ mod tests {
     #[test]
     fn set_resource_works() {
         let mut client_state = ClientState::for_test();
+
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
 
         assert_eq!(
@@ -1396,6 +1401,7 @@ mod tests {
     #[test]
     fn set_resource_replaces_old_resources() {
         let mut client_state = ClientState::for_test();
+
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         client_state.set_resources(vec![additional_resource()]);
 
@@ -1412,6 +1418,7 @@ mod tests {
     #[test]
     fn set_resource_works_updates_resource() {
         let mut client_state = ClientState::for_test();
+
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         client_state.set_resources(vec![cidr_resource("11.0.0.0/24")]);
 
@@ -1428,6 +1435,7 @@ mod tests {
     #[test]
     fn set_resource_replaces_keeps_resource() {
         let mut client_state = ClientState::for_test();
+
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24")]);
 
