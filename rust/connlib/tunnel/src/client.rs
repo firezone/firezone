@@ -1416,7 +1416,7 @@ mod tests {
     }
 
     #[test]
-    fn set_resource_works_updates_resource() {
+    fn set_resource_updates_old_resource_with_same_id() {
         let mut client_state = ClientState::for_test();
 
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
@@ -1433,7 +1433,7 @@ mod tests {
     }
 
     #[test]
-    fn set_resource_replaces_keeps_resource() {
+    fn set_resource_keeps_resource_if_unchanged() {
         let mut client_state = ClientState::for_test();
 
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
