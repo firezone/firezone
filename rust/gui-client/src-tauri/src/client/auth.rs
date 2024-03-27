@@ -301,7 +301,6 @@ mod tests {
         let hex_string = generate_nonce();
         let hex_string = hex_string.expose_secret();
         assert_eq!(hex_string.len(), NONCE_LENGTH * 2);
-        dbg!(hex_string);
 
         let auth_base_url = Url::parse("https://app.firez.one").unwrap();
         let req = Request {
