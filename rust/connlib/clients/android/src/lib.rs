@@ -468,6 +468,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     });
 }
 
+/// Set system DNS resolvers
+///
+/// `dns_list` must not have any IPv6 scopes
+/// <https://github.com/firezone/firezone/issues/4350>
+///
 /// # Safety
 /// Pointers must be valid
 #[allow(non_snake_case)]
