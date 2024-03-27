@@ -132,6 +132,7 @@ jobs:
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build
           docker compose --env-file .env up -d client --no-build
+          docker compose exec -it client env
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
 
