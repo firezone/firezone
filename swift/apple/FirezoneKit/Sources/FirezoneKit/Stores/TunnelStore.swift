@@ -18,7 +18,8 @@ import OSLog
 enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
   case tunnelCouldNotBeStopped
-  case cannotSaveToTunnelWhenConnected
+  case cannotSaveWhenConnected
+  case cannotSaveIfMissing
   case cannotSignOutWhenConnected
   case stopAlreadyBeingAttempted
   case startTunnelErrored(Error)
@@ -38,9 +39,7 @@ public final class TunnelStore: ObservableObject {
 
   // Enacapsulate Tunnel status here to make it easier for other components
   // to observe
-  @Published private(set) var status: NEVPNStatus {
-    didSet { self.logger.log("status changed: \(self.status.description)") }
-  }
+  @Published private(set) var status: NEVPNStatus
 
   @Published private(set) var resourceListJSON: String?
 
@@ -57,7 +56,9 @@ public final class TunnelStore: ObservableObject {
   // Use separate bundle IDs for release and debug. Helps with testing releases
   // and dev builds on the same Mac.
   #if DEBUG
-    private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map {
+      "\($0).debug.network-extension"
+    }
     private let bundleDescription = "Firezone (Debug)"
   #else
     private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
@@ -84,8 +85,10 @@ public final class TunnelStore: ObservableObject {
       logger.log("\(#function): \(managers.count) tunnel managers found")
       for manager in managers {
         if let protocolConfiguration = (manager.protocolConfiguration as? NETunnelProviderProtocol),
-           protocolConfiguration.providerBundleIdentifier == bundleIdentifier {
-          self.settings = Settings.fromProviderConfiguration(providerConfiguration: protocolConfiguration.providerConfiguration as? [String: String])
+          protocolConfiguration.providerBundleIdentifier == bundleIdentifier
+        {
+          self.settings = Settings.fromProviderConfiguration(
+            providerConfiguration: protocolConfiguration.providerConfiguration as? [String: String])
           self.manager = manager
           self.status = manager.connection.status
 
@@ -96,7 +99,8 @@ public final class TunnelStore: ObservableObject {
 
       // Connect on app launch unless we're already connected
       if let _ = manager?.protocolConfiguration?.passwordReference,
-         self.status == .disconnected {
+        self.status == .disconnected
+      {
         try await start()
       }
 
@@ -199,8 +203,8 @@ public final class TunnelStore: ObservableObject {
   func signIn() async throws {
     logger.log("\(#function)")
     guard let manager = manager,
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          var providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+      var providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
       logger.error("\(#function): Can't sign in if our tunnel configuration is missing!")
       return
@@ -230,12 +234,11 @@ public final class TunnelStore: ObservableObject {
     try await start()
   }
 
-  // from authStore
   func signOut() async throws {
     logger.log("\(#function)")
     guard let manager = manager,
-          ![.disconnecting, .disconnected].contains(status),
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
+      ![.disconnecting, .disconnected].contains(status),
+      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {
       logger.error("\(#function): Tunnel seems to be already disconnected")
       return
@@ -272,12 +275,15 @@ public final class TunnelStore: ObservableObject {
     logger.log("\(#function)")
 
     guard let manager = manager,
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          var providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
-    else { fatalError("Manager doesn't seem initialized. Can't save advanced settings.") }
+      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+      var providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+    else {
+      logger.error("Manager doesn't seem initialized. Can't save advanced settings.")
+      throw TunnelStoreError.cannotSaveIfMissing
+    }
 
     if [.connected, .connecting].contains(manager.connection.status) {
-      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
+      throw TunnelStoreError.cannotSaveWhenConnected
     }
 
     providerConfiguration = settings.toProviderConfiguration()
@@ -292,8 +298,8 @@ public final class TunnelStore: ObservableObject {
 
   func actorName() -> String? {
     guard let manager = manager,
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          let providerConfiguration = protocolConfiguration.providerConfiguration
+      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+      let providerConfiguration = protocolConfiguration.providerConfiguration
     else {
       logger.error("\(#function): Tunnel not initialized!")
       return nil
@@ -341,32 +347,65 @@ public final class TunnelStore: ObservableObject {
     tunnelObservingTasks.append(
       Task {
         for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange,
-          object: nil
+          named: .NEVPNStatusDidChange
         ) {
-          guard let session = notification.object as? NETunnelProviderSession
-          else {
-            logger.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
-            return
-          }
-          logger.log("\(#function): NEVPNStatusDidChange: \(session.status)")
-          status = session.status
-
-          if case .disconnected = status,
-             let savedValue = try? String(contentsOf: SharedAccess.providerStopReasonURL, encoding: .utf8),
-             let rawValue = Int(savedValue),
-             let reason = NEProviderStopReason(rawValue: rawValue),
-             case .authenticationCanceled = reason {
-            await consumeCanceledAuthentication()
-          }
-
-          if status != .connected {
-            // Reset resources list
-            resourceListJSON = nil
+          await self.handleVPNStatusChange(notification)
+        }
+        for await _ in NotificationCenter.default.notifications(
+          named: .NEVPNConfigurationChange
+        ) {
+          do {
+            try await self.handleVPNConfigurationChange()
+          } catch {
+            logger.error(
+              "\(#function): Error while trying to handle VPN configuration change: \(error)")
           }
         }
       }
     )
+  }
+
+  private func handleVPNStatusChange(_ notification: Notification) async {
+    guard let session = notification.object as? NETunnelProviderSession
+    else {
+      logger.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
+      return
+    }
+    logger.log("\(#function): NEVPNStatusDidChange: \(session.status)")
+    status = session.status
+
+    if case .disconnected = status,
+      let savedValue = try? String(contentsOf: SharedAccess.providerStopReasonURL, encoding: .utf8),
+      let rawValue = Int(savedValue),
+      let reason = NEProviderStopReason(rawValue: rawValue),
+      case .authenticationCanceled = reason
+    {
+      await consumeCanceledAuthentication()
+    }
+
+    if status != .connected {
+      // Reset resources list
+      resourceListJSON = nil
+    }
+  }
+
+  // Handle cases where our stored tunnel manager changes out from under us.
+  // This can happen for example if another VPN app turns on and the system
+  // decides to turn ours off.
+  private func handleVPNConfigurationChange() async throws {
+    guard let manager = manager
+    else {
+      logger.error("\(#function): Our manager is somehow gone!")
+      return
+    }
+
+    try await manager.loadFromPreferences()
+
+    if !manager.isEnabled {
+      logger.log("\(#function): Something turned us off! Shutting down the tunnel")
+
+      try await stop()
+    }
   }
 
   private func consumeCanceledAuthentication() async {
@@ -375,9 +414,9 @@ public final class TunnelStore: ObservableObject {
     // Show alert (macOS -- iOS is handled in the PacketTunnelProvider)
     // TODO: See if we can show standard notifications NotificationCenter here
     #if os(macOS)
-    DispatchQueue.main.async {
-      SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, tunnelStore: self)
-    }
+      DispatchQueue.main.async {
+        SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, tunnelStore: self)
+      }
     #endif
 
     // Clear tokenRef

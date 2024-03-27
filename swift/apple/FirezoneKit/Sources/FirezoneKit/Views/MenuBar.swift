@@ -57,7 +57,6 @@
         .receive(on: mainQueue)
         .sink { [weak self] status in
           guard let self = self else { return }
-          self.logger.log("\(#function): status changed: \(status)")
           self.updateStatusItemIcon()
           self.handleTunnelStatusChanged()
           self.handleMenuVisibilityOrStatusChanged()
