@@ -15,6 +15,7 @@ import SwiftUI
   final class MainViewModel: ObservableObject {
     private let logger: AppLogger
     private var cancellables: Set<AnyCancellable> = []
+
     let tunnelStore: TunnelStore
 
     @Dependency(\.mainQueue) private var mainQueue
@@ -24,33 +25,32 @@ import SwiftUI
     init(tunnelStore: TunnelStore, logger: AppLogger) {
       self.tunnelStore = tunnelStore
       self.logger = logger
+
       setupObservers()
     }
 
     private func setupObservers() {
-      tunnelStore.$status
-        .receive(on: mainQueue)
-        .sink { [weak self] status in
-          guard let self = self else { return }
-          if status == .connected {
-            self.tunnelStore.beginUpdatingResources()
-          } else {
-            self.tunnelStore.endUpdatingResources()
-          }
-        }
-        .store(in: &cancellables)
+      Publishers.CombineLatest(
+        tunnelStore.$status,
+        tunnelStore.$resourceListJSON
+      )
+      .receive(on: mainQueue)
+      .sink(receiveValue: { [weak self] status, json in
+        guard let self = self else { return }
 
-      tunnelStore.$resourceListJSON
-        .receive(on: mainQueue)
-        .sink { [weak self] json in
-          guard let self = self,
-                let json = json,
-                let data = json.data(using: .utf8)
-          else { return }
-
+        if let json = json,
+          let data = json.data(using: .utf8)
+        {
           resources = try? JSONDecoder().decode([Resource].self, from: data)
         }
-        .store(in: &cancellables)
+
+        if status == .connected {
+          self.tunnelStore.beginUpdatingResources()
+        } else {
+          self.tunnelStore.endUpdatingResources()
+        }
+      })
+      .store(in: &cancellables)
     }
 
     func signOutButtonTapped() {
