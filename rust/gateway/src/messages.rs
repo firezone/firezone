@@ -202,6 +202,7 @@ mod test {
         // TODO: We are just testing we can deserialize for now.
         let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
     }
+
     #[test]
     fn init_phoenix_message() {
         let m = InitMessage::Init(InitGateway {
@@ -217,6 +218,25 @@ mod test {
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn additional_fields_are_ignore() {
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
+            },
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","irrelvant":"field","payload":{"more":"info","interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true,"ignored":"field"}}}"#;
         let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
         assert_eq!(m, ingress_message);
     }
