@@ -78,8 +78,9 @@ impl Io {
                             self.device.write(packet)?;
                         }
                         Ok(None) => {}
-                        Err(e) => {
-                            tracing::warn!("Failed to build DNS response from lookup result: {e}");
+                        Err(_) => {
+                            // The error might contain sensitive information therefore we ignore it
+                            tracing::warn!("Failed to build DNS response from lookup result");
                         }
                     }
 

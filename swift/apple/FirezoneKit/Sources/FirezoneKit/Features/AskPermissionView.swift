@@ -33,14 +33,13 @@ public final class AskPermissionViewModel: ObservableObject {
     self.tunnelStore = tunnelStore
     self.sessionNotificationHelper = sessionNotificationHelper
 
-    tunnelStore.$tunnelAuthStatus
-      .filter { $0.isInitialized }
-      .sink { [weak self] tunnelAuthStatus in
+    tunnelStore.$status
+      .sink { [weak self] status in
         guard let self = self else { return }
 
         Task {
           await MainActor.run {
-            if case .noTunnelFound = tunnelAuthStatus {
+            if case .invalid = status {
               self.needsTunnelPermission = true
             } else {
               self.needsTunnelPermission = false
@@ -66,19 +65,12 @@ public final class AskPermissionViewModel: ObservableObject {
         }
       }
       .store(in: &cancellables)
-
   }
 
   func grantPermissionButtonTapped() {
     Task {
       do {
-        try await self.tunnelStore.createTunnel()
-      } catch {
-        #if os(macOS)
-          DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) {
-            AppStore.WindowDefinition.askPermission.bringAlreadyOpenWindowFront()
-          }
-        #endif
+        try await self.tunnelStore.createManager()
       }
     }
   }
@@ -90,7 +82,7 @@ public final class AskPermissionViewModel: ObservableObject {
   #endif
 
   #if os(macOS)
-    func closeAskPermissionWindow() {
+    public func closeAskPermissionWindow() {
       AppStore.WindowDefinition.askPermission.window()?.close()
     }
   #endif
@@ -111,11 +103,10 @@ public struct AskPermissionView: View {
         Image("LogoText")
           .resizable()
           .scaledToFit()
-          .frame(maxWidth: 600)
+          .frame(maxWidth: 320)
           .padding(.horizontal, 10)
         Spacer()
         if $model.needsTunnelPermission.wrappedValue {
-
           #if os(macOS)
             Text(
               "Firezone requires your permission to create VPN tunnels.\nUntil it has that permission, all functionality will be disabled."
@@ -180,7 +171,6 @@ public struct AskPermissionView: View {
             .multilineTextAlignment(.center)
           #endif
         } else {
-
           #if os(macOS)
             Text(
               "You can sign in to Firezone by clicking on the Firezone icon in the macOS menu bar.\nYou may now close this window."

@@ -1,5 +1,5 @@
 [package]
-name = "http-health-check"
+name = "http-test-server"
 # mark:automatic-version
 version = "1.0.0"
 edition = "2021"
@@ -7,6 +7,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = { version = "0.7.5", default-features = false, features = ["http1", "tokio"] }
+anyhow = "1"
+axum = { version = "0.7.5", features = ["http1", "tokio"] }
 tokio = { version = "1.36.0", features = ["net"] }
-clap = { version = "4.5.3", features = ["derive", "env"] }
+serde = {version = "1", features = ["derive"]}
+futures = "0.3"
