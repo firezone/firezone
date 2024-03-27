@@ -1,6 +1,5 @@
 use crate::client::DnsResource;
 use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket};
-use connlib_shared::error::ConnlibError;
 use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
 use connlib_shared::Dname;
 use domain::base::RelativeDname;
@@ -157,7 +156,7 @@ pub(crate) fn create_local_answer<'a>(
 pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<Option<IpPacket>, ConnlibError> {
+) -> Result<Option<IpPacket>, hickory_resolver::error::ResolveError> {
     let Some(mut message) = as_dns_message(&original_pkt) else {
         debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
         return Ok(None);
