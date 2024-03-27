@@ -6,48 +6,72 @@
 
 import Foundation
 
-struct AdvancedSettings: Equatable {
-  var authBaseURLString: String {
-    didSet { if oldValue != authBaseURLString { isSavedToDisk = false } }
-  }
-  var apiURLString: String {
-    didSet { if oldValue != apiURLString { isSavedToDisk = false } }
-  }
-  var connlibLogFilterString: String {
-    didSet { if oldValue != connlibLogFilterString { isSavedToDisk = false } }
-  }
-
-  var isSavedToDisk = true
+struct Settings: Equatable {
+  var authBaseURL: String
+  var apiURL: String
+  var logFilter: String
 
   var isValid: Bool {
-    URL(string: authBaseURLString) != nil
-      && URL(string: apiURLString) != nil
-      && !connlibLogFilterString.isEmpty
+    let authBaseURL = URL(string: authBaseURL)
+    let apiURL = URL(string: apiURL)
+    // Technically strings like "foo" are valid URLs, but their host component
+    // would be nil which crashes the ASWebAuthenticationSession view when
+    // signing in. We should also validate the scheme, otherwise ftp://
+    // could be used for example which tries to open the Finder when signing
+    // in. 🙃
+    return authBaseURL?.host != nil
+      && apiURL?.host != nil
+      && ["http", "https"].contains(authBaseURL?.scheme)
+      && ["ws", "wss"].contains(apiURL?.scheme)
+      && !logFilter.isEmpty
   }
 
-  static let defaultValue: AdvancedSettings = {
+  // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
+  static func fromProviderConfiguration(providerConfiguration: [String: String]?) -> Settings {
+    if let providerConfiguration = providerConfiguration {
+      return Settings(
+        authBaseURL: providerConfiguration[TunnelStoreKeys.authBaseURL]
+          ?? Settings.defaultValue.authBaseURL,
+        apiURL: providerConfiguration[TunnelStoreKeys.apiURL] ?? Settings.defaultValue.apiURL,
+        logFilter: providerConfiguration[TunnelStoreKeys.logFilter]
+          ?? Settings.defaultValue.logFilter
+      )
+    } else {
+      return Settings.defaultValue
+    }
+  }
+
+  // Used for initializing a new providerConfiguration from Settings
+  func toProviderConfiguration() -> [String: String] {
+    return [
+      "authBaseURL": authBaseURL,
+      "apiURL": apiURL,
+      "logFilter": logFilter,
+    ]
+  }
+
+  static let defaultValue: Settings = {
+    // Note: To see what the connlibLogFilterString values mean, see:
+    // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
     #if DEBUG
-      AdvancedSettings(
-        authBaseURLString: "https://app.firez.one/",
-        apiURLString: "wss://api.firez.one/",
-        connlibLogFilterString:
-          "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,str0m=info,debug"
+      Settings(
+        authBaseURL: "https://app.firez.one",
+        apiURL: "wss://api.firez.one",
+        logFilter:
+          "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
       )
     #else
-      AdvancedSettings(
-        authBaseURLString: "https://app.firezone.dev/",
-        apiURLString: "wss://api.firezone.dev/",
-        connlibLogFilterString: "info"
-    )
+      Settings(
+        authBaseURL: "https://app.firezone.dev",
+        apiURL: "wss://api.firezone.dev",
+        logFilter: "info"
+      )
     #endif
   }()
-
-  // Note: To see what the connlibLogFilterString values mean, see:
-  // https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
 }
 
-extension AdvancedSettings: CustomStringConvertible {
+extension Settings: CustomStringConvertible {
   var description: String {
-    "(\(authBaseURLString), \(apiURLString), \(connlibLogFilterString))"
+    "(\(authBaseURL), \(apiURL), \(logFilter)"
   }
 }
