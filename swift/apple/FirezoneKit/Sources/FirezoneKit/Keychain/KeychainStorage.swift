@@ -8,7 +8,7 @@ import Dependencies
 import Foundation
 
 struct KeychainStorage: Sendable {
-  var add: @Sendable (Keychain.Token) async throws -> Keychain.PersistentRef
+  var add: @Sendable (Keychain.Token) async throws -> Void
   var update: @Sendable (Keychain.Token) async throws -> Void
   var search: @Sendable () async -> Keychain.PersistentRef?
 }
@@ -31,7 +31,6 @@ extension KeychainStorage: DependencyKey {
         storage.withValue {
           let uuid = UUID().uuidString.data(using: .utf8)!
           $0[uuid] = (token)
-          return uuid
         }
       },
       update: { token in
