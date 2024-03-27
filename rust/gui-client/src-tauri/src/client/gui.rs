@@ -545,7 +545,7 @@ impl Controller {
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
-        )?;
+        );
 
         connlib.set_dns(client::resolvers::get().unwrap_or_default());
 

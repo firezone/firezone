@@ -56,8 +56,7 @@ async fn main() -> Result<()> {
         callbacks.clone(),
         max_partition_time,
         tokio::runtime::Handle::current(),
-    )
-    .unwrap();
+    );
     // TODO: this should be added dynamically
     session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
