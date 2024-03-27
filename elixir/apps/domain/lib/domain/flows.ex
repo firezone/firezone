@@ -125,7 +125,6 @@ defmodule Domain.Flows do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
       queryable
       |> Authorizer.for_subject(Flow, subject)
-      |> Ecto.Query.order_by([flows: flows], desc: flows.inserted_at, desc: flows.id)
       |> Repo.list(Flow.Query, opts)
     end
   end
@@ -145,39 +144,24 @@ defmodule Domain.Flows do
     end
   end
 
-  def list_flow_activities_for(assoc, ended_after, started_before, subject, opts \\ [])
+  def list_flow_activities_for(assoc, subject, opts \\ [])
 
-  def list_flow_activities_for(
-        %Flow{} = flow,
-        ended_after,
-        started_before,
-        %Auth.Subject{} = subject,
-        opts
-      ) do
+  def list_flow_activities_for(%Flow{} = flow, %Auth.Subject{} = subject, opts) do
     Activity.Query.all()
     |> Activity.Query.by_flow_id(flow.id)
-    |> list_activities(ended_after, started_before, subject, opts)
+    |> list_activities(subject, opts)
   end
 
-  def list_flow_activities_for(
-        %Accounts.Account{} = account,
-        ended_after,
-        started_before,
-        %Auth.Subject{} = subject,
-        opts
-      ) do
+  def list_flow_activities_for(%Accounts.Account{} = account, %Auth.Subject{} = subject, opts) do
     Activity.Query.all()
     |> Activity.Query.by_account_id(account.id)
-    |> list_activities(ended_after, started_before, subject, opts)
+    |> list_activities(subject, opts)
   end
 
-  defp list_activities(queryable, ended_after, started_before, subject, opts) do
+  defp list_activities(queryable, subject, opts) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
       queryable
-      |> Activity.Query.by_window_ended_at({:greater_than, ended_after})
-      |> Activity.Query.by_window_started_at({:less_than, started_before})
       |> Authorizer.for_subject(Activity, subject)
-      |> Ecto.Query.order_by([activities: activities], asc: activities.window_started_at)
       |> Repo.list(Activity.Query, opts)
     end
   end

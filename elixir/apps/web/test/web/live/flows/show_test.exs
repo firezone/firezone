@@ -164,4 +164,39 @@ defmodule Web.Live.Flows.ShowTest do
                ]
              ]
   end
+
+  test "renders activities table", %{
+    account: account,
+    flow: flow,
+    identity: identity,
+    conn: conn
+  } do
+    activity =
+      Fixtures.Flows.create_activity(
+        account: account,
+        flow: flow,
+        window_started_at: DateTime.truncate(flow.inserted_at, :second),
+        window_ended_at: DateTime.truncate(flow.expires_at, :second),
+        tx_bytes: 1024 * 1024 * 1024 * 42
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/flows/#{flow}")
+
+    [row] =
+      lv
+      |> element("#activities")
+      |> render()
+      |> table_to_map()
+
+    assert row["started at"]
+    assert row["ended at"]
+
+    assert row["connectivity type"] == to_string(activity.connectivity_type)
+    assert row["destination"] == to_string(activity.destination)
+    assert row["rx"] == "#{activity.rx_bytes} B"
+    assert row["tx"] == "42 GB"
+  end
 end

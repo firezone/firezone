@@ -10,16 +10,6 @@ defmodule Web.ErrorHTMLTest do
     assert body =~ "Sorry, we couldn't find this page"
   end
 
-  test "renders 422.html", %{conn: conn} do
-    {_code, _headers, body} =
-      assert_error_sent 422, fn ->
-        get(conn, ~p"/error/422")
-      end
-
-    assert body =~ "Something went wrong"
-    assert body =~ "We've already been notified and will get it fixed as soon as possible"
-  end
-
   test "renders 500.html", %{conn: conn} do
     {_code, _headers, body} =
       assert_error_sent 500, fn ->

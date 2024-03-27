@@ -571,15 +571,11 @@ defmodule Domain.FlowsTest do
       flow: flow,
       subject: subject
     } do
-      now = DateTime.utc_now()
-      ended_after = DateTime.add(now, -30, :minute)
-      started_before = DateTime.add(now, 30, :minute)
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(account, subject)
 
       assert {:ok, [], _metadata} =
-               list_flow_activities_for(account, ended_after, started_before, subject)
-
-      assert {:ok, [], _metadata} =
-               list_flow_activities_for(flow, ended_after, started_before, subject)
+               list_flow_activities_for(flow, subject)
     end
 
     test "does not list flow activities from other accounts", %{
@@ -589,15 +585,11 @@ defmodule Domain.FlowsTest do
       flow = Fixtures.Flows.create_flow()
       Fixtures.Flows.create_activity(flow: flow)
 
-      now = DateTime.utc_now()
-      ended_after = DateTime.add(now, -30, :minute)
-      started_before = DateTime.add(now, 30, :minute)
+      assert {:ok, [], _metadata} =
+               list_flow_activities_for(account, subject)
 
       assert {:ok, [], _metadata} =
-               list_flow_activities_for(account, ended_after, started_before, subject)
-
-      assert {:ok, [], _metadata} =
-               list_flow_activities_for(flow, ended_after, started_before, subject)
+               list_flow_activities_for(flow, subject)
     end
 
     test "returns ordered by window start time flow activities within a time window", %{
@@ -623,49 +615,73 @@ defmodule Domain.FlowsTest do
       assert {:ok, [], _metadata} =
                list_flow_activities_for(
                  account,
-                 thirty_minutes_in_future,
-                 sixty_minutes_in_future,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: thirty_minutes_in_future,
+                     to: sixty_minutes_in_future
+                   }
+                 ]
                )
 
       assert {:ok, [], _metadata} =
                list_flow_activities_for(
                  flow,
-                 thirty_minutes_in_future,
-                 sixty_minutes_in_future,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: thirty_minutes_in_future,
+                     to: sixty_minutes_in_future
+                   }
+                 ]
                )
 
       assert {:ok, [], _metadata} =
                list_flow_activities_for(
                  account,
-                 thirty_minutes_ago,
-                 five_minutes_ago,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: thirty_minutes_ago,
+                     to: five_minutes_ago
+                   }
+                 ]
                )
 
       assert {:ok, [], _metadata} =
                list_flow_activities_for(
                  flow,
-                 thirty_minutes_ago,
-                 five_minutes_ago,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: thirty_minutes_ago,
+                     to: five_minutes_ago
+                   }
+                 ]
                )
 
       assert {:ok, [^activity1], _metadata} =
                list_flow_activities_for(
                  account,
-                 five_minutes_ago,
-                 now,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: five_minutes_ago,
+                     to: now
+                   }
+                 ]
                )
 
       assert {:ok, [^activity1], _metadata} =
                list_flow_activities_for(
                  flow,
-                 five_minutes_ago,
-                 now,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: five_minutes_ago,
+                     to: now
+                   }
+                 ]
                )
 
       activity2 =
@@ -678,17 +694,25 @@ defmodule Domain.FlowsTest do
       assert {:ok, [^activity2, ^activity1], _metadata} =
                list_flow_activities_for(
                  account,
-                 thirty_minutes_ago,
-                 now,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: thirty_minutes_ago,
+                     to: now
+                   }
+                 ]
                )
 
       assert {:ok, [^activity2, ^activity1], _metadata} =
                list_flow_activities_for(
                  flow,
-                 thirty_minutes_ago,
-                 now,
-                 subject
+                 subject,
+                 filter: [
+                   window_within: %Domain.Repo.Filter.Range{
+                     from: thirty_minutes_ago,
+                     to: now
+                   }
+                 ]
                )
     end
 
@@ -697,19 +721,15 @@ defmodule Domain.FlowsTest do
       flow: flow,
       subject: subject
     } do
-      now = DateTime.utc_now()
-      ended_after = DateTime.add(now, -30, :minute)
-      started_before = DateTime.add(now, 30, :minute)
-
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert list_flow_activities_for(account, ended_after, started_before, subject) ==
+      assert list_flow_activities_for(account, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Flows.Authorizer.manage_flows_permission()]}}
 
-      assert list_flow_activities_for(flow, ended_after, started_before, subject) ==
+      assert list_flow_activities_for(flow, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
