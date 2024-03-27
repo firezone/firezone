@@ -69,11 +69,11 @@ public struct SharedAccess {
     return nil
   }
 
-  public static var tunnelShutdownEventFileURL: URL {
-    baseFolderURL.appendingPathComponent("tunnel_shutdown_event_data.json")
+  public static var providerStopReasonURL: URL {
+    baseFolderURL.appendingPathComponent("reason")
   }
 
-  private static func ensureDirectoryExists(at path: String) -> Bool {
+  public static func ensureDirectoryExists(at path: String) -> Bool {
     let fileManager = FileManager.default
     do {
       var isDirectory: ObjCBool = false

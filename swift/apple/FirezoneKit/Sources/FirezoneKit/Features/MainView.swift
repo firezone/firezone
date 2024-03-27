@@ -15,70 +15,47 @@ import SwiftUI
   final class MainViewModel: ObservableObject {
     private let logger: AppLogger
     private var cancellables: Set<AnyCancellable> = []
+    let tunnelStore: TunnelStore
 
-    let appStore: AppStore
     @Dependency(\.mainQueue) private var mainQueue
 
-    @Published var loginStatus: AuthStore.LoginStatus = .uninitialized
-    @Published var tunnelStatus: NEVPNStatus = .invalid
-    @Published var orderedResources: [DisplayableResources.Resource] = []
+    @Published private(set) var resources: [Resource]?
 
-    init(appStore: AppStore) {
-      self.appStore = appStore
-      self.logger = appStore.logger
+    init(tunnelStore: TunnelStore, logger: AppLogger) {
+      self.tunnelStore = tunnelStore
+      self.logger = logger
       setupObservers()
     }
 
     private func setupObservers() {
-      appStore.authStore.$loginStatus
-        .receive(on: mainQueue)
-        .sink { [weak self] loginStatus in
-          self?.loginStatus = loginStatus
-        }
-        .store(in: &cancellables)
-
-      appStore.tunnelStore.$status
+      tunnelStore.$status
         .receive(on: mainQueue)
         .sink { [weak self] status in
-          self?.tunnelStatus = status
+          guard let self = self else { return }
           if status == .connected {
-            self?.appStore.tunnelStore.beginUpdatingResources()
+            self.tunnelStore.beginUpdatingResources()
           } else {
-            self?.appStore.tunnelStore.endUpdatingResources()
+            self.tunnelStore.endUpdatingResources()
           }
         }
         .store(in: &cancellables)
 
-      appStore.tunnelStore.$resources
+      tunnelStore.$resourceListJSON
         .receive(on: mainQueue)
-        .sink { [weak self] resources in
-          guard let self = self else { return }
-          self.orderedResources = resources.orderedResources.map {
-            DisplayableResources.Resource(name: $0.name, location: $0.location)
-          }
+        .sink { [weak self] json in
+          guard let self = self,
+                let json = json,
+                let data = json.data(using: .utf8)
+          else { return }
+
+          resources = try? JSONDecoder().decode([Resource].self, from: data)
         }
         .store(in: &cancellables)
     }
 
     func signOutButtonTapped() {
       Task {
-        await appStore.authStore.signOut()
-      }
-    }
-
-    func startTunnel() async {
-      if case .signedIn = self.loginStatus {
-        appStore.authStore.startTunnel()
-      }
-    }
-
-    func stopTunnel() {
-      Task {
-        do {
-          try await appStore.tunnelStore.stop()
-        } catch {
-          logger.error("\(#function): Error stopping tunnel: \(error)")
-        }
+        try await tunnelStore.signOut()
       }
     }
   }
@@ -90,56 +67,53 @@ import SwiftUI
       List {
         Section(header: Text("Authentication")) {
           Group {
-            switch self.model.loginStatus {
-            case .signedIn(let actorName):
-              if self.model.tunnelStatus == .connected {
-                HStack {
-                  Text(actorName.isEmpty ? "Signed in" : "Signed in as")
-                  Spacer()
-                  Text(actorName)
-                    .foregroundColor(.secondary)
-                }
-                HStack {
-                  Spacer()
-                  Button("Sign Out") {
-                    self.model.signOutButtonTapped()
-                  }
-                  Spacer()
-                }
-              } else {
-                Text(self.model.tunnelStatus.description)
+            if case .connected = model.tunnelStore.status {
+              let actorName = model.tunnelStore.actorName() ?? ""
+              HStack {
+                Text(actorName.isEmpty ? "Signed in" : "Signed in as")
+                Spacer()
+                Text(actorName).foregroundColor(.secondary)
               }
-            case .signedOut:
-              Text("Signed Out")
-            case .uninitialized:
-              Text("Initializing…")
-            case .needsTunnelCreationPermission:
-              Text("Requires VPN permission")
+              HStack {
+                Spacer()
+                Button("Sign Out") {
+                  model.signOutButtonTapped()
+                }
+                Spacer()
+              }
+            } else {
+              Text(model.tunnelStore.status.description)
             }
           }
         }
-        if case .signedIn = self.model.loginStatus, self.model.tunnelStatus == .connected {
+        if case .connected = model.tunnelStore.status {
           Section(header: Text("Resources")) {
-            if self.model.orderedResources.isEmpty {
-              Text("No resources")
-            } else {
-              ForEach(self.model.orderedResources) { resource in
-                Menu(content: {
-                  Button {
-                    self.copyResourceTapped(resource)
-                  } label: {
-                    Label("Copy Address", systemImage: "doc.on.doc")
-                  }
-                }, label : {
-                  HStack {
-                    Text(resource.name)
-                      .foregroundColor(.primary)
-                    Spacer()
-                    Text(resource.location)
-                      .foregroundColor(.secondary)
-                  }
-                })
+            if let resources = model.resources {
+              if resources.isEmpty {
+                Text("No Resources")
+              } else {
+                ForEach(resources) { resource in
+                  Menu(
+                    content: {
+                      Button {
+                        copyResourceTapped(resource)
+                      } label: {
+                        Label("Copy Address", systemImage: "doc.on.doc")
+                      }
+                    },
+                    label: {
+                      HStack {
+                        Text(resource.name)
+                          .foregroundColor(.primary)
+                        Spacer()
+                        Text(resource.address)
+                          .foregroundColor(.secondary)
+                      }
+                    })
+                }
               }
+            } else {
+              Text("Loading Resources...")
             }
           }
         }
@@ -148,9 +122,9 @@ import SwiftUI
       .navigationTitle("Firezone")
     }
 
-    private func copyResourceTapped(_ resource: DisplayableResources.Resource) {
+    private func copyResourceTapped(_ resource: Resource) {
       let pasteboard = UIPasteboard.general
-      pasteboard.string = resource.location
+      pasteboard.string = resource.address
     }
   }
 #endif
