@@ -108,6 +108,11 @@ jobs:
           dns-nm,
           systemd/dns-systemd-resolved,
         ]
+        include:
+          - test: dns-etc-resolvconf
+            dns-control: etc-resolv-conf
+          - test: systemd/dns-systemd-resolved
+            dns-control: systemd-resolved
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -117,6 +122,8 @@ jobs:
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
+        env:
+          FIREZONE_DNS_CONTROL: ${{ matrix.dns-control }}
         run: |
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
