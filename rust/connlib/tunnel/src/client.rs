@@ -828,13 +828,14 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         if !dns_updated(&self.system_resolvers, &new_dns) {
             tracing::debug!("Updated dns called but no change to system's resolver");
             return false;
         }
 
-        tracing::info!("Found new system resolvers: {new_dns:?}");
+        tracing::info!("Found new system resolvers");
         self.system_resolvers = new_dns;
 
         true
