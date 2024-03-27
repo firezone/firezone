@@ -20,8 +20,11 @@ public enum KeychainError: Error {
 public actor Keychain {
   private let label = "Firezone token"
   private let description = "Firezone access token used to authenticate the client."
-  private let account = "Firezone"
-  private let service = Bundle.main.bundleIdentifier!
+  private let service = "dev.firezone.firezone"
+
+  // Bump this for backwards-incompatible Keychain changes; this is effectively the
+  // upsert key.
+  private let account = "1"
 
   private let workQueue = DispatchQueue(label: "FirezoneKeychainWorkQueue")
 
@@ -47,7 +50,7 @@ public actor Keychain {
 
   public init() {}
 
-  func add(token: Token) async throws -> PersistentRef {
+  public func add(token: Token) async throws {
     return try await withCheckedThrowingContinuation { [weak self] continuation in
       self?.workQueue.async { [weak self] in
         guard let self = self else {
@@ -56,16 +59,12 @@ public actor Keychain {
         }
 
         let query: [CFString: Any] = [
-          // Common for both iOS and macOS:
           kSecClass: kSecClassGenericPassword,
-          kSecAttrLabel: label,
-          kSecAttrDescription: description,
-          kSecAttrAccount: account,
-          kSecAttrService: service,
+          kSecAttrLabel: self.label,
+          kSecAttrAccount: self.account,
+          kSecAttrDescription: self.description,
+          kSecAttrService: self.service,
           kSecValueData: token.data(using: .utf8) as Any,
-          kSecReturnPersistentRef: true,
-          kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
-          kSecAttrAccessGroup: AppInfoPlistConstants.appGroupId as CFString as Any,
         ]
 
         var ref: CFTypeRef?
@@ -76,18 +75,13 @@ public actor Keychain {
           return
         }
 
-        guard let savedPersistentRef = ref as? Data else {
-          continuation.resume(throwing: KeychainError.nilResultFromAppleSecCall(call: "SecItemAdd"))
-          return
-        }
-        continuation.resume(returning: savedPersistentRef)
+        continuation.resume()
         return
       }
     }
   }
 
-  func update(token: Token) async throws {
-
+  public func update(token: Token) async throws {
     return try await withCheckedThrowingContinuation { [weak self] continuation in
       self?.workQueue.async { [weak self] in
         guard let self = self else {
@@ -97,7 +91,9 @@ public actor Keychain {
 
         let query: [CFString: Any] = [
           kSecClass: kSecClassGenericPassword,
+          kSecAttrLabel: self.label,
           kSecAttrAccount: self.account,
+          kSecAttrDescription: self.description,
           kSecAttrService: self.service,
         ]
         let attributesToUpdate = [
@@ -121,6 +117,7 @@ public actor Keychain {
       self?.workQueue.async {
         let query =
           [
+            kSecClass: kSecClassGenericPassword,
             kSecValuePersistentRef: persistentRef,
             kSecReturnData: true,
           ] as [CFString: Any]
@@ -138,13 +135,14 @@ public actor Keychain {
     }
   }
 
-  func search() async -> PersistentRef? {
+  public func search() async -> PersistentRef? {
     return await withCheckedContinuation { [weak self] continuation in
       guard let self = self else { return }
       self.workQueue.async {
         let query =
           [
             kSecClass: kSecClassGenericPassword,
+            kSecAttrLabel: self.label,
             kSecAttrAccount: self.account,
             kSecAttrDescription: self.description,
             kSecAttrService: self.service,
@@ -157,6 +155,21 @@ public actor Keychain {
         } else {
           continuation.resume(returning: nil)
         }
+      }
+    }
+  }
+
+  public func delete(persistentRef: PersistentRef) async throws {
+    return try await withCheckedThrowingContinuation { [weak self] continuation in
+      self?.workQueue.async {
+        let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
+        let ret = SecStatus(SecItemDelete(query as CFDictionary))
+        guard ret.isSuccess || ret == .status(.itemNotFound) else {
+          continuation.resume(
+            throwing: KeychainError.appleSecError(call: "SecItemDelete", status: ret))
+          return
+        }
+        continuation.resume(returning: ())
       }
     }
   }
