@@ -105,6 +105,13 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    pub(crate) fn into_immutable(self) -> IpPacket<'a> {
+        match self {
+            Self::MutableIpv4Packet(p) => p.consume_to_immutable().into(),
+            Self::MutableIpv6Packet(p) => p.consume_to_immutable().into(),
+        }
+    }
+
     pub(crate) fn as_immutable(&self) -> IpPacket<'_> {
         match self {
             Self::MutableIpv4Packet(p) => IpPacket::Ipv4Packet(p.to_immutable()),
@@ -259,6 +266,13 @@ impl<'a> IpPacket<'a> {
         self.is_udp()
             .then(|| UdpPacket::new(self.payload()))
             .flatten()
+    }
+
+    pub fn source(&self) -> IpAddr {
+        match self {
+            Self::Ipv4Packet(p) => p.get_source().into(),
+            Self::Ipv6Packet(p) => p.get_source().into(),
+        }
     }
 
     pub fn destination(&self) -> IpAddr {

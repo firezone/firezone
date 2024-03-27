@@ -4,31 +4,28 @@
 //! we are using the same version across our own crates.
 
 mod callbacks;
-mod callbacks_error_facade;
-pub mod control;
 pub mod error;
 pub mod messages;
 
+/// Module to generate and store a persistent device ID on disk
+///
+/// Only properly implemented on Linux and Windows (platforms with Tauri and headless client)
+pub mod device_id;
+
+// Must be compiled on Mac so the Mac runner can do `version-check` on `linux-client`
 pub mod linux;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
 
-pub use callbacks::Callbacks;
-pub use callbacks_error_facade::CallbackErrorFacade;
+pub use boringtun::x25519::PublicKey;
+pub use boringtun::x25519::StaticSecret;
+pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
 pub use error::ConnlibError as Error;
 pub use error::Result;
+pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
-use boringtun::x25519::{PublicKey, StaticSecret};
-use ip_network::Ipv4Network;
-use ip_network::Ipv6Network;
-use messages::Key;
-use ring::digest::{Context, SHA256};
-use secrecy::{ExposeSecret, SecretString};
-use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
-use url::Url;
+use rand_core::OsRng;
 
 pub type Dname = domain::base::Dname<Vec<u8>>;
 
@@ -50,80 +47,11 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
-// From https://man7.org/linux/man-pages/man2/gethostname.2.html
-// SUSv2 guarantees that "Host names are limited to 255 bytes".
-// POSIX.1 guarantees that "Host names (not including the
-// terminating null byte) are limited to HOST_NAME_MAX bytes".  On
-// Linux, HOST_NAME_MAX is defined with the value 64, which has been
-// the limit since Linux 1.0 (earlier kernels imposed a limit of 8
-// bytes)
-//
-// We are counting the nul-byte
-#[cfg(not(target_os = "windows"))]
-const HOST_NAME_MAX: usize = 256;
+pub fn keypair() -> (StaticSecret, PublicKey) {
+    let private_key = StaticSecret::random_from_rng(OsRng);
+    let public_key = PublicKey::from(&private_key);
 
-/// Creates a new login URL to use with the portal.
-pub fn login_url(
-    mode: Mode,
-    api_url: Url,
-    token: SecretString,
-    device_id: String,
-    firezone_name: Option<String>,
-) -> Result<(Url, StaticSecret)> {
-    let private_key = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    let name = firezone_name
-        .or(get_host_name())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let external_id = sha256(device_id);
-
-    let url = get_websocket_path(
-        api_url,
-        token,
-        match mode {
-            Mode::Client => "client",
-            Mode::Gateway => "gateway",
-        },
-        &Key(PublicKey::from(&private_key).to_bytes()),
-        &external_id,
-        &name,
-    )?;
-
-    Ok((url, private_key))
-}
-
-// FIXME: This is a terrible name :(
-pub enum Mode {
-    Client,
-    Gateway,
-}
-
-pub struct IpProvider {
-    ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
-    ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
-}
-
-impl IpProvider {
-    pub fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
-        Self {
-            ipv4: Box::new(ipv4.hosts()),
-            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
-        }
-    }
-
-    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let proxy_ip = match ip {
-            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
-            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
-        };
-
-        if proxy_ip.is_none() {
-            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
-            // this might happen in ipv4 if tokens are too long lived.
-            tracing::error!("IP exhaustion: Please reset your client");
-        }
-
-        proxy_ip
-    }
+    (private_key, public_key)
 }
 
 pub fn get_user_agent(os_version_override: Option<String>) -> String {
@@ -201,74 +129,4 @@ fn kernel_version() -> Option<String> {
         .collect();
 
     String::from_utf8(version).ok()
-}
-
-#[cfg(not(target_os = "windows"))]
-fn get_host_name() -> Option<String> {
-    let mut buf = [0; HOST_NAME_MAX];
-    // SAFETY: we just allocated a buffer with that size
-    if unsafe { libc::gethostname(buf.as_mut_ptr() as *mut _, HOST_NAME_MAX) } != 0 {
-        return None;
-    }
-
-    String::from_utf8(buf.split(|c| *c == 0).next()?.to_vec()).ok()
-}
-
-/// Returns the hostname, or `None` if it's not valid UTF-8
-#[cfg(target_os = "windows")]
-fn get_host_name() -> Option<String> {
-    hostname::get().ok().and_then(|x| x.into_string().ok())
-}
-
-fn set_ws_scheme(url: &mut Url) -> Result<()> {
-    let scheme = match url.scheme() {
-        "http" | "ws" => "ws",
-        "https" | "wss" => "wss",
-        _ => return Err(Error::UriScheme),
-    };
-    url.set_scheme(scheme)
-        .expect("Developer error: the match before this should make sure we can set this");
-    Ok(())
-}
-
-fn sha256(input: String) -> String {
-    let mut ctx = Context::new(&SHA256);
-    ctx.update(input.as_bytes());
-    let digest = ctx.finish();
-
-    digest.as_ref().iter().fold(String::new(), |mut output, b| {
-        use std::fmt::Write;
-
-        let _ = write!(output, "{b:02x}");
-        output
-    })
-}
-
-fn get_websocket_path(
-    mut api_url: Url,
-    secret: SecretString,
-    mode: &str,
-    public_key: &Key,
-    external_id: &str,
-    name: &str,
-) -> Result<Url> {
-    set_ws_scheme(&mut api_url)?;
-
-    {
-        let mut paths = api_url.path_segments_mut().map_err(|_| Error::UriError)?;
-        paths.pop_if_empty();
-        paths.push(mode);
-        paths.push("websocket");
-    }
-
-    {
-        let mut query_pairs = api_url.query_pairs_mut();
-        query_pairs.clear();
-        query_pairs.append_pair("token", secret.expose_secret());
-        query_pairs.append_pair("public_key", &public_key.to_string());
-        query_pairs.append_pair("external_id", external_id);
-        query_pairs.append_pair("name", name);
-    }
-
-    Ok(api_url)
 }

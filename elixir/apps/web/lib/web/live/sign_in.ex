@@ -6,7 +6,7 @@ defmodule Web.SignIn do
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
+         [_ | _] = providers <- Auth.all_active_providers_for_account!(account) do
       providers_by_adapter =
         providers
         |> group_providers_by_root_adapter()
@@ -109,9 +109,13 @@ defmodule Web.SignIn do
         <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
-            <.website_link href="/kb/user-guides">
-              Read the docs.
-            </.website_link>
+            <.website_link href="/kb/user-guides">Read the docs.</.website_link>
+          </p>
+          <p class="py-2">
+            Looking for a different account?
+            <.link navigate={~p"/"} class={[link_style()]}>
+              See recently used accounts.
+            </.link>
           </p>
         </div>
       </div>
@@ -156,37 +160,37 @@ defmodule Web.SignIn do
     assigns = Map.put(assigns, :userpass_form, form)
 
     ~H"""
-    <.simple_form
+    <.form
       for={@userpass_form}
       action={~p"/#{@account}/sign_in/providers/#{@provider.id}/verify_credentials"}
       class="space-y-4 lg:space-y-6"
       id="userpass_form"
       phx-update="ignore"
     >
-      <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+      <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+        <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
 
-      <.input
-        field={@userpass_form[:provider_identifier]}
-        type="text"
-        label="Username"
-        placeholder="Enter your username"
-        required
-      />
+        <.input
+          field={@userpass_form[:provider_identifier]}
+          type="text"
+          label="Username"
+          placeholder="Enter your username"
+          required
+        />
 
-      <.input
-        field={@userpass_form[:secret]}
-        type="password"
-        label="Password"
-        placeholder="••••••••"
-        required
-      />
+        <.input
+          field={@userpass_form[:secret]}
+          type="password"
+          label="Password"
+          placeholder="••••••••"
+          required
+        />
+      </div>
 
-      <:actions>
-        <.button phx-disable-with="Signing in..." class="w-full">
-          Sign in
-        </.button>
-      </:actions>
-    </.simple_form>
+      <.button phx-disable-with="Signing in..." class="w-full">
+        Sign in
+      </.button>
+    </.form>
     """
   end
 
@@ -196,7 +200,7 @@ defmodule Web.SignIn do
     assigns = Map.put(assigns, :email_form, form)
 
     ~H"""
-    <.simple_form
+    <.form
       for={@email_form}
       action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_magic_link"}
       class="space-y-4 lg:space-y-6"
@@ -212,10 +216,10 @@ defmodule Web.SignIn do
         placeholder="Enter your email"
         required
       />
-      <.button phx-disable-with="Sending..." class="w-full" style="info">
+      <.submit_button phx-disable-with="Sending..." class="w-full" style="info">
         Request sign in token
-      </.button>
-    </.simple_form>
+      </.submit_button>
+    </.form>
     """
   end
 

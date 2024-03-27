@@ -1,6 +1,7 @@
 //! Error module.
 use base64::{DecodeError, DecodeSliceError};
 use boringtun::noise::errors::WireGuardError;
+use std::net::IpAddr;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -64,20 +65,6 @@ pub enum ConnlibError {
     /// Error when reading system's interface
     #[error("Error while reading system's interface")]
     IfaceRead(std::io::Error),
-    #[error("`on_set_interface_config` failed: {0}")]
-    OnSetInterfaceConfigFailed(String),
-    #[error("`on_tunnel_ready` failed: {0}")]
-    OnTunnelReadyFailed(String),
-    #[error("`on_add_route` failed: {0}")]
-    OnAddRouteFailed(String),
-    #[error("`on_remove_route` failed: {0}")]
-    OnRemoveRouteFailed(String),
-    #[error("`on_update_resources` failed: {0}")]
-    OnUpdateResourcesFailed(String),
-    #[error("`get_system_default_resolvers` failed: {0}")]
-    GetSystemDefaultResolverFailed(String),
-    #[error("`protect_file_descriptor` failed: {0}")]
-    ProtectFileDescriptorFailed(String),
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),
@@ -102,11 +89,14 @@ pub enum ConnlibError {
     #[error("No MTU found")]
     NoMtu,
     /// A panic occurred.
-    #[error("Panicked: {0}")]
+    #[error("Connlib panicked: {0}")]
     Panic(String),
+    /// The task was cancelled
+    #[error("Connlib task was cancelled")]
+    Cancelled,
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload(Option<String>),
+    PanicNonStringPayload,
     /// Received connection details that might be stale
     #[error("Unexpected connection details")]
     UnexpectedConnectionDetails,
@@ -128,14 +118,7 @@ pub enum ConnlibError {
     /// Any parse error
     #[error("parse error")]
     ParseError,
-    /// DNS lookup error
-    #[error("Error with the DNS fallback lookup")]
-    DNSFallback(#[from] hickory_resolver::error::ResolveError),
-    #[error("Error with the DNS fallback lookup")]
-    DNSFallbackKind(#[from] hickory_resolver::error::ResolveErrorKind),
-    #[error("DNS proto error")]
-    DnsProtoError(#[from] hickory_resolver::proto::error::ProtoError),
-    /// Connection is still being stablished, retry later
+    /// Connection is still being established, retry later
     #[error("Pending connection")]
     PendingConnection,
     #[error(transparent)]
@@ -163,20 +146,19 @@ pub enum ConnlibError {
 
     #[cfg(target_os = "linux")]
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
-    ResolvConf(#[from] crate::linux::etc_resolv_conf::Error),
+    ResolvConf(anyhow::Error),
 
     #[error(transparent)]
     Snownet(#[from] snownet::Error),
-    #[error("Detected non-allowed packet in channel")]
-    UnallowedPacket,
-    #[error("No available ipv4 socket")]
-    NoIpv4,
-    #[error("No available ipv6 socket")]
-    NoIpv6,
+    #[error("Detected non-allowed packet in channel from {0}")]
+    UnallowedPacket(IpAddr),
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
     ResolvectlFailed,
+
+    #[error("connection to the portal failed: {0}")]
+    PortalConnectionFailed(phoenix_channel::Error),
 }
 
 impl ConnlibError {

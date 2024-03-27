@@ -1,6 +1,6 @@
 //
 //  KeychainStorage.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -8,11 +8,9 @@ import Dependencies
 import Foundation
 
 struct KeychainStorage: Sendable {
-  var store:
-    @Sendable (Keychain.Token, Keychain.TokenAttributes) async throws -> Keychain.PersistentRef
-  var delete: @Sendable (Keychain.PersistentRef) async throws -> Void
-  var loadAttributes: @Sendable (Keychain.PersistentRef) async -> Keychain.TokenAttributes?
-  var searchByAuthBaseURL: @Sendable (URL) async -> Keychain.PersistentRef?
+  var add: @Sendable (Keychain.Token) async throws -> Keychain.PersistentRef
+  var update: @Sendable (Keychain.Token) async throws -> Void
+  var search: @Sendable () async -> Keychain.PersistentRef?
 }
 
 extension KeychainStorage: DependencyKey {
@@ -20,33 +18,27 @@ extension KeychainStorage: DependencyKey {
     let keychain = Keychain()
 
     return KeychainStorage(
-      store: { try await keychain.store(token: $0, tokenAttributes: $1) },
-      delete: { try await keychain.delete(persistentRef: $0) },
-      loadAttributes: { await keychain.loadAttributes(persistentRef: $0) },
-      searchByAuthBaseURL: { await keychain.search(authBaseURLString: $0.absoluteString) }
+      add: { try await keychain.add(token: $0) },
+      update: { try await keychain.update(token: $0) },
+      search: { await keychain.search() }
     )
   }
 
   static var testValue: KeychainStorage {
-    let storage = LockIsolated([Data: (Keychain.Token, Keychain.TokenAttributes)]())
+    let storage = LockIsolated([Data: (Keychain.Token)]())
     return KeychainStorage(
-      store: { token, attributes in
+      add: { token in
         storage.withValue {
           let uuid = UUID().uuidString.data(using: .utf8)!
-          $0[uuid] = (token, attributes)
+          $0[uuid] = (token)
           return uuid
         }
       },
-      delete: { ref in
-        storage.withValue {
-          $0[ref] = nil
-        }
+      update: { token in
+
       },
-      loadAttributes: { ref in
-        storage.value[ref]?.1
-      },
-      searchByAuthBaseURL: { _ in
-        nil
+      search: {
+        return UUID().uuidString.data(using: .utf8)!
       }
     )
   }

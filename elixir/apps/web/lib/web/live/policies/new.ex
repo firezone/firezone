@@ -3,25 +3,24 @@ defmodule Web.Policies.New do
   alias Domain.{Resources, Actors, Policies}
 
   def mount(params, _session, socket) do
-    with {:ok, resources} <-
-           Resources.list_resources(socket.assigns.subject, preload: [:gateway_groups]),
-         {:ok, actor_groups} <- Actors.list_groups(socket.assigns.subject, preload: :provider) do
-      form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
+    # TODO: unify this dropdown and the one we use for live table filters
+    resources = Resources.all_resources!(socket.assigns.subject, preload: [:gateway_groups])
+    # TODO: unify this dropdown and the one we use for live table filters
+    actor_groups = Actors.all_groups!(socket.assigns.subject, preload: :provider)
+    form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
 
-      socket =
-        assign(socket,
-          resources: resources,
-          actor_groups: actor_groups,
-          params: Map.take(params, ["site_id"]),
-          resource_id: params["resource_id"],
-          page_title: "New Policy",
-          form: form
-        )
+    socket =
+      assign(socket,
+        resources: resources,
+        actor_groups: actor_groups,
+        params: Map.take(params, ["site_id"]),
+        resource_id: params["resource_id"],
+        actor_group_id: params["actor_group_id"],
+        page_title: "New Policy",
+        form: form
+      )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
-    else
-      _other -> raise Web.LiveErrors.NotFoundError
-    end
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
@@ -54,52 +53,49 @@ defmodule Web.Policies.New do
             </p>
           </div>
 
-          <.simple_form
-            :if={@actor_groups != []}
-            for={@form}
-            phx-submit="submit"
-            phx-change="validate"
-          >
+          <.form :if={@actor_groups != []} for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
-            <.input
-              field={@form[:actor_group_id]}
-              label="Group"
-              type="group_select"
-              options={Web.Groups.Components.select_options(@actor_groups)}
-              value={@form[:actor_group_id].value}
-              required
-            />
-            <.input
-              field={@form[:resource_id]}
-              label="Resource"
-              type="select"
-              options={
-                Enum.map(@resources, fn resource ->
-                  group_names = resource.gateway_groups |> Enum.map(& &1.name)
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.input
+                field={@form[:actor_group_id]}
+                label="Group"
+                type="group_select"
+                options={Web.Groups.Components.select_options(@actor_groups)}
+                value={@actor_group_id || @form[:actor_group_id].value}
+                disabled={not is_nil(@actor_group_id)}
+                required
+              />
+              <.input
+                field={@form[:resource_id]}
+                label="Resource"
+                type="select"
+                options={
+                  Enum.map(@resources, fn resource ->
+                    group_names = resource.gateway_groups |> Enum.map(& &1.name)
 
-                  [
-                    key: "#{resource.name} - #{Enum.join(group_names, ",")}",
-                    value: resource.id
-                  ]
-                end)
-              }
-              value={@resource_id || @form[:resource_id].value}
-              disabled={not is_nil(@resource_id)}
-              required
-            />
-            <.input
-              field={@form[:description]}
-              type="textarea"
-              label="Description"
-              placeholder="Enter a reason for creating a policy here"
-              phx-debounce="300"
-            />
-            <:actions>
-              <.button phx-disable-with="Creating Policy..." class="w-full">
-                Create Policy
-              </.button>
-            </:actions>
-          </.simple_form>
+                    [
+                      key: "#{resource.name} - #{Enum.join(group_names, ",")}",
+                      value: resource.id
+                    ]
+                  end)
+                }
+                value={@resource_id || @form[:resource_id].value}
+                disabled={not is_nil(@resource_id)}
+                required
+              />
+              <.input
+                field={@form[:description]}
+                type="textarea"
+                label="Description"
+                placeholder="Enter a reason for creating a policy here"
+                phx-debounce="300"
+              />
+            </div>
+
+            <.submit_button phx-disable-with="Creating Policy..." class="w-full">
+              Create Policy
+            </.submit_button>
+          </.form>
         </div>
       </:content>
     </.section>

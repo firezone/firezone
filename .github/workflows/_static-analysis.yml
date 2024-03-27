@@ -48,11 +48,10 @@ jobs:
           python-version: "3.11"
       - uses: actions/cache/restore@v4
         name: Restore Python Cache
+        id: cache
         with:
           path: ~/.cache/pip
           key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('.github/requirements.txt') }}
-          restore-keys: |
-            ubuntu-22.04-${{ runner.arch }}-pip-
       - name: Install Python Dependencies
         run: |
           pip install -r .github/requirements.txt
@@ -65,8 +64,8 @@ jobs:
           pre-commit install --config .github/pre-commit-config.yaml
           SKIP=no-commit-to-branch pre-commit run --all-files --config .github/pre-commit-config.yaml
       - uses: actions/cache/save@v4
-        if: ${{ github.ref == 'refs/heads/main' }}
+        if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Python Cache
         with:
           path: ~/.cache/pip
-          key: ubuntu-22.04-${{ runner.arch }}-pip-${{ hashFiles('.github/requirements.txt') }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}

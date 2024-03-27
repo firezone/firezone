@@ -4,19 +4,25 @@ defmodule Web.RelayGroups.NewToken do
 
   def mount(%{"id" => id}, _session, socket) do
     with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
-         {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
-      {group, env} =
+         {:ok, group} <-
+           Relays.fetch_group_by_id(id, socket.assigns.subject,
+             filter: [
+               deleted?: false
+             ]
+           ) do
+      {group, token, env} =
         if connected?(socket) do
-          {:ok, encoded_token} = Relays.create_token(group, %{}, socket.assigns.subject)
+          {:ok, token, encoded_token} = Relays.create_token(group, %{}, socket.assigns.subject)
           :ok = Relays.subscribe_to_relays_presence_in_group(group)
-          {group, env(encoded_token)}
+          {group, token, env(encoded_token)}
         else
-          {group, nil}
+          {group, nil, nil}
         end
 
       {:ok,
        assign(socket,
          group: group,
+         token: token,
          env: env,
          connected?: false,
          selected_tab: "systemd-instructions",
@@ -297,7 +303,7 @@ defmodule Web.RelayGroups.NewToken do
           "https://api.github.com/repos/firezone/firezone/releases/latest" | \\
           grep "\\\\"tag_name\\\\":" | sed "s/.*\\\\"tag_name\\\\": \\\\"\\([^\\\\"\\\\]*\\).*/\\1/" \\
         ); \\
-        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Can not fetch latest version, rate limited by GitHub?" && exit 1; \\
+        [ "$FIREZONE_VERSION" = "" ] && echo "[Error] Cannot fetch latest version, rate limited by GitHub?" && exit 1; \\
         echo "Downloading Firezone Relay version $FIREZONE_VERSION"; \\
         arch=$(uname -m); \\
         case $arch in \\
@@ -339,9 +345,25 @@ defmodule Web.RelayGroups.NewToken do
   end
 
   def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _group_id},
+        %Phoenix.Socket.Broadcast{
+          event: "presence_diff",
+          topic: "presences:group_relays:" <> _group_id,
+          payload: %{joins: joins}
+        },
         socket
       ) do
-    {:noreply, assign(socket, connected?: true)}
+    if socket.assigns.connected? do
+      {:noreply, socket}
+    else
+      connected? =
+        joins
+        |> Map.keys()
+        |> Enum.any?(fn id ->
+          relay = Relays.fetch_relay_by_id!(id)
+          socket.assigns.token.id == relay.last_used_token_id
+        end)
+
+      {:noreply, assign(socket, connected?: connected?)}
+    end
   end
 end

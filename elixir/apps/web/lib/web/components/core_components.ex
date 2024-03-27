@@ -16,7 +16,7 @@ defmodule Web.CoreComponents do
 
   def logo(assigns) do
     ~H"""
-    <a href="https://www.firezone.dev/?utm_source=product" class="flex items-center mb-6 text-2xl">
+    <a href={~p"/"} class="flex items-center mb-6 text-2xl">
       <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
       <span class="self-center text-2xl font-medium whitespace-nowrap">
         Firezone
@@ -209,111 +209,27 @@ defmodule Web.CoreComponents do
   """
   slot :title, required: true, doc: "Title of the section"
   slot :actions, required: false, doc: "Buttons or other action elements"
+  slot :help, required: false, doc: "A slot for help text to be displayed blow the title"
 
   def header(assigns) do
     ~H"""
-    <div class="py-6 px-1 grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
-      <div class="col-span-full">
-        <div class="flex justify-between items-center">
-          <h2 class="text-2xl leading-none tracking-tight text-neutral-900">
-            <%= render_slot(@title) %>
-          </h2>
-          <div class="inline-flex justify-between items-center space-x-2">
-            <%= render_slot(@actions) %>
+    <div class="py-6 px-1">
+      <div class="grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
+        <div class="col-span-full">
+          <div class="flex justify-between items-center">
+            <h2 class="text-2xl leading-none tracking-tight text-neutral-900">
+              <%= render_slot(@title) %>
+            </h2>
+            <div class="inline-flex justify-between items-center space-x-2">
+              <%= render_slot(@actions) %>
+            </div>
           </div>
         </div>
       </div>
+      <p :for={help <- @help} class="pt-3">
+        <%= render_slot(help) %>
+      </p>
     </div>
-    """
-  end
-
-  @doc """
-  Renders a paginator bar.
-
-  ## Examples
-
-    <.paginator
-      page={5}
-      total_pages={100}
-      collection_base_path={~p"/actors"}/>
-  """
-  attr :page, :integer, required: true, doc: "Current page"
-  attr :total_pages, :integer, required: true, doc: "Total number of pages"
-  attr :collection_base_path, :string, required: true, doc: "Base path for collection"
-
-  def paginator(assigns) do
-    # XXX: Stubbing out this pagination helper for now, but we probably won't have users that
-    # need this at launch.
-    ~H"""
-    <nav
-      class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0 p-4"
-      aria-label="Table navigation"
-    >
-      <span class="text-sm text-neutral-500">
-        Showing <span class="font-medium text-neutral-900">1-10</span>
-        of <span class="font-medium text-neutral-900">1000</span>
-      </span>
-      <ul class="inline-flex items-stretch -space-x-px">
-        <li>
-          <a href="#" class={~w[
-              flex items-center justify-center h-full py-1.5 px-3 ml-0 text-neutral-500 bg-white rounded-l
-              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-            ]}>
-            <span class="sr-only">Previous</span>
-            <.icon name="hero-chevron-left" class="w-5 h-5" />
-          </a>
-        </li>
-        <li>
-          <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white border
-              border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-            ]}>
-            1
-          </a>
-        </li>
-        <li>
-          <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white
-              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-            ]}>
-            2
-          </a>
-        </li>
-        <li>
-          <a href="#" aria-current="page" class={~w[
-              flex items-center justify-center text-sm z-10 py-2 px-3 leading-tight text-primary-600 bg-primary-50
-              border border-primary-300 hover:bg-primary-100 hover:text-primary-700
-            ]}>
-            <%= @page %>
-          </a>
-        </li>
-        <li>
-          <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white
-              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-            ]}>
-            ...
-          </a>
-        </li>
-        <li>
-          <a href="#" class={~w[
-              flex items-center justify-center text-sm py-2 px-3 leading-tight text-neutral-500 bg-white
-              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-            ]}>
-            <%= @total_pages %>
-          </a>
-        </li>
-        <li>
-          <a href="#" class={~w[
-              flex items-center justify-center h-full py-1.5 px-3 leading-tight text-neutral-500 bg-white rounded-r
-              border border-neutral-300 hover:bg-neutral-100 hover:text-neutral-700
-            ]}>
-            <span class="sr-only">Next</span>
-            <.icon name="hero-chevron-right" class="w-5 h-5" />
-          </a>
-        </li>
-      </ul>
-    </nav>
     """
   end
 
@@ -416,7 +332,7 @@ defmodule Web.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class={["block mb-2 text-sm text-neutral-900", @class]}>
+    <label for={@for} class={["block text-sm text-neutral-900", @class]}>
       <%= render_slot(@inner_block) %>
     </label>
     """
@@ -590,7 +506,7 @@ defmodule Web.CoreComponents do
   </.intersperse_blocks>
   ```
   """
-  slot :separator, required: true, doc: "the slot for the separator"
+  slot :separator, required: false, doc: "the slot for the separator"
   slot :item, required: true, doc: "the slots to intersperse with separators"
   slot :empty, required: false, doc: "the slots to render when there are no items"
 
@@ -603,7 +519,14 @@ defmodule Web.CoreComponents do
         <%= if item == :separator do %>
           <%= render_slot(@separator) %>
         <% else %>
-          <%= render_slot(item) %>
+          <%= render_slot(
+            item,
+            cond do
+              item == List.first(@item) -> :first
+              item == List.last(@item) -> :last
+              true -> :middle
+            end
+          ) %>
         <% end %>
       <% end %>
     <% end %>

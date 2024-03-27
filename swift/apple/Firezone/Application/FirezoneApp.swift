@@ -1,6 +1,6 @@
 //
 //  FirezoneApp.swift
-//  (c) 2023 Firezone, Inc.
+//  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -26,7 +26,13 @@ struct FirezoneApp: App {
 
     #if os(macOS)
       self._askPermissionViewModel =
-        StateObject(wrappedValue: AskPermissionViewModel(tunnelStore: appStore.tunnelStore))
+        StateObject(
+          wrappedValue: AskPermissionViewModel(
+            tunnelStore: appStore.tunnelStore,
+            sessionNotificationHelper: SessionNotificationHelper(
+              logger: appStore.logger, tunnelStore: appStore.tunnelStore)
+          )
+        )
       appDelegate.appStore = appStore
     #elseif os(iOS)
       self._appViewModel =
@@ -42,7 +48,7 @@ struct FirezoneApp: App {
       }
     #else
       WindowGroup(
-        "Firezone (VPN Permission)",
+        "Welcome to Firezone",
         id: AppStore.WindowDefinition.askPermission.identifier
       ) {
         AskPermissionView(model: askPermissionViewModel)
@@ -69,23 +75,16 @@ struct FirezoneApp: App {
     private var isAppLaunched = false
     private var menuBar: MenuBar?
 
-    public var appStore: AppStore? {
-      didSet {
-        if self.isAppLaunched {
-          // This is not expected to happen because appStore
-          // should be set before the app finishes launching.
-          // This code is only a contingency.
-          if let appStore = self.appStore {
-            self.menuBar = MenuBar(appStore: appStore)
-          }
-        }
-      }
-    }
+    public var appStore: AppStore?
 
     func applicationDidFinishLaunching(_: Notification) {
       self.isAppLaunched = true
       if let appStore = self.appStore {
-        self.menuBar = MenuBar(appStore: appStore)
+        self.menuBar = MenuBar(
+          tunnelStore: appStore.tunnelStore,
+          settingsViewModel: appStore.settingsViewModel,
+          logger: appStore.logger
+        )
       }
 
       // SwiftUI will show the first window group, so close it on launch
@@ -93,7 +92,7 @@ struct FirezoneApp: App {
     }
 
     func applicationWillTerminate(_: Notification) {
-      self.appStore?.authStore.cancelSignIn()
+      self.appStore?.tunnelStore.cancelSignIn()
     }
   }
 #endif

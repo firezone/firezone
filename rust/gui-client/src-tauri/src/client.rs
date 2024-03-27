@@ -7,7 +7,6 @@ mod auth;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;
-mod device_id;
 mod elevation;
 mod gui;
 mod known_dirs;
@@ -17,6 +16,7 @@ mod resolvers;
 mod settings;
 mod updates;
 mod uptime;
+mod welcome;
 
 #[cfg(target_os = "windows")]
 mod wintun_install;
@@ -79,16 +79,18 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(deep_link::open(&deep_link.url))?;
+            if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
+                tracing::error!(?error, "Error in `OpenDeepLink`");
+            }
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
             // Check for elevation. This also ensures wintun.dll is installed.
             if !elevation::check()? {
-                anyhow::bail!("`smoke-test` must be run with elevated permissions");
+                anyhow::bail!("`smoke-test` failed its elevation check");
             }
 
-            let result = gui::run(&cli);
+            let result = gui::run(cli);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -106,7 +108,7 @@ pub(crate) fn run() -> Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 fn run_gui(cli: Cli) -> Result<()> {
-    let result = gui::run(&cli);
+    let result = gui::run(cli);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
@@ -162,6 +164,9 @@ struct Cli {
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
+    /// Disable deep link registration and handling, for headless CI environments
+    #[arg(long, hide = true)]
+    no_deep_links: bool,
 }
 
 impl Cli {
@@ -213,6 +218,7 @@ pub enum Cmd {
 
 #[derive(Args)]
 pub struct DeepLink {
+    // TODO: Should be `Secret`?
     pub url: url::Url,
 }
 

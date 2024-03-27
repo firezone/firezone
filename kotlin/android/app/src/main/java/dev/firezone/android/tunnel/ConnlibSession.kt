@@ -1,4 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2023 Firezone, Inc. */
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
 object ConnlibSession {
@@ -14,4 +14,11 @@ object ConnlibSession {
     ): Long
 
     external fun disconnect(connlibSession: Long): Boolean
+
+    external fun setDns(
+        connlibSession: Long,
+        dnsList: String,
+    ): Boolean
+
+    external fun reconnect(connlibSession: Long): Boolean
 }

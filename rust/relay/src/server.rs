@@ -163,7 +163,7 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let meter = opentelemetry_api::global::meter("relay");
+        let meter = opentelemetry::global::meter("relay");
 
         let allocations_up_down_counter = meter
             .i64_up_down_counter("allocations_total")
@@ -395,7 +395,7 @@ where
             match action {
                 TimedAction::ExpireAllocation(id) => {
                     let Some(allocation) = self.get_allocation(&id) else {
-                        tracing::debug!(target: "relay", "Cannot expire non-existing allocation {id}");
+                        tracing::debug!(target: "relay", allocation = %id, "Cannot expire non-existing allocation");
 
                         continue;
                     };
@@ -407,20 +407,23 @@ where
                 TimedAction::UnbindChannel((client, chan)) => {
                     let Some(channel) = self.channels_by_client_and_number.get_mut(&(client, chan))
                     else {
-                        tracing::debug!(target: "relay", "Cannot expire non-existing channel binding {chan} of client {client}");
+                        tracing::debug!(target: "relay", channel = %chan, %client, "Cannot expire non-existing channel binding");
 
                         continue;
                     };
 
                     if channel.is_expired(now) {
-                        tracing::info!(target: "relay", "Channel {chan} is now expired");
+                        tracing::info!(target: "relay", channel = %chan, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
                         channel.bound = false;
 
-                        self.time_events.add(
+                        let wake_deadline = self.time_events.add(
                             now + Duration::from_secs(5 * 60),
                             TimedAction::DeleteChannel((client, chan)),
                         );
+                        self.pending_commands.push_back(Command::Wake {
+                            deadline: wake_deadline,
+                        });
                     }
                 }
                 TimedAction::DeleteChannel((client, chan)) => {
@@ -693,10 +696,13 @@ where
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
-            self.time_events.add(
+            let wake_deadline = self.time_events.add(
                 channel.expiry,
                 TimedAction::UnbindChannel((sender, requested_channel)),
             );
+            self.pending_commands.push_back(Command::Wake {
+                deadline: wake_deadline,
+            });
             self.send_message(
                 channel_bind_success_response(request.transaction_id()),
                 sender,
@@ -870,10 +876,12 @@ where
         id: AllocationId,
         now: SystemTime,
     ) {
+        let expiry = now + CHANNEL_BINDING_DURATION;
+
         let existing = self.channels_by_client_and_number.insert(
             (client, requested_channel),
             Channel {
-                expiry: now + CHANNEL_BINDING_DURATION,
+                expiry,
                 peer_address: peer,
                 allocation: id,
                 bound: true,
@@ -886,6 +894,14 @@ where
             .insert((client, peer), requested_channel);
 
         debug_assert!(existing.is_none());
+
+        let wake_deadline = self.time_events.add(
+            expiry,
+            TimedAction::UnbindChannel((client, requested_channel)),
+        );
+        self.pending_commands.push_back(Command::Wake {
+            deadline: wake_deadline,
+        });
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
@@ -972,11 +988,12 @@ where
             return;
         };
 
-        let addr = channel.peer_address;
+        let peer = channel.peer_address;
+        let allocation = channel.allocation;
 
         let _peer_channel = self
             .channel_numbers_by_client_and_peer
-            .remove(&(client, addr));
+            .remove(&(client, peer));
         debug_assert_eq!(
             _peer_channel,
             Some(chan),
@@ -984,6 +1001,8 @@ where
         );
 
         self.channels_by_client_and_number.remove(&(client, chan));
+
+        tracing::info!(target: "relay", channel = %chan, %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 }
 
@@ -1073,7 +1092,7 @@ impl Allocation {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum TimedAction {
     ExpireAllocation(AllocationId),
     UnbindChannel((ClientSocket, u16)),

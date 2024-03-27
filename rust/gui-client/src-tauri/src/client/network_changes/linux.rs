@@ -5,6 +5,11 @@ use anyhow::Result;
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {}
 
+pub(crate) fn run_dns_debug() -> Result<()> {
+    tracing::warn!("network_changes not implemented yet on Linux");
+    Ok(())
+}
+
 pub(crate) fn run_debug() -> Result<()> {
     tracing::warn!("network_changes not implemented yet on Linux");
     Ok(())
@@ -27,6 +32,17 @@ impl Worker {
     }
 
     pub(crate) async fn notified(&self) {
+        futures::future::pending().await
+    }
+}
+
+pub(crate) struct DnsListener {}
+
+impl DnsListener {
+    pub(crate) fn new() -> Result<Self> {
+        Ok(Self {})
+    }
+    pub(crate) async fn notified(&mut self) -> Result<()> {
         futures::future::pending().await
     }
 }

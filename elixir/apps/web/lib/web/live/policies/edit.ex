@@ -6,16 +6,16 @@ defmodule Web.Policies.Edit do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [:actor_group, :resource]
-           ),
-         nil <- policy.deleted_at do
+             preload: [:actor_group, :resource],
+             filter: [deleted?: false]
+           ) do
       form = to_form(Policies.Policy.Changeset.update(policy, %{}))
 
       socket =
         assign(socket,
+          page_title: "Edit Policy #{policy.id}",
           policy: policy,
-          form: form,
-          page_title: "Edit #{policy.id}"
+          form: form
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -37,46 +37,42 @@ defmodule Web.Policies.Edit do
     </.breadcrumbs>
 
     <.section>
-      <:title><%= "#{@page_title}: #{@policy.id}" %></:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">Edit Policy details</h2>
-          <.simple_form
-            for={@form}
-            class="space-y-4 lg:space-y-6"
-            phx-submit="submit"
-            phx-change="validate"
-          >
-            <.input
-              field={@form[:description]}
-              type="textarea"
-              label="Policy Description"
-              placeholder="Enter a policy description here"
-              phx-debounce="300"
-            />
-            <:actions>
-              <.submit_button phx-disable-with="Updating Policy...">
-                Save
-              </.submit_button>
-            </:actions>
-          </.simple_form>
+          <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
+            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <.input
+                field={@form[:description]}
+                type="textarea"
+                label="Policy Description"
+                placeholder="Enter a policy description here"
+                phx-debounce="300"
+              />
+            </div>
+
+            <.submit_button phx-disable-with="Updating Policy...">
+              Save
+            </.submit_button>
+          </.form>
         </div>
       </:content>
     </.section>
     """
   end
 
-  def handle_event("validate", %{"policy" => policy_params}, socket) do
+  def handle_event("validate", %{"policy" => params}, socket) do
     changeset =
-      Policies.Policy.Changeset.update(socket.assigns.policy, policy_params)
+      Policies.Policy.Changeset.update(socket.assigns.policy, params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("submit", %{"policy" => policy_params}, socket) do
+  def handle_event("submit", %{"policy" => params}, socket) do
     with {:ok, policy} <-
-           Policies.update_policy(socket.assigns.policy, policy_params, socket.assigns.subject) do
+           Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
     else
       {:error, changeset} ->

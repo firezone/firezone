@@ -82,12 +82,15 @@ pub(crate) async fn get_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> Result<AdvancedSettings, String> {
     let (tx, rx) = oneshot::channel();
-    if let Err(e) = managed
+    if let Err(error) = managed
         .ctlr_tx
         .send(ControllerRequest::GetAdvancedSettings(tx))
         .await
     {
-        tracing::error!("couldn't request advanced settings from controller task: {e}");
+        tracing::error!(
+            ?error,
+            "couldn't request advanced settings from controller task"
+        );
     }
     Ok(rx.await.unwrap())
 }
@@ -110,7 +113,8 @@ pub(crate) async fn save(settings: &AdvancedSettings) -> Result<()> {
         .parent()
         .context("settings path should have a parent")?;
     tokio::fs::create_dir_all(dir).await?;
-    tokio::fs::write(path, serde_json::to_string(settings)?).await?;
+    tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
+    tracing::debug!(?path, "Saved settings");
     Ok(())
 }
 

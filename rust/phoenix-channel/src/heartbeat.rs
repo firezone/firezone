@@ -1,81 +1,93 @@
-use crate::{EgressControlMessage, OutboundRequestId};
+use crate::OutboundRequestId;
+use futures::FutureExt;
 use std::{
     pin::Pin,
+    sync::{atomic::AtomicU64, Arc},
     task::{ready, Context, Poll},
     time::Duration,
 };
 use tokio::time::MissedTickBehavior;
 
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+pub const INTERVAL: Duration = Duration::from_secs(30);
+pub const TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Heartbeat {
     /// When to send the next heartbeat.
     interval: Pin<Box<tokio::time::Interval>>,
+
+    timeout: Duration,
+
     /// The ID of our heatbeat if we haven't received a reply yet.
-    id: Option<OutboundRequestId>,
+    pending: Option<(OutboundRequestId, Pin<Box<tokio::time::Sleep>>)>,
+
+    next_request_id: Arc<AtomicU64>,
 }
 
 impl Heartbeat {
-    pub fn maybe_handle_reply(&mut self, id: OutboundRequestId) -> bool {
-        let Some(pending) = self.id.take() else {
-            return false;
-        };
-
-        if pending != id {
-            return false;
-        }
-
-        self.id = None;
-        true
-    }
-
-    pub fn set_id(&mut self, id: OutboundRequestId) {
-        self.id = Some(id);
-    }
-
-    pub fn poll(
-        &mut self,
-        cx: &mut Context,
-    ) -> Poll<Result<EgressControlMessage<()>, MissedLastHeartbeat>> {
-        ready!(self.interval.poll_tick(cx));
-
-        if self.id.is_some() {
-            self.id = None;
-            return Poll::Ready(Err(MissedLastHeartbeat {}));
-        }
-
-        Poll::Ready(Ok(EgressControlMessage::Heartbeat(crate::Empty {})))
-    }
-
-    fn new(interval: Duration) -> Self {
+    pub fn new(interval: Duration, timeout: Duration, next_request_id: Arc<AtomicU64>) -> Self {
         let mut interval = tokio::time::interval(interval);
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
         Self {
             interval: Box::pin(interval),
-            id: Default::default(),
+            pending: Default::default(),
+            next_request_id,
+            timeout,
         }
+    }
+
+    pub fn maybe_handle_reply(&mut self, id: OutboundRequestId) -> bool {
+        match self.pending.as_ref() {
+            Some((pending, timeout)) if pending == &id && !dbg!(timeout.is_elapsed()) => {
+                self.pending = None;
+
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn poll(
+        &mut self,
+        cx: &mut Context,
+    ) -> Poll<Result<OutboundRequestId, MissedLastHeartbeat>> {
+        if let Some((_, timeout)) = self.pending.as_mut() {
+            ready!(timeout.poll_unpin(cx));
+            self.pending = None;
+            return Poll::Ready(Err(MissedLastHeartbeat {}));
+        }
+
+        ready!(self.interval.poll_tick(cx));
+
+        let next_id = self
+            .next_request_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.pending = Some((
+            OutboundRequestId(next_id),
+            Box::pin(tokio::time::sleep(self.timeout)),
+        ));
+
+        Poll::Ready(Ok(OutboundRequestId(next_id)))
     }
 }
 
 #[derive(Debug)]
 pub struct MissedLastHeartbeat {}
 
-impl Default for Heartbeat {
-    fn default() -> Self {
-        Self::new(HEARTBEAT_INTERVAL)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::future::Either;
     use std::{future::poll_fn, time::Instant};
+
+    const INTERVAL: Duration = Duration::from_millis(30);
+    const TIMEOUT: Duration = Duration::from_millis(5);
 
     #[tokio::test]
     async fn returns_heartbeat_after_interval() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(30));
-        let _ = poll_fn(|cx| heartbeat.poll(cx)).await; // Tick once at startup.
+        let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
+        let id = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap(); // Tick once at startup.
+        heartbeat.maybe_handle_reply(id);
 
         let start = Instant::now();
 
@@ -84,15 +96,25 @@ mod tests {
         let elapsed = start.elapsed();
 
         assert!(result.is_ok());
-        assert!(elapsed >= Duration::from_millis(10));
+        assert!(elapsed >= INTERVAL);
     }
 
     #[tokio::test]
     async fn fails_if_response_is_not_provided_before_next_poll() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+        let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
 
         let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::new(1));
+
+        let result = poll_fn(|cx| heartbeat.poll(cx)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn ignores_other_ids() {
+        let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
+
+        let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
+        heartbeat.maybe_handle_reply(OutboundRequestId::for_test(2));
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
         assert!(result.is_err());
@@ -100,13 +122,34 @@ mod tests {
 
     #[tokio::test]
     async fn succeeds_if_response_is_provided_inbetween_polls() {
-        let mut heartbeat = Heartbeat::new(Duration::from_millis(10));
+        let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
 
-        let _ = poll_fn(|cx| heartbeat.poll(cx)).await;
-        heartbeat.set_id(OutboundRequestId::new(1));
-        heartbeat.maybe_handle_reply(OutboundRequestId::new(1));
+        let id = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap();
+        heartbeat.maybe_handle_reply(id);
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn fails_if_not_provided_within_timeout() {
+        let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
+
+        let id = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap();
+
+        let select = futures::future::select(
+            tokio::time::sleep(TIMEOUT * 2).boxed(),
+            poll_fn(|cx| heartbeat.poll(cx)),
+        )
+        .await;
+
+        match select {
+            Either::Left(((), _)) => panic!("timeout should not resolve"),
+            Either::Right((Ok(_), _)) => panic!("heartbeat should fail and not issue new ID"),
+            Either::Right((Err(_), _)) => {}
+        }
+
+        let handled = heartbeat.maybe_handle_reply(id);
+        assert!(!handled);
     }
 }

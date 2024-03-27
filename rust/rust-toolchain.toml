@@ -1,2 +1,3 @@
 [toolchain]
+# Keep synced with `Dockerfile`
 channel = "1.76.0"

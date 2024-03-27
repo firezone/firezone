@@ -123,12 +123,7 @@ android {
 
             buildConfigField("String", "AUTH_BASE_URL", "\"https://app.firezone.dev\"")
             buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
-            buildConfigField(
-                "String",
-                "LOG_FILTER",
-                "\"connlib_client_android=info,firezone_tunnel=info,phoenix_channel=info,connlib_shared=info," +
-                    "boringtun=info,snownet=info,str0m=info,connlib_client_shared=info,warn\"",
-            )
+            buildConfigField("String", "LOG_FILTER", "\"info\"")
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
@@ -174,9 +169,9 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.50")
+    implementation("com.google.dagger:hilt-android:2.51")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.50")
+    kapt("com.google.dagger:hilt-android-compiler:2.51")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -199,10 +194,9 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    implementation("androidx.browser:browser:1.7.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:32.7.3"))
+    implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies

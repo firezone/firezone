@@ -3,31 +3,66 @@
 set -euo pipefail
 
 BUNDLE_ID="dev.firezone.client"
-DUMP_PATH="$HOME/.cache/$BUNDLE_ID/data/logs/last_crash.dmp"
-export FIREZONE_DISABLE_SYSTRAY=true
+
+#DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
+LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
+DUMP_PATH="$LOGS_PATH/last_crash.dmp"
+SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
+RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
+SYMS_PATH="../target/debug/firezone-gui-client.syms"
+
 PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
+cargo build -p "$PACKAGE"
+cargo install --quiet --locked dump_syms minidump-stackwalk
+# The dwp doesn't actually do anything if the exe already has all the debug info
+# Getting this to coordinate between Linux and Windows is tricky
+dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
+ls -lash ../target/debug
+
 function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
-    stat "$HOME/.cache/$BUNDLE_ID/data/logs" && exit 1
-    stat "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json" && exit 1
-    stat "$HOME/.config/$BUNDLE_ID/config/device_id.json" && exit 1
+    stat "$LOGS_PATH" && exit 1
+    stat "$SETTINGS_PATH" && exit 1
+    # TODO: The device ID will be written by the tunnel, not the GUI, so we can't check that.
+    # stat "$DEVICE_ID_PATH" && exit 1
+    stat "$RAN_BEFORE_PATH" && exit 1
 
     # Run the smoke test normally
-    xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- smoke-test
+    if ! xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
+    then
+        minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
+        exit 1
+    fi
+
+    # Note the device ID
+    # DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
 
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
-    stat "$HOME/.cache/$BUNDLE_ID/data/logs/"connlib*log
-    stat "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
-    stat "$HOME/.config/$BUNDLE_ID/config/device_id.json"
+    # https://stackoverflow.com/questions/41321092
+    bash -c "stat \"${LOGS_PATH}/\"connlib*log"
+    stat "$SETTINGS_PATH"
+    # stat "$DEVICE_ID_PATH"
+    stat "$RAN_BEFORE_PATH"
+
+    # Run the test again and make sure the device ID is not changed
+    xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
+    # DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
+
+    #if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
+    #then
+    #    echo "The device ID should not change if the file is intact between runs"
+    #    exit 1
+    #fi
 
     # Clean up the files but not the folders
-    rm -rf "$HOME/.cache/$BUNDLE_ID/data/logs"
-    rm "$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
-    rm "$HOME/.config/$BUNDLE_ID/config/device_id.json"
+    rm -rf "$LOGS_PATH"
+    rm "$SETTINGS_PATH"
+    # rm "$DEVICE_ID_PATH"
+    rm "$RAN_BEFORE_PATH"
 }
 
 function crash_test() {
@@ -35,21 +70,22 @@ function crash_test() {
     rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    xvfb-run --auto-servernum cargo run -p "$PACKAGE" -- --crash && exit 1
+    xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash --no-deep-links && exit 1
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"
-
-    # Clean up
-    rm "$DUMP_PATH"
 }
 
-# Run the tests twice to make sure it's okay for the directories to stay intact,
-# and to make sure the tests can cycle.
-smoke_test
-smoke_test
-crash_test
-crash_test
+function get_stacktrace() {
+    minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
+}
 
-# I'm not sure if the last command is handled specially, so explicitly exit with 0
-exit 0
+# Run the tests twice to make sure it's okay for the directories to stay intact
+smoke_test
+smoke_test
+crash_test
+crash_test
+get_stacktrace
+
+# Clean up
+rm "$DUMP_PATH"

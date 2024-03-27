@@ -6,8 +6,10 @@ defmodule Web.HomeController do
     signed_in_account_ids = conn |> get_session("sessions", []) |> Enum.map(&elem(&1, 0))
 
     {accounts, conn} =
-      with {:ok, recent_account_ids, conn} <- Web.Auth.list_recent_account_ids(conn),
-           {:ok, accounts} <- Accounts.list_accounts_by_ids(recent_account_ids) do
+      with {:ok, recent_account_ids, conn} <- Web.Auth.all_recent_account_ids(conn) do
+        accounts = Accounts.all_accounts_by_ids!(recent_account_ids)
+
+        # we remove all ids that are not returned by the query anymore
         conn =
           Web.Auth.update_recent_account_ids(conn, fn _recent_account_ids ->
             Enum.map(accounts, & &1.id)
@@ -30,8 +32,16 @@ defmodule Web.HomeController do
   end
 
   def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
-    account_id_or_slug = String.downcase(account_id_or_slug)
     params = Web.Auth.take_sign_in_params(params)
-    redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
+
+    case Domain.Accounts.Account.Changeset.validate_account_id_or_slug(account_id_or_slug) do
+      {:ok, account_id_or_slug} ->
+        redirect(conn, to: ~p"/#{account_id_or_slug}?#{params}")
+
+      {:error, reason} ->
+        conn
+        |> put_flash(:error, reason)
+        |> redirect(to: ~p"/?#{params}")
+    end
   end
 end

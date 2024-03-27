@@ -72,13 +72,26 @@ defmodule Web.Live.Actors.ShowTest do
 
     assert row["name"] == client.name
     assert row["status"] == "Offline"
+  end
 
-    assert Domain.Clients.connect_client(client) == :ok
+  test "updates clients table using presence events", %{
+    conn: conn
+  } do
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    client = Fixtures.Clients.create_client(account: account, actor: actor)
 
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/#{actor}")
+
+    Domain.Config.put_env_override(:test_pid, self())
+    Domain.Clients.subscribe_to_clients_presence_for_actor(actor)
+    assert Domain.Clients.connect_client(client) == :ok
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
+    assert_receive {:live_table_reloaded, "clients"}, 500
 
     [row] =
       lv
@@ -307,7 +320,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("#actors")
+      |> element("#identities")
       |> render()
       |> table_to_map()
       |> with_table_row(

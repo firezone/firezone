@@ -22,21 +22,19 @@ public protocol CallbackHandlerDelegate: AnyObject {
     tunnelAddressIPv6: String,
     dnsAddresses: [String]
   )
-  func onTunnelReady()
-  func onAddRoute(_: String)
-  func onRemoveRoute(_: String)
+  func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
-  func onDisconnect(error: String?)
+  func onDisconnect(error: String)
 }
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private var systemDefaultResolvers: [String] = []
   private let logger: AppLogger
 
   init(logger: AppLogger) {
     self.logger = logger
   }
+
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
@@ -50,13 +48,8 @@ public class CallbackHandler {
           DNS: \(dnsAddresses.toString())
       """)
 
-    guard let dnsData = dnsAddresses.toString().data(using: .utf8) else {
-      return
-    }
-    guard let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
-    else {
-      return
-    }
+    let dnsData = dnsAddresses.toString().data(using: .utf8)!
+    let dnsArray = try! JSONDecoder().decode([String].self, from: dnsData)
 
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
@@ -65,19 +58,9 @@ public class CallbackHandler {
     )
   }
 
-  func onTunnelReady() {
-    logger.log("CallbackHandler.onTunnelReady")
-    delegate?.onTunnelReady()
-  }
-
-  func onAddRoute(route: RustString) {
-    logger.log("CallbackHandler.onAddRoute: \(route.toString())")
-    delegate?.onAddRoute(route.toString())
-  }
-
-  func onRemoveRoute(route: RustString) {
-    logger.log("CallbackHandler.onRemoveRoute: \(route.toString())")
-    delegate?.onRemoveRoute(route.toString())
+  func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
+    logger.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
+    delegate?.onUpdateRoutes(routeList4: routeList4.toString(), routeList6: routeList6.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {
@@ -86,29 +69,8 @@ public class CallbackHandler {
   }
 
   func onDisconnect(error: RustString) {
-    logger.log("CallbackHandler.onDisconnect: \(error.toString())")
     let error = error.toString()
-    var optionalError = Optional.some(error)
-    if error.isEmpty {
-      optionalError = Optional.none
-    }
-    delegate?.onDisconnect(error: optionalError)
-  }
-
-  func setSystemDefaultResolvers(resolvers: [String]) {
-    logger.log(
-      "CallbackHandler.setSystemDefaultResolvers: \(resolvers)")
-    self.systemDefaultResolvers = resolvers
-  }
-
-  func getSystemDefaultResolvers() -> RustString {
-    logger.log(
-      "CallbackHandler.getSystemDefaultResolvers: \(self.systemDefaultResolvers)"
-    )
-
-    return try! String(
-      decoding: JSONEncoder().encode(self.systemDefaultResolvers),
-      as: UTF8.self
-    ).intoRustString()
+    logger.log("CallbackHandler.onDisconnect: \(error)")
+    delegate?.onDisconnect(error: error)
   }
 }

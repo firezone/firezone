@@ -13,10 +13,25 @@ defmodule Web.Flows.Show do
                resource: []
              ]
            ) do
-      socket = assign(socket, flow: flow, page_title: "Flow #{flow.id}")
+      last_used_connectivity_type = get_last_used_connectivity_type(flow, socket.assigns.subject)
+
+      socket =
+        assign(socket,
+          page_title: "Flow #{flow.id}",
+          flow: flow,
+          last_used_connectivity_type: last_used_connectivity_type
+        )
+
       {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  defp get_last_used_connectivity_type(flow, subject) do
+    case Flows.fetch_last_activity_for(flow, subject) do
+      {:ok, activity} -> to_string(activity.connectivity_type)
+      _other -> "N/A"
     end
   end
 
@@ -90,6 +105,12 @@ defmodule Web.Flows.Show do
               <.link navigate={~p"/#{@account}/resources/#{@flow.resource_id}"} class={link_style()}>
                 <%= @flow.resource.name %>
               </.link>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Connectivity Type</:label>
+            <:value>
+              <%= @last_used_connectivity_type %>
             </:value>
           </.vertical_table_row>
         </.vertical_table>

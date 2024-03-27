@@ -1,82 +1,99 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, Session};
-use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
-use firezone_cli_utils::{block_on_ctrl_c, setup_global_subscriber, CommonArgs};
+use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
+use connlib_shared::{
+    keypair,
+    linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
+    LoginUrl,
+};
+use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use secrecy::SecretString;
-use std::{net::IpAddr, path::PathBuf, str::FromStr};
+use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
+use tokio::signal::unix::SignalKind;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let dns_control_method = get_dns_control_from_env();
-    let callbacks = CallbackHandler {
-        dns_control_method: dns_control_method.clone(),
-        handle,
+    let callbacks = CallbackHandler { handle };
+
+    // AKA "Device ID", not the Firezone slug
+    let firezone_id = match cli.firezone_id {
+        Some(id) => id,
+        None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
-    let mut session = Session::connect(
+    let (private_key, public_key) = keypair();
+    let login = LoginUrl::client(
         cli.common.api_url,
-        SecretString::from(cli.common.token),
-        cli.firezone_id,
+        &SecretString::from(cli.common.token),
+        firezone_id,
         None,
+        public_key.to_bytes(),
+    )?;
+
+    let session = Session::connect(
+        login,
+        Sockets::new(),
+        private_key,
         None,
-        callbacks,
+        callbacks.clone(),
         max_partition_time,
+        tokio::runtime::Handle::current(),
     )
     .unwrap();
+    // TODO: this should be added dynamically
+    session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
-    block_on_ctrl_c();
+    let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
+    let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
 
-    if let Some(DnsControlMethod::EtcResolvConf) = dns_control_method {
-        etc_resolv_conf::unconfigure_dns()?;
-    }
+    future::poll_fn(|cx| loop {
+        if sigint.poll_recv(cx).is_ready() {
+            tracing::debug!("Received SIGINT");
 
-    session.disconnect(None);
+            return Poll::Ready(std::io::Result::Ok(()));
+        }
+
+        if sighup.poll_recv(cx).is_ready() {
+            tracing::debug!("Received SIGHUP");
+
+            session.reconnect();
+            continue;
+        }
+
+        return Poll::Pending;
+    })
+    .await?;
+
+    session.disconnect();
+
     Ok(())
+}
+
+fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
+    match dns_control_method {
+        None => get_system_default_resolvers_resolv_conf(),
+        Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
+        Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
+        Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
+    }
 }
 
 #[derive(Clone)]
 struct CallbackHandler {
-    dns_control_method: Option<DnsControlMethod>,
     handle: Option<file_logger::Handle>,
 }
 
-#[derive(Debug, thiserror::Error)]
-enum CbError {
-    #[error(transparent)]
-    Any(#[from] anyhow::Error),
-}
-
 impl Callbacks for CallbackHandler {
-    // I spent several minutes messing with `anyhow` and couldn't figure out how to make
-    // it implement `std::error::Error`: <https://github.com/dtolnay/anyhow/issues/25>
-    type Error = CbError;
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+        tracing::error!("Disconnected: {error}");
 
-    /// May return Firezone's own servers, e.g. `100.100.111.1`.
-    fn get_system_default_resolvers(&self) -> Result<Option<Vec<IpAddr>>, Self::Error> {
-        let default_resolvers = match self.dns_control_method {
-            None => get_system_default_resolvers_resolv_conf()?,
-            Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf()?,
-            Some(DnsControlMethod::NetworkManager) => {
-                get_system_default_resolvers_network_manager()?
-            }
-            Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved()?,
-        };
-        tracing::info!(?default_resolvers);
-        Ok(Some(default_resolvers))
-    }
-
-    fn on_disconnect(
-        &self,
-        error: Option<&connlib_client_shared::Error>,
-    ) -> Result<(), Self::Error> {
-        tracing::error!(?error, "Disconnected");
-        Ok(())
+        std::process::exit(1);
     }
 
     fn roll_log_file(&self) -> Option<PathBuf> {
@@ -146,8 +163,10 @@ struct Cli {
     common: CommonArgs,
 
     /// Identifier used by the portal to identify and display the device.
+    ///
+    /// AKA `device_id` in the Windows and Linux GUI clients
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
-    pub firezone_id: String,
+    pub firezone_id: Option<String>,
 
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]
