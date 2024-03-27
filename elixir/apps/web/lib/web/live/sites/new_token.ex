@@ -129,19 +129,37 @@ defmodule Web.Sites.NewToken do
               id="binary-instructions"
               label="Manually"
               phx_click="tab_selected"
-              selected={@selected_tab == "docker-instructions"}
+              selected={@selected_tab == "binary-instructions"}
             >
               <p class="p-4">
-                Install <code>firezone-gateway</code>
-                binary on your server and use following environment variables:
+                <.link
+                  href="https://www.github.com/firezone/firezone/releases?utm_source=deploy_gateway"
+                  target="_blank"
+                  class={link_style()}
+                >
+                  Download the latest binary
+                </.link>
+                from GitHub releases to your server and make sure the following environment variables are set:
               </p>
 
               <.code_block
-                id="code-sample-docker1"
+                id="code-sample-binary1"
                 class="w-full text-xs whitespace-pre-line"
                 phx-no-format
                 phx-update="ignore"
               ><%= manual_command(@env) %></.code_block>
+
+              <p class="p-4">
+                See
+                <.link
+                  href="https://www.firezone.dev/kb/deploy/gateways#environment_variables"
+                  target="_blank"
+                  class={link_style()}
+                >
+                  the Gateway docs
+                </.link>
+                for a full list of environment variables.
+              </p>
 
               <p class="p-4">
                 <strong>Important:</strong>
