@@ -35,6 +35,9 @@ final class AuthViewModel: ObservableObject {
 struct AuthView: View {
   @ObservedObject var model: AuthViewModel
 
+  // Debounce button taps
+  @State private var tapped = false
+
   var body: some View {
     VStack(
       alignment: .center,
@@ -47,10 +50,19 @@ struct AuthView: View {
           .padding(.horizontal, 10)
         Spacer()
         Button("Sign in") {
-          Task {
-            await model.signInButtonTapped()
+          if !tapped {
+            tapped = true
+
+            DispatchQueue.main.async {
+              Task { await model.signInButtonTapped() }
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+              tapped = false
+            }
           }
         }
+        .disabled(tapped)
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         Spacer()
