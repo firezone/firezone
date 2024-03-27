@@ -5,7 +5,6 @@
 //  Created by Jamil Bou Kheir on 2/23/24.
 //
 
-import FirezoneKit
 import Foundation
 
 #if os(iOS)
@@ -13,15 +12,25 @@ import Foundation
 #endif
 
 public class DeviceMetadata {
+  // If firezone-id hasn't ever been written, the app is considered
+  // to be launched for the first time.
+  public static func firstTime() -> Bool {
+    let fileExists = FileManager.default.fileExists(
+      atPath: SharedAccess.baseFolderURL.appendingPathComponent("firezone-id").path
+    )
+
+    return !fileExists
+  }
+
   public static func getDeviceName() -> String? {
     // Returns a generic device name on iOS 16 and higher
     // See https://github.com/firezone/firezone/issues/3034
-      #if os(iOS)
-        return UIDevice.current.name
-      #else
-        // Fallback to connlib's gethostname()
-        return nil
-      #endif
+    #if os(iOS)
+      return UIDevice.current.name
+    #else
+      // Fallback to connlib's gethostname()
+      return nil
+    #endif
   }
 
   public static func getOSVersion() -> String? {

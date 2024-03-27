@@ -26,12 +26,12 @@ public final class SettingsViewModel: ObservableObject {
   public init(tunnelStore: TunnelStore, logger: AppLogger) {
     self.tunnelStore = tunnelStore
     self.logger = logger
-    settings = Settings.defaultValue
+    self.settings = tunnelStore.settings
 
-    loadSettings()
+    setupObservers()
   }
 
-  func loadSettings() {
+  func setupObservers() {
     // Load settings from saved VPN Profile
     Task {
       tunnelStore.$settings
@@ -248,7 +248,7 @@ public struct SettingsView: View {
           }
           ToolbarItem(placement: .navigationBarLeading) {
             Button("Cancel") {
-              self.loadSettings()
+              self.reloadSettings()
             }
           }
         }
@@ -302,7 +302,7 @@ public struct SettingsView: View {
           Text("Changing settings will sign you out and disconnect you from resources")
         }
       )
-      .onDisappear(perform: { self.loadSettings() })
+      .onDisappear(perform: { self.reloadSettings() })
     #else
       #error("Unsupported platform")
     #endif
@@ -557,8 +557,8 @@ public struct SettingsView: View {
     dismiss()
   }
 
-  func loadSettings() {
-    model.loadSettings()
+  func reloadSettings() {
+    model.settings = model.tunnelStore.settings
     dismiss()
   }
 

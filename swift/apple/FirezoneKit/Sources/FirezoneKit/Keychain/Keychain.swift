@@ -20,7 +20,7 @@ public enum KeychainError: Error {
 public actor Keychain {
   private let label = "Firezone token"
   private let description = "Firezone access token used to authenticate the client."
-  private let service = "dev.firezone.firezone"
+  private let service = Bundle.main.bundleIdentifier!
 
   // Bump this for backwards-incompatible Keychain changes; this is effectively the
   // upsert key.
