@@ -1303,7 +1303,7 @@ mod tests {
             expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
         );
 
-        client_state.add_resources(&[additional_resource()]);
+        client_state.add_resources(&[additional_resource("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
@@ -1311,7 +1311,7 @@ mod tests {
                 [
                     cidr_resource("10.0.0.0/24"),
                     dns_resource("baz.com"),
-                    additional_resource()
+                    additional_resource("11.0.0.0/24")
                 ]
                 .iter()
             )
@@ -1403,11 +1403,11 @@ mod tests {
         let mut client_state = ClientState::for_test();
 
         client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(vec![additional_resource()]);
+        client_state.set_resources(vec![additional_resource("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([additional_resource()].iter())
+            hashset([additional_resource("11.0.0.0/24")].iter())
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1523,10 +1523,10 @@ mod tests {
         })
     }
 
-    fn additional_resource() -> ResourceDescription {
+    fn additional_resource(addr: &str) -> ResourceDescription {
         ResourceDescription::Cidr(ResourceDescriptionCidr {
             id: additional_id(),
-            address: "11.0.0.0/24".parse().unwrap(),
+            address: addr.parse().unwrap(),
             name: "baz".to_string(),
         })
     }
