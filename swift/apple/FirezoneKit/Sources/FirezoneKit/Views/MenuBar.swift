@@ -70,7 +70,7 @@
 
           let newResources = decodeResources(json)
 
-          // Update menu in-place for smooth sexy easy on the eyes UI updates
+          // Update menu in-place for smooth, silky, easy-on-the-eyes UI updates
           populateResourceMenu(newResources)
           resourcesTitleMenuItem.title = resourceMenuTitle(newResources)
 
