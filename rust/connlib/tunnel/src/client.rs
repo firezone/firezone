@@ -168,7 +168,7 @@ where
     /// Updates the system's dns
     pub fn set_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
         // We store the sentinel dns both in the config and in the system's resolvers
-        // but once calculated the dns mapping those are ignored.
+        // but when we calculate the dns mapping, those are ignored.
         self.role_state.update_system_resolvers(new_dns);
 
         let dns_changed = self.update_dns_mapping();
