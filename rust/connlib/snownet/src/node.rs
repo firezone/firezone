@@ -38,6 +38,9 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long we will wait for holepunching to succeed before we start trying relays.
+const HOLEPUNCH_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// How long we will at most wait for an [`Answer`] from the remote.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -143,6 +146,10 @@ where
 
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
+        }
+
+        for connection in self.connections.established.values_mut() {
+            connection.created_at = now;
         }
     }
 
@@ -405,7 +412,13 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
+            connection.handle_timeout(
+                id,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+                &mut self.pending_events,
+            );
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -456,6 +469,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
+        id: TId,
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
@@ -471,7 +485,7 @@ where
         /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
         const WG_KEEP_ALIVE: Option<u16> = Some(10);
 
-        Connection {
+        let mut connection = Connection {
             agent,
             tunnel: Tunn::new(
                 self.private_key.clone(),
@@ -490,9 +504,20 @@ where
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             intent_sent_at,
             is_failed: false,
-            signalling_completed_at: now,
+            created_at: now,
             remote_pub_key: remote,
-        }
+            fallback_relay_candidates: Default::default(),
+        };
+
+        connection.seed_agent_with_local_candidates(
+            id,
+            self.host_candidates.clone().into_iter(),
+            &mut self.bindings,
+            &mut self.allocations,
+            &mut self.pending_events,
+        );
+
+        connection
     }
 
     /// Attempt to add the `local` address as a host candidate.
@@ -676,12 +701,14 @@ where
         for (server, event) in binding_events.chain(allocation_events) {
             match event {
                 CandidateEvent::New(candidate) => {
-                    add_local_candidate_to_all(
-                        server,
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
+                    for (id, conn) in self.connections.established.iter_mut() {
+                        conn.add_local_candidate_from(
+                            *id,
+                            server,
+                            candidate.clone(),
+                            &mut self.pending_events,
+                        )
+                    }
                 }
                 CandidateEvent::Invalid(candidate) => {
                     for (id, agent) in self.connections.agents_mut() {
@@ -782,14 +809,8 @@ where
             pass: answer.credentials.password,
         });
 
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &initial.stun_servers,
-            &initial.turn_servers,
-        );
-
         let connection = self.init_connection(
+            id,
             agent,
             remote,
             *initial.session_key.expose_secret(),
@@ -858,14 +879,8 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(
-            id,
-            &mut agent,
-            &allowed_stun_servers,
-            &allowed_turn_servers,
-        );
-
         let connection = self.init_connection(
+            id,
             agent,
             remote,
             *offer.session_key.expose_secret(),
@@ -925,51 +940,6 @@ where
             );
 
             tracing::info!(address = %server, "Added new TURN server");
-        }
-    }
-
-    fn seed_agent_with_local_candidates(
-        &mut self,
-        connection: TId,
-        agent: &mut IceAgent,
-        allowed_stun_servers: &HashSet<SocketAddr>,
-        allowed_turn_servers: &HashSet<SocketAddr>,
-    ) {
-        for candidate in self.host_candidates.iter().cloned() {
-            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
-        for candidate in self.bindings.iter().filter_map(|(server, binding)| {
-            let candidate = allowed_stun_servers
-                .contains(server)
-                .then(|| binding.candidate())??;
-
-            Some(candidate)
-        }) {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
-        }
-
-        for candidate in self
-            .allocations
-            .iter()
-            .flat_map(|(server, allocation)| {
-                allowed_turn_servers
-                    .contains(server)
-                    .then(|| allocation.current_candidates())
-            })
-            .flatten()
-        {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
         }
     }
 }
@@ -1095,49 +1065,6 @@ fn encode_as_channel_data(
 enum EncodeError {
     NoAllocation,
     NoChannel,
-}
-
-fn add_local_candidate_to_all<TId>(
-    server: SocketAddr,
-    candidate: Candidate,
-    connections: &mut Connections<TId>,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: Copy + fmt::Display,
-{
-    let initial_connections = connections
-        .initial
-        .iter_mut()
-        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
-    let established_connections = connections
-        .established
-        .iter_mut()
-        .map(|(id, c)| (*id, &c.stun_servers, &c.turn_servers, &mut c.agent));
-
-    for (id, allowed_stun, allowed_turn, agent) in
-        initial_connections.chain(established_connections)
-    {
-        let _span = info_span!("connection", %id).entered();
-
-        match candidate.kind() {
-            CandidateKind::ServerReflexive => {
-                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
-                    tracing::debug!(%server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
-                    continue;
-                }
-            }
-            CandidateKind::Relayed => {
-                if !allowed_turn.contains(&server) {
-                    tracing::debug!(%server, ?allowed_turn, "Not adding relay candidate");
-
-                    continue;
-                }
-            }
-            CandidateKind::PeerReflexive | CandidateKind::Host => continue,
-        }
-
-        add_local_candidate(id, agent, candidate.clone(), pending_events);
-    }
 }
 
 fn add_local_candidate<TId>(
@@ -1275,7 +1202,16 @@ struct Connection {
 
     is_failed: bool,
 
-    signalling_completed_at: Instant,
+    /// When this [`Connection`] was created or re-connected.
+    ///
+    /// Created in this case refers to the creation of this data structure.
+    /// That also reflects the point in time when we started ICE.
+    ///
+    /// This timestamp is reset upon [`Node::reconnect`] to allow functionality like trickling of relay candidates to work.
+    created_at: Instant,
+
+    /// Relay candidates we will trickle to the remote if holepunching doesn't succeed within [`HOLEPUNCH_TIMEOUT`].
+    fallback_relay_candidates: Vec<Candidate>,
 }
 
 /// The socket of the peer we are connected to.
@@ -1324,6 +1260,82 @@ impl Connection {
         now.duration_since(self.intent_sent_at)
     }
 
+    fn seed_agent_with_local_candidates<TId>(
+        &mut self,
+        id: TId,
+        host_candidates: impl Iterator<Item = Candidate>,
+        bindings: &mut HashMap<SocketAddr, StunBinding>,
+        allocations: &mut HashMap<SocketAddr, Allocation>,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display + Copy,
+    {
+        let binding_candidates = bindings.iter().filter_map(|(server, binding)| {
+            let candidate = self
+                .stun_servers
+                .contains(server)
+                .then(|| binding.candidate())??;
+
+            Some(candidate)
+        });
+
+        let allocation_candidates = allocations
+            .iter()
+            .flat_map(|(server, allocation)| {
+                self.turn_servers
+                    .contains(server)
+                    .then(|| allocation.current_candidates())
+            })
+            .flatten();
+
+        for candidate in host_candidates
+            .chain(binding_candidates)
+            .chain(allocation_candidates)
+        {
+            if candidate.kind() == CandidateKind::Relayed {
+                self.fallback_relay_candidates.push(candidate);
+                continue;
+            }
+
+            add_local_candidate(id, &mut self.agent, candidate, pending_events)
+        }
+    }
+
+    fn add_local_candidate_from<TId>(
+        &mut self,
+        id: TId,
+        server: SocketAddr,
+        candidate: Candidate,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: fmt::Display,
+    {
+        let _span = info_span!("connection", %id).entered();
+        let allowed_stun = &self.stun_servers;
+        let allowed_turn = &self.turn_servers;
+
+        match candidate.kind() {
+            CandidateKind::ServerReflexive => {
+                if (!allowed_stun.contains(&server)) && (!allowed_turn.contains(&server)) {
+                    tracing::debug!(%server, ?allowed_stun, ?allowed_turn, "Not adding srflx candidate");
+                    return;
+                }
+
+                add_local_candidate(id, &mut self.agent, candidate, pending_events);
+            }
+            CandidateKind::Relayed => {
+                if !allowed_turn.contains(&server) {
+                    tracing::debug!(%server, ?allowed_turn, "Not adding relay candidate");
+
+                    return;
+                }
+
+                self.fallback_relay_candidates.push(candidate);
+            }
+            CandidateKind::PeerReflexive | CandidateKind::Host => {}
+        }
+    }
+
     fn set_remote_from_wg_activity(
         &mut self,
         local: SocketAddr,
@@ -1363,7 +1375,7 @@ impl Connection {
             return None;
         }
 
-        Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
+        Some(self.created_at + CANDIDATE_TIMEOUT)
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
@@ -1373,6 +1385,7 @@ impl Connection {
         now: Instant,
         allocations: &mut HashMap<SocketAddr, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
+        pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: fmt::Display + Copy,
     {
@@ -1385,6 +1398,22 @@ impl Connection {
             tracing::info!("Connection failed (no candidates received)");
             self.is_failed = true;
             return;
+        }
+
+        let duration_since_created = now.duration_since(self.created_at);
+
+        if duration_since_created > HOLEPUNCH_TIMEOUT
+            && !self.agent.state().is_connected()
+            && !self.fallback_relay_candidates.is_empty()
+        {
+            tracing::info!("Hole-punch did not succeed after {duration_since_created:?}, sending relay candidates");
+
+            pending_events.extend(self.fallback_relay_candidates.drain(..).map(|c| {
+                Event::SignalIceCandidate {
+                    connection: id,
+                    candidate: c.to_sdp_string(),
+                }
+            }));
         }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
@@ -1434,6 +1463,8 @@ impl Connection {
                     source,
                     ..
                 } => {
+                    self.fallback_relay_candidates.clear();
+
                     let candidate = self
                         .local_candidate(source)
                         .expect("to only nominate existing candidates");
