@@ -13,10 +13,7 @@ defmodule Web.Actors.Edit do
            ) do
       # TODO: unify this and dropdowns for filters
       groups =
-        Actors.all_groups!(socket.assigns.subject,
-          preload: [:provider],
-          filter: [editable?: true]
-        )
+        Actors.all_editable_groups!(socket.assigns.subject, preload: [:provider])
 
       changeset = Actors.change_actor(actor)
 

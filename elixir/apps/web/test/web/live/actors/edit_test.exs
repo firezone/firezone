@@ -166,7 +166,7 @@ defmodule Web.Live.Actors.EditTest do
       actor: actor,
       conn: conn
     } do
-      attrs = %{name: String.duplicate("X", 555)}
+      attrs = %{name: String.duplicate("X", 555), type: :account_user}
 
       {:ok, lv, _html} =
         conn
@@ -184,6 +184,23 @@ defmodule Web.Live.Actors.EditTest do
       actor: actor,
       conn: conn
     } do
+      managed_group = Fixtures.Actors.create_managed_group(account: account)
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
+
+      synced_group = Fixtures.Actors.create_group(account: account)
+
+      synced_group
+      |> Ecto.Changeset.change(
+        created_by: :provider,
+        provider_id: provider.id,
+        provider_identifier: Ecto.UUID.generate()
+      )
+      |> Repo.update!()
+
+      Fixtures.Actors.create_membership(actor: actor, group: synced_group)
+
       group1 = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(actor: actor, group: group1)
 
@@ -205,10 +222,15 @@ defmodule Web.Live.Actors.EditTest do
 
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
+      expected_group_ids = [managed_group.id, synced_group.id, group2.id]
+
       assert actor = Repo.get_by(Domain.Actors.Actor, id: actor.id) |> Repo.preload(:memberships)
       assert actor.name == attrs.name
-      assert [%{group_id: group_id}] = actor.memberships
-      assert group_id == group2.id
+      assert length(actor.memberships) == length(expected_group_ids)
+
+      Enum.each(actor.memberships, fn membership ->
+        assert membership.group_id in expected_group_ids
+      end)
     end
   end
 
