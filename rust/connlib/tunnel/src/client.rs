@@ -94,14 +94,8 @@ where
     }
 
     fn update_resource_list(&self) {
-        self.callbacks.on_update_resources(
-            self.role_state
-                .resource_ids
-                .values()
-                .sorted()
-                .cloned()
-                .collect_vec(),
-        );
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
     }
 
     /// Updates the system's dns
@@ -310,6 +304,10 @@ impl ClientState {
             node: ClientNode::new(private_key),
             system_resolvers: Default::default(),
         }
+    }
+
+    fn resources(&self) -> Vec<ResourceDescription> {
+        self.resource_ids.values().sorted().cloned().collect_vec()
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -855,7 +853,7 @@ impl ClientState {
         self.node.poll_transmit()
     }
 
-    pub fn set_resources(&mut self, new_resources: &[ResourceDescription]) {
+    fn set_resources(&mut self, new_resources: &[ResourceDescription]) {
         self.remove_resources(
             &HashSet::from_iter(self.resource_ids.keys().copied())
                 .difference(&HashSet::<ResourceId>::from_iter(
@@ -875,10 +873,10 @@ impl ClientState {
         );
     }
 
-    pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
+    fn add_resources(&mut self, resources: &[ResourceDescription]) {
         for resource_description in resources {
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
-                if resource.has_different_address(resource) {
+                if resource.has_different_address(resource_description) {
                     self.remove_resource(resource.id());
                 }
             }
@@ -1294,6 +1292,66 @@ mod tests {
         )
     }
 
+    #[test]
+    fn add_resources_works() {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("10.0.0.0/24"), dns_resource("baz.com")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
+        );
+        client_state.add_resources(&[additional_resource()]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter(
+                [
+                    cidr_resource("10.0.0.0/24"),
+                    dns_resource("baz.com"),
+                    additional_resource()
+                ]
+                .iter()
+            )
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![
+                IpNetwork::from_str("10.0.0.0/24").unwrap(),
+                IpNetwork::from_str("11.0.0.0/24").unwrap()
+            ])
+        );
+    }
+
+    #[test]
+    fn add_resources_update_works() {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.add_resources(&[cidr_resource("11.0.0.0/24")]);
+
+        assert_eq!(
+            HashSet::<&ResourceDescription>::from_iter(client_state.resources().iter()),
+            HashSet::from_iter([cidr_resource("11.0.0.0/24"), dns_resource("baz.com")].iter())
+        );
+        assert_eq!(
+            HashSet::<IpNetwork>::from_iter(client_state.routes()),
+            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
+        );
+    }
+
+    #[test]
+    fn remove_resources_works() {}
+
+    #[test]
+    fn set_resource_works() {}
+
+    #[test]
+    fn set_resource_works_replaces_old_resource() {}
+
     impl ClientState {
         fn for_test() -> ClientState {
             ClientState::new(StaticSecret::random_from_rng(OsRng))
@@ -1344,7 +1402,56 @@ mod tests {
         })
     }
 
+    fn cidr_resource(addr: &str) -> ResourceDescription {
+        ResourceDescription::Cidr(ResourceDescriptionCidr {
+            id: cidr_id(),
+            address: addr.parse().unwrap(),
+            name: "foo".to_string(),
+        })
+    }
+
+    fn dns_resource(addr: &str) -> ResourceDescription {
+        ResourceDescription::Dns(ResourceDescriptionDns {
+            id: dns_id(),
+            address: addr.to_string(),
+            name: "bar".to_string(),
+        })
+    }
+
+    fn additional_resource() -> ResourceDescription {
+        ResourceDescription::Cidr(ResourceDescriptionCidr {
+            id: additional_id(),
+            address: "11.0.0.0/24".parse().unwrap(),
+            name: "baz".to_string(),
+        })
+    }
+
+    fn additional_id() -> ResourceId {
+        resource_id("4e0bf4ea-4175-4cdb-a7c2-cbeffa8ccc5d")
+    }
+
+    fn cidr_id() -> ResourceId {
+        resource_id("fb51081a-2e06-4b59-b5a8-33592de9ebb1")
+    }
+
+    fn dns_id() -> ResourceId {
+        resource_id("868483b6-431e-484d-bdd6-dad60ed26418")
+    }
+
     fn ip(addr: &str) -> IpAddr {
         addr.parse().unwrap()
+    }
+
+    fn resource_id(id: &str) -> ResourceId {
+        id.parse().unwrap()
+    }
+
+    fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
+        HashSet::from_iter(
+            resource_routes
+                .into_iter()
+                .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
+                .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap())),
+        )
     }
 }
