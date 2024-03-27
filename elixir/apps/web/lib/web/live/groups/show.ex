@@ -22,7 +22,7 @@ defmodule Web.Groups.Show do
           sortable_fields: [
             {:actors, :name}
           ],
-          hide_filters: [:type, :provider_id],
+          hide_filters: [:type, :status, :provider_id],
           callback: &handle_actors_update!/2
         )
         |> assign_live_table("policies",
