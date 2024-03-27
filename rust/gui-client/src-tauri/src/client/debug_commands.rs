@@ -41,6 +41,7 @@ fn crash() -> Result<()> {
     panic!("purposely crashing to see if it shows up in logs");
 }
 
+#[allow(clippy::print_stdout)]
 fn hostname() -> Result<()> {
     println!(
         "{:?}",
