@@ -55,6 +55,16 @@ defmodule Domain.Actors do
     |> Repo.preload(preload)
   end
 
+  def all_editable_groups!(%Auth.Subject{} = subject, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    Group.Query.not_deleted()
+    |> Group.Query.editable()
+    |> Authorizer.for_subject(subject)
+    |> Repo.all()
+    |> Repo.preload(preload)
+  end
+
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
@@ -416,7 +426,7 @@ defmodule Domain.Actors do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Actor.Query,
         with: fn actor ->
-          actor = maybe_preload_not_synced_memberships(actor, attrs)
+          actor = maybe_preload_editable_memberships(actor, attrs)
           synced_groups = list_readonly_groups(attrs)
           changeset = Actor.Changeset.update(actor, attrs, synced_groups, subject)
 
@@ -424,6 +434,7 @@ defmodule Domain.Actors do
             changeset.data.type != :account_admin_user -> changeset
             Map.get(changeset.changes, :type) == :account_admin_user -> changeset
             other_enabled_admins_exist?(actor) -> changeset
+            is_nil(Map.get(changeset.changes, :type)) -> changeset
             true -> :cant_remove_admin_type
           end
         end,
@@ -432,11 +443,11 @@ defmodule Domain.Actors do
     end
   end
 
-  defp maybe_preload_not_synced_memberships(%Actor{} = actor, attrs) do
+  defp maybe_preload_editable_memberships(%Actor{} = actor, attrs) do
     if Map.has_key?(attrs, "memberships") || Map.has_key?(attrs, :memberships) do
       memberships =
         Membership.Query.by_actor_id(actor.id)
-        |> Membership.Query.by_not_synced_group()
+        |> Membership.Query.only_editable_groups()
         |> Membership.Query.lock()
         |> Repo.all()
 
