@@ -278,7 +278,7 @@ mod tests {
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
-    fn everything() -> anyhow::Result<()> {
+    fn everything() {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
         // TODO: Re-enable happy path tests once `keyring-rs` is working in CI tests
         // happy_path("");
@@ -286,7 +286,6 @@ mod tests {
         utils();
         no_inflight_request();
         states_dont_match();
-        Ok(())
     }
 
     fn utils() {
@@ -301,7 +300,6 @@ mod tests {
         let hex_string = generate_nonce();
         let hex_string = hex_string.expose_secret();
         assert_eq!(hex_string.len(), NONCE_LENGTH * 2);
-        dbg!(hex_string);
 
         let auth_base_url = Url::parse("https://app.firez.one").unwrap();
         let req = Request {

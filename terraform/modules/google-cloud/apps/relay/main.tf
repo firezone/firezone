@@ -33,10 +33,10 @@ locals {
       name  = "GOOGLE_CLOUD_PROJECT_ID"
       value = var.project_id
     },
-    {
-      name  = "OTLP_GRPC_ENDPOINT"
-      value = "127.0.0.1:4317"
-    },
+    # {
+    #   name  = "OTLP_GRPC_ENDPOINT"
+    #   value = "127.0.0.1:4317"
+    # },
     {
       name  = "FIREZONE_TOKEN"
       value = var.token

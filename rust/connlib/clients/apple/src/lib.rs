@@ -45,6 +45,11 @@ mod ffi {
         ) -> Result<WrappedSession, String>;
 
         fn reconnect(&mut self);
+
+        // Set system DNS resolvers
+        //
+        // `dns_servers` must not have any IPv6 scopes
+        // <https://github.com/firezone/firezone/issues/4350>
         #[swift_bridge(swift_name = "setDns")]
         fn set_dns(&mut self, dns_servers: String);
         fn disconnect(self);
@@ -202,8 +207,7 @@ impl WrappedSession {
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
-        )
-        .map_err(|err| err.to_string())?;
+        );
 
         Ok(Self {
             inner: session,

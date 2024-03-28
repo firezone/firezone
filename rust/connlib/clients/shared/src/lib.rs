@@ -44,7 +44,7 @@ impl Session {
         callbacks: CB,
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
-    ) -> connlib_shared::Result<Self> {
+    ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let connect_handle = handle.spawn(connect(
@@ -58,7 +58,7 @@ impl Session {
         ));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
-        Ok(Self { channel: tx })
+        Self { channel: tx }
     }
 
     /// Attempts to reconnect a [`Session`].
@@ -166,5 +166,64 @@ where
                 callbacks.on_disconnect(&Error::Cancelled);
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[derive(Clone, Default)]
+    struct Callbacks {}
+    impl connlib_shared::Callbacks for Callbacks {}
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    #[ignore = "Performs system-wide I/O, needs sudo"]
+    async fn device_linux() {
+        device_common().await;
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    #[ignore = "Performs system-wide I/O, needs sudo"]
+    async fn device_windows() {
+        // Install wintun so the test can run
+        // CI only needs x86_64 for now
+        let wintun_bytes = include_bytes!("../../../../gui-client/wintun/bin/amd64/wintun.dll");
+        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&wintun_path, wintun_bytes).await.unwrap();
+
+        device_common().await;
+    }
+
+    async fn device_common() {
+        let (private_key, _public_key) = connlib_shared::keypair();
+        let sockets = crate::Sockets::new();
+        let callbacks = Callbacks::default();
+        let mut tunnel =
+            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks).unwrap();
+        let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
+        let interface = connlib_shared::messages::Interface {
+            ipv4: [100, 71, 96, 96].into(),
+            ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
+            upstream_dns,
+        };
+        tunnel.set_interface(interface).unwrap();
+        let resources = vec![];
+        tunnel.add_resources(&resources).unwrap();
+
+        let tunnel = tokio::spawn(async move {
+            std::future::poll_fn(|cx| tunnel.poll_next_event(cx))
+                .await
+                .unwrap()
+        });
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        if tunnel.is_finished() {
+            tunnel.await.unwrap();
+        }
     }
 }
