@@ -451,7 +451,7 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
-      <:action :if={not Actors.actor_synced?(@actor) or @actor.identities == []}>
+      <:action :if={not Actors.actor_synced?(@actor) or @identities == []}>
         <.delete_button
           phx-click="delete"
           data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} along with all associated identities?"}
@@ -484,12 +484,7 @@ defmodule Web.Actors.Show do
 
   def handle_event("disable", _params, socket) do
     with {:ok, actor} <- Actors.disable_actor(socket.assigns.actor, socket.assigns.subject) do
-      actor = %{
-        actor
-        | identities: socket.assigns.actor.identities,
-          groups: socket.assigns.actor.groups,
-          clients: socket.assigns.actor.clients
-      }
+      actor = %{actor | groups: socket.assigns.actor.groups}
 
       socket =
         socket
@@ -505,13 +500,7 @@ defmodule Web.Actors.Show do
 
   def handle_event("enable", _params, socket) do
     {:ok, actor} = Actors.enable_actor(socket.assigns.actor, socket.assigns.subject)
-
-    actor = %{
-      actor
-      | identities: socket.assigns.actor.identities,
-        groups: socket.assigns.actor.groups,
-        clients: socket.assigns.actor.clients
-    }
+    actor = %{actor | groups: socket.assigns.actor.groups}
 
     socket =
       socket
@@ -525,23 +514,10 @@ defmodule Web.Actors.Show do
     {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
     {:ok, _identity} = Auth.delete_identity(identity, socket.assigns.subject)
 
-    {:ok, actor} =
-      Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
-        preload: [
-          identities: [:provider, created_by_identity: [:actor]]
-        ]
-      )
-
-    actor = %{
-      actor
-      | groups: socket.assigns.actor.groups,
-        clients: socket.assigns.actor.clients
-    }
-
     socket =
       socket
+      |> reload_live_table!("identities")
       |> put_flash(:info, "Identity was deleted.")
-      |> assign(actor: actor)
 
     {:noreply, socket}
   end

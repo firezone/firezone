@@ -5,44 +5,88 @@ module "relays" {
   project_id = module.google-cloud-project.project.project_id
 
   instances = {
+    "asia-east1" = {
+      cidr_range = "10.129.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["asia-east1-a"]
+    }
+
+    "asia-south1" = {
+      cidr_range = "10.130.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["asia-south1-a"]
+    }
+
     "australia-southeast1" = {
       cidr_range = "10.131.0.0/24"
-
-      type     = "f1-micro"
-      replicas = 1
-      zones    = ["australia-southeast1-a"]
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["australia-southeast1-a"]
     }
+
+    "europe-west1" = {
+      cidr_range = "10.132.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["europe-west1-d"]
+    }
+
+    # "me-central1" = {
+    #   cidr_range = "10.133.0.0/24"
+    #   type       = "n2-standard-2"
+    #   replicas   = 1
+    #   zones      = ["me-central1-a"]
+    # }
 
     "southamerica-east1" = {
       cidr_range = "10.134.0.0/24"
-
-      type     = "f1-micro"
-      replicas = 1
-      zones    = ["southamerica-east1-b"]
-    }
-
-    "us-east1" = {
-      cidr_range = "10.136.0.0/24"
-
-      type     = "f1-micro"
-      replicas = 1
-      zones    = ["us-east1-d"]
-    }
-
-    "us-west2" = {
-      cidr_range = "10.137.0.0/24"
-
-      type     = "f1-micro"
-      replicas = 1
-      zones    = ["us-west2-b"]
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["southamerica-east1-b"]
     }
 
     "us-central1" = {
       cidr_range = "10.135.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["us-central1-b"]
+    }
 
-      type     = "f1-micro"
-      replicas = 1
-      zones    = ["us-central1-b"]
+    "us-east1" = {
+      cidr_range = "10.136.0.0/24"
+      type       = "f1-micro"
+      replicas   = 2
+      zones      = ["us-east1-d"]
+    }
+
+    "us-west2" = {
+      cidr_range = "10.137.0.0/24"
+      type       = "f1-micro"
+      replicas   = 2
+      zones      = ["us-west2-b"]
+    }
+
+    "europe-central2" = {
+      cidr_range = "10.138.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["europe-central2-c"]
+    }
+
+    "europe-north1" = {
+      cidr_range = "10.139.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["europe-north1-c"]
+    }
+
+    "europe-west2" = {
+      cidr_range = "10.140.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["europe-west2-c"]
     }
   }
 
@@ -52,7 +96,7 @@ module "relays" {
   image      = "relay"
   image_tag  = var.image_tag
 
-  observability_log_level = "debug,firezone_relay=trace,hyper=off,h2=warn,tower=warn,wire=trace"
+  observability_log_level = "debug,hyper=off,h2=warn,tower=warn"
 
   application_name    = "relay"
   application_version = replace(var.image_tag, ".", "-")

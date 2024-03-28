@@ -54,14 +54,9 @@ public final class AppStore: ObservableObject {
           return false
         }
       }
-
-      public static func allIdentifiers() -> [String] {
-        AppStore.WindowDefinition.allCases.map { $0.identifier }
-      }
     }
   #endif
 
-  public let authStore: AuthStore
   public let tunnelStore: TunnelStore
   public let settingsViewModel: SettingsViewModel
 
@@ -69,41 +64,29 @@ public final class AppStore: ObservableObject {
   public let logger: AppLogger
 
   public init() {
-    let logger = AppLogger(process: .app, folderURL: SharedAccess.appLogFolderURL)
+    let logger = AppLogger(category: .app, folderURL: SharedAccess.appLogFolderURL)
     let tunnelStore = TunnelStore(logger: logger)
-    let authStore = AuthStore(tunnelStore: tunnelStore, logger: logger)
-    let settingsViewModel = SettingsViewModel(authStore: authStore, logger: logger)
+    let settingsViewModel = SettingsViewModel(tunnelStore: tunnelStore, logger: logger)
 
-    self.authStore = authStore
     self.tunnelStore = tunnelStore
     self.settingsViewModel = settingsViewModel
     self.logger = logger
 
     #if os(macOS)
-      tunnelStore.$tunnelAuthStatus
-        .sink { tunnelAuthStatus in
-
-          if case .noTunnelFound = tunnelAuthStatus {
-            Task {
-              await MainActor.run {
+      tunnelStore.$status
+        .sink { status in
+          Task {
+            await MainActor.run {
+              // FIXME: Clean up Swift UI window groups to use a multi-step wizard
+              if case .invalid = status {
                 WindowDefinition.askPermission.openWindow()
+              } else if !DeviceMetadata.firstTime() {
+                WindowDefinition.askPermission.window()?.close()
               }
             }
           }
         }
         .store(in: &cancellables)
     #endif
-
-  }
-
-  private func signOutAndStopTunnel() {
-    Task {
-      do {
-        try await self.tunnelStore.stop()
-        await self.authStore.signOut()
-      } catch {
-        logger.error("\(#function): Error stopping tunnel: \(String(describing: error))")
-      }
-    }
   }
 }

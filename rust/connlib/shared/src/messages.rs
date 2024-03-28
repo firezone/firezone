@@ -140,11 +140,30 @@ impl PartialEq for RequestConnection {
 
 impl Eq for RequestConnection {}
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Dns(TDNS),
     Cidr(ResourceDescriptionCidr),
+}
+
+impl ResourceDescription<ResourceDescriptionDns> {
+    pub fn into_resolved(
+        self,
+        addresses: Vec<IpNetwork>,
+    ) -> ResourceDescription<ResolvedResourceDescriptionDns> {
+        match self {
+            ResourceDescription::Dns(ResourceDescriptionDns { id, address, name }) => {
+                ResourceDescription::Dns(ResolvedResourceDescriptionDns {
+                    id,
+                    domain: address,
+                    name,
+                    addresses,
+                })
+            }
+            ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
+        }
+    }
 }
 
 impl PartialOrd for ResourceDescription {
@@ -207,6 +226,20 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 }
 
+/// Description of a resource that maps to a DNS record which had its domain already resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedResourceDescriptionDns {
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub domain: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub addresses: Vec<IpNetwork>,
+}
+
 impl ResourceDescription {
     pub fn dns_name(&self) -> Option<&str> {
         match self {
@@ -252,7 +285,7 @@ impl ResourceDescription {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -264,7 +297,7 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum DnsServer {
     IpPort(IpDnsServer),
@@ -295,7 +328,7 @@ where
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IpDnsServer {
     pub address: SocketAddr,
 }

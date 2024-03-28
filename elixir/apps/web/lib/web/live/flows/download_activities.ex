@@ -36,8 +36,6 @@ defmodule Web.Flows.DownloadActivities do
     with {:ok, activities, activities_metadata} <-
            Flows.list_flow_activities_for(
              flow,
-             flow.inserted_at,
-             flow.expires_at,
              conn.assigns.subject,
              page: [cursor: cursor, limit: 100]
            ),

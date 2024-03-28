@@ -91,10 +91,32 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["owner"] =~ actor.name
     assert table["status"] =~ "Offline"
     assert table["created"]
-    assert table["last seen"]
-    assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
+    assert table["last connected"]
+    assert table["last remote ip"] =~ to_string(client.last_seen_remote_ip)
     assert table["client version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
+  end
+
+  test "shows client online status", %{
+    account: account,
+    client: client,
+    identity: identity,
+    conn: conn
+  } do
+    :ok = Domain.Clients.connect_client(client)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    table =
+      lv
+      |> element("#client")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["status"] =~ "Online"
   end
 
   test "updates client online status using presence", %{

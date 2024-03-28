@@ -50,11 +50,6 @@ pub trait Callbacks: Clone + Send + Sync {
         None
     }
 
-    /// Called when the tunnel is connected.
-    fn on_tunnel_ready(&self) {
-        tracing::trace!("tunnel_connected");
-    }
-
     /// Called when the route list changes.
     fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Option<RawFd> {
         None
@@ -72,10 +67,6 @@ pub trait Callbacks: Clone + Send + Sync {
         // Note that we can't panic here, since we already hooked the panic to this function.
         std::process::exit(0);
     }
-
-    /// Protects the socket file descriptor from routing loops.
-    #[cfg(target_os = "android")]
-    fn protect_file_descriptor(&self, file_descriptor: std::os::fd::RawFd);
 
     fn roll_log_file(&self) -> Option<PathBuf> {
         None

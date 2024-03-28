@@ -54,8 +54,8 @@ defmodule Web.Resources.Index do
         Resources
       </:title>
       <:help>
-        Resources define the subnets, hosts, and applications for which you want to manage access. You can manage resources per site
-        in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>sites</.link> section.
+        Resources define the subnets, hosts, and applications for which you want to manage access. You can manage Resources per Site
+        in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
       </:help>
       <:action>
         <.add_button
@@ -100,12 +100,12 @@ defmodule Web.Resources.Index do
           <:col :let={resource} label="Authorized groups">
             <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
               <:empty>
-                None,
+                None -
                 <.link
                   class={["px-1", link_style()]}
                   navigate={~p"/#{@account}/policies/new?resource_id=#{resource}"}
                 >
-                  create a Policy
+                  Create a Policy
                 </.link>
                 to grant access.
               </:empty>

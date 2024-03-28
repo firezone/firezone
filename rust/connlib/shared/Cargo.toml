@@ -72,3 +72,6 @@ version = "0.54.0"
 features = [
   "Win32_Foundation",
 ]
+
+[lints]
+workspace = true

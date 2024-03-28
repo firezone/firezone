@@ -43,11 +43,16 @@ pub enum Input<'a, I> {
 }
 
 impl Io {
-    pub fn new() -> io::Result<Self> {
+    /// Creates a new I/O abstraction
+    ///
+    /// Must be called within a Tokio runtime context so we can bind the sockets.
+    pub fn new(mut sockets: Sockets) -> io::Result<Self> {
+        sockets.rebind()?; // Bind sockets on startup. Must happen within a tokio runtime context.
+
         Ok(Self {
             device: Device::new(),
             timeout: None,
-            sockets: Sockets::new()?,
+            sockets,
             upstream_dns_servers: HashMap::default(),
             forwarded_dns_queries: FuturesTupleSet::new(
                 Duration::from_secs(60),
@@ -73,8 +78,9 @@ impl Io {
                             self.device.write(packet)?;
                         }
                         Ok(None) => {}
-                        Err(e) => {
-                            tracing::warn!("Failed to build DNS response from lookup result: {e}");
+                        Err(_) => {
+                            // The error might contain sensitive information therefore we ignore it
+                            tracing::warn!("Failed to build DNS response from lookup result");
                         }
                     }
 
@@ -113,6 +119,10 @@ impl Io {
 
     pub fn sockets_ref(&self) -> &Sockets {
         &self.sockets
+    }
+
+    pub fn sockets_mut(&mut self) -> &mut Sockets {
+        &mut self.sockets
     }
 
     pub fn set_upstream_dns_servers(

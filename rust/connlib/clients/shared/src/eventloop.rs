@@ -18,14 +18,13 @@ use std::{
     net::IpAddr,
     path::PathBuf,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::time::{Interval, MissedTickBehavior};
 use url::Url;
 
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel<C>,
-    tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
@@ -50,7 +49,6 @@ impl<C: Callbacks> Eventloop<C> {
         Self {
             tunnel,
             portal,
-            tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
             log_upload_interval: upload_interval(),
             rx,
@@ -62,15 +60,20 @@ impl<C> Eventloop<C>
 where
     C: Callbacks + 'static,
 {
-    #[tracing::instrument(name = "Eventloop::poll", skip_all, level = "debug")]
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
-                Poll::Ready(Some(Command::SetDns(dns))) => self.tunnel.set_dns(dns, Instant::now()),
+                Poll::Ready(Some(Command::SetDns(dns))) => {
+                    if let Err(e) = self.tunnel.set_dns(dns) {
+                        tracing::warn!("Failed to update DNS: {e}");
+                    }
+                }
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
-                    self.tunnel.reconnect();
+                    if let Err(e) = self.tunnel.reconnect() {
+                        tracing::warn!("Failed to reconnect tunnel: {e}");
+                    }
 
                     continue;
                 }
@@ -167,8 +170,10 @@ where
 
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
-            IngressMessages::ConfigChanged(_) => {
-                tracing::warn!("Config changes are not yet implemented");
+            IngressMessages::ConfigChanged(config) => {
+                if let Err(e) = self.tunnel.set_interface(config.interface.clone()) {
+                    tracing::warn!(?config, "Failed to update configuration: {e:?}");
+                }
             }
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
@@ -182,18 +187,13 @@ where
                 interface,
                 resources,
             }) => {
-                if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(interface) {
-                        tracing::warn!("Failed to set interface on tunnel: {e}");
-                        return;
-                    }
-
-                    self.tunnel_init = true;
-                    tracing::info!("Firezone Started!");
-                    let _ = self.tunnel.add_resources(&resources);
-                } else {
-                    tracing::info!("Firezone reinitializated");
+                if let Err(e) = self.tunnel.set_interface(interface) {
+                    tracing::warn!("Failed to set interface on tunnel: {e}");
+                    return;
                 }
+
+                tracing::info!("Firezone Started!");
+                let _ = self.tunnel.set_resources(resources);
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
@@ -203,7 +203,7 @@ where
                 }
             }
             IngressMessages::ResourceDeleted(RemoveResource(resource)) => {
-                self.tunnel.remove_resource(resource);
+                self.tunnel.remove_resources(&[resource]);
             }
         }
     }
@@ -259,7 +259,7 @@ where
 
                 match self
                     .tunnel
-                    .request_connection(resource_id, gateway_id, relays)
+                    .create_or_reuse_connection(resource_id, gateway_id, relays)
                 {
                     Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
                         // TODO: keep track for the response

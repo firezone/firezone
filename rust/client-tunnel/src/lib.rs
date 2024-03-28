@@ -8,6 +8,7 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
+#[allow(clippy::print_stdout)]
 pub fn run() {
     println!("Firezone Tunnel (library)");
 }
@@ -16,6 +17,7 @@ pub fn run() {
 mod tests {
     use anyhow::Result;
     use serde::Serialize;
+    use std::time::Duration;
     use tokio::{
         io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
         net::{UnixListener, UnixStream},
@@ -83,11 +85,13 @@ mod tests {
             .await
             .unwrap();
 
-        let mut stream = UnixStream::connect(&sock_path).await.unwrap();
         write_ipc_msg(&mut stream, &"message two".to_string())
             .await
             .unwrap();
 
-        ipc_server_task.await.unwrap();
+        tokio::time::timeout(Duration::from_millis(2_000), ipc_server_task)
+            .await
+            .unwrap()
+            .unwrap();
     }
 }

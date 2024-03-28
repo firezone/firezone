@@ -36,3 +36,6 @@ http-health-check = { workspace = true }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
+
+[lints]
+workspace = true

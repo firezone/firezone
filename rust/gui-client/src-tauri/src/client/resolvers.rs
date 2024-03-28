@@ -9,6 +9,7 @@ mod imp {
 
     // TODO: The code here will depend on the chosen DNS control method.
     // So that will need to be threaded in here somehow.
+    #[allow(clippy::unnecessary_wraps)]
     pub fn get() -> Result<Vec<IpAddr>> {
         tracing::error!("Resolvers module not yet implemented for Linux, returning empty Vec");
         Ok(Vec::default())
@@ -31,7 +32,7 @@ mod imp {
     use std::net::IpAddr;
 
     pub fn get() -> Result<Vec<IpAddr>> {
-        Ok(ipconfig::get_adapters()?
+        let resolvers = ipconfig::get_adapters()?
             .iter()
             .flat_map(|adapter| adapter.dns_servers())
             .filter(|ip| match ip {
@@ -40,6 +41,9 @@ mod imp {
                 IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
             })
             .copied()
-            .collect())
+            .collect();
+        // This is private, so keep it at `debug` or `trace`
+        tracing::debug!(?resolvers);
+        Ok(resolvers)
     }
 }
