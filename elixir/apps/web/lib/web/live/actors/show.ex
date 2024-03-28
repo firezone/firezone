@@ -42,6 +42,13 @@ defmodule Web.Actors.Show do
           limit: 10,
           callback: &handle_flows_update!/2
         )
+        |> assign_live_table("groups",
+          query_module: Actors.Group.Query,
+          sortable_fields: [],
+          hide_filters: [:provider_id],
+          limit: 15,
+          callback: &handle_groups_update!/2
+        )
 
       {:ok, socket}
     else
@@ -63,6 +70,19 @@ defmodule Web.Actors.Show do
        assign(socket,
          identities: identities,
          identities_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_groups_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:provider])
+
+    with {:ok, groups, metadata} <-
+           Actors.list_groups_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         groups: groups,
+         groups_metadata: metadata
        )}
     end
   end
@@ -168,18 +188,6 @@ defmodule Web.Actors.Show do
             <:label>Role</:label>
             <:value>
               <%= actor_role(@actor.type) %>
-            </:value>
-          </.vertical_table_row>
-
-          <.vertical_table_row>
-            <:label>Groups</:label>
-            <:value>
-              <div class="flex flex-wrap gap-y-2">
-                <span :if={Enum.empty?(@actor.groups)}>none</span>
-                <span :for={group <- @actor.groups}>
-                  <.group account={@account} group={group} />
-                </span>
-              </div>
             </:value>
           </.vertical_table_row>
 
@@ -445,6 +453,31 @@ defmodule Web.Actors.Show do
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
+          </:empty>
+        </.live_table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>Groups</:title>
+
+      <:content>
+        <.live_table
+          id="groups"
+          rows={@groups}
+          row_id={&"group-#{&1.id}"}
+          filters={@filters_by_table_id["groups"]}
+          filter={@filter_form_by_table_id["groups"]}
+          ordered_by={@order_by_table_id["groups"]}
+          metadata={@clients_metadata}
+        >
+          <:col :let={group} label="NAME">
+            <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
+              <%= group.name %>
+            </.link>
+          </:col>
+          <:empty>
+            <div class="text-center text-neutral-500 p-4">No Groups to display.</div>
           </:empty>
         </.live_table>
       </:content>
