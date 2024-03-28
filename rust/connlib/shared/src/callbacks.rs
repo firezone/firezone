@@ -50,11 +50,6 @@ pub trait Callbacks: Clone + Send + Sync {
         None
     }
 
-    /// Called when the tunnel is connected.
-    fn on_tunnel_ready(&self) {
-        tracing::trace!("tunnel_connected");
-    }
-
     /// Called when the route list changes.
     fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Option<RawFd> {
         None
