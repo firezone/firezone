@@ -13,19 +13,19 @@ import XCTestDynamicOverlay
 @MainActor
 final class AuthViewModel: ObservableObject {
 
-  let authStore: AuthStore
+  let tunnelStore: TunnelStore
 
   var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
 
   private var cancellables = Set<AnyCancellable>()
 
-  init(authStore: AuthStore) {
-    self.authStore = authStore
+  init(tunnelStore: TunnelStore) {
+    self.tunnelStore = tunnelStore
   }
 
   func signInButtonTapped() async {
     do {
-      try await authStore.signIn()
+      try await tunnelStore.signIn()
     } catch {
       dump(error)
     }
@@ -34,6 +34,9 @@ final class AuthViewModel: ObservableObject {
 
 struct AuthView: View {
   @ObservedObject var model: AuthViewModel
+
+  // Debounce button taps
+  @State private var tapped = false
 
   var body: some View {
     VStack(
@@ -47,10 +50,19 @@ struct AuthView: View {
           .padding(.horizontal, 10)
         Spacer()
         Button("Sign in") {
-          Task {
-            await model.signInButtonTapped()
+          if !tapped {
+            tapped = true
+
+            DispatchQueue.main.async {
+              Task { await model.signInButtonTapped() }
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+              tapped = false
+            }
           }
         }
+        .disabled(tapped)
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         Spacer()

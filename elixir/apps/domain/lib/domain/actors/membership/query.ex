@@ -6,6 +6,12 @@ defmodule Domain.Actors.Membership.Query do
     from(memberships in Membership, as: :memberships)
   end
 
+  def only_editable_groups(queryable \\ all()) do
+    queryable
+    |> with_joined_groups()
+    |> where([groups: groups], is_nil(groups.provider_id) and groups.type == :static)
+  end
+
   def by_actor_id(queryable \\ all(), actor_id) do
     where(queryable, [memberships: memberships], memberships.actor_id == ^actor_id)
   end
@@ -40,12 +46,6 @@ defmodule Domain.Actors.Membership.Query do
     queryable
     |> with_joined_groups()
     |> where([groups: groups], groups.provider_id == ^provider_id)
-  end
-
-  def by_not_synced_group(queryable \\ all()) do
-    queryable
-    |> with_joined_groups()
-    |> where([groups: groups], is_nil(groups.provider_id))
   end
 
   def count_actors_by_group_id(queryable \\ all()) do

@@ -1,0 +1,1 @@
+avoid-breaking-exported-api = false # We don't publish anything to crates.io, hence we don't need to worry about breaking Rust API changes.

@@ -10,7 +10,7 @@ use connlib_shared::{
     messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
     Callbacks,
 };
-use firezone_tunnel::{ClientTunnel, Sockets};
+use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
@@ -25,7 +25,6 @@ use url::Url;
 
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel<C>,
-    tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
@@ -37,7 +36,7 @@ pub struct Eventloop<C: Callbacks> {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Stop,
-    Reconnect(Sockets),
+    Reconnect,
     SetDns(Vec<IpAddr>),
 }
 
@@ -50,7 +49,6 @@ impl<C: Callbacks> Eventloop<C> {
         Self {
             tunnel,
             portal,
-            tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
             log_upload_interval: upload_interval(),
             rx,
@@ -71,9 +69,11 @@ where
                         tracing::warn!("Failed to update DNS: {e}");
                     }
                 }
-                Poll::Ready(Some(Command::Reconnect(sockets))) => {
+                Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
-                    self.tunnel.reconnect(sockets);
+                    if let Err(e) = self.tunnel.reconnect() {
+                        tracing::warn!("Failed to reconnect tunnel: {e}");
+                    }
 
                     continue;
                 }
@@ -170,8 +170,10 @@ where
 
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
-            IngressMessages::ConfigChanged(_) => {
-                tracing::warn!("Config changes are not yet implemented");
+            IngressMessages::ConfigChanged(config) => {
+                if let Err(e) = self.tunnel.set_interface(config.interface.clone()) {
+                    tracing::warn!(?config, "Failed to update configuration: {e:?}");
+                }
             }
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
@@ -185,18 +187,13 @@ where
                 interface,
                 resources,
             }) => {
-                if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(interface) {
-                        tracing::warn!("Failed to set interface on tunnel: {e}");
-                        return;
-                    }
-
-                    self.tunnel_init = true;
-                    tracing::info!("Firezone Started!");
-                    let _ = self.tunnel.add_resources(&resources);
-                } else {
-                    tracing::info!("Firezone reinitializated");
+                if let Err(e) = self.tunnel.set_interface(interface) {
+                    tracing::warn!("Failed to set interface on tunnel: {e}");
+                    return;
                 }
+
+                tracing::info!("Firezone Started!");
+                let _ = self.tunnel.set_resources(resources);
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
@@ -206,7 +203,7 @@ where
                 }
             }
             IngressMessages::ResourceDeleted(RemoveResource(resource)) => {
-                self.tunnel.remove_resource(resource);
+                self.tunnel.remove_resources(&[resource]);
             }
         }
     }

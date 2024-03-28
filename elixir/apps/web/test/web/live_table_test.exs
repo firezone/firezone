@@ -474,7 +474,7 @@ defmodule Web.LiveTableTest do
 
       socket =
         %Phoenix.LiveView.Socket{
-          assigns: %{subject: subject, uri: "/current_uri", __changed__: %{}}
+          assigns: %{subject: subject, uri: "http://foo.bar/current_uri", __changed__: %{}}
         }
         |> assign_live_table("table-id",
           query_module: Actors.Actor.Query,
@@ -559,7 +559,38 @@ defmodule Web.LiveTableTest do
       refute_receive {:callback, _socket, _list_opts}
     end
 
-    test "raises if the callback returns an error" do
+    test "raises if the table params are invalid" do
+      subject = Fixtures.Auth.create_subject()
+
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{subject: subject, uri: "/current_uri", __changed__: %{}, flash: %{}}
+        }
+
+      for {reason, message} <- [
+            {:invalid_cursor, "The page was reset due to invalid pagination cursor."},
+            {{:unknown_filter, []},
+             "The page was reset due to use of undefined pagination filter."},
+            {{:invalid_type, []},
+             "The page was reset due to invalid value of a pagination filter."},
+            {{:invalid_value, []},
+             "The page was reset due to invalid value of a pagination filter."}
+          ] do
+        socket =
+          assign_live_table(socket, "table-id",
+            query_module: Actors.Actor.Query,
+            sortable_fields: [
+              {:actors, :name}
+            ],
+            callback: fn _socket, _list_opts -> {:error, reason} end
+          )
+
+        socket = handle_live_tables_params(socket, %{}, "/foo")
+        assert socket.assigns.flash == %{"error" => message}
+      end
+    end
+
+    test "raises if the callback returns a generic error" do
       subject = Fixtures.Auth.create_subject()
 
       socket =
@@ -569,11 +600,7 @@ defmodule Web.LiveTableTest do
 
       for {reason, exception} <- [
             {:not_found, Web.LiveErrors.NotFoundError},
-            {:unauthorized, Web.LiveErrors.NotFoundError},
-            {:invalid_cursor, Web.LiveErrors.InvalidRequestError},
-            {{:unknown_filter, []}, Web.LiveErrors.InvalidRequestError},
-            {{:invalid_type, []}, Web.LiveErrors.InvalidRequestError},
-            {{:invalid_value, []}, Web.LiveErrors.InvalidRequestError}
+            {:unauthorized, Web.LiveErrors.NotFoundError}
           ] do
         socket =
           assign_live_table(socket, "table-id",

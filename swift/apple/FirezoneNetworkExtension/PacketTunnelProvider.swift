@@ -12,109 +12,152 @@ import os
 enum PacketTunnelProviderError: Error {
   case savedProtocolConfigurationIsInvalid(String)
   case tokenNotFoundInKeychain
-  case couldNotSetNetworkSettings
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
-  let logger = AppLogger(process: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
+  let logger = AppLogger(category: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
 
   private var adapter: Adapter?
 
   override func startTunnel(
-    options _: [String: NSObject]? = nil,
+    options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
   ) {
+    super.startTunnel(options: options, completionHandler: completionHandler)
     logger.log("\(#function)")
 
-    guard let controlPlaneURLString = protocolConfiguration.serverAddress else {
-      logger.error("serverAddress is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "serverAddress is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
-      return
-    }
-
-    guard let tokenRef = protocolConfiguration.passwordReference else {
-      logger.error("passwordReference is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "passwordReference is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("passwordReference"))
-      return
-    }
-
-    let providerConfig = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
-
-    guard let connlibLogFilter = providerConfig?[TunnelProviderKeys.keyConnlibLogFilter] as? String
-    else {
-      logger.error("connlibLogFilter is missing")
-      self.handleTunnelShutdown(
-        dueTo: .badTunnelConfiguration,
-        errorMessage: "connlibLogFilter is missing")
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("connlibLogFilter"))
-      return
-    }
-
     Task {
-      let keychain = Keychain()
-      guard let token = await keychain.load(persistentRef: tokenRef) else {
-        self.handleTunnelShutdown(
-          dueTo: .tokenNotFound,
-          errorMessage: "Token not found in keychain")
-        completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
-        return
-      }
-
-      let adapter = Adapter(
-        controlPlaneURLString: controlPlaneURLString, token: token, logFilter: connlibLogFilter,
-        packetTunnelProvider: self)
-      self.adapter = adapter
       do {
-        try adapter.start { error in
-          if let error {
-            self.logger.error("Error in adapter.start: \(error)")
+        var token = options?["token"] as? String
+        let keychain = Keychain()
+        let tokenRef = await keychain.search()
+
+        if let token = token {
+          // 1. If we're passed a token, save it to keychain
+
+          // Apple recommends updating Keychain items in place if possible
+          // In reality this won't happen unless there's some kind of race condition
+          // because we would have deleted the item upon sign out.
+          if tokenRef != nil {
+            try await keychain.update(token: token)
+          } else {
+            try await keychain.add(token: token)
           }
-          completionHandler(error)
+
+        } else {
+
+          // 2. Otherwise, load it from the keychain
+          guard let tokenRef = tokenRef
+          else {
+            completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+            return
+          }
+
+          token = await keychain.load(persistentRef: tokenRef)
         }
+
+        // 3. Now we should have a token, so connect
+        guard let apiURL = protocolConfiguration.serverAddress
+        else {
+          completionHandler(
+            PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
+          return
+        }
+
+        guard
+          let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
+            .providerConfiguration as? [String: String],
+          let logFilter = providerConfiguration[TunnelStoreKeys.logFilter]
+        else {
+          completionHandler(
+            PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
+              "providerConfiguration.logFilter"))
+          return
+        }
+
+        guard let token = token
+        else {
+          completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+          return
+        }
+
+        let adapter = Adapter(
+          apiURL: apiURL, token: token, logFilter: logFilter, packetTunnelProvider: self)
+        self.adapter = adapter
+
+        try adapter.start(completionHandler: completionHandler)
       } catch {
+        logger.error("\(#function): Error! \(error)")
         completionHandler(error)
       }
     }
   }
 
+  // This can be called by the system, or initiated by connlib.
+  // When called by the system, we call Adapter.stop() from here.
+  // When initiated by connlib, we've already called stop() there.
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
   ) {
     logger.log("stopTunnel: Reason: \(reason)")
-    adapter?.stop(reason: reason) {
-      completionHandler()
-      #if os(macOS)
-        // HACK: This is a filthy hack to work around Apple bug 32073323
-        exit(0)
+
+    if case .authenticationCanceled = reason {
+      do {
+        // This was triggered from onDisconnect, so clear our token
+        Task { try await clearToken() }
+
+        // There's no good way to send data like this from the
+        // Network Extension to the GUI, so save it to a file for the GUI to read upon
+        // either status change or the next launch.
+        try String(reason.rawValue).write(
+          to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
+      } catch {
+        logger.error(
+          "\(#function): Couldn't write provider stop reason to file. Notification won't work.")
+      }
+      #if os(iOS)
+        // iOS notifications should be shown from the tunnel process
+        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
       #endif
     }
+
+    // handles both connlib-initiated and user-initiated stops
+    adapter?.stop()
+
+    cancelTunnelWithError(nil)
   }
 
-  override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)? = nil) {
-    let query = String(data: messageData, encoding: .utf8) ?? ""
-    adapter?.getDisplayableResourcesIfVersionDifferentFrom(referenceVersionString: query) {
-      displayableResources in
-      completionHandler?(displayableResources?.toData())
+  // TODO: Use a message format to allow requesting different types of data.
+  // This currently assumes we're requesting resources.
+  override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
+    let string = String(data: message, encoding: .utf8)
+
+    switch string {
+    case "signOut":
+      Task {
+        do {
+          try await clearToken()
+        } catch {
+          logger.error("\(#function): Error: \(error)")
+        }
+      }
+    default:
+      adapter?.getResourcesIfVersionDifferentFrom(hash: message) {
+        resourceListJSON in
+        completionHandler?(resourceListJSON?.data(using: .utf8))
+      }
     }
   }
 
-  func handleTunnelShutdown(dueTo reason: TunnelShutdownEvent.Reason, errorMessage: String) {
-    TunnelShutdownEvent.saveToDisk(reason: reason, errorMessage: errorMessage, logger: self.logger)
+  private func clearToken() async throws {
+    let keychain = Keychain()
+    guard let ref = await keychain.search()
+    else {
+      logger.error("\(#function): Error: token not found!")
+      return
+    }
 
-    #if os(iOS)
-      if reason.action == .signoutImmediately {
-        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
-      }
-    #endif
+    try await keychain.delete(persistentRef: ref)
   }
 }
 
@@ -127,7 +170,7 @@ extension NEProviderStopReason: CustomStringConvertible {
     case .noNetworkAvailable: return "No network available"
     case .unrecoverableNetworkChange: return "Unrecoverable network change"
     case .providerDisabled: return "Provider disabled"
-    case .authenticationCanceled: return "Authentication cancelled"
+    case .authenticationCanceled: return "Authentication canceled"
     case .configurationFailed: return "Configuration failed"
     case .idleTimeout: return "Idle timeout"
     case .configurationDisabled: return "Configuration disabled"

@@ -154,6 +154,7 @@ impl Tun {
         })
     }
 
+    #[allow(clippy::unnecessary_wraps)] // fn signature needs to align with other platforms.
     pub fn set_routes(&mut self, new_routes: HashSet<IpNetwork>, _: &impl Callbacks) -> Result<()> {
         if new_routes == self.routes {
             return Ok(());

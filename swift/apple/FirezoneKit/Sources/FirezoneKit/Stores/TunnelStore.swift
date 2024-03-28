@@ -5,33 +5,44 @@
 //
 
 import Combine
+import CryptoKit
+import Dependencies
 import Foundation
 import NetworkExtension
 import OSLog
 
+#if os(macOS)
+  import AppKit
+#endif
+
 enum TunnelStoreError: Error {
   case tunnelCouldNotBeStarted
   case tunnelCouldNotBeStopped
-  case cannotSaveToTunnelWhenConnected
+  case cannotSaveIfMissing
   case cannotSignOutWhenConnected
   case stopAlreadyBeingAttempted
   case startTunnelErrored(Error)
 }
 
-public struct TunnelProviderKeys {
-  static let keyAuthBaseURLString = "authBaseURLString"
-  public static let keyConnlibLogFilter = "connlibLogFilter"
+public struct TunnelStoreKeys {
+  static let actorName = "actorName"
+  static let authBaseURL = "authBaseURL"
+  static let apiURL = "apiURL"
+  public static let logFilter = "logFilter"
 }
 
+/// A utility class for managing our VPN profile in System Preferences
 public final class TunnelStore: ObservableObject {
-  @Published private var tunnel: NETunnelProviderManager?
-  @Published private(set) var tunnelAuthStatus: TunnelAuthStatus = .uninitialized
+  // Make our tunnel configuration convenient for SettingsView to consume
+  @Published private(set) var settings: Settings
 
-  @Published private(set) var status: NEVPNStatus {
-    didSet { self.logger.log("status changed: \(self.status.description)") }
-  }
+  // Enacapsulate Tunnel status here to make it easier for other components
+  // to observe
+  @Published private(set) var status: NEVPNStatus
 
-  @Published private(set) var resources = DisplayableResources()
+  @Published private(set) var resourceListJSON: String?
+
+  public var manager: NETunnelProviderManager?
 
   private var resourcesTimer: Timer? {
     didSet(oldValue) { oldValue?.invalidate() }
@@ -39,186 +50,190 @@ public final class TunnelStore: ObservableObject {
 
   private let logger: AppLogger
   private var tunnelObservingTasks: [Task<Void, Never>] = []
-  private var startTunnelContinuation: CheckedContinuation<(), Error>?
-  private var stopTunnelContinuation: CheckedContinuation<(), Error>?
   private var cancellables = Set<AnyCancellable>()
 
+  // Use separate bundle IDs for release and debug. Helps with testing releases
+  // and dev builds on the same Mac.
+  #if DEBUG
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map {
+      "\($0).debug.network-extension"
+    }
+    private let bundleDescription = "Firezone (Debug)"
+  #else
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+    private let bundleDescription = "Firezone"
+  #endif
+
+  @Dependency(\.keychain) private var keychain
+  @Dependency(\.auth) private var auth
+  @Dependency(\.mainQueue) private var mainQueue
+
   public init(logger: AppLogger) {
-    self.tunnel = nil
-    self.tunnelAuthStatus = .uninitialized
-    self.status = .invalid
     self.logger = logger
+    self.status = .disconnected
+    self.manager = nil
+    self.settings = Settings.defaultValue
+
+    // Connect UI state updates to this manager's status
+    setupTunnelObservers()
 
     Task {
-      await initializeTunnel()
-      setupTunnelObservers()
-    }
-  }
+      // loadAllFromPreferences() returns list of tunnel configurations created by our bundle ID.
+      // Since our bundle ID can change (by us), find the one that's current and ignore the others.
+      let managers = try! await NETunnelProviderManager.loadAllFromPreferences()
+      logger.log("\(#function): \(managers.count) tunnel managers found")
+      for manager in managers {
+        if let protocolConfiguration = (manager.protocolConfiguration as? NETunnelProviderProtocol),
+           protocolConfiguration.providerBundleIdentifier == bundleIdentifier {
+          // Found it
+          self.settings = Settings.fromProviderConfiguration(
+            providerConfiguration: protocolConfiguration.providerConfiguration
+          )
+          self.manager = manager
+          self.status = manager.connection.status
 
-  func initializeTunnel() async {
-    // loadAllFromPreferences() returns list of tunnel configurations we created. Since our bundle ID
-    // can change (by us), find the one that's current and ignore the others.
-    let managers = try! await NETunnelProviderManager.loadAllFromPreferences()
-    logger.log("\(#function): \(managers.count) tunnel managers found")
-    for manager in managers {
-      if let protocolConfig = (manager.protocolConfiguration as? NETunnelProviderProtocol),
-         protocolConfig.providerBundleIdentifier == NETunnelProviderManager.bundleIdentifier() {
-        self.tunnel = manager
-        self.tunnelAuthStatus = manager.authStatus()
-        self.status = manager.connection.status
-
-        // Stop looking for our tunnel
-        break
+          // Stop looking for our tunnel
+          break
+        }
       }
 
-      self.tunnelAuthStatus = .noTunnelFound
+      // Try to connect on app launch
+      if self.status == .disconnected {
+        try await start()
+      }
+
+      // If no tunnel configuration was found, update state to
+      // prompt user to create one.
+      if manager == nil {
+        status = .invalid
+      }
     }
   }
 
-  func createTunnel() async throws {
-    guard self.tunnel == nil else {
-      return
-    }
-    let tunnel = NETunnelProviderManager()
-    tunnel.localizedDescription = NETunnelProviderManager.bundleDescription()
-    tunnel.protocolConfiguration = basicProviderProtocol()
-    try await tunnel.saveToPreferences()
-    logger.log("\(#function): Tunnel created")
-    self.tunnel = tunnel
-    self.tunnelAuthStatus = tunnel.authStatus()
-  }
-
-  func saveAuthStatus(_ tunnelAuthStatus: TunnelAuthStatus) async throws {
-    logger.log("TunnelStore.\(#function) \(tunnelAuthStatus)")
-    guard let tunnel = tunnel else {
-      fatalError("No tunnel yet. Can't save auth status.")
-    }
-
-    let tunnelStatus = tunnel.connection.status
-    if tunnelStatus == .connected || tunnelStatus == .connecting {
-      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
-    }
-
-    try await tunnel.loadFromPreferences()
-    try await tunnel.saveAuthStatus(tunnelAuthStatus)
-    self.tunnelAuthStatus = tunnelAuthStatus
-  }
-
-  func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
-    logger.log("TunnelStore.\(#function) \(advancedSettings)")
-    guard let tunnel = tunnel else {
-      fatalError("No tunnel yet. Can't save advanced settings.")
-    }
-
-    let tunnelStatus = tunnel.connection.status
-    if tunnelStatus == .connected || tunnelStatus == .connecting {
-      throw TunnelStoreError.cannotSaveToTunnelWhenConnected
-    }
-
-    try await tunnel.loadFromPreferences()
-    try await tunnel.saveAdvancedSettings(advancedSettings)
-    self.tunnelAuthStatus = tunnel.authStatus()
-  }
-
-  func advancedSettings() -> AdvancedSettings? {
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
-      return nil
-    }
-
-    return tunnel.advancedSettings()
-  }
-
-  func basicProviderProtocol() -> NETunnelProviderProtocol {
+  // Initialize and save a new VPN profile in system Preferences
+  func createManager() async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
-    protocolConfiguration.providerBundleIdentifier = NETunnelProviderManager.bundleIdentifier()
-    protocolConfiguration.serverAddress = AdvancedSettings.defaultValue.apiURLString
-    protocolConfiguration.providerConfiguration = [
-      TunnelProviderKeys.keyConnlibLogFilter:
-        AdvancedSettings.defaultValue.connlibLogFilterString
-    ]
-    return protocolConfiguration
+    let manager = NETunnelProviderManager()
+    let settings = Settings.defaultValue
+
+    protocolConfiguration.providerConfiguration = settings.toProviderConfiguration()
+    protocolConfiguration.providerBundleIdentifier = bundleIdentifier
+    protocolConfiguration.serverAddress = settings.apiURL
+    manager.localizedDescription = bundleDescription
+    manager.protocolConfiguration = protocolConfiguration
+
+    // Save the new VPN profile to System Preferences and reload it,
+    // which should update our status from invalid -> disconnected.
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
+
+    self.manager = manager
+    self.settings = settings
+    self.status = manager.connection.status
   }
 
-  func start() async throws {
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
-      return
-    }
-
+  func start(token: String? = nil) async throws {
     logger.log("\(#function)")
 
-    if tunnel.connection.status == .connected || tunnel.connection.status == .connecting {
+    guard let manager = manager
+    else {
+      logger.error("\(#function): No manager created yet")
       return
     }
 
-    if tunnel.advancedSettings().connlibLogFilterString.isEmpty {
-      tunnel.setConnlibLogFilter(AdvancedSettings.defaultValue.connlibLogFilterString)
+    guard ![.connected, .connecting].contains(status)
+    else {
+      logger.log("\(#function): Already connected")
+      return
     }
 
-    tunnel.isEnabled = true
-    try await tunnel.saveToPreferences()
-    try await tunnel.loadFromPreferences()
+    // We always set this to true when starting the tunnel in case our tunnel
+    // was disabled by the system for some reason.
+    manager.isEnabled = true
+    try await manager.saveToPreferences()
 
-    let session = castToSession(tunnel.connection)
+    let session = castToSession(manager.connection)
     do {
-      try session.startTunnel()
+      var options: [String: NSObject]? = nil
+      if let token = token {
+        options = ["token": token as NSObject]
+      }
+
+      try session.startTunnel(options: options)
     } catch {
+      logger.error("Error starting tunnel: \(error)")
       throw TunnelStoreError.startTunnelErrored(error)
     }
-    try await withCheckedThrowingContinuation { continuation in
-      self.startTunnelContinuation = continuation
-    }
   }
 
-  func stop() async throws {
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
+  func stop(clearToken: Bool = false) async throws {
+    logger.log("\(#function)")
+
+    guard let manager = manager else {
+      logger.error("\(#function): No manager created yet")
       return
     }
 
-    guard self.stopTunnelContinuation == nil else {
-      throw TunnelStoreError.stopAlreadyBeingAttempted
+    guard [.connected, .connecting, .reasserting].contains(status)
+    else {
+      logger.error("\(#function): Already stopped")
+      return
+    }
+    let session = castToSession(manager.connection)
+    if clearToken {
+      try session.sendProviderMessage("signOut".data(using: .utf8)!) { _ in
+        session.stopTunnel()
+      }
+    } else {
+      session.stopTunnel()
+    }
+  }
+
+  public func cancelSignIn() {
+    auth.cancelSignIn()
+  }
+
+  func signIn() async throws {
+    logger.log("\(#function)")
+    guard let manager = manager,
+          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          var providerConfiguration = protocolConfiguration.providerConfiguration,
+          let authBaseURLString = providerConfiguration[TunnelStoreKeys.authBaseURL] as? String,
+          let authURL = URL(string: authBaseURLString)
+    else {
+      logger.error("\(#function): Can't sign in if our tunnel configuration is missing or invalid!")
+      return
     }
 
+    // Open webview and start sign in flow
+    let authResponse = try await auth.signIn(authURL)
+
+    // Save actorName
+    providerConfiguration[TunnelStoreKeys.actorName] = authResponse.actorName
+    protocolConfiguration.providerConfiguration = providerConfiguration
+    manager.protocolConfiguration = protocolConfiguration
+    try await manager.saveToPreferences()
+
+    // Bring the tunnel up and send it a token to start
+    do {
+      try await start(token: authResponse.token)
+    } catch {
+      logger.error("Error signing in: \(error)")
+    }
+  }
+
+  func signOut() async throws {
     logger.log("\(#function)")
 
-    let status = tunnel.connection.status
-    if status == .connected || status == .connecting {
-      let session = castToSession(tunnel.connection)
-      session.stopTunnel()
-      try await withCheckedThrowingContinuation { continuation in
-        self.stopTunnelContinuation = continuation
-      }
-    }
+    // Stop tunnel
+    try await stop(clearToken: true)
   }
 
-  func signOut() async throws -> Keychain.PersistentRef? {
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
-      return nil
-    }
-
-    let tunnelStatus = tunnel.connection.status
-    if tunnelStatus == .connected || tunnelStatus == .connecting {
-      throw TunnelStoreError.cannotSignOutWhenConnected
-    }
-
-    if case .signedIn(_, let tokenReference) = self.tunnelAuthStatus {
-      do {
-        try await saveAuthStatus(.signedOut)
-      } catch {
-        logger.log(
-          "\(#function): Error saving signed out auth status: \(error)"
-        )
-      }
-      return tokenReference
-    }
-
-    return nil
-  }
-
+  // Network Extensions don't have a 2-way binding up to the GUI process,
+  // so we need to periodically ask the tunnel process for them.
   func beginUpdatingResources() {
+    logger.log("\(#function)")
+
     self.updateResources()
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
@@ -234,31 +249,63 @@ public final class TunnelStore: ObservableObject {
     self.resourcesTimer = nil
   }
 
+  func save(_ settings: Settings) async throws {
+    logger.log("\(#function)")
+
+    guard let manager = manager,
+      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+      var providerConfiguration = protocolConfiguration.providerConfiguration
+    else {
+      logger.error("Manager doesn't seem initialized. Can't save advanced settings.")
+      throw TunnelStoreError.cannotSaveIfMissing
+    }
+
+    // Save and reload tunnel configuration
+    providerConfiguration = settings.toProviderConfiguration()
+    protocolConfiguration.providerConfiguration = providerConfiguration
+    protocolConfiguration.serverAddress = settings.apiURL
+    manager.protocolConfiguration = protocolConfiguration
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
+
+    // Update our published settings
+    self.status = manager.connection.status
+    self.settings = settings
+  }
+
+  func actorName() -> String? {
+    guard let manager = manager,
+      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+      let providerConfiguration = protocolConfiguration.providerConfiguration
+    else {
+      logger.error("\(#function): Manager not initialized!")
+      return nil
+    }
+
+    return providerConfiguration[TunnelStoreKeys.actorName] as? String
+  }
+
   private func castToSession(_ connection: NEVPNConnection) -> NETunnelProviderSession {
     guard let session = connection as? NETunnelProviderSession else {
       fatalError("Could not cast tunnel connection to NETunnelProviderSession!")
     }
+
     return session
   }
 
   private func updateResources() {
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
+    guard let manager = manager
+    else {
+      logger.error("\(#function): No manager created yet")
       return
     }
 
-    let session = castToSession(tunnel.connection)
-    guard session.status == .connected else {
-      self.resources = DisplayableResources()
-      return
-    }
-    let resourcesQuery = resources.versionStringToData()
+    let session = castToSession(manager.connection)
+    let hash = Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8)))
     do {
-      try session.sendProviderMessage(resourcesQuery) { [weak self] reply in
-        if let reply = reply {  // If reply is nil, then the resources have not changed
-          if let updatedResources = DisplayableResources(from: reply) {
-            self?.resources = updatedResources
-          }
+      try session.sendProviderMessage(hash) { [weak self] reply in
+        if let reply = reply {
+          self?.resourceListJSON = String(data: reply, encoding: .utf8)
         }
       }
     } catch {
@@ -266,6 +313,8 @@ public final class TunnelStore: ObservableObject {
     }
   }
 
+  // Receive notifications about our VPN profile status changing,
+  // and sync our status to it so UI components can react accordingly.
   private func setupTunnelObservers() {
     logger.log("\(#function)")
 
@@ -275,81 +324,85 @@ public final class TunnelStore: ObservableObject {
     tunnelObservingTasks.append(
       Task {
         for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange,
-          object: nil
+          named: .NEVPNStatusDidChange
         ) {
-          guard let session = notification.object as? NETunnelProviderSession else {
-            return
-          }
-          let status = session.status
-          self.status = status
-          if let startTunnelContinuation = self.startTunnelContinuation {
-            switch status {
-            case .connected:
-              startTunnelContinuation.resume(returning: ())
-              self.startTunnelContinuation = nil
-            case .disconnected:
-              startTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStarted)
-              self.startTunnelContinuation = nil
-            default:
-              break
-            }
-          }
-          if let stopTunnelContinuation = self.stopTunnelContinuation {
-            switch status {
-            case .disconnected:
-              stopTunnelContinuation.resume(returning: ())
-              self.stopTunnelContinuation = nil
-            case .connected:
-              stopTunnelContinuation.resume(throwing: TunnelStoreError.tunnelCouldNotBeStopped)
-              self.stopTunnelContinuation = nil
-            default:
-              break
-            }
-          }
-          if status != .connected {
-            self.resources = DisplayableResources()
+          await self.handleVPNStatusChange(notification)
+        }
+        for await _ in NotificationCenter.default.notifications(
+          named: .NEVPNConfigurationChange
+        ) {
+          do {
+            try await self.handleVPNConfigurationChange()
+          } catch {
+            logger.error(
+              "\(#function): Error while trying to handle VPN configuration change: \(error)")
           }
         }
       }
     )
   }
 
-  func removeProfile() async throws {
-    logger.log("\(#function)")
-    guard let tunnel = tunnel else {
-      logger.log("\(#function): No tunnel created yet")
+  // Handles the frequent VPN state changes during sign in, sign out, etc.
+  private func handleVPNStatusChange(_ notification: Notification) async {
+    guard let session = notification.object as? NETunnelProviderSession
+    else {
+      logger.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
       return
     }
 
-    try await tunnel.removeFromPreferences()
-  }
-}
+    logger.log("\(#function): NEVPNStatusDidChange: \(session.status)")
 
-enum TunnelAuthStatus: Equatable, CustomStringConvertible {
-  case uninitialized
-  case noTunnelFound
-  case signedOut
-  case signedIn(authBaseURL: URL, tokenReference: Data)
+    status = session.status
 
-  var isInitialized: Bool {
-    switch self {
-    case .uninitialized: return false
-    default: return true
+    if case .disconnected = status,
+      let savedValue = try? String(contentsOf: SharedAccess.providerStopReasonURL, encoding: .utf8),
+      let rawValue = Int(savedValue),
+      let reason = NEProviderStopReason(rawValue: rawValue),
+      case .authenticationCanceled = reason
+    {
+      await consumeCanceledAuthentication()
+    }
+
+    if status != .connected {
+      // Reset resources list
+      resourceListJSON = nil
     }
   }
 
-  var description: String {
-    switch self {
-    case .uninitialized:
-      return "tunnel uninitialized"
-    case .noTunnelFound:
-      return "no tunnel found"
-    case .signedOut:
-      return "signedOut"
-    case .signedIn(let authBaseURL, _):
-      return "signedIn(authBaseURL: \(authBaseURL))"
+  // Handle cases where our stored tunnel manager changes out from under us.
+  // This can happen for example if another VPN app turns on and the system
+  // decides to turn ours off or if somehow our configuration is changed
+  // by MDM or something.
+  private func handleVPNConfigurationChange() async throws {
+    guard let manager = manager,
+          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          let providerConfiguration = protocolConfiguration.providerConfiguration
+    else {
+      logger.error("\(#function): Our manager is not initialized!")
+      return
     }
+
+    try await manager.loadFromPreferences()
+    self.status = manager.connection.status
+    self.settings = Settings.fromProviderConfiguration(providerConfiguration: providerConfiguration)
+
+    if !manager.isEnabled {
+      logger.log("\(#function): Something turned us off! Shutting down the tunnel")
+
+      try await stop()
+    }
+  }
+
+  private func consumeCanceledAuthentication() async {
+    try? FileManager.default.removeItem(at: SharedAccess.providerStopReasonURL)
+
+    // Show alert (macOS -- iOS is handled in the PacketTunnelProvider)
+    // TODO: See if we can show standard notifications NotificationCenter here
+    #if os(macOS)
+      DispatchQueue.main.async {
+        SessionNotificationHelper.showSignedOutAlertmacOS(logger: self.logger, tunnelStore: self)
+      }
+    #endif
   }
 }
 
@@ -367,147 +420,5 @@ extension NEVPNStatus: CustomStringConvertible {
     case .reasserting: return "No network connectivity"
     @unknown default: return "Unknown"
     }
-  }
-}
-
-extension NETunnelProviderManager {
-  func authStatus() -> TunnelAuthStatus {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfig = protocolConfiguration.providerConfiguration
-    {
-      let authBaseURL: URL? = {
-        guard let urlString = providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String
-        else {
-          return nil
-        }
-        return URL(string: urlString)
-      }()
-      let tokenRef = protocolConfiguration.passwordReference
-      if let authBaseURL = authBaseURL {
-        if let tokenRef = tokenRef {
-          return .signedIn(authBaseURL: authBaseURL, tokenReference: tokenRef)
-        } else {
-          return .signedOut
-        }
-      } else {
-        return .signedOut
-      }
-    }
-    return .signedOut
-  }
-
-  func saveAuthStatus(_ authStatus: TunnelAuthStatus) async throws {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
-
-      switch authStatus {
-      case .uninitialized, .noTunnelFound:
-        return
-
-      case .signedOut:
-        protocolConfiguration.passwordReference = nil
-        break
-      case .signedIn(let authBaseURL, let tokenReference):
-        providerConfig[TunnelProviderKeys.keyAuthBaseURLString] = authBaseURL.absoluteString
-        protocolConfiguration.passwordReference = tokenReference
-      }
-
-      protocolConfiguration.providerConfiguration = providerConfig
-
-      ensureTunnelConfigurationIsValid()
-      try await saveToPreferences()
-    }
-  }
-
-  func advancedSettings() -> AdvancedSettings {
-    let defaultValue = AdvancedSettings.defaultValue
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      let apiURLString = protocolConfiguration.serverAddress ?? defaultValue.apiURLString
-      var authBaseURLString = defaultValue.authBaseURLString
-      var logFilter = defaultValue.connlibLogFilterString
-      if let providerConfig = protocolConfiguration.providerConfiguration {
-        if let authBaseURLStringInProviderConfig =
-          (providerConfig[TunnelProviderKeys.keyAuthBaseURLString] as? String)
-        {
-          authBaseURLString = authBaseURLStringInProviderConfig
-        }
-        if let logFilterInProviderConfig =
-          (providerConfig[TunnelProviderKeys.keyConnlibLogFilter] as? String)
-        {
-          logFilter = logFilterInProviderConfig
-        }
-      }
-
-      return AdvancedSettings(
-        authBaseURLString: authBaseURLString,
-        apiURLString: apiURLString,
-        connlibLogFilterString: logFilter
-      )
-    }
-
-    return defaultValue
-  }
-
-  func setConnlibLogFilter(_ logFiler: String) {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfiguration = protocolConfiguration.providerConfiguration
-    {
-      var providerConfig = providerConfiguration
-      providerConfig[TunnelProviderKeys.keyConnlibLogFilter] = logFiler
-      protocolConfiguration.providerConfiguration = providerConfig
-    }
-  }
-
-  func saveAdvancedSettings(_ advancedSettings: AdvancedSettings) async throws {
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      var providerConfig: [String: Any] = protocolConfiguration.providerConfiguration ?? [:]
-
-      providerConfig[TunnelProviderKeys.keyAuthBaseURLString] =
-        advancedSettings.authBaseURLString
-      providerConfig[TunnelProviderKeys.keyConnlibLogFilter] =
-        advancedSettings.connlibLogFilterString
-
-      protocolConfiguration.providerConfiguration = providerConfig
-      protocolConfiguration.serverAddress = advancedSettings.apiURLString
-
-      ensureTunnelConfigurationIsValid()
-      try await saveToPreferences()
-    }
-  }
-
-  private func ensureTunnelConfigurationIsValid() {
-    // Ensure the tunnel config has required values populated, because
-    // to even sign out, we need saveToPreferences() to succeed.
-    if let protocolConfiguration = protocolConfiguration as? NETunnelProviderProtocol {
-      protocolConfiguration.providerBundleIdentifier =
-        Self.bundleIdentifier()
-      if protocolConfiguration.serverAddress?.isEmpty ?? true {
-        protocolConfiguration.serverAddress = "unknown-server"
-      }
-    } else {
-      let protocolConfiguration = NETunnelProviderProtocol()
-      protocolConfiguration.providerBundleIdentifier =
-        Self.bundleIdentifier()
-      protocolConfiguration.serverAddress = "unknown-server"
-    }
-    if localizedDescription?.isEmpty ?? true {
-      localizedDescription = Self.bundleDescription()
-    }
-  }
-
-  static func bundleIdentifier() -> String? {
-    #if DEBUG
-      Bundle.main.bundleIdentifier.map { "\($0).debug.network-extension" }
-    #else
-      Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
-    #endif
-  }
-
-  static func bundleDescription() -> String {
-    #if DEBUG
-      "Firezone (Debug)"
-    #else
-      "Firezone"
-    #endif
   }
 }

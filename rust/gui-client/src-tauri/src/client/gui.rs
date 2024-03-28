@@ -25,15 +25,18 @@ mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
@@ -536,13 +539,13 @@ impl Controller {
         )?;
         let connlib = connlib_client_shared::Session::connect(
             login,
-            Sockets::new()?,
+            Sockets::new(),
             private_key,
             None,
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
-        )?;
+        );
 
         connlib.set_dns(client::resolvers::get().unwrap_or_default());
 
@@ -837,7 +840,7 @@ async fn run_controller(
                     have_internet = new_have_internet;
                     if let Some(session) = controller.session.as_mut() {
                         tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        session.connlib.reconnect(Sockets::new()?);
+                        session.connlib.reconnect();
                     }
                 }
             },

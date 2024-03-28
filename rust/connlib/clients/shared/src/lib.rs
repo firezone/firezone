@@ -44,7 +44,7 @@ impl Session {
         callbacks: CB,
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
-    ) -> connlib_shared::Result<Self> {
+    ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let connect_handle = handle.spawn(connect(
@@ -58,7 +58,7 @@ impl Session {
         ));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
-        Ok(Self { channel: tx })
+        Self { channel: tx }
     }
 
     /// Attempts to reconnect a [`Session`].
@@ -67,11 +67,11 @@ impl Session {
     ///
     /// - Close and re-open a connection to the portal.
     /// - Refresh all allocations
-    /// - Replace the currently used [`Sockets`] with the provided one
+    /// - Rebind local UDP sockets
     ///
     /// # Implementation note
     ///
-    /// The reason we replace [`Sockets`] are:
+    /// The reason we rebind the UDP sockets are:
     ///
     /// 1. On MacOS, as socket bound to the unspecified IP cannot send to interfaces attached after the socket has been created.
     /// 2. Switching between networks changes the 3-tuple of the client.
@@ -80,9 +80,9 @@ impl Session {
     ///    Changing the IP would be enough for that.
     ///    However, if the user would now change _back_ to the previous network,
     ///    the TURN server would recognise the old allocation but the client already lost all its state associated with it.
-    ///    To avoid race-conditions like this, we initialize a new [`Sockets`] instance which allocates a new port.
-    pub fn reconnect(&self, sockets: Sockets) {
-        let _ = self.channel.send(Command::Reconnect(sockets));
+    ///    To avoid race-conditions like this, we rebind the sockets to a new port.
+    pub fn reconnect(&self) {
+        let _ = self.channel.send(Command::Reconnect);
     }
 
     /// Sets a new set of upstream DNS servers for this [`Session`].
@@ -118,7 +118,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone());
+    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),

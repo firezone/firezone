@@ -109,7 +109,7 @@ defmodule Web.Resources.New do
               </p>
             </div>
 
-            <div>
+            <div class="hidden">
               <.input
                 field={@form[:address_description]}
                 type="text"
