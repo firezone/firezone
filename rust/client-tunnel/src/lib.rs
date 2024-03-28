@@ -63,11 +63,12 @@ mod tests {
         let ipc_server_task = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let cred = stream.peer_cred().unwrap();
-            // TODO: Don't use a hard-coded UID. Check that the user is in the firezone group.
-            // Since adding a user to a group usually requires them to sign out and back in,
-            // this could be tricky to replicate in CI.
-            // For today I'm just putting 1000, the most common UID, and 1001, which CI uses.
-            assert!(cred.uid() == 1000 || cred.uid() == 1001);
+            // TODO: Check that the user is in the `firezone` group
+            // For now, to make it work well in CI where that group isn't created,
+            // just check if it matches our own UID.
+            let actual_peer_uid = cred.uid();
+            let expected_peer_uid = nix::unistd::Uid::current().as_raw();
+            assert_eq!(actual_peer_uid, expected_peer_uid);
 
             let v = read_ipc_msg(&mut stream).await.unwrap();
             let s = String::from_utf8(v).unwrap();
