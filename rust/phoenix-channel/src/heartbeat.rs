@@ -47,6 +47,10 @@ impl Heartbeat {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.pending = None;
+    }
+
     pub fn poll(
         &mut self,
         cx: &mut Context,
