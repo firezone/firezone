@@ -200,9 +200,10 @@ mod tests {
 
     async fn device_common() {
         let (private_key, _public_key) = connlib_shared::keypair();
-        let sockets = crate::Sockets::new().unwrap();
+        let sockets = crate::Sockets::new();
         let callbacks = Callbacks::default();
-        let mut tunnel = firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks);
+        let mut tunnel =
+            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks).unwrap();
         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
         let interface = connlib_shared::messages::Interface {
             ipv4: [100, 71, 96, 96].into(),
