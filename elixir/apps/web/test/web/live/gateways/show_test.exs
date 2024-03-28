@@ -89,8 +89,8 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert table["site"] =~ gateway.group.name
     assert table["name"] =~ gateway.name
-    assert table["last seen"]
-    assert table["last seen remote ip"] =~ to_string(gateway.last_seen_remote_ip)
+    assert table["last connected"]
+    assert table["last remote ip"] =~ to_string(gateway.last_seen_remote_ip)
     assert table["status"] =~ "Offline"
     assert table["user agent"] =~ gateway.last_seen_user_agent
     assert table["version"] =~ gateway.last_seen_version

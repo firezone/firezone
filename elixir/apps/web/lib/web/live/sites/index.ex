@@ -54,6 +54,11 @@ defmodule Web.Sites.Index do
           Add Site
         </.add_button>
       </:action>
+
+      <:help>
+        Sites represent a shared network environment that Gateways and Resources exist within.
+      </:help>
+
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
@@ -112,7 +117,10 @@ defmodule Web.Sites.Index do
             peek = %{count: length(gateways), items: Enum.take(gateways, 5)} %>
             <.peek peek={peek}>
               <:empty>
-                None
+                <.icon
+                  name="hero-exclamation-triangle"
+                  class="inline-block w-5 h-5 mr-1 text-red-500"
+                /> None
               </:empty>
 
               <:separator>

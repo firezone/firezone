@@ -54,7 +54,7 @@ defmodule Web.Actors.Index do
         </.add_button>
       </:action>
       <:help>
-        Actors are the people and services that can access your resources.
+        Actors are the people and services that can access your Resources.
       </:help>
       <:content>
         <.flash_group flash={@flash} />

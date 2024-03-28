@@ -220,17 +220,19 @@ defmodule Web.Sites.Show do
               </.link>
             </:col>
             <:col :let={resource} label="ADDRESS" field={{:resources, :address}}>
-              <%= resource.address %>
+              <code class="block text-xs">
+                <%= resource.address %>
+              </code>
             </:col>
             <:col :let={resource} label="Authorized groups">
               <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
                 <:empty>
-                  None,
+                  None -
                   <.link
                     class={["px-1", link_style()]}
                     navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@group}"}
                   >
-                    create a Policy
+                    Create a Policy
                   </.link>
                   to grant access.
                 </:empty>
