@@ -130,6 +130,13 @@ admin_actor_email = "firezone@localhost"
     name: "Firezone Unprivileged"
   })
 
+for i <- 1..10 do
+  Actors.create_actor(account, %{
+    type: :account_user,
+    name: "Firezone Unprivileged #{i}"
+  })
+end
+
 {:ok, admin_actor} =
   Actors.create_actor(account, %{
     type: :account_admin_user,
