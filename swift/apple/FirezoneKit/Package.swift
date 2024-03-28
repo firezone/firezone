@@ -15,7 +15,6 @@ let package = Package(
     // Dependencies declare other packages that this package depends on.
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.0.0"),
     .package(url: "https://github.com/pointfreeco/swiftui-navigation", from: "1.0.0"),
-    .package(url: "https://github.com/weichsel/ZIPFoundation.git", .upToNextMajor(from: "0.9.0")),
   ],
   targets: [
     .target(
@@ -24,7 +23,6 @@ let package = Package(
         .product(name: "SwiftUINavigation", package: "swiftui-navigation"),
         .product(name: "SwiftUINavigationCore", package: "swiftui-navigation"),
         .product(name: "Dependencies", package: "swift-dependencies"),
-        .product(name: "ZIPFoundation", package: "ZIPFoundation"),
       ]
     ),
     .testTarget(
