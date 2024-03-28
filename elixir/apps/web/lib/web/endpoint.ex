@@ -29,6 +29,8 @@ defmodule Web.Endpoint do
     from: :web,
     gzip: false,
     only: Web.static_paths()
+    # allows serving digested files at the root
+    only_matching: ["site", "favicon"]
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
