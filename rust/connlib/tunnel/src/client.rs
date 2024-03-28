@@ -1292,26 +1292,35 @@ mod tests {
     fn add_resources_works() {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.add_resources(&[
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([cidr_resource("10.0.0.0/24"), dns_resource("baz.com")].iter())
+            hashset(
+                [
+                    cidr_foo_resource("10.0.0.0/24"),
+                    dns_bar_resource("baz.com")
+                ]
+                .iter()
+            )
         );
         assert_eq!(
             hashset(client_state.routes()),
             expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
         );
 
-        client_state.add_resources(&[additional_resource("11.0.0.0/24")]);
+        client_state.add_resources(&[cidr_baz_resource("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
             hashset(
                 [
-                    cidr_resource("10.0.0.0/24"),
-                    dns_resource("baz.com"),
-                    additional_resource("11.0.0.0/24")
+                    cidr_foo_resource("10.0.0.0/24"),
+                    dns_bar_resource("baz.com"),
+                    cidr_baz_resource("11.0.0.0/24")
                 ]
                 .iter()
             )
@@ -1329,12 +1338,21 @@ mod tests {
     fn add_resources_update_works_cidr() {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.add_resources(&[cidr_resource("11.0.0.0/24")]);
+        client_state.add_resources(&[
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
+        client_state.add_resources(&[cidr_foo_resource("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([cidr_resource("11.0.0.0/24"), dns_resource("baz.com")].iter())
+            hashset(
+                [
+                    cidr_foo_resource("11.0.0.0/24"),
+                    dns_bar_resource("baz.com")
+                ]
+                .iter()
+            )
         );
         assert_eq!(
             HashSet::<IpNetwork>::from_iter(client_state.routes()),
@@ -1346,18 +1364,15 @@ mod tests {
     fn add_resources_update_works_to_dns() {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.add_resources(&[cidr_resource_dns_id("11.0.0.0/24")]);
+        client_state.add_resources(&[
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
+        client_state.add_resources(&[cidr_bar_id("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset(
-                [
-                    cidr_resource_dns_id("11.0.0.0/24"),
-                    cidr_resource("10.0.0.0/24")
-                ]
-                .iter()
-            )
+            hashset([cidr_bar_id("11.0.0.0/24"), cidr_foo_resource("10.0.0.0/24")].iter())
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1372,12 +1387,15 @@ mod tests {
     fn remove_resources_works() {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resources(&[cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.remove_resources(&[cidr_id()]);
+        client_state.add_resources(&[
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
+        client_state.remove_resources(&[cidr_foo_id()]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([dns_resource("baz.com")].iter())
+            hashset([dns_bar_resource("baz.com")].iter())
         );
         assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
     }
@@ -1386,11 +1404,20 @@ mod tests {
     fn set_resource_works() {
         let mut client_state = ClientState::for_test();
 
-        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
+        client_state.set_resources(vec![
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([cidr_resource("10.0.0.0/24"), dns_resource("baz.com")].iter())
+            hashset(
+                [
+                    cidr_foo_resource("10.0.0.0/24"),
+                    dns_bar_resource("baz.com")
+                ]
+                .iter()
+            )
         );
         assert_eq!(
             HashSet::<IpNetwork>::from_iter(client_state.routes()),
@@ -1402,12 +1429,15 @@ mod tests {
     fn set_resource_replaces_old_resources() {
         let mut client_state = ClientState::for_test();
 
-        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(vec![additional_resource("11.0.0.0/24")]);
+        client_state.set_resources(vec![
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
+        client_state.set_resources(vec![cidr_baz_resource("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([additional_resource("11.0.0.0/24")].iter())
+            hashset([cidr_baz_resource("11.0.0.0/24")].iter())
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1419,12 +1449,15 @@ mod tests {
     fn set_resource_updates_old_resource_with_same_id() {
         let mut client_state = ClientState::for_test();
 
-        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(vec![cidr_resource("11.0.0.0/24")]);
+        client_state.set_resources(vec![
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
+        client_state.set_resources(vec![cidr_foo_resource("11.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([cidr_resource("11.0.0.0/24")].iter())
+            hashset([cidr_foo_resource("11.0.0.0/24")].iter())
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1436,12 +1469,15 @@ mod tests {
     fn set_resource_keeps_resource_if_unchanged() {
         let mut client_state = ClientState::for_test();
 
-        client_state.set_resources(vec![cidr_resource("10.0.0.0/24"), dns_resource("baz.com")]);
-        client_state.set_resources(vec![cidr_resource("10.0.0.0/24")]);
+        client_state.set_resources(vec![
+            cidr_foo_resource("10.0.0.0/24"),
+            dns_bar_resource("baz.com"),
+        ]);
+        client_state.set_resources(vec![cidr_foo_resource("10.0.0.0/24")]);
 
         assert_eq!(
             hashset(client_state.resources().iter()),
-            hashset([cidr_resource("10.0.0.0/24")].iter())
+            hashset([cidr_foo_resource("10.0.0.0/24")].iter())
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1499,47 +1535,47 @@ mod tests {
         })
     }
 
-    fn cidr_resource(addr: &str) -> ResourceDescription {
+    fn cidr_foo_resource(addr: &str) -> ResourceDescription {
         ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: cidr_id(),
+            id: cidr_foo_id(),
             address: addr.parse().unwrap(),
             name: "foo".to_string(),
         })
     }
 
-    fn cidr_resource_dns_id(addr: &str) -> ResourceDescription {
+    fn cidr_bar_id(addr: &str) -> ResourceDescription {
         ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: dns_id(),
+            id: dns_bar_id(),
             address: addr.parse().unwrap(),
             name: "foo".to_string(),
         })
     }
 
-    fn dns_resource(addr: &str) -> ResourceDescription {
+    fn dns_bar_resource(addr: &str) -> ResourceDescription {
         ResourceDescription::Dns(ResourceDescriptionDns {
-            id: dns_id(),
+            id: dns_bar_id(),
             address: addr.to_string(),
             name: "bar".to_string(),
         })
     }
 
-    fn additional_resource(addr: &str) -> ResourceDescription {
+    fn cidr_baz_resource(addr: &str) -> ResourceDescription {
         ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: additional_id(),
+            id: cidr_baz_id(),
             address: addr.parse().unwrap(),
             name: "baz".to_string(),
         })
     }
 
-    fn additional_id() -> ResourceId {
-        resource_id("4e0bf4ea-4175-4cdb-a7c2-cbeffa8ccc5d")
-    }
-
-    fn cidr_id() -> ResourceId {
+    fn cidr_foo_id() -> ResourceId {
         resource_id("fb51081a-2e06-4b59-b5a8-33592de9ebb1")
     }
 
-    fn dns_id() -> ResourceId {
+    fn cidr_baz_id() -> ResourceId {
+        resource_id("4e0bf4ea-4175-4cdb-a7c2-cbeffa8ccc5d")
+    }
+
+    fn dns_bar_id() -> ResourceId {
         resource_id("868483b6-431e-484d-bdd6-dad60ed26418")
     }
 
