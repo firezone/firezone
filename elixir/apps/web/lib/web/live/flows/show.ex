@@ -1,10 +1,11 @@
 defmodule Web.Flows.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Flows, Flows}
+  alias Domain.{Accounts, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, flow} <-
+    with true <- Accounts.flow_activities_enabled?(socket.assigns.account),
+         {:ok, flow} <-
            Flows.fetch_flow_by_id(id, socket.assigns.subject,
              preload: [
                policy: [:resource, :actor_group],
@@ -16,10 +17,17 @@ defmodule Web.Flows.Show do
       last_used_connectivity_type = get_last_used_connectivity_type(flow, socket.assigns.subject)
 
       socket =
-        assign(socket,
+        socket
+        |> assign(
           page_title: "Flow #{flow.id}",
           flow: flow,
           last_used_connectivity_type: last_used_connectivity_type
+        )
+        |> assign_live_table("activities",
+          query_module: Flows.Activity.Query,
+          sortable_fields: [],
+          limit: 10,
+          callback: &handle_activities_update!/2
         )
 
       {:ok, socket}
@@ -32,6 +40,22 @@ defmodule Web.Flows.Show do
     case Flows.fetch_last_activity_for(flow, subject) do
       {:ok, activity} -> to_string(activity.connectivity_type)
       _other -> "N/A"
+    end
+  end
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_activities_update!(socket, list_opts) do
+    with {:ok, activities, metadata} <-
+           Flows.list_flow_activities_for(socket.assigns.flow, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         activities: activities,
+         activities_metadata: metadata
+       )}
     end
   end
 
@@ -116,6 +140,49 @@ defmodule Web.Flows.Show do
         </.vertical_table>
       </:content>
     </.section>
+
+    <.section>
+      <:title>Metrics</:title>
+      <:help>
+        Pre-aggregated metrics for this flow.
+      </:help>
+      <:content>
+        <.live_table
+          id="activities"
+          rows={@activities}
+          row_id={&"activities-#{&1.id}"}
+          filters={@filters_by_table_id["activities"]}
+          filter={@filter_form_by_table_id["activities"]}
+          ordered_by={@order_by_table_id["activities"]}
+          metadata={@activities_metadata}
+        >
+          <:col :let={activity} label="STARTED AT">
+            <.relative_datetime datetime={activity.window_started_at} />
+          </:col>
+          <:col :let={activity} label="ENDED AT">
+            <.relative_datetime datetime={activity.window_ended_at} />
+          </:col>
+          <:col :let={activity} label="DESTINATION">
+            <%= activity.destination %>
+          </:col>
+          <:col :let={activity} label="CONNECTIVITY TYPE">
+            <%= activity.connectivity_type %>
+          </:col>
+          <:col :let={activity} label="RX">
+            <%= Sizeable.filesize(activity.rx_bytes) %>
+          </:col>
+          <:col :let={activity} label="TX">
+            <%= Sizeable.filesize(activity.tx_bytes) %>
+          </:col>
+          <:empty>
+            <div class="text-center text-neutral-500 p-4">No metrics to display.</div>
+          </:empty>
+        </.live_table>
+      </:content>
+    </.section>
     """
   end
+
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
 end

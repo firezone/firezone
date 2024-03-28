@@ -5,10 +5,7 @@ defmodule Web.Actors.ServiceAccounts.New do
 
   def mount(_params, _session, socket) do
     groups =
-      Actors.all_groups!(socket.assigns.subject,
-        preload: :provider,
-        filter: [editable?: true]
-      )
+      Actors.all_editable_groups!(socket.assigns.subject, preload: :provider)
 
     changeset = Actors.new_actor(%{type: :service_account})
 
