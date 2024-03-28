@@ -9,7 +9,6 @@ import Dependencies
 import OSLog
 import SwiftUI
 import XCTestDynamicOverlay
-import ZIPFoundation
 
 enum SettingsViewError: Error {
   case logFolderIsUnavailable
@@ -483,7 +482,8 @@ public struct SettingsView: View {
                 action: {
                   self.isExportingLogs = true
                   Task {
-                    self.logTempZipFileURL = try await createLogZipBundle()
+                    let compressor = LogCompressor(logger: logger)
+                    self.logTempZipFileURL = try await compressor.compressFolderReturningURL()
                     self.isPresentingExportLogShareSheet = true
                   }
                 }
@@ -564,12 +564,13 @@ public struct SettingsView: View {
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
+      let compressor = LogCompressor(logger: logger)
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
       savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = logZipBundleFilename()
+      savePanel.nameFieldStringValue = compressor.fileName
 
       guard
         let window = NSApp.windows.first(where: {
@@ -593,7 +594,7 @@ public struct SettingsView: View {
 
         Task {
           do {
-            try await createLogZipBundle(destinationURL: destinationURL)
+            try await compressor.compressFolder(destinationURL: destinationURL)
             self.isExportingLogs = false
             await MainActor.run {
               window.contentViewController?.presentingViewController?.dismiss(self)
@@ -608,32 +609,6 @@ public struct SettingsView: View {
       }
     }
   #endif
-
-  private func logZipBundleFilename() -> String {
-    let dateFormatter = ISO8601DateFormatter()
-    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
-    let timeStampString = dateFormatter.string(from: Date())
-    return "firezone_logs_\(timeStampString).zip"
-  }
-
-  @discardableResult
-  private func createLogZipBundle(destinationURL: URL? = nil) async throws -> URL {
-    let fileManager = FileManager.default
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      throw SettingsViewError.logFolderIsUnavailable
-    }
-    let zipFileURL =
-      destinationURL
-      ?? fileManager.temporaryDirectory.appendingPathComponent(logZipBundleFilename())
-    if fileManager.fileExists(atPath: zipFileURL.path) {
-      try fileManager.removeItem(at: zipFileURL)
-    }
-    let task = Task.detached(priority: .userInitiated) { () -> URL in
-      try FileManager.default.zipItem(at: logFilesFolderURL, to: zipFileURL)
-      return zipFileURL
-    }
-    return try await task.value
-  }
 
   func refreshLogSize() {
     guard !self.isCalculatingLogsSize else {
