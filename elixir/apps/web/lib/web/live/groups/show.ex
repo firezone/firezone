@@ -8,7 +8,6 @@ defmodule Web.Groups.Show do
            Actors.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
                provider: [],
-               actors: [identities: [:provider]],
                created_by_identity: [:actor]
              ]
            ) do
@@ -21,6 +20,9 @@ defmodule Web.Groups.Show do
           query_module: Actors.Actor.Query,
           sortable_fields: [
             {:actors, :name}
+          ],
+          enforce_filters: [
+            {:group_id, group.id}
           ],
           hide_filters: [:type, :status, :provider_id],
           callback: &handle_actors_update!/2
@@ -142,7 +144,7 @@ defmodule Web.Groups.Show do
       <:content>
         <.live_table
           id="actors"
-          rows={@group.actors}
+          rows={@actors}
           filters={@filters_by_table_id["actors"]}
           filter={@filter_form_by_table_id["actors"]}
           ordered_by={@order_by_table_id["actors"]}

@@ -229,10 +229,11 @@ defmodule Web.Live.Groups.ShowTest do
 
   test "shows edit button when actors table is empty", %{
     account: account,
-    group: group,
     identity: identity,
     conn: conn
   } do
+    group = Fixtures.Actors.create_group(account: account)
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)

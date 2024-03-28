@@ -193,6 +193,11 @@ defmodule Domain.Actors.Actor.Query do
         fun: &filter_by_types/2
       },
       %Domain.Repo.Filter{
+        name: :group_id,
+        type: {:string, :uuid},
+        fun: &filter_by_group_id/2
+      },
+      %Domain.Repo.Filter{
         name: :deleted?,
         type: :boolean,
         fun: &filter_deleted/1
@@ -242,6 +247,17 @@ defmodule Domain.Actors.Actor.Query do
       |> where(
         [identities: identities],
         identities.actor_id == parent_as(:actors).id and identities.provider_id == ^provider_id
+      )
+
+    {queryable, dynamic(exists(subquery))}
+  end
+
+  def filter_by_group_id(queryable, group_id) do
+    subquery =
+      Domain.Actors.Membership.Query.all()
+      |> where(
+        [memberships: memberships],
+        memberships.actor_id == parent_as(:actors).id and memberships.group_id == ^group_id
       )
 
     {queryable, dynamic(exists(subquery))}
