@@ -21,14 +21,13 @@ defmodule Web.Endpoint do
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   # Serve at "/" the static files from "priv/static" directory.
-  #
-  # You should set gzip to true if you are running phx.digest
-  # when deploying your static files in production.
   plug Plug.Static,
     at: "/",
     from: :web,
-    gzip: false,
-    only: Web.static_paths()
+    gzip: true,
+    only: Web.static_paths(),
+    # allows serving digested files at the root
+    only_matching: ["site", "favicon"]
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
