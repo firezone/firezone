@@ -41,9 +41,7 @@ struct LogCompressor {
       ?? fileManager.temporaryDirectory.appendingPathComponent(fileName)
 
     // Remove logfile if it happens to exist
-    if fileManager.fileExists(atPath: fileURL.path) {
-      try fileManager.removeItem(at: fileURL)
-    }
+    try? fileManager.removeItem(at: fileURL)
 
     // Create the file stream to write the compressed file
     guard let filePath = FilePath(fileURL),
