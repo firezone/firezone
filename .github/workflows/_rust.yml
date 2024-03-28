@@ -55,16 +55,19 @@ jobs:
           - runs-on: macos-14
             packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
-            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
           - runs-on: windows-2022
-            packages: -p firezone-gui-client -p connlib-client-shared -p snownet
+            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-      - run: cargo test --all-features ${{ matrix.packages }}
+      - run: cargo test --all-features ${{ matrix.packages }} -- --include-ignored
         env:
+          # <https://github.com/rust-lang/cargo/issues/5999>
+          # Needed to create tunnel interfaces in unit tests
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           RUST_BACKTRACE: full
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
