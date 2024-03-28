@@ -15,7 +15,13 @@ use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription, Sockets};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -474,11 +480,12 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
             .expect("controller channel failed");
     }
 
-    fn on_tunnel_ready(&self) {
-        tracing::info!("on_tunnel_ready");
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+        tracing::info!("on_set_interface_config");
         self.ctlr_tx
             .try_send(ControllerRequest::TunnelReady)
             .expect("controller channel failed");
+        None
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
