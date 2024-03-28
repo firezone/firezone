@@ -392,7 +392,7 @@ fn connect(
         callback_handler,
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
-    )?;
+    );
 
     Ok(SessionWrapper {
         inner: session,

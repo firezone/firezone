@@ -10,6 +10,7 @@ pub(crate) struct TokenStorage {
     token: Option<SecretString>,
 }
 
+#[allow(clippy::unnecessary_wraps)] // Must align with other cfg'd implementation.
 impl TokenStorage {
     pub(crate) fn new(_key: &'static str) -> Self {
         Self { token: None }

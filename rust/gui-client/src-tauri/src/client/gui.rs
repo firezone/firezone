@@ -25,15 +25,18 @@ mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
@@ -542,7 +545,7 @@ impl Controller {
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
-        )?;
+        );
 
         connlib.set_dns(client::resolvers::get().unwrap_or_default());
 

@@ -118,6 +118,7 @@ struct Handler;
 impl minidumper::ServerHandler for Handler {
     /// Called when a crash has been received and a backing file needs to be
     /// created to store it.
+    #[allow(clippy::print_stderr)]
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
         let dump_path = known_dirs::logs()
             .expect("Should be able to find logs dir to put crash dump in")

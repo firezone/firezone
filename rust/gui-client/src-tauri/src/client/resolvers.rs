@@ -9,6 +9,7 @@ mod imp {
 
     // TODO: The code here will depend on the chosen DNS control method.
     // So that will need to be threaded in here somehow.
+    #[allow(clippy::unnecessary_wraps)]
     pub fn get() -> Result<Vec<IpAddr>> {
         tracing::error!("Resolvers module not yet implemented for Linux, returning empty Vec");
         Ok(Vec::default())

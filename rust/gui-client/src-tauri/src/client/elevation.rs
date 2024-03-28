@@ -4,6 +4,7 @@ pub(crate) use imp::{check, elevate};
 mod imp {
     use anyhow::{Context, Result};
 
+    #[allow(clippy::print_stderr)]
     pub(crate) fn check() -> Result<bool> {
         // Must use `eprintln` here because `tracing` won't be initialized yet.
 

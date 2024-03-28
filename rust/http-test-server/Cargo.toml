@@ -12,3 +12,6 @@ axum = { version = "0.7.5", features = ["http1", "tokio"] }
 tokio = { version = "1.36.0", features = ["net"] }
 serde = {version = "1", features = ["derive"]}
 futures = "0.3"
+
+[lints]
+workspace = true

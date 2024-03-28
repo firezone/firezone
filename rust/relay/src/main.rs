@@ -130,7 +130,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr);
 
     tokio::spawn(http_health_check::serve(
         args.health_check.health_check_addr,
@@ -329,7 +329,7 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
         public_address: IpStack,
-    ) -> Result<Self> {
+    ) -> Self {
         let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
         let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(1000);
         let (outbound_ip4_data_sender, outbound_ip4_data_receiver) = mpsc::channel(1000);
@@ -350,7 +350,7 @@ where
             ));
         }
 
-        Ok(Self {
+        Self {
             inbound_data_receiver,
             outbound_ip4_data_sender,
             outbound_ip6_data_sender,
@@ -362,7 +362,7 @@ where
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
-        })
+        }
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {

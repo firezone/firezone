@@ -44,7 +44,7 @@ impl Session {
         callbacks: CB,
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
-    ) -> connlib_shared::Result<Self> {
+    ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let connect_handle = handle.spawn(connect(
@@ -58,7 +58,7 @@ impl Session {
         ));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
-        Ok(Self { channel: tx })
+        Self { channel: tx }
     }
 
     /// Attempts to reconnect a [`Session`].

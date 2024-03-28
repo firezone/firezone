@@ -309,7 +309,6 @@ nameserver 100.100.111.2
     #[tokio::test]
     async fn no_sentinels() -> Result<()> {
         let (_temp_dir, paths) = create_temp_paths();
-        println!("{}", paths.resolv.display());
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 

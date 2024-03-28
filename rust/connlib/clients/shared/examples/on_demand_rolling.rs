@@ -5,6 +5,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
+#[allow(clippy::print_stdout)]
 fn main() {
     let log_dir = Path::new("./target");
 

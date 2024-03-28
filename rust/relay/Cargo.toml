@@ -47,3 +47,6 @@ difference = "2.0.0"
 [[test]]
 name = "regression"
 required-features = ["proptest"]
+
+[lints]
+workspace = true

@@ -50,6 +50,12 @@ firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
 http-health-check = { path = "http-health-check"}
 
+[workspace.lints]
+clippy.dbg_macro = "warn"
+clippy.print_stdout = "warn"
+clippy.print_stderr = "warn"
+clippy.unnecessary_wraps = "warn"
+
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }

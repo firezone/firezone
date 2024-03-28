@@ -207,8 +207,7 @@ impl WrappedSession {
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
-        )
-        .map_err(|err| err.to_string())?;
+        );
 
         Ok(Self {
             inner: session,

@@ -56,8 +56,7 @@ async fn main() -> Result<()> {
         callbacks.clone(),
         max_partition_time,
         tokio::runtime::Handle::current(),
-    )
-    .unwrap();
+    );
     // TODO: this should be added dynamically
     session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
@@ -136,6 +135,7 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     Ok(nameservers)
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
     tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
     Ok(vec![])

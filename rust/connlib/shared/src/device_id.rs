@@ -78,6 +78,7 @@ mod imp {
     /// `BUNDLE_ID` because we need our own subdir
     ///
     /// `config` to make how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
+    #[allow(clippy::unnecessary_wraps)] // Needs to be aligned with `cfg(windows)` variant below.
     pub(crate) fn path() -> Option<PathBuf> {
         Some(
             PathBuf::from("/var/lib")
