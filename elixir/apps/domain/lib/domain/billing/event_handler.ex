@@ -229,6 +229,9 @@ defmodule Domain.Billing.EventHandler do
 
         uri.path ->
           uri.path
+          |> String.split(".")
+          |> List.delete_at(-1)
+          |> Enum.join("_")
 
         true ->
           Accounts.generate_unique_slug()

@@ -513,7 +513,7 @@ defmodule Domain.BillingTest do
             "New Account Name",
             "iown@bigcompany.com",
             %{
-              "company_website" => account.slug,
+              "company_website" => "http://#{account.slug}.com/",
               "account_owner_first_name" => "John",
               "account_owner_last_name" => "Smith"
             }
