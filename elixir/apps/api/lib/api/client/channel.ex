@@ -88,12 +88,14 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(:config_changed, socket) do
+    account = Accounts.fetch_account_by_id!(socket.assigns.client.account_id)
+
     :ok =
       push(socket, "config_changed", %{
         interface:
           Views.Interface.render(%{
             socket.assigns.client
-            | account: socket.assigns.subject.account
+            | account: account
           })
       })
 
