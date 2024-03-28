@@ -105,10 +105,8 @@ defmodule API.Gateway.Channel do
       resource = Resources.fetch_resource_by_id!(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      ref =
-        {channel_pid, socket_ref, resource_id, :otel_propagator_text_map.inject([])}
-        |> :erlang.term_to_binary()
-        |> Base.url_encode64()
+      opentelemetry_headers = :otel_propagator_text_map.inject([])
+      ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
 
       push(socket, "allow_access", %{
         ref: ref,
@@ -208,10 +206,8 @@ defmodule API.Gateway.Channel do
 
       {:ok, relays} = Relays.all_connected_relays_for_resource(resource, relay_hosting_type)
 
-      ref =
-        {channel_pid, socket_ref, resource_id, :otel_propagator_text_map.inject([])}
-        |> :erlang.term_to_binary()
-        |> Base.url_encode64()
+      opentelemetry_headers = :otel_propagator_text_map.inject([])
+      ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
 
       push(socket, "request_connection", %{
         ref: ref,
@@ -237,17 +233,14 @@ defmodule API.Gateway.Channel do
   def handle_in(
         "connection_ready",
         %{
-          "ref" => ref,
+          "ref" => signed_ref,
           "gateway_payload" => payload
         },
         socket
       ) do
     OpenTelemetry.Tracer.with_span "gateway.connection_ready" do
-      ref
-      |> Base.url_decode64!()
-      |> Plug.Crypto.non_executable_binary_to_term([:safe])
-      |> case do
-        {channel_pid, socket_ref, resource_id, opentelemetry_headers} ->
+      case decode_ref(socket, signed_ref) do
+        {:ok, {channel_pid, socket_ref, resource_id, opentelemetry_headers}} ->
           :otel_propagator_text_map.extract(opentelemetry_headers)
 
           opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
@@ -266,14 +259,9 @@ defmodule API.Gateway.Channel do
 
           {:reply, :ok, socket}
 
-        other ->
+        {:error, :invalid_ref} ->
           OpenTelemetry.Tracer.set_status(:error, "invalid ref")
-
-          Logger.error("Gateway replied with an invalid ref",
-            ref: inspect(ref),
-            decoded: inspect(other)
-          )
-
+          Logger.error("Gateway replied with an invalid ref")
           {:reply, {:error, %{reason: :invalid_ref}}, socket}
       end
     end
@@ -345,6 +333,32 @@ defmodule API.Gateway.Channel do
       {:ok, _num} = Flows.upsert_activities(activities)
 
       {:reply, :ok, socket}
+    end
+  end
+
+  defp encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers) do
+    ref =
+      {channel_pid, socket_ref, resource_id, opentelemetry_headers}
+      |> :erlang.term_to_binary()
+      |> Base.url_encode64()
+
+    key_base = socket.endpoint.config(:secret_key_base)
+    Plug.Crypto.sign(key_base, "gateway_reply_ref", ref)
+  end
+
+  defp decode_ref(socket, signed_ref) do
+    key_base = socket.endpoint.config(:secret_key_base)
+
+    with {:ok, ref} <-
+           Plug.Crypto.verify(key_base, "gateway_reply_ref", signed_ref, max_age: :infinity) do
+      {channel_pid, socket_ref, resource_id, opentelemetry_headers} =
+        ref
+        |> Base.url_decode64!()
+        |> Plug.Crypto.non_executable_binary_to_term([:safe])
+
+      {:ok, {channel_pid, socket_ref, resource_id, opentelemetry_headers}}
+    else
+      {:error, :invalid} -> {:error, :invalid_ref}
     end
   end
 end
