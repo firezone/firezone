@@ -78,13 +78,8 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
     expected == actual.as_ref()
 }
 
-/// Returns the platform-specific bytes of wintun.dll.
-fn get_dll_bytes() -> DllBytes {
-    get_platform_dll_bytes()
-}
-
 #[cfg(target_arch = "x86_64")]
-fn get_platform_dll_bytes() -> DllBytes {
+fn get_dll_bytes() -> DllBytes {
     DllBytes {
         bytes: include_bytes!("../../../wintun/bin/amd64/wintun.dll"),
         expected_sha256: "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
@@ -92,7 +87,7 @@ fn get_platform_dll_bytes() -> DllBytes {
 }
 
 #[cfg(target_arch = "aarch64")]
-fn get_platform_dll_bytes() -> DllBytes {
+fn get_dll_bytes() -> DllBytes {
     DllBytes {
         bytes: include_bytes!("../../../wintun/bin/arm64/wintun.dll"),
         expected_sha256: "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
