@@ -1,3 +1,4 @@
+use super::utils;
 use crate::device_channel::{ipv4, ipv6};
 use connlib_shared::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
@@ -14,8 +15,6 @@ use std::{
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
-
-mod utils;
 
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 /// `libc` for darwin doesn't define this constant so we declare it here.
