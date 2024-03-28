@@ -226,7 +226,7 @@ defmodule Web.CoreComponents do
           </div>
         </div>
       </div>
-      <p :for={help <- @help} class="pt-3">
+      <p :for={help <- @help} class="font-light pt-3 text-neutral-500">
         <%= render_slot(help) %>
       </p>
     </div>
@@ -714,7 +714,11 @@ defmodule Web.CoreComponents do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span :if={not is_nil(@datetime)} title={@datetime}>
+    <span
+      :if={not is_nil(@datetime)}
+      class="underline underline-offset-2 decoration-dotted"
+      title={@datetime}
+    >
       <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
     </span>
     <span :if={is_nil(@datetime)}>
@@ -737,7 +741,7 @@ defmodule Web.CoreComponents do
       title={
         if @schema.last_seen_at,
           do:
-            "Last seen #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+            "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
           else: "Never connected"
       }
     >

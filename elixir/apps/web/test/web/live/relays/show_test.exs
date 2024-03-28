@@ -88,7 +88,7 @@ defmodule Web.Live.Relays.ShowTest do
       |> vertical_table_to_map()
 
     assert table["instance group name"] =~ relay.group.name
-    assert table["last seen"]
+    assert table["last connected"]
     assert table["remote ip"] =~ to_string(relay.last_seen_remote_ip)
     assert table["ipv4 set by public_ip4_addr"] =~ to_string(relay.ipv4)
     assert table["ipv6 set by public_ip6_addr"] =~ to_string(relay.ipv6)
