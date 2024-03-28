@@ -25,8 +25,6 @@ pub(crate) enum Error {
     DllPathInvalid,
     #[error("permission denied")]
     PermissionDenied,
-    #[error("platform not supported")]
-    PlatformNotSupported,
     #[error("write failed: `{0:?}`")]
     WriteFailed(io::Error),
 }
@@ -36,7 +34,7 @@ pub(crate) enum Error {
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
 /// Also verifies the SHA256 of the DLL on-disk with the expected bytes packed into the exe
 pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
-    let dll_bytes = get_dll_bytes().ok_or(Error::PlatformNotSupported)?;
+    let dll_bytes = get_dll_bytes();
 
     let path = wintun_dll_path().map_err(|_| Error::CantComputeWintunPath)?;
     // The DLL path should always have a parent
@@ -80,23 +78,23 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
     expected == actual.as_ref()
 }
 
-/// Returns the platform-specific bytes of wintun.dll, or None if we don't support the compiled platform.
-fn get_dll_bytes() -> Option<DllBytes> {
+/// Returns the platform-specific bytes of wintun.dll.
+fn get_dll_bytes() -> DllBytes {
     get_platform_dll_bytes()
 }
 
 #[cfg(target_arch = "x86_64")]
-fn get_platform_dll_bytes() -> Option<DllBytes> {
-    Some(DllBytes {
+fn get_platform_dll_bytes() -> DllBytes {
+    DllBytes {
         bytes: include_bytes!("../../../wintun/bin/amd64/wintun.dll"),
         expected_sha256: "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
-    })
+    }
 }
 
 #[cfg(target_arch = "aarch64")]
-fn get_platform_dll_bytes() -> Option<DllBytes> {
-    Some(DllBytes {
+fn get_platform_dll_bytes() -> DllBytes {
+    DllBytes {
         bytes: include_bytes!("../../../wintun/bin/arm64/wintun.dll"),
         expected_sha256: "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
-    })
+    }
 }
