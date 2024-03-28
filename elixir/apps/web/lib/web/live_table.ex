@@ -60,10 +60,10 @@ defmodule Web.LiveTable do
           />
         </tbody>
       </table>
-      <div :if={Enum.empty?(@rows) and @filter.params == %{}} id={"#{@id}-empty"}>
+      <div :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
         <%= render_slot(@empty) %>
       </div>
-      <div :if={Enum.empty?(@rows) and @filter.params != %{}} id={"#{@id}-empty"}>
+      <div :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
         <div class="flex justify-center text-center text-neutral-500 p-4">
           <div class="w-auto pb-4">
             There are no results matching your filters. <button
@@ -78,6 +78,15 @@ defmodule Web.LiveTable do
     </div>
     <.paginator id={@id} metadata={@metadata} />
     """
+  end
+
+  defp has_filter?(filter, filters) do
+    keys =
+      Enum.map(filters, fn filter ->
+        to_string(filter.name)
+      end)
+
+    Map.take(filter.params, keys) != %{}
   end
 
   defp resource_filter(assigns) do
