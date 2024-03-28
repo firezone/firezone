@@ -289,6 +289,7 @@ where
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
                         self.reconnect_backoff.reset();
+                        self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
                         let host = self.url.expose_secret().host();
