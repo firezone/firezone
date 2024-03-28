@@ -36,3 +36,6 @@ client_curl_resource
 echo "# Stop the gateway and make sure the resource is inaccessible"
 docker compose stop gateway
 client sh -c "curl --connect-timeout 15 --fail 172.20.0.100/get" && exit 1
+
+# Needed so that the previous failure doesn't bail out of the whole script
+exit 0
