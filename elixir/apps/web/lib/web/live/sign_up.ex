@@ -383,6 +383,12 @@ defmodule Web.SignUp do
           })
         end
       )
+      |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
+        Domain.Actors.create_managed_group(account, %{
+          name: "Everyone",
+          membership_rules: [%{operator: true}]
+        })
+      end)
       |> Ecto.Multi.run(
         :provider,
         fn _repo, %{account: account} ->
