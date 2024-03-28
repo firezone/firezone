@@ -65,7 +65,7 @@ struct Settings: Equatable {
       Settings(
         authBaseURL: "https://app.firezone.dev",
         apiURL: "wss://api.firezone.dev",
-        logFilter: "info"
+        logFilter: "str0m=warn,info"
       )
     #endif
   }()

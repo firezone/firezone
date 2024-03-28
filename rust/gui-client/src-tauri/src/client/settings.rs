@@ -35,7 +35,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
-            log_filter: "firezone_gui_client=info,firezone_tunnel=info,phoenix_channel=info,connlib_shared=info,connlib_client_shared=info,boringtun=info,snownet=info,str0m=info,warn".to_string(),
+            log_filter: "str0m=warn,info".to_string(),
         }
     }
 }

@@ -6,7 +6,7 @@ FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
-RUST_LOG=${RUST_LOG:-info}
+RUST_LOG=${RUST_LOG:-str0m=warn,info}
 
 if [ -z "$FIREZONE_TOKEN" ]; then
     echo "FIREZONE_TOKEN is required"
