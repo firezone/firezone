@@ -236,7 +236,102 @@ mod test {
             },
         });
 
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","irrelvant":"field","payload":{"more":"info","interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true,"ignored":"field"}}}"#;
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","irrelevant":"field","payload":{"more":"info","interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true,"ignored":"field"}}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn additional_null_fields_are_ignored() {
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
+            },
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":null,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn additional_number_fields_are_ignored() {
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
+            },
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":0.3,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn additional_boolean_fields_are_ignored() {
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
+            },
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":true,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn additional_object_fields_are_ignored() {
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
+            },
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":{"ignored":"field"},"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
+        let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn additional_array_fields_are_ignored() {
+        let m = InitMessage::Init(InitGateway {
+            interface: Interface {
+                ipv4: "100.115.164.78".parse().unwrap(),
+                ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
+                upstream_dns: vec![],
+            },
+            config: Config {
+                ipv4_masquerade_enabled: true,
+                ipv6_masquerade_enabled: true,
+            },
+        });
+
+        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":[true,false],"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
         let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
         assert_eq!(m, ingress_message);
     }

@@ -359,6 +359,138 @@ mod test {
     }
 
     #[test]
+    fn messages_ignore_additional_bool_fields() {
+        let m = PhoenixMessage::new_message(
+            "client",
+            IngressMessages::Init(InitClient {
+                interface: Interface {
+                    ipv4: "100.72.112.111".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
+                    upstream_dns: vec![],
+                },
+                resources: vec![],
+            }),
+            None,
+        );
+        let message = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": [],
+                    "additional": true
+                },
+                "resources": []
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
+            serde_json::from_str(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn messages_ignore_additional_number_fields() {
+        let m = PhoenixMessage::new_message(
+            "client",
+            IngressMessages::Init(InitClient {
+                interface: Interface {
+                    ipv4: "100.72.112.111".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
+                    upstream_dns: vec![],
+                },
+                resources: vec![],
+            }),
+            None,
+        );
+        let message = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": [],
+                    "additional": 0.3
+                },
+                "resources": []
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
+            serde_json::from_str(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn messages_ignore_additional_object_fields() {
+        let m = PhoenixMessage::new_message(
+            "client",
+            IngressMessages::Init(InitClient {
+                interface: Interface {
+                    ipv4: "100.72.112.111".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
+                    upstream_dns: vec![],
+                },
+                resources: vec![],
+            }),
+            None,
+        );
+        let message = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": [],
+                    "additional": { "ignored": "field" }
+                },
+                "resources": []
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
+            serde_json::from_str(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn messages_ignore_additional_array_fields() {
+        let m = PhoenixMessage::new_message(
+            "client",
+            IngressMessages::Init(InitClient {
+                interface: Interface {
+                    ipv4: "100.72.112.111".parse().unwrap(),
+                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
+                    upstream_dns: vec![],
+                },
+                resources: vec![],
+            }),
+            None,
+        );
+        let message = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": [],
+                    "additional": [true, false]
+                },
+                "resources": []
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
+            serde_json::from_str(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
     fn list_relays_message() {
         let m = PhoenixMessage::<EgressMessages, ()>::new_message(
             "client",
