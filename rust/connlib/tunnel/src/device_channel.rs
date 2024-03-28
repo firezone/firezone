@@ -121,13 +121,15 @@ impl Device {
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
-        _: &impl Callbacks,
+        callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         if self.tun.is_none() {
             self.tun = Some(Tun::new()?);
         }
 
         self.tun.as_ref().unwrap().set_config(config, &dns_config)?;
+
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         if let Some(waker) = self.waker.take() {
             waker.wake();
