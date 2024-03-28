@@ -80,7 +80,7 @@ impl Io {
                         Ok(None) => {}
                         Err(_) => {
                             // The error might contain sensitive information therefore we ignore it
-                            tracing::warn!("Failed to build DNS response from lookup result");
+                            tracing::debug!("Failed to build DNS response from lookup result");
                         }
                     }
 
