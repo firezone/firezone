@@ -57,15 +57,16 @@ swift-bridge = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 tracing-android = "0.2"
 
-[target.'cfg(any(target_os = "linux"))'.dependencies]
-rtnetlink = { workspace = true }
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 # Will be needed to safely modify `/etc/resolv.conf`
 atomicwrites = "0.4.3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.4.0"
-atomicwrites = "0.4.3"
 
 # Windows Win32 API
 [target.'cfg(windows)'.dependencies.windows]
