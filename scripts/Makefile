@@ -18,4 +18,6 @@ version:
 	@find .github/ -name "*.yml" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(version)/;}' {} \;
 	@find swift/ -name "project.pbxproj" -exec sed $(SEDARG) -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(version);/' {} \;
 	@find kotlin/ -name "*.gradle.kts" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/versionName =.*/versionName = "$(version)"/;}' {} \;
+	# TODO: This can fail on some platforms. You may need to specify the package
+	# to avoid hitting the wrong codepaths for your platform.
 	@cd rust && cargo check
