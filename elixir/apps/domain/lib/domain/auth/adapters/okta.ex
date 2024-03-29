@@ -17,6 +17,7 @@ defmodule Domain.Auth.Adapters.Okta do
   def init(_init_arg) do
     children = [
       Okta.APIClient,
+      {Task.Supervisor, name: __MODULE__.TaskSupervisor},
       {Domain.Jobs, Okta.Jobs}
     ]
 

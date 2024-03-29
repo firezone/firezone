@@ -6,7 +6,7 @@ defmodule Domain.Actors.Membership.Sync do
   def sync_provider_memberships_multi(multi, %Auth.Provider{} = provider, tuples) do
     multi
     |> Ecto.Multi.all(:memberships, fn _effects_so_far ->
-      fetch_and_lock_provider_memberships_query(provider)
+      fetch_provider_memberships_query(provider)
     end)
     |> Ecto.Multi.run(
       :plan_memberships,
@@ -53,10 +53,9 @@ defmodule Domain.Actors.Membership.Sync do
     end)
   end
 
-  defp fetch_and_lock_provider_memberships_query(provider) do
+  defp fetch_provider_memberships_query(provider) do
     Membership.Query.by_account_id(provider.account_id)
     |> Membership.Query.by_group_provider_id(provider.id)
-    |> Membership.Query.lock()
   end
 
   defp plan_memberships_update(tuples, memberships) do

@@ -11,7 +11,7 @@ defmodule Domain.Auth.Identity.Sync do
 
     Ecto.Multi.new()
     |> Ecto.Multi.all(:identities, fn _effects_so_far ->
-      fetch_and_lock_provider_identities_query(provider)
+      fetch_provider_identities_query(provider)
     end)
     |> Ecto.Multi.run(:plan_identities, fn _repo, %{identities: identities} ->
       plan_identities_update(identities, provider_identifiers)
@@ -55,11 +55,10 @@ defmodule Domain.Auth.Identity.Sync do
     end)
   end
 
-  defp fetch_and_lock_provider_identities_query(provider) do
+  defp fetch_provider_identities_query(provider) do
     Identity.Query.all()
     |> Identity.Query.by_account_id(provider.account_id)
     |> Identity.Query.by_provider_id(provider.id)
-    |> Identity.Query.lock()
   end
 
   defp plan_identities_update(identities, provider_identifiers) do

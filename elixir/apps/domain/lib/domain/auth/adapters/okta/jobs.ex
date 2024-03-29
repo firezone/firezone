@@ -1,9 +1,10 @@
 defmodule Domain.Auth.Adapters.Okta.Jobs do
   use Domain.Jobs.Recurrent, otp_app: :domain
-  alias Domain.{Auth, Actors}
+  alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.Okta
-  alias Domain.Auth.Adapters.Common.SyncLogger
   require Logger
+
+  @behaviour DirectorySync
 
   every minutes(5), :refresh_access_tokens do
     providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:okta)
@@ -35,107 +36,39 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
   every minutes(3), :sync_directory do
     providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
     Logger.debug("Syncing #{length(providers)} Okta providers")
-
-    providers
-    |> Domain.Repo.preload(:account)
-    |> Enum.chunk_every(5)
-    |> Enum.each(fn providers ->
-      Enum.map(providers, fn provider ->
-        if Domain.Accounts.idp_sync_enabled?(provider.account) do
-          sync_provider_directory(provider)
-        else
-          Auth.Provider.Changeset.sync_failed(
-            provider,
-            "IdP sync is not enabled in your subscription plan"
-          )
-          |> Domain.Repo.update!()
-
-          :ok
-        end
-      end)
-    end)
+    DirectorySync.sync_providers(__MODULE__, providers)
   end
 
-  def sync_provider_directory(provider) do
-    Logger.debug("Syncing provider: #{provider.id}", provider_id: provider.id)
-
+  def gather_provider_data(provider) do
     endpoint = provider.adapter_config["api_base_url"]
     access_token = provider.adapter_state["access_token"]
 
-    with {:ok, users} <- Okta.APIClient.list_users(endpoint, access_token),
-         {:ok, groups} <- Okta.APIClient.list_groups(endpoint, access_token),
-         {:ok, tuples} <- list_membership_tuples(endpoint, access_token, groups) do
+    async_results =
+      DirectorySync.run_async_requests(Okta.TaskSupervisor,
+        users: fn ->
+          Okta.APIClient.list_users(endpoint, access_token)
+        end,
+        groups: fn ->
+          Okta.APIClient.list_groups(endpoint, access_token)
+        end
+      )
+
+    with {:ok, %{users: users, groups: groups}} <- async_results,
+         {:ok, membership_tuples} <- list_membership_tuples(endpoint, access_token, groups) do
       identities_attrs = map_identity_attrs(users)
       actor_groups_attrs = map_group_attrs(groups)
-
-      Ecto.Multi.new()
-      |> Ecto.Multi.append(Auth.sync_provider_identities_multi(provider, identities_attrs))
-      |> Ecto.Multi.append(Actors.sync_provider_groups_multi(provider, actor_groups_attrs))
-      |> Actors.sync_provider_memberships_multi(provider, tuples)
-      |> Ecto.Multi.update(:save_last_updated_at, fn _effects_so_far ->
-        Auth.Provider.Changeset.sync_finished(provider)
-      end)
-      |> Domain.Repo.transaction(timeout: :timer.minutes(15))
-      |> case do
-        {:ok, effects} ->
-          SyncLogger.log_effects(provider, effects)
-
-        {:error, reason} ->
-          Logger.error("Failed to sync provider",
-            provider_id: provider.id,
-            account_id: provider.account_id,
-            reason: inspect(reason)
-          )
-
-        {:error, step, reason, _effects_so_far} ->
-          Logger.error("Failed to sync provider",
-            provider_id: provider.id,
-            account_id: provider.account_id,
-            step: inspect(step),
-            reason: inspect(reason)
-          )
-
-          {:error, reason}
-      end
+      {:ok, {identities_attrs, actor_groups_attrs, membership_tuples}}
     else
       {:error, {status, %{"errorCode" => error_code, "errorSummary" => error_summary}}} ->
         message = "#{error_code} => #{error_summary}"
-
-        provider =
-          Auth.Provider.Changeset.sync_failed(provider, message)
-          |> Domain.Repo.update!()
-
-        log_sync_error(provider, "Okta API returned #{status}: #{message}")
+        {:error, message, "Okta API returned #{status}: #{message}"}
 
       {:error, :retry_later} ->
         message = "Okta API is temporarily unavailable"
-
-        provider =
-          Auth.Provider.Changeset.sync_failed(provider, message)
-          |> Domain.Repo.update!()
-
-        log_sync_error(provider, message)
+        {:error, message, message}
 
       {:error, reason} ->
-        Logger.error("Failed to sync provider",
-          account_id: provider.account_id,
-          provider_id: provider.id,
-          reason: inspect(reason)
-        )
-    end
-  end
-
-  defp log_sync_error(provider, message) do
-    metadata = [
-      account_id: provider.account_id,
-      provider_id: provider.id,
-      reason: message
-    ]
-
-    if provider.last_syncs_failed >= 3 do
-      Logger.warning("Failed to sync provider", metadata)
-    else
-      Logger.info("Failed to sync provider", metadata)
+        {:error, nil, inspect(reason)}
     end
   end
 

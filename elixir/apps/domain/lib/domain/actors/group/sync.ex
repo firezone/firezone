@@ -13,7 +13,7 @@ defmodule Domain.Actors.Group.Sync do
 
     Ecto.Multi.new()
     |> Ecto.Multi.all(:groups, fn _effects_so_far ->
-      fetch_and_lock_provider_groups_query(provider)
+      fetch_provider_groups_query(provider)
     end)
     |> Ecto.Multi.run(:plan_groups, fn _repo, %{groups: groups} ->
       plan_groups_update(groups, provider_identifiers)
@@ -47,11 +47,10 @@ defmodule Domain.Actors.Group.Sync do
     )
   end
 
-  defp fetch_and_lock_provider_groups_query(provider) do
+  defp fetch_provider_groups_query(provider) do
     Group.Query.not_deleted()
     |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)
-    |> Group.Query.lock()
   end
 
   defp plan_groups_update(groups, provider_identifiers) do
