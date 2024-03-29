@@ -46,6 +46,15 @@ defmodule Domain.Actors do
     end
   end
 
+  def list_groups_for(%Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Group.Query.not_deleted()
+      |> Group.Query.by_actor_id(actor.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Group.Query, opts)
+    end
+  end
+
   def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
