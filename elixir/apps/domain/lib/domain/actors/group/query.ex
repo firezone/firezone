@@ -42,6 +42,13 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
 
+  def by_actor_id(queryable, actor_id) do
+    join(queryable, :left, [groups: groups], memberships in assoc(groups, :memberships),
+      as: :memberships
+    )
+    |> where([memberships: memberships], memberships.actor_id == ^actor_id)
+  end
+
   def by_provider_id(queryable, provider_id) do
     where(queryable, [groups: groups], groups.provider_id == ^provider_id)
   end
