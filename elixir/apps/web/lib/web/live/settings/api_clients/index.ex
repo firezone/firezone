@@ -36,8 +36,7 @@ defmodule Web.Settings.ApiClients.Index do
       socket =
         assign(socket,
           actors: actors,
-          actors_metadata: actors_metadata,
-          page_title: "API Clients"
+          actors_metadata: actors_metadata
         )
 
       {:ok, socket}
