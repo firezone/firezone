@@ -53,10 +53,10 @@ defmodule Domain.Auth.Adapter.DirectorySync do
               {:ok,
                {
                  identities_attrs :: [
-                   Map.t()
+                   map()
                  ],
                  actor_groups_attrs :: [
-                   Map.t()
+                   map()
                  ],
                  membership_tuples :: [
                    {
