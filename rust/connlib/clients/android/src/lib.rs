@@ -265,14 +265,6 @@ impl Callbacks for CallbackHandler {
         })
         .expect("onDisconnect callback failed")
     }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::debug!("Failed to roll over to new file: {e}");
-
-            None
-        })
-    }
 }
 
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
