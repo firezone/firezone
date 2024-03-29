@@ -122,7 +122,7 @@ pub struct UnexpectedEventDuringInit(String);
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("client error: {0}")]
-    ClientError(StatusCode),
+    Client(StatusCode),
     #[error("token expired")]
     TokenExpired,
     #[error("max retries reached")]
@@ -132,7 +132,7 @@ pub enum Error {
 impl Error {
     pub fn is_authentication_error(&self) -> bool {
         match self {
-            Error::ClientError(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
+            Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
             Error::MaxRetriesReached => false,
         }
@@ -289,6 +289,7 @@ where
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
                         self.reconnect_backoff.reset();
+                        self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
                         let host = self.url.expose_secret().host();
@@ -301,7 +302,7 @@ where
                     Poll::Ready(Err(InternalError::WebSocket(
                         tokio_tungstenite::tungstenite::Error::Http(r),
                     ))) if r.status().is_client_error() => {
-                        return Poll::Ready(Err(Error::ClientError(r.status())));
+                        return Poll::Ready(Err(Error::Client(r.status())));
                     }
                     Poll::Ready(Err(e)) => {
                         let Some(backoff) = self.reconnect_backoff.next_backoff() else {

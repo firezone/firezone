@@ -87,12 +87,6 @@ defmodule Domain.Repo.Query do
   def by_range(%Filter.Range{from: from, to: to}, fragment),
     do: dynamic(^from <= ^fragment and ^fragment <= ^to)
 
-  def by_range(%Filter.Range{to: to}, fragment),
-    do: dynamic(^fragment <= ^to)
-
-  def by_range(%Filter.Range{from: from}, fragment),
-    do: dynamic(^fragment >= ^from)
-
   @doc """
   This function is to allow reuse of the filter function in the regular query helpers,
   it takes a return of a filter function (`{queryable, dynamic}`) and applies it to the queryable.

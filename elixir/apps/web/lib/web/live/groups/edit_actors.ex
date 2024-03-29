@@ -29,7 +29,7 @@ defmodule Web.Groups.EditActors do
           sortable_fields: [
             {:actors, :name}
           ],
-          hide_filters: [:type, :provider_id],
+          hide_filters: [:type, :provider_id, :status],
           callback: &handle_actors_update!/2
         )
 

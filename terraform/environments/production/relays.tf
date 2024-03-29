@@ -5,29 +5,26 @@ module "relays" {
   project_id = module.google-cloud-project.project.project_id
 
   instances = {
-    # We may deploy more relays as more enterprise
-    # customers are onboarded from those regions
+    "asia-east1" = {
+      cidr_range = "10.129.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["asia-east1-a"]
+    }
 
-    # "asia-east1" = {
-    #   cidr_range = "10.129.0.0/24"
-    #   type     = "n1-standard-1"
-    #   replicas = 1
-    #   zones    = ["asia-east1-a"]
-    # }
-    #
-    # "asia-south1" = {
-    #   cidr_range = "10.130.0.0/24"
-    #   type     = "n1-standard-1"
-    #   replicas = 1
-    #   zones    = ["asia-south1-a"]
-    # }
-    #
-    # "australia-southeast1" = {
-    #   cidr_range = "10.131.0.0/24"
-    #   type     = "n1-standard-1"
-    #   replicas = 1
-    #   zones    = ["australia-southeast1-a"]
-    # }
+    "asia-south1" = {
+      cidr_range = "10.130.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["asia-south1-a"]
+    }
+
+    "australia-southeast1" = {
+      cidr_range = "10.131.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["australia-southeast1-a"]
+    }
 
     "europe-west1" = {
       cidr_range = "10.132.0.0/24"
@@ -38,17 +35,17 @@ module "relays" {
 
     # "me-central1" = {
     #   cidr_range = "10.133.0.0/24"
-    #   type     = "n2-standard-2"
-    #   replicas = 1
-    #   zones    = ["me-central1-a"]
+    #   type       = "n2-standard-2"
+    #   replicas   = 1
+    #   zones      = ["me-central1-a"]
     # }
-    #
-    # "southamerica-east1" = {
-    #   cidr_range = "10.134.0.0/24"
-    #   type     = "n1-standard-1"
-    #   replicas = 1
-    #   zones    = ["southamerica-east1-b"]
-    # }
+
+    "southamerica-east1" = {
+      cidr_range = "10.134.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["southamerica-east1-b"]
+    }
 
     "us-central1" = {
       cidr_range = "10.135.0.0/24"
@@ -69,6 +66,20 @@ module "relays" {
       type       = "f1-micro"
       replicas   = 2
       zones      = ["us-west2-b"]
+    }
+
+    "europe-central2" = {
+      cidr_range = "10.138.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["europe-central2-c"]
+    }
+
+    "europe-north1" = {
+      cidr_range = "10.139.0.0/24"
+      type       = "f1-micro"
+      replicas   = 1
+      zones      = ["europe-north1-c"]
     }
 
     "europe-west2" = {

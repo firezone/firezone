@@ -3,6 +3,7 @@ defmodule Domain.InstrumentationTest do
   import Domain.Instrumentation
   alias Domain.Mocks.GoogleCloudPlatform
 
+  # TODO: Remove this when clients aren't requesting log sinks
   describe "create_remote_log_sink/1" do
     test "returns an error if feature is disabled" do
       client = Fixtures.Clients.create_client()

@@ -90,7 +90,6 @@ COPY . .
 
 ARG TARGET
 ARG PACKAGE
-ENV CONNLIB_LOG_UPLOAD_INTERVAL_SECS=300
 RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
@@ -103,7 +102,8 @@ FROM alpine:${ALPINE_VERSION} AS runtime
 ENV REFRESHED_AT=2023-10-23 \
   LANG=C.UTF-8 \
   TERM=xterm \
-  RUST_BACKTRACE=1
+  RUST_BACKTRACE=1 \
+  RUST_LOG=str0m=warn,info
 
 WORKDIR /bin
 

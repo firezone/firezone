@@ -22,19 +22,11 @@
       "targets": ["deb", "msi"],
       "identifier": "dev.firezone.client",
       "icon": [
-        "icons/32x32.png",
         "icons/128x128.png",
         "icons/128x128@2x.png",
-        "icons/firezone.ico",
-        "icons/Square107x107Logo.png",
-        "icons/Square142x142Logo.png",
-        "icons/Square150x150Logo.png",
-        "icons/Square284x284Logo.png",
-        "icons/Square30x30Logo.png",
-        "icons/Square310x310Logo.png",
-        "icons/Square44x44Logo.png",
-        "icons/Square71x71Logo.png",
-        "icons/Square89x89Logo.png"
+        "icons/32x32.png",
+        "icons/icon.ico",
+        "icons/icon.png"
       ],
       "publisher": "Firezone",
       "shortDescription": "Firezone"
@@ -43,7 +35,7 @@
       "csp": null
     },
     "systemTray": {
-      "iconPath": "icons/firezone.ico",
+      "iconPath": "icons/icon.ico",
       "iconAsTemplate": true
     },
     "windows": [

@@ -16,10 +16,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
-    let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let callbacks = CallbackHandler { handle };
+    let callbacks = CallbackHandler;
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -56,8 +56,7 @@ async fn main() -> Result<()> {
         callbacks.clone(),
         max_partition_time,
         tokio::runtime::Handle::current(),
-    )
-    .unwrap();
+    );
     // TODO: this should be added dynamically
     session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
 
@@ -97,25 +96,13 @@ fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<
 }
 
 #[derive(Clone)]
-struct CallbackHandler {
-    handle: Option<file_logger::Handle>,
-}
+struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!("Disconnected: {error}");
 
         std::process::exit(1);
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle
-            .as_ref()?
-            .roll_to_new_file()
-            .unwrap_or_else(|e| {
-                tracing::debug!("Failed to roll over to new file: {e}");
-                None
-            })
     }
 }
 
@@ -136,6 +123,7 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     Ok(nameservers)
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
     tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
     Ok(vec![])

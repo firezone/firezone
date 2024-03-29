@@ -80,7 +80,7 @@ public final class AppStore: ObservableObject {
               // FIXME: Clean up Swift UI window groups to use a multi-step wizard
               if case .invalid = status {
                 WindowDefinition.askPermission.openWindow()
-              } else if !tunnelStore.firstTime() {
+              } else if !DeviceMetadata.firstTime() {
                 WindowDefinition.askPermission.window()?.close()
               }
             }

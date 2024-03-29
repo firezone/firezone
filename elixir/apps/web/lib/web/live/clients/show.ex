@@ -133,13 +133,13 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last Seen</:label>
+            <:label>Last Connected</:label>
             <:value>
               <.relative_datetime datetime={@client.last_seen_at} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last Seen Remote IP</:label>
+            <:label>Last Remote IP</:label>
             <:value>
               <.last_seen schema={@client} />
             </:value>

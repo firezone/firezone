@@ -1,3 +1,4 @@
+use super::utils;
 use crate::device_channel::ioctl;
 use crate::FIREZONE_MARK;
 use connlib_shared::{
@@ -30,8 +31,6 @@ use std::{
     },
 };
 use tokio::io::unix::AsyncFd;
-
-mod utils;
 
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
@@ -155,6 +154,7 @@ impl Tun {
         })
     }
 
+    #[allow(clippy::unnecessary_wraps)] // fn signature needs to align with other platforms.
     pub fn set_routes(&mut self, new_routes: HashSet<IpNetwork>, _: &impl Callbacks) -> Result<()> {
         if new_routes == self.routes {
             return Ok(());

@@ -83,7 +83,7 @@ defmodule Web.Relays.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
-                Last seen
+                Last Connected
               </:label>
               <:value>
                 <.relative_datetime datetime={@relay.last_seen_at} />

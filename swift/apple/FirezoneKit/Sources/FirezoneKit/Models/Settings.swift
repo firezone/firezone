@@ -27,12 +27,13 @@ struct Settings: Equatable {
   }
 
   // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
-  static func fromProviderConfiguration(providerConfiguration: [String: String]?) -> Settings {
-    if let providerConfiguration = providerConfiguration {
+  static func fromProviderConfiguration(providerConfiguration: [String: Any]?) -> Settings {
+    if let providerConfiguration = providerConfiguration as? [String: String] {
       return Settings(
         authBaseURL: providerConfiguration[TunnelStoreKeys.authBaseURL]
           ?? Settings.defaultValue.authBaseURL,
-        apiURL: providerConfiguration[TunnelStoreKeys.apiURL] ?? Settings.defaultValue.apiURL,
+        apiURL: providerConfiguration[TunnelStoreKeys.apiURL]
+          ?? Settings.defaultValue.apiURL,
         logFilter: providerConfiguration[TunnelStoreKeys.logFilter]
           ?? Settings.defaultValue.logFilter
       )
@@ -64,7 +65,7 @@ struct Settings: Equatable {
       Settings(
         authBaseURL: "https://app.firezone.dev",
         apiURL: "wss://api.firezone.dev",
-        logFilter: "info"
+        logFilter: "str0m=warn,info"
       )
     #endif
   }()
