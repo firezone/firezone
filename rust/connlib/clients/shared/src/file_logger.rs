@@ -2,7 +2,9 @@
 //!
 //! This module implements a file-based logger for connlib using tracing-appender.
 //!
-//! The log files are rotated hourly.
+//! The log files are never rotated for the duration of the process; this prevents
+//! tracing_appender from trying to prune old log files which triggers privacy
+//! alerts in Apple app store submissions.
 //!
 //! Since these will be leaving the user's device, these logs should contain *only*
 //! the necessary debugging information, and **not** any sensitive information,
@@ -49,7 +51,6 @@ fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
 
     let (non_blocking, guard) = tracing_appender::non_blocking(appender);
     let handle = Handle {
-        inner,
         _guard: Arc::new(guard),
     };
 
@@ -58,29 +59,14 @@ fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
 
 /// A handle to our file-logger.
 ///
-/// This handle allows to roll over logging to a new file via [`Handle::roll_to_new_file`]. It also houses the [`WorkerGuard`] of the underlying non-blocking appender.
+/// This handle houses the [`WorkerGuard`] of the underlying non-blocking appender.
 /// Thus, you MUST NOT drop this handle for as long as you want messages to arrive at the log file.
 #[derive(Clone, Debug)]
 pub struct Handle {
-    inner: Arc<Mutex<Inner>>,
     _guard: Arc<WorkerGuard>,
 }
 
-impl Handle {
-    /// Rolls over to a new file.
-    ///
-    /// Returns the path to the now unused, previous log file.
-    /// If we don't have a log-file yet, `Ok(None)` is returned.
-    pub fn roll_to_new_file(&self) -> io::Result<Option<PathBuf>> {
-        let mut inner = try_unlock(&self.inner);
-        let new_writer = inner.create_new_writer()?;
-        let Some((_, name)) = inner.current.replace(new_writer) else {
-            return Ok(None);
-        };
-
-        Ok(Some(inner.directory.join(name)))
-    }
-}
+impl Handle {}
 
 #[derive(Debug)]
 struct Appender {

@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let callbacks = CallbackHandler { handle };
+    let callbacks = CallbackHandler { _handle: handle };
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -97,7 +97,7 @@ fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<
 
 #[derive(Clone)]
 struct CallbackHandler {
-    handle: Option<file_logger::Handle>,
+    _handle: Option<file_logger::Handle>,
 }
 
 impl Callbacks for CallbackHandler {
@@ -105,16 +105,6 @@ impl Callbacks for CallbackHandler {
         tracing::error!("Disconnected: {error}");
 
         std::process::exit(1);
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle
-            .as_ref()?
-            .roll_to_new_file()
-            .unwrap_or_else(|e| {
-                tracing::debug!("Failed to roll over to new file: {e}");
-                None
-            })
     }
 }
 

@@ -96,7 +96,7 @@ pub struct CallbackHandler {
     // refcount, but there's no way to generate a `Clone` impl that increments the
     // recount. Instead, we just wrap it in an `Arc`.
     inner: Arc<ffi::CallbackHandler>,
-    handle: file_logger::Handle,
+    _handle: file_logger::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -138,13 +138,6 @@ impl Callbacks for CallbackHandler {
 
     fn on_disconnect(&self, error: &Error) {
         self.inner.on_disconnect(error.to_string());
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::error!("Failed to roll over to new log file: {e}");
-            None
-        })
     }
 }
 
@@ -203,7 +196,7 @@ impl WrappedSession {
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle,
+                _handle: handle,
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
