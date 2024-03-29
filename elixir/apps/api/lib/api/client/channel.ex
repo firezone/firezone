@@ -271,6 +271,7 @@ defmodule API.Client.Channel do
   end
 
   # This message sent by the client to create a GSC signed url for uploading logs and debug artifacts
+  # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
   @impl true
   def handle_in("create_log_sink", _attrs, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)

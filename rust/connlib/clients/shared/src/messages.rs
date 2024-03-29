@@ -6,7 +6,6 @@ use connlib_shared::messages::{
     GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
     ResourceId, ReuseConnection,
 };
-use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct InitClient {
@@ -89,8 +88,6 @@ pub struct GatewayIceCandidates {
 pub enum ReplyMessages {
     ConnectionDetails(ConnectionDetails),
     Connect(Connect),
-    /// Response for [`EgressMessages::CreateLogSink`].
-    SignedLogUrl(Url),
 }
 
 /// The totality of all messages (might have a macro in the future to derive the other types)
@@ -100,7 +97,6 @@ pub enum Messages {
     Init(InitClient),
     ConnectionDetails(ConnectionDetails),
     Connect(Connect),
-    SignedLogUrl(Url),
 
     // Resources: arrive in an orderly fashion
     ResourceCreatedOrUpdated(ResourceDescription),
@@ -128,7 +124,6 @@ impl From<ReplyMessages> for Messages {
         match value {
             ReplyMessages::ConnectionDetails(m) => Self::ConnectionDetails(m),
             ReplyMessages::Connect(m) => Self::Connect(m),
-            ReplyMessages::SignedLogUrl(url) => Self::SignedLogUrl(url),
         }
     }
 }
@@ -142,7 +137,6 @@ pub enum EgressMessages {
         resource_id: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
     },
-    CreateLogSink {},
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
     BroadcastIceCandidates(BroadcastGatewayIceCandidates),
@@ -156,7 +150,7 @@ mod test {
         DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
         ResourceDescriptionDns, Stun, Turn,
     };
-    use phoenix_channel::{OutboundRequestId, PhoenixMessage};
+    use phoenix_channel::PhoenixMessage;
 
     use chrono::DateTime;
 
@@ -585,20 +579,5 @@ mod test {
             }"#;
         let reply_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, reply_message);
-    }
-
-    #[test]
-    fn create_log_sink_ok_response() {
-        let json = r#"{"event":"phx_reply","ref":2,"topic":"client","payload":{"status":"ok","response":"https://storage.googleapis.com/foo/bar"}}"#;
-
-        let actual =
-            serde_json::from_str::<PhoenixMessage<EgressMessages, ReplyMessages>>(json).unwrap();
-        let expected = PhoenixMessage::new_ok_reply(
-            "client",
-            ReplyMessages::SignedLogUrl("https://storage.googleapis.com/foo/bar".parse().unwrap()),
-            Some(OutboundRequestId::for_test(2)),
-        );
-
-        assert_eq!(actual, expected)
     }
 }

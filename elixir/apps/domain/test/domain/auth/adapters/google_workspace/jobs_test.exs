@@ -694,9 +694,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         }
       }
 
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
-        Plug.Conn.send_resp(conn, 403, Jason.encode!(response))
-      end)
+      for path <- [
+            "/admin/directory/v1/users",
+            "/admin/directory/v1/customer/my_customer/orgunits",
+            "/admin/directory/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 403, Jason.encode!(response))
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 
@@ -706,9 +712,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       assert updated_provider.last_sync_error == error_message
       refute updated_provider.sync_disabled_at
 
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
-        Plug.Conn.send_resp(conn, 500, "")
-      end)
+      for path <- [
+            "/admin/directory/v1/users",
+            "/admin/directory/v1/customer/my_customer/orgunits",
+            "/admin/directory/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 500, "")
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 
@@ -764,9 +776,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         }
       }
 
-      Bypass.expect_once(bypass, "GET", "/admin/directory/v1/users", fn conn ->
-        Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
-      end)
+      for path <- [
+            "/admin/directory/v1/users",
+            "/admin/directory/v1/customer/my_customer/orgunits",
+            "/admin/directory/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 

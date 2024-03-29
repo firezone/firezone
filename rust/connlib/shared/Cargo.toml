@@ -10,8 +10,6 @@ mock = []
 
 [dependencies]
 anyhow = "1.0.81"
-# Will be needed to safely modify `/etc/resolv.conf`
-atomicwrites = "0.4.3"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
 base64 = { version = "0.22", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
@@ -29,7 +27,7 @@ resolv-conf = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.36", default-features = false, features = ["fs", "rt", "rt-multi-thread"]}
+tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread"]}
 tokio-stream = { version = "0.1", features = ["time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
@@ -58,6 +56,10 @@ swift-bridge = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing-android = "0.2"
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+# Needed to safely modify `/etc/resolv.conf` and write the device ID for `gui-client`
+atomicwrites = "0.4.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rtnetlink = { workspace = true }

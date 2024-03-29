@@ -189,6 +189,83 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "list_groups_for/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns empty list when there are no groups", %{actor: actor, subject: subject} do
+      assert {:ok, [], _metadata} = list_groups_for(actor, subject)
+    end
+
+    test "does not list groups from other accounts", %{actor: actor, subject: subject} do
+      Fixtures.Actors.create_group()
+      assert {:ok, [], _metadata} = list_groups_for(actor, subject)
+    end
+
+    test "does not list groups from other actors in account", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      actor2 = Fixtures.Actors.create_actor(account: account)
+      group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor2, group: group)
+
+      assert {:ok, [], _metadata} = list_groups_for(actor, subject)
+    end
+
+    test "does not list deleted groups", %{account: account, actor: actor, subject: subject} do
+      group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+
+      Fixtures.Actors.delete_group(group)
+
+      assert {:ok, [], _metadata} = list_groups_for(actor, subject)
+    end
+
+    test "returns all groups for actor", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      group1 = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group1)
+
+      group2 = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: group2)
+
+      Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_group()
+
+      assert {:ok, groups, _metadata} = list_groups_for(actor, subject)
+      assert length(groups) == 2
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      actor: actor,
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_groups_for(actor, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
+    end
+  end
+
   describe "peek_group_actors/3" do
     setup do
       account = Fixtures.Accounts.create_account()
