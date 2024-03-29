@@ -388,6 +388,27 @@ resource "google_dns_record_set" "google-ext-dkim" {
   ]
 }
 
+# Stripe checkout pages
+resource "google_dns_record_set" "stripe-checkout" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type    = "CNAME"
+  name    = "billing.${module.google-cloud-dns.dns_name}"
+  rrdatas = ["hosted-checkout.stripecdn.com."]
+  ttl     = 300
+}
+
+resource "google_dns_record_set" "stripe-checkout-acme" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type    = "TXT"
+  name    = "_acme-challenge.billing.${module.google-cloud-dns.dns_name}"
+  rrdatas = ["YXH57351vMR9L5prjMoetmpktg1K65i6HkK0ZlLlF1g"]
+  ttl     = 300
+}
+
 # HubSpot
 resource "google_dns_record_set" "hubspot-domainkey1" {
   project      = module.google-cloud-project.project.project_id
