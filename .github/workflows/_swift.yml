@@ -3,6 +3,11 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "ci-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 jobs:
   build:
     name: build-${{ matrix.sdk }}

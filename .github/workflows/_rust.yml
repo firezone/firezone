@@ -2,6 +2,11 @@ name: Rust
 on:
   workflow_call:
 
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "ci-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: ./rust
