@@ -812,9 +812,14 @@ defmodule Domain.Auth.Adapters.Okta.JobsTest do
 
       error_message = "#{response["errorCode"]} => #{response["errorSummary"]}"
 
-      Bypass.expect_once(bypass, "GET", "api/v1/users", fn conn ->
-        Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
-      end)
+      for path <- [
+            "api/v1/users",
+            "api/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 
@@ -823,9 +828,14 @@ defmodule Domain.Auth.Adapters.Okta.JobsTest do
       assert updated_provider.last_syncs_failed == 1
       assert updated_provider.last_sync_error == error_message
 
-      Bypass.expect_once(bypass, "GET", "api/v1/users", fn conn ->
-        Plug.Conn.send_resp(conn, 500, "")
-      end)
+      for path <- [
+            "api/v1/users",
+            "api/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 500, "")
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 
