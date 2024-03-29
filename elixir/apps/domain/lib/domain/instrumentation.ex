@@ -2,6 +2,7 @@ defmodule Domain.Instrumentation do
   alias Domain.Clients
   alias Domain.GoogleCloudPlatform
 
+  # TODO: Remove this when clients aren't requesting log sinks
   def create_remote_log_sink(%Clients.Client{} = client, actor_name, account_slug) do
     config = config!()
     enabled? = Keyword.fetch!(config, :client_logs_enabled)

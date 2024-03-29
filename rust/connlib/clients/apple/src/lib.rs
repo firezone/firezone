@@ -83,6 +83,9 @@ pub struct WrappedSession {
 
     #[allow(dead_code)]
     runtime: Runtime,
+
+    #[allow(dead_code)]
+    logger: file_logger::Handle,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -96,7 +99,6 @@ pub struct CallbackHandler {
     // refcount, but there's no way to generate a `Clone` impl that increments the
     // recount. Instead, we just wrap it in an `Arc`.
     inner: Arc<ffi::CallbackHandler>,
-    handle: file_logger::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -139,13 +141,6 @@ impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &Error) {
         self.inner.on_disconnect(error.to_string());
     }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::error!("Failed to roll over to new log file: {e}");
-            None
-        })
-    }
 }
 
 fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Handle, TryInitError> {
@@ -176,7 +171,7 @@ impl WrappedSession {
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
+        let logger = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
 
         let (private_key, public_key) = keypair();
@@ -203,7 +198,6 @@ impl WrappedSession {
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                handle,
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
@@ -212,6 +206,7 @@ impl WrappedSession {
         Ok(Self {
             inner: session,
             runtime,
+            logger,
         })
     }
 

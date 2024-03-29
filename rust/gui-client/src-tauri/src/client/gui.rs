@@ -465,7 +465,7 @@ pub(crate) enum ControllerRequest {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    logger: file_logger::Handle,
+    _logger: file_logger::Handle,
     notify_controller: Arc<Notify>,
     ctlr_tx: CtlrTx,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
@@ -492,14 +492,6 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.logger.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::debug!("Failed to roll over to new file: {e}");
-
-            None
-        })
     }
 }
 
@@ -535,7 +527,7 @@ impl Controller {
 
         let callback_handler = CallbackHandler {
             ctlr_tx: self.ctlr_tx.clone(),
-            logger: self.logging_handles.logger.clone(),
+            _logger: self.logging_handles.logger.clone(),
             notify_controller: Arc::clone(&self.notify_controller),
             resources: Default::default(),
         };

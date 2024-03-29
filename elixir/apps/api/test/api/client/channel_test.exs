@@ -477,6 +477,7 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
   describe "handle_in/3 create_log_sink" do
     test "returns error when feature is disabled", %{socket: socket} do
       Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
