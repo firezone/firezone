@@ -66,8 +66,6 @@ pub struct Handle {
     _guard: Arc<WorkerGuard>,
 }
 
-impl Handle {}
-
 #[derive(Debug)]
 struct Appender {
     inner: Arc<Mutex<Inner>>,
