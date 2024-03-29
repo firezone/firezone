@@ -16,10 +16,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
-    let (layer, handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    let callbacks = CallbackHandler { _handle: handle };
+    let callbacks = CallbackHandler;
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -96,9 +96,7 @@ fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<
 }
 
 #[derive(Clone)]
-struct CallbackHandler {
-    _handle: Option<file_logger::Handle>,
-}
+struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {

@@ -83,6 +83,9 @@ pub struct WrappedSession {
 
     #[allow(dead_code)]
     runtime: Runtime,
+
+    #[allow(dead_code)]
+    logger: file_logger::Handle,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -96,7 +99,6 @@ pub struct CallbackHandler {
     // refcount, but there's no way to generate a `Clone` impl that increments the
     // recount. Instead, we just wrap it in an `Arc`.
     inner: Arc<ffi::CallbackHandler>,
-    _handle: file_logger::Handle,
 }
 
 impl Callbacks for CallbackHandler {
@@ -169,7 +171,7 @@ impl WrappedSession {
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
     ) -> Result<Self, String> {
-        let handle = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
+        let logger = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
         let secret = SecretString::from(token);
 
         let (private_key, public_key) = keypair();
@@ -196,7 +198,6 @@ impl WrappedSession {
             os_version_override,
             CallbackHandler {
                 inner: Arc::new(callback_handler),
-                _handle: handle,
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
@@ -205,6 +206,7 @@ impl WrappedSession {
         Ok(Self {
             inner: session,
             runtime,
+            logger,
         })
     }
 
