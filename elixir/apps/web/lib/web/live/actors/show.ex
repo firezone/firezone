@@ -469,7 +469,7 @@ defmodule Web.Actors.Show do
           filters={@filters_by_table_id["groups"]}
           filter={@filter_form_by_table_id["groups"]}
           ordered_by={@order_by_table_id["groups"]}
-          metadata={@clients_metadata}
+          metadata={@groups_metadata}
         >
           <:col :let={group} label="NAME">
             <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
