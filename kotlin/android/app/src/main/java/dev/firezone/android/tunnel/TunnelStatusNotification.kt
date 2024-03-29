@@ -55,46 +55,46 @@ object TunnelStatusNotification {
         )
     }
 
+    data object SignedOut : StatusType() {
+        private const val MESSAGE = "Signed out..."
+
+        override fun applySettings(builder: NotificationCompat.Builder) =
+            builder
+                .setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle(TITLE)
+                .setContentText(MESSAGE)
+                .setCategory(NotificationCompat.CATEGORY_ERROR)
+                .setPriority(NotificationManager.IMPORTANCE_HIGH)
+                .setAutoCancel(true)
+    }
+
+    data object Connecting : StatusType() {
+        private const val MESSAGE = "Status: Connecting..."
+
+        override fun applySettings(builder: NotificationCompat.Builder) =
+            builder
+                .setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle(TITLE)
+                .setContentText(MESSAGE)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setPriority(NotificationManager.IMPORTANCE_MIN)
+                .setOngoing(true)
+    }
+
+    data object Connected : StatusType() {
+        private const val MESSAGE = "Status: Connected"
+
+        override fun applySettings(builder: NotificationCompat.Builder) =
+            builder
+                .setSmallIcon(R.drawable.ic_firezone_logo)
+                .setContentTitle(TITLE)
+                .setContentText(MESSAGE)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setPriority(NotificationManager.IMPORTANCE_MIN)
+                .setOngoing(true)
+    }
+
     sealed class StatusType {
         abstract fun applySettings(builder: NotificationCompat.Builder): NotificationCompat.Builder
-
-        data object SignedOut : StatusType() {
-            private const val MESSAGE = "Signed out..."
-
-            override fun applySettings(builder: NotificationCompat.Builder) =
-                builder
-                    .setSmallIcon(R.drawable.ic_firezone_logo)
-                    .setContentTitle(TITLE)
-                    .setContentText(MESSAGE)
-                    .setCategory(NotificationCompat.CATEGORY_ERROR)
-                    .setPriority(NotificationManager.IMPORTANCE_HIGH)
-                    .setAutoCancel(true)
-        }
-
-        data object Connecting : StatusType() {
-            private const val MESSAGE = "Status: Connecting..."
-
-            override fun applySettings(builder: NotificationCompat.Builder) =
-                builder
-                    .setSmallIcon(R.drawable.ic_firezone_logo)
-                    .setContentTitle(TITLE)
-                    .setContentText(MESSAGE)
-                    .setCategory(Notification.CATEGORY_SERVICE)
-                    .setPriority(NotificationManager.IMPORTANCE_MIN)
-                    .setOngoing(true)
-        }
-
-        data object Connected : StatusType() {
-            private const val MESSAGE = "Status: Connected"
-
-            override fun applySettings(builder: NotificationCompat.Builder) =
-                builder
-                    .setSmallIcon(R.drawable.ic_firezone_logo)
-                    .setContentTitle(TITLE)
-                    .setContentText(MESSAGE)
-                    .setCategory(Notification.CATEGORY_SERVICE)
-                    .setPriority(NotificationManager.IMPORTANCE_MIN)
-                    .setOngoing(true)
-        }
     }
 }

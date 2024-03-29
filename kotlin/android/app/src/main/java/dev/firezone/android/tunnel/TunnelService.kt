@@ -137,7 +137,7 @@ class TunnelService : VpnService() {
 
                 shutdown()
                 if (startedByUser) {
-                    updateStatusNotification(TunnelStatusNotification.StatusType.SignedOut)
+                    updateStatusNotification(TunnelStatusNotification.SignedOut)
                 }
                 return true
             }
@@ -227,7 +227,7 @@ class TunnelService : VpnService() {
 
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
-            updateStatusNotification(TunnelStatusNotification.StatusType.Connecting)
+            updateStatusNotification(TunnelStatusNotification.Connecting)
             System.loadLibrary("connlib")
 
             connlibSessionPtr =
