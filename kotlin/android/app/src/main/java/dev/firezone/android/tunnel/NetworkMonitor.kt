@@ -6,6 +6,7 @@ import android.util.Log
 import com.google.gson.Gson
 import dev.firezone.android.tunnel.ConnlibSession
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.TunnelStatusNotification
 import java.net.InetAddress
 
 class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityManager.NetworkCallback() {
@@ -19,7 +20,7 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
         Log.d("NetworkMonitor", "OnLinkPropertiesChanged: $network: $linkProperties")
         if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
             tunnelService.tunnelState = TunnelService.Companion.State.UP
-            tunnelService.updateStatusNotification("Status: Connected")
+            tunnelService.updateStatusNotification(TunnelStatusNotification.Connected)
         }
 
         if (lastDns != linkProperties.dnsServers) {

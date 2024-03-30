@@ -3,10 +3,6 @@ package dev.firezone.android.tunnel
 
 import NetworkMonitor
 import android.app.ActivityManager
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -20,16 +16,13 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.MutableLiveData
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
@@ -143,7 +136,9 @@ class TunnelService : VpnService() {
                 repo.clearActorName()
 
                 shutdown()
-
+                if (startedByUser) {
+                    updateStatusNotification(TunnelStatusNotification.SignedOut)
+                }
                 return true
             }
 
@@ -232,7 +227,7 @@ class TunnelService : VpnService() {
 
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
-            updateStatusNotification("Status: Connecting...")
+            updateStatusNotification(TunnelStatusNotification.Connecting)
             System.loadLibrary("connlib")
 
             connlibSessionPtr =
@@ -307,15 +302,6 @@ class TunnelService : VpnService() {
         return deviceId
     }
 
-    private fun configIntent(): PendingIntent? {
-        return PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
     private fun getLogDir(): String {
         // Create log directory if it doesn't exist
         val logDir = cacheDir.absolutePath + "/logs"
@@ -388,27 +374,9 @@ class TunnelService : VpnService() {
         }
     }
 
-    fun updateStatusNotification(message: String?) {
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-
-        val chan =
-            NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                NOTIFICATION_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT,
-            )
-        chan.description = "Firezone connection status"
-
-        manager.createNotificationChannel(chan)
-
-        val notificationBuilder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-        val notification =
-            notificationBuilder.setOngoing(true).setSmallIcon(R.drawable.ic_firezone_logo)
-                .setContentTitle(NOTIFICATION_TITLE).setContentText(message)
-                .setPriority(NotificationManager.IMPORTANCE_MIN)
-                .setCategory(Notification.CATEGORY_SERVICE).setContentIntent(configIntent()).build()
-
-        startForeground(STATUS_NOTIFICATION_ID, notification)
+    fun updateStatusNotification(statusType: TunnelStatusNotification.StatusType) {
+        val notification = TunnelStatusNotification.update(this, statusType).build()
+        startForeground(TunnelStatusNotification.ID, notification)
     }
 
     private fun getDeviceName(): String {
@@ -426,11 +394,6 @@ class TunnelService : VpnService() {
             UP,
             DOWN,
         }
-
-        private const val NOTIFICATION_CHANNEL_ID = "firezone-connection-status"
-        private const val NOTIFICATION_CHANNEL_NAME = "firezone-connection-status"
-        private const val STATUS_NOTIFICATION_ID = 1337
-        private const val NOTIFICATION_TITLE = "Firezone Connection Status"
 
         private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
