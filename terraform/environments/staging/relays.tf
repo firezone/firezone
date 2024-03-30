@@ -121,3 +121,32 @@ module "relays" {
   api_url = "wss://api.${local.tld}"
   token   = var.relay_token
 }
+
+# Allow SSH acces using IAP for relays
+resource "google_compute_firewall" "relays-ssh-ipv4" {
+  count = length(module.relays) > 0 ? 1 : 0
+
+  project = module.google-cloud-project.project.project_id
+
+  name    = "relays-ssh-ipv4"
+  network = module.google-cloud-vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = [22]
+  }
+
+  allow {
+    protocol = "sctp"
+    ports    = [22]
+  }
+
+  # Only allows connections using IAP
+  source_ranges = local.iap_ipv4_ranges
+  target_tags   = module.relays[0].target_tags
+}
