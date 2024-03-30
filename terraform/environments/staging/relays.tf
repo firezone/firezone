@@ -122,7 +122,7 @@ module "relays" {
   token   = var.relay_token
 }
 
-# Allow SSH acces using IAP for relays
+# Allow SSH access using IAP for relays
 resource "google_compute_firewall" "relays-ssh-ipv4" {
   count = length(module.relays) > 0 ? 1 : 0
 
