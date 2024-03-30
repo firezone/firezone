@@ -34,7 +34,9 @@ jobs:
           cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: |
+      - env:
+          RUSTFLAGS: "-Wunused-crate-dependencies"
+        run: |
           cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
 
   test:
