@@ -55,29 +55,22 @@ set -ue
 # Download latest version of the gateway if it doesn't already exist
 if [ ! -e /usr/local/bin/firezone-gateway ]; then
   echo "/usr/local/bin/firezone-gateway not found. Downloading latest version..."
-  FIREZONE_VERSION=\$(curl -Ls \\
-    -H "Accept: application/vnd.github+json" \\
-    -H "X-GitHub-Api-Version: 2022-11-28" \\
-    "https://api.github.com/repos/firezone/firezone/releases/latest" | grep '"tag_name":' | sed 's/.*"tag_name": "\\([^"]*\\).*/\\1/'
-  )
-  [ "\$FIREZONE_VERSION" = "" ] && echo "[Error] Cannot fetch latest version. Rate-limited by GitHub?" && exit 1
-  echo "Downloading Firezone Gateway version \$FIREZONE_VERSION"
   arch=\$(uname -m)
   case \$arch in
     aarch64)
-      bin_url="https://github.com/firezone/firezone/releases/download/\$FIREZONE_VERSION/gateway-arm64"
+      bin="gateway-arm64"
       ;;
     armv7l)
-      bin_url="https://github.com/firezone/firezone/releases/download/\$FIREZONE_VERSION/gateway-arm"
+      bin="gateway-arm"
       ;;
     x86_64)
-      bin_url="https://github.com/firezone/firezone/releases/download/\$FIREZONE_VERSION/gateway-x64"
+      bin="gateway-x64"
       ;;
     *)
       echo "Unsupported architecture"
       exit 1
   esac
-  curl -Ls \$bin_url -o /usr/local/bin/firezone-gateway
+  curl -Ls "https://github.com/firezone/firezone/releases/latest/download/\$bin" -o /usr/local/bin/firezone-gateway
 else
   echo "/usr/local/bin/firezone-gateway found. Skipping download."
 fi
