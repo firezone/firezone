@@ -4425,12 +4425,10 @@ dependencies = [
 name = "phoenix-channel"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "backoff",
  "base64 0.22.0",
  "futures",
  "hex",
- "hostname",
  "libc",
  "rand_core 0.6.4",
  "secrecy",
