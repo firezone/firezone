@@ -121,5 +121,5 @@ for target in "${TARGETS[@]}"; do
     fi
 
     lib="$CONNLIB_TARGET_DIR/$target/$profile/libconnlib.a"
-    strip -r -u -x "$lib"
+    strip "$lib"
 done
