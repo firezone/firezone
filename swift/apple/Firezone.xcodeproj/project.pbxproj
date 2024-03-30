@@ -30,6 +30,8 @@
 		79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneKit */; };
 		8D69392C2BA24FE600AF4396 /* BindResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D69392B2BA24FE600AF4396 /* BindResolvers.swift */; };
 		8D6939322BA2521A00AF4396 /* SystemConfigurationResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */; };
+		8DA12C332BB7DA04007D91EB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
+		8DA12C342BB7DA04007D91EB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
 		8DC08BCB2B296C4500675F46 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */; };
 		8DC08BCD2B296C5900675F46 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */; };
 		8DC08BD22B297B7B00675F46 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BD12B297B7B00675F46 /* libresolv.tbd */; };
@@ -115,6 +117,7 @@
 		6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		8D69392B2BA24FE600AF4396 /* BindResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BindResolvers.swift; sourceTree = "<group>"; };
 		8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SystemConfigurationResolvers.swift; sourceTree = "<group>"; };
+		8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.2.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
 		8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
 		8DC08BD12B297B7B00675F46 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
@@ -214,6 +217,7 @@
 		8DCC021028D512AC007E12D2 = {
 			isa = PBXGroup;
 			children = (
+				8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */,
 				8DD2C4C2297B37BA00F984BF /* Packages */,
 				8DCC021B28D512AC007E12D2 /* Firezone */,
 				05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */,
@@ -406,6 +410,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8DA12C332BB7DA04007D91EB /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -413,6 +418,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8DA12C342BB7DA04007D91EB /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
