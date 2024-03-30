@@ -92,9 +92,10 @@ defmodule Domain.Billing do
 
   def create_customer(%Accounts.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
+    email = get_customer_email(account)
 
     with {:ok, %{"id" => customer_id, "email" => customer_email}} <-
-           APIClient.create_customer(secret_key, account.id, account.name, account.slug) do
+           APIClient.create_customer(secret_key, account.id, account.name, account.slug, email) do
       Accounts.update_account(account, %{
         metadata: %{stripe: %{customer_id: customer_id, billing_email: customer_email}}
       })
@@ -117,6 +118,9 @@ defmodule Domain.Billing do
         {:error, :retry_later}
     end
   end
+
+  defp get_customer_email(%{metadata: %{stripe: %{billing_email: email}}}), do: email
+  defp get_customer_email(_account), do: nil
 
   def update_customer(%Accounts.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
