@@ -9,7 +9,7 @@
 			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
-				<string>This app uses fstat to provide efficient multi-threaded network performance.</string>
+				<string>3B52.1</string>
 			</array>
 		</dict>
 	</array>
