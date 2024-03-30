@@ -121,9 +121,7 @@ where
 
         let (addresses, resource_id) = match &resource {
             ResourceDescription::Dns(r) => {
-                let Some(domain) = domain.clone() else {
-                    return None;
-                };
+                let domain = domain.clone()?;
 
                 if !crate::dns::is_subdomain(&domain, &r.domain) {
                     return None;
