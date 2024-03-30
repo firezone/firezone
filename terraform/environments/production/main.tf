@@ -201,8 +201,7 @@ resource "google_compute_firewall" "ssh-ipv4" {
   target_tags = concat(
     module.web.target_tags,
     module.api.target_tags,
-    module.domain.target_tags,
-    length(module.relays) > 0 ? module.relays[0].target_tags : []
+    module.domain.target_tags
   )
 }
 
