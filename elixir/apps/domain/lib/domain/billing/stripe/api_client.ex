@@ -25,14 +25,15 @@ defmodule Domain.Billing.Stripe.APIClient do
     [conn_opts: [transport_opts: transport_opts]]
   end
 
-  def create_customer(api_token, id, name, slug) do
+  def create_customer(api_token, id, name, slug, email) do
     body =
       URI.encode_query(
         %{
           "name" => name,
           "metadata[account_id]" => id,
           "metadata[account_slug]" => slug
-        },
+        }
+        |> put_if_not_nil("email", email),
         :www_form
       )
 
@@ -111,6 +112,9 @@ defmodule Domain.Billing.Stripe.APIClient do
         {:error, reason}
     end
   end
+
+  defp put_if_not_nil(map, _key, nil), do: map
+  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
   defp fetch_config!(key) do
     Domain.Config.fetch_env!(:domain, __MODULE__)

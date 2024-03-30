@@ -379,7 +379,8 @@ defmodule Web.SignUp do
         :account,
         fn _repo, _changes ->
           Accounts.create_account(%{
-            name: registration.account.name
+            name: registration.account.name,
+            metadata: %{stripe: %{billing_email: registration.email}}
           })
         end
       )
