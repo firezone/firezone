@@ -24,6 +24,9 @@ sha2 = "0.10.8"
 hex = "0.4"
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+hostname = "0.3.1" # Hickory already depends on `hostname` so this isn't new
+
 [dev-dependencies]
 tokio = { version = "1.36.0", features = ["macros", "rt"] }
 
