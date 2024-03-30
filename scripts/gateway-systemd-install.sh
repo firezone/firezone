@@ -70,7 +70,7 @@ if [ ! -e /usr/local/bin/firezone-gateway ]; then
       echo "Unsupported architecture"
       exit 1
   esac
-  curl -Ls "https://github.com/firezone/firezone/releases/latest/download/\$bin" -o /usr/local/bin/firezone-gateway
+  curl -Ls https://github.com/firezone/firezone/releases/latest/download/\$bin -o /usr/local/bin/firezone-gateway
 else
   echo "/usr/local/bin/firezone-gateway found. Skipping download."
 fi
