@@ -10,20 +10,23 @@ defmodule Domain.Mocks.Stripe do
   def mock_create_customer_endpoint(bypass, account, resp \\ %{}) do
     customers_endpoint_path = "v1/customers"
 
-    resp =
-      Map.merge(
-        customer_object("cus_NffrFeUfNV2Hib", account.name, "foo@example.com", %{
-          "account_id" => account.id
-        }),
-        resp
-      )
-
     test_pid = self()
 
     Bypass.expect(bypass, "POST", customers_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       conn = fetch_request_params(conn)
       send(test_pid, {:bypass_request, conn})
+
+      email = Map.get(conn.params, "email", "foo@example.com")
+
+      resp =
+        Map.merge(
+          customer_object("cus_NffrFeUfNV2Hib", account.name, email, %{
+            "account_id" => account.id
+          }),
+          resp
+        )
+
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
