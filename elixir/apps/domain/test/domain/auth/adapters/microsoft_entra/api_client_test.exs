@@ -40,7 +40,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
                      userPrincipalName
                    ],
                    ","
-                 )
+                 ),
+               "$top" => "999"
              }
 
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
@@ -72,7 +73,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       assert_receive {:bypass_request, conn}
 
       assert conn.params == %{
-               "$select" => "id,displayName"
+               "$select" => "id,displayName",
+               "$top" => "999"
              }
 
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
@@ -104,7 +106,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       end
 
       assert_receive {:bypass_request, conn}
-      assert conn.params == %{"$select" => "id,accountEnabled"}
+      assert conn.params == %{"$select" => "id,accountEnabled", "$top" => "999"}
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
     end
 

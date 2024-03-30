@@ -58,7 +58,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
       |> URI.append_query(
         URI.encode_query(%{
           "$select" => Enum.join(@user_fields, ","),
-          "$filter" => "accountEnabled eq true"
+          "$filter" => "accountEnabled eq true",
+          "$top" => "999"
         })
       )
 
@@ -74,7 +75,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
       URI.parse("#{endpoint}/v1.0/groups")
       |> URI.append_query(
         URI.encode_query(%{
-          "$select" => Enum.join(@group_fields, ",")
+          "$select" => Enum.join(@group_fields, ","),
+          "$top" => "999"
         })
       )
 
@@ -98,7 +100,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
       URI.parse("#{endpoint}/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user")
       |> URI.append_query(
         URI.encode_query(%{
-          "$select" => Enum.join(@group_member_fields, ",")
+          "$select" => Enum.join(@group_member_fields, ","),
+          "$top" => "999"
         })
       )
 
