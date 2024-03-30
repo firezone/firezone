@@ -56,7 +56,7 @@ object TunnelStatusNotification {
     }
 
     data object SignedOut : StatusType() {
-        private const val MESSAGE = "Signed out..."
+        private const val MESSAGE = "Status: Signed out. Tap here to sign in."
 
         override fun applySettings(builder: NotificationCompat.Builder) =
             builder
