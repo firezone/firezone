@@ -4,7 +4,9 @@
 # We call this from an Xcode run script.
 ##################################################
 
-set -e
+set -euo pipefail
+
+cmd=${1:-""}
 
 # Sanitize the environment to prevent Xcode's shenanigans from leaking
 # into our highly evolved Rust-based build system.
@@ -45,7 +47,7 @@ for var in $(env | awk -F= '{print $1}'); do
         [[ "$var" != "CARGO_INCREMENTAL" ]] &&
         [[ "$var" != "CARGO_TERM_COLOR" ]] &&
         [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
-        unset $var
+        unset "$var"
     fi
 done
 
@@ -53,7 +55,7 @@ done
 # confuse rustc.
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin:/run/current-system/sw/bin/"
 
-if [[ $1 == "clean" ]]; then
+if [[ $cmd == "clean" ]]; then
     echo "Skipping build during 'clean'"
     exit 0
 fi
@@ -63,19 +65,16 @@ if [[ -z "$PLATFORM_NAME" ]]; then
     exit 1
 fi
 
-export INCLUDE_PATH="$SDK_ROOT/usr/include"
-export LIBRARY_PATH="$SDK_ROOT/usr/lib"
-
 TARGETS=""
 if [[ "$PLATFORM_NAME" = "macosx" ]]; then
     if [[ $CONFIGURATION == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
-        TARGETS="--target aarch64-apple-darwin --target x86_64-apple-darwin"
+        TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
     else
         if [[ $NATIVE_ARCH == "arm64" ]]; then
-            TARGETS="--target aarch64-apple-darwin"
+            TARGETS=("aarch64-apple-darwin")
         else
             if [[ $NATIVE_ARCH == "x86_64" ]]; then
-                TARGETS="--target x86_64-apple-darwin"
+                TARGETS=("x86_64-apple-darwin")
             else
                 echo "Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH"
             fi
@@ -83,7 +82,7 @@ if [[ "$PLATFORM_NAME" = "macosx" ]]; then
     fi
 else
     if [[ "$PLATFORM_NAME" = "iphoneos" ]]; then
-        TARGETS="--target aarch64-apple-ios"
+        TARGETS=("aarch64-apple-ios")
     else
         echo "Unsupported platform: $PLATFORM_NAME"
         exit 1
@@ -91,6 +90,7 @@ else
 fi
 
 MESSAGE="Building Connlib"
+CONFIGURATION_ARGS=""
 
 if [[ $CONFIGURATION == "Release" ]]; then
     echo "${MESSAGE} for Release"
@@ -100,11 +100,26 @@ else
 fi
 
 if [[ -n "$CONNLIB_TARGET_DIR" ]]; then
-    set -x
     export CARGO_TARGET_DIR=$CONNLIB_TARGET_DIR
-    set +x
 fi
 
-set -x
-cargo build --verbose $TARGETS $CONFIGURATION_ARGS
-set +x
+target_list=""
+for target in "${TARGETS[@]}"; do
+    target_list+="--target $target "
+done
+
+target_list="${target_list% }"
+
+# Build the library
+cargo build --verbose $target_list $CONFIGURATION_ARGS
+
+# Strip unused symbols from the libraries
+for target in "${TARGETS[@]}"; do
+    profile="debug"
+    if [ "$CONFIGURATION" == "Release" ]; then
+        profile="release"
+    fi
+
+    lib="$CONNLIB_TARGET_DIR/$target/$profile/libconnlib.a"
+    strip "$lib"
+done
