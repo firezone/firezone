@@ -64,6 +64,13 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 [profile.release]
 strip = true
 
+# Full link-time optimization. Reduces binaries by up to 3x on some platforms.
+lto = "fat"
+
+# Increases the compiler's ability to produce smaller, optimized code
+# at the expense of compilation time
+codegen-units = 1
+
 # Override build settings just for the GUI client, so we get a pdb/dwp
 # Cargo ignores profile settings if they're not in the workspace's Cargo.toml
 [profile.dev.package.firezone-gui-client]
