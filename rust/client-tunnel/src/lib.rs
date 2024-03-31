@@ -8,6 +8,7 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
+#[allow(clippy::print_stdout)]
 pub fn run() {
     println!("Firezone Tunnel (library)");
 }

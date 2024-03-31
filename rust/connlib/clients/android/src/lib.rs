@@ -265,14 +265,6 @@ impl Callbacks for CallbackHandler {
         })
         .expect("onDisconnect callback failed")
     }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.handle.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::debug!("Failed to roll over to new file: {e}");
-
-            None
-        })
-    }
 }
 
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
@@ -392,7 +384,7 @@ fn connect(
         callback_handler,
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
-    )?;
+    );
 
     Ok(SessionWrapper {
         inner: session,
@@ -468,6 +460,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     });
 }
 
+/// Set system DNS resolvers
+///
+/// `dns_list` must not have any IPv6 scopes
+/// <https://github.com/firezone/firezone/issues/4350>
+///
 /// # Safety
 /// Pointers must be valid
 #[allow(non_snake_case)]

@@ -2,21 +2,28 @@
 #![cfg_attr(target_family = "windows", allow(dead_code))] // TODO: Remove when windows is fully implemented.
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-#[path = "device_channel/tun_darwin.rs"]
-mod tun;
+mod tun_darwin;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use tun_darwin as tun;
 
 #[cfg(target_os = "linux")]
-#[path = "device_channel/tun_linux.rs"]
-mod tun;
+mod tun_linux;
+#[cfg(target_os = "linux")]
+use tun_linux as tun;
 
-#[cfg(target_family = "windows")]
-#[path = "device_channel/tun_windows.rs"]
-mod tun;
+#[cfg(target_os = "windows")]
+mod tun_windows;
+#[cfg(target_os = "windows")]
+use tun_windows as tun;
 
 // TODO: Android and linux are nearly identical; use a common tunnel module?
 #[cfg(target_os = "android")]
-#[path = "device_channel/tun_android.rs"]
-mod tun;
+mod tun_android;
+#[cfg(target_os = "android")]
+use tun_android as tun;
+
+#[cfg(target_family = "unix")]
+mod utils;
 
 use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
@@ -114,13 +121,15 @@ impl Device {
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
-        _: &impl Callbacks,
+        callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         if self.tun.is_none() {
             self.tun = Some(Tun::new()?);
         }
 
         self.tun.as_ref().unwrap().set_config(config, &dns_config)?;
+
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         if let Some(waker) = self.waker.take() {
             waker.wake();

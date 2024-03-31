@@ -222,6 +222,29 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
   end
 
+  test "renders groups table", %{
+    conn: conn
+  } do
+    account = Fixtures.Accounts.create_account()
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    group = Fixtures.Actors.create_group(account: account)
+    Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/#{actor}")
+
+    [row] =
+      lv
+      |> element("#groups")
+      |> render()
+      |> table_to_map()
+
+    assert row["name"] == group.name
+  end
+
   describe "users" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -268,9 +291,6 @@ defmodule Web.Live.Actors.ShowTest do
       identity: identity,
       conn: conn
     } do
-      group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
-
       {:ok, lv, html} =
         conn
         |> authorize_conn(identity)
@@ -285,7 +305,6 @@ defmodule Web.Live.Actors.ShowTest do
         |> render()
         |> vertical_table_to_map()
 
-      assert table["groups"] == group.name
       assert table["name"] == actor.name
       assert table["role"] == "admin"
       assert around_now?(table["last signed in"])
@@ -640,6 +659,29 @@ defmodule Web.Live.Actors.ShowTest do
       assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
     end
 
+    test "allows deleting synced actors that don't have any identities left", %{
+      account: account,
+      identity: identity,
+      conn: conn
+    } do
+      actor =
+        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      lv
+      |> element("button", "Delete User")
+      |> render_click()
+
+      assert_redirect(lv, ~p"/#{account}/actors")
+
+      assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
+    end
+
     test "renders error when trying to delete last admin", %{
       account: account,
       actor: actor,
@@ -756,9 +798,6 @@ defmodule Web.Live.Actors.ShowTest do
       identity: identity,
       conn: conn
     } do
-      group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
-
       {:ok, lv, html} =
         conn
         |> authorize_conn(identity)
@@ -770,7 +809,6 @@ defmodule Web.Live.Actors.ShowTest do
              |> element("#actor")
              |> render()
              |> vertical_table_to_map() == %{
-               "groups" => group.name,
                "last signed in" => "never",
                "name" => actor.name,
                "role" => "service account"

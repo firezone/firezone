@@ -14,24 +14,17 @@ use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::HashMap,
-    io,
     net::IpAddr,
-    path::PathBuf,
     task::{Context, Poll},
-    time::Duration,
 };
-use tokio::time::{Interval, MissedTickBehavior};
-use url::Url;
 
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel<C>,
-    tunnel_init: bool,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
 
     connection_intents: SentConnectionIntents,
-    log_upload_interval: tokio::time::Interval,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -50,9 +43,7 @@ impl<C: Callbacks> Eventloop<C> {
         Self {
             tunnel,
             portal,
-            tunnel_init: false,
             connection_intents: SentConnectionIntents::default(),
-            log_upload_interval: upload_interval(),
             rx,
         }
     }
@@ -100,12 +91,6 @@ where
                     continue;
                 }
                 Poll::Pending => {}
-            }
-
-            if self.log_upload_interval.poll_tick(cx).is_ready() {
-                self.portal
-                    .send(PHOENIX_TOPIC, EgressMessages::CreateLogSink {});
-                continue;
             }
 
             return Poll::Pending;
@@ -172,8 +157,10 @@ where
 
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
-            IngressMessages::ConfigChanged(_) => {
-                tracing::warn!("Config changes are not yet implemented");
+            IngressMessages::ConfigChanged(config) => {
+                if let Err(e) = self.tunnel.set_interface(config.interface.clone()) {
+                    tracing::warn!(?config, "Failed to update configuration: {e:?}");
+                }
             }
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
@@ -187,18 +174,13 @@ where
                 interface,
                 resources,
             }) => {
-                if !self.tunnel_init {
-                    if let Err(e) = self.tunnel.set_interface(interface) {
-                        tracing::warn!("Failed to set interface on tunnel: {e}");
-                        return;
-                    }
-
-                    self.tunnel_init = true;
-                    tracing::info!("Firezone Started!");
-                    let _ = self.tunnel.add_resources(&resources);
-                } else {
-                    tracing::info!("Firezone reinitializated");
+                if let Err(e) = self.tunnel.set_interface(interface) {
+                    tracing::warn!("Failed to set interface on tunnel: {e}");
+                    return;
                 }
+
+                tracing::info!("Firezone Started!");
+                let _ = self.tunnel.set_resources(resources);
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
@@ -208,7 +190,7 @@ where
                 }
             }
             IngressMessages::ResourceDeleted(RemoveResource(resource)) => {
-                self.tunnel.remove_resource(resource);
+                self.tunnel.remove_resources(&[resource]);
             }
         }
     }
@@ -286,20 +268,6 @@ where
                     }
                 };
             }
-            ReplyMessages::SignedLogUrl(url) => {
-                let Some(path) = self.tunnel.callbacks.roll_log_file() else {
-                    return;
-                };
-
-                tokio::spawn(async move {
-                    if let Err(e) = upload(path.clone(), url).await {
-                        tracing::warn!(
-                            "Failed to upload log file at path {path_display}: {e}. Not retrying.",
-                            path_display = path.display()
-                        );
-                    }
-                });
-            }
         }
     }
 
@@ -329,81 +297,6 @@ where
             ErrorReply::NotFound | ErrorReply::Other => {}
         }
     }
-}
-
-async fn upload(_path: PathBuf, _url: Url) -> io::Result<()> {
-    // TODO: Log uploads are disabled by default for GA until we expose a way to opt in
-    // to the user. See https://github.com/firezone/firezone/issues/3910
-
-    // tracing::info!(path = %path.display(), %url, "Uploading log file");
-
-    // let file = tokio::fs::File::open(&path).await?;
-
-    // let response = reqwest::Client::new()
-    //     .put(url)
-    //     .header(CONTENT_TYPE, "text/plain")
-    //     .header(CONTENT_ENCODING, "gzip")
-    //     .body(reqwest::Body::wrap_stream(FramedRead::new(
-    //         GzipEncoder::new(BufReader::new(file)),
-    //         BytesCodec::default(),
-    //     )))
-    //     .send()
-    //     .await
-    //     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-    // let status_code = response.status();
-
-    // if !status_code.is_success() {
-    //     let body = response
-    //         .text()
-    //         .await
-    //         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-    //     tracing::warn!(%body, %status_code, "Failed to upload logs");
-
-    //     return Err(io::Error::new(
-    //         io::ErrorKind::Other,
-    //         "portal returned non-successful exit code",
-    //     ));
-    // }
-
-    Ok(())
-}
-
-fn upload_interval() -> Interval {
-    let duration = upload_interval_duration_from_env_or_default();
-    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + duration, duration);
-    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
-    interval
-}
-
-/// Parses an interval from the _compile-time_ env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`.
-///
-/// If not present or parsing as u64 fails, we fall back to a default interval of 5 minutes.
-fn upload_interval_duration_from_env_or_default() -> Duration {
-    const DEFAULT: Duration = Duration::from_secs(60 * 5);
-
-    let Some(interval) = option_env!("CONNLIB_LOG_UPLOAD_INTERVAL_SECS") else {
-        tracing::warn!(interval = ?DEFAULT, "Env variable `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` was not set during compile-time, falling back to default");
-
-        return DEFAULT;
-    };
-
-    let interval = match interval.parse() {
-        Ok(i) => i,
-        Err(e) => {
-            tracing::warn!(interval = ?DEFAULT, "Failed to parse `CONNLIB_LOG_UPLOAD_INTERVAL_SECS` as u64: {e}");
-            return DEFAULT;
-        }
-    };
-
-    tracing::info!(
-        ?interval,
-        "Using upload interval specified at compile-time via `CONNLIB_LOG_UPLOAD_INTERVAL_SECS`"
-    );
-
-    Duration::from_secs(interval)
 }
 
 #[derive(Default)]

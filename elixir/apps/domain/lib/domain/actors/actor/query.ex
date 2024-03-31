@@ -160,6 +160,16 @@ defmodule Domain.Actors.Actor.Query do
         fun: &filter_by_identity_provider_id/2
       },
       %Domain.Repo.Filter{
+        name: :status,
+        title: "Status",
+        type: :string,
+        values: [
+          {"Enabled", "enabled"},
+          {"Disabled", "disabled"}
+        ],
+        fun: &filter_by_status/2
+      },
+      %Domain.Repo.Filter{
         name: :type,
         title: "Type",
         type: :string,
@@ -183,11 +193,24 @@ defmodule Domain.Actors.Actor.Query do
         fun: &filter_by_types/2
       },
       %Domain.Repo.Filter{
+        name: :group_id,
+        type: {:string, :uuid},
+        fun: &filter_by_group_id/2
+      },
+      %Domain.Repo.Filter{
         name: :deleted?,
         type: :boolean,
         fun: &filter_deleted/1
       }
     ]
+
+  def filter_by_status(queryable, "enabled") do
+    {queryable, dynamic([actors: actors], is_nil(actors.disabled_at))}
+  end
+
+  def filter_by_status(queryable, "disabled") do
+    {queryable, dynamic([actors: actors], not is_nil(actors.disabled_at))}
+  end
 
   def filter_by_type(queryable, type) do
     {queryable, dynamic([actors: actors], actors.type == ^type)}
@@ -224,6 +247,17 @@ defmodule Domain.Actors.Actor.Query do
       |> where(
         [identities: identities],
         identities.actor_id == parent_as(:actors).id and identities.provider_id == ^provider_id
+      )
+
+    {queryable, dynamic(exists(subquery))}
+  end
+
+  def filter_by_group_id(queryable, group_id) do
+    subquery =
+      Domain.Actors.Membership.Query.all()
+      |> where(
+        [memberships: memberships],
+        memberships.actor_id == parent_as(:actors).id and memberships.group_id == ^group_id
       )
 
     {queryable, dynamic(exists(subquery))}

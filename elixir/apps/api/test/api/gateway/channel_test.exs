@@ -759,6 +759,18 @@ defmodule API.Gateway.ChannelTest do
 
       assert resource_id == resource.id
     end
+
+    test "pushes an error when ref is invalid", %{
+      socket: socket
+    } do
+      push_ref =
+        push(socket, "connection_ready", %{
+          "ref" => "foo",
+          "gateway_payload" => "bar"
+        })
+
+      assert_reply push_ref, :error, %{reason: :invalid_ref}
+    end
   end
 
   describe "handle_in/3 broadcast_ice_candidates" do

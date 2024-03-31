@@ -243,6 +243,7 @@ impl Tun {
         self.write(bytes)
     }
 
+    #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
             .len()

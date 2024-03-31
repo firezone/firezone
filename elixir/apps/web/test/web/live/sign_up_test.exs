@@ -50,6 +50,13 @@ defmodule Web.Live.SignUpTest do
     account = Repo.one(Domain.Accounts.Account)
     assert account.name == account_name
     assert account.metadata.stripe.customer_id
+    assert account.metadata.stripe.billing_email == email
+
+    group = Repo.one(Domain.Actors.Group)
+    assert group.account_id == account.id
+    assert group.name == "Everyone"
+    assert group.type == :managed
+    assert [%{operator: true}] = group.membership_rules
 
     provider = Repo.one(Domain.Auth.Provider)
     assert provider.account_id == account.id

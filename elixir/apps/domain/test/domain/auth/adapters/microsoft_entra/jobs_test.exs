@@ -497,9 +497,14 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.JobsTest do
         }
       }
 
-      Bypass.expect_once(bypass, "GET", "v1.0/users", fn conn ->
-        Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
-      end)
+      for path <- [
+            "v1.0/users",
+            "v1.0/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 
@@ -508,9 +513,14 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.JobsTest do
       assert updated_provider.last_syncs_failed == 1
       assert updated_provider.last_sync_error == error_message
 
-      Bypass.expect_once(bypass, "GET", "v1.0/users", fn conn ->
-        Plug.Conn.send_resp(conn, 500, "")
-      end)
+      for path <- [
+            "v1.0/users",
+            "v1.0/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 500, "")
+        end)
+      end
 
       assert sync_directory(%{}) == :ok
 

@@ -50,6 +50,12 @@ firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
 http-health-check = { path = "http-health-check"}
 
+[workspace.lints]
+clippy.dbg_macro = "warn"
+clippy.print_stdout = "warn"
+clippy.print_stderr = "warn"
+clippy.unnecessary_wraps = "warn"
+
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
@@ -57,6 +63,13 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 
 [profile.release]
 strip = true
+
+# Full link-time optimization. Reduces binaries by up to 3x on some platforms.
+lto = "fat"
+
+# Increases the compiler's ability to produce smaller, optimized code
+# at the expense of compilation time
+codegen-units = 1
 
 # Override build settings just for the GUI client, so we get a pdb/dwp
 # Cargo ignores profile settings if they're not in the workspace's Cargo.toml

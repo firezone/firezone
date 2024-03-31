@@ -47,6 +47,9 @@ defmodule Web.Clients.Index do
       <:title>
         Clients
       </:title>
+      <:help>
+        Clients are end-user devices and servers that access your protected Resources.
+      </:help>
       <:content>
         <.flash_group flash={@flash} />
         <.live_table

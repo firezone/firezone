@@ -59,7 +59,7 @@ defmodule Web.Resources.Edit do
               required
             />
 
-            <div>
+            <div class="hidden">
               <.input
                 field={@form[:address_description]}
                 type="text"

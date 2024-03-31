@@ -88,12 +88,14 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(:config_changed, socket) do
+    account = Accounts.fetch_account_by_id!(socket.assigns.client.account_id)
+
     :ok =
       push(socket, "config_changed", %{
         interface:
           Views.Interface.render(%{
             socket.assigns.client
-            | account: socket.assigns.subject.account
+            | account: account
           })
       })
 
@@ -269,6 +271,7 @@ defmodule API.Client.Channel do
   end
 
   # This message sent by the client to create a GSC signed url for uploading logs and debug artifacts
+  # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
   @impl true
   def handle_in("create_log_sink", _attrs, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)

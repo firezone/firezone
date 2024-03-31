@@ -42,6 +42,13 @@ defmodule Web.Actors.Show do
           limit: 10,
           callback: &handle_flows_update!/2
         )
+        |> assign_live_table("groups",
+          query_module: Actors.Group.Query,
+          sortable_fields: [],
+          hide_filters: [:provider_id],
+          limit: 15,
+          callback: &handle_groups_update!/2
+        )
 
       {:ok, socket}
     else
@@ -63,6 +70,19 @@ defmodule Web.Actors.Show do
        assign(socket,
          identities: identities,
          identities_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_groups_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, [:provider])
+
+    with {:ok, groups, metadata} <-
+           Actors.list_groups_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         groups: groups,
+         groups_metadata: metadata
        )}
     end
   end
@@ -168,18 +188,6 @@ defmodule Web.Actors.Show do
             <:label>Role</:label>
             <:value>
               <%= actor_role(@actor.type) %>
-            </:value>
-          </.vertical_table_row>
-
-          <.vertical_table_row>
-            <:label>Groups</:label>
-            <:value>
-              <div class="flex flex-wrap gap-y-2">
-                <span :if={Enum.empty?(@actor.groups)}>none</span>
-                <span :for={group <- @actor.groups}>
-                  <.group account={@account} group={group} />
-                </span>
-              </div>
             </:value>
           </.vertical_table_row>
 
@@ -450,8 +458,33 @@ defmodule Web.Actors.Show do
       </:content>
     </.section>
 
+    <.section>
+      <:title>Groups</:title>
+
+      <:content>
+        <.live_table
+          id="groups"
+          rows={@groups}
+          row_id={&"group-#{&1.id}"}
+          filters={@filters_by_table_id["groups"]}
+          filter={@filter_form_by_table_id["groups"]}
+          ordered_by={@order_by_table_id["groups"]}
+          metadata={@groups_metadata}
+        >
+          <:col :let={group} label="NAME">
+            <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
+              <%= group.name %>
+            </.link>
+          </:col>
+          <:empty>
+            <div class="text-center text-neutral-500 p-4">No Groups to display.</div>
+          </:empty>
+        </.live_table>
+      </:content>
+    </.section>
+
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
-      <:action :if={not Actors.actor_synced?(@actor) or @actor.identities == []}>
+      <:action :if={not Actors.actor_synced?(@actor) or @identities == []}>
         <.delete_button
           phx-click="delete"
           data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} along with all associated identities?"}
@@ -484,12 +517,7 @@ defmodule Web.Actors.Show do
 
   def handle_event("disable", _params, socket) do
     with {:ok, actor} <- Actors.disable_actor(socket.assigns.actor, socket.assigns.subject) do
-      actor = %{
-        actor
-        | identities: socket.assigns.actor.identities,
-          groups: socket.assigns.actor.groups,
-          clients: socket.assigns.actor.clients
-      }
+      actor = %{actor | groups: socket.assigns.actor.groups}
 
       socket =
         socket
@@ -505,13 +533,7 @@ defmodule Web.Actors.Show do
 
   def handle_event("enable", _params, socket) do
     {:ok, actor} = Actors.enable_actor(socket.assigns.actor, socket.assigns.subject)
-
-    actor = %{
-      actor
-      | identities: socket.assigns.actor.identities,
-        groups: socket.assigns.actor.groups,
-        clients: socket.assigns.actor.clients
-    }
+    actor = %{actor | groups: socket.assigns.actor.groups}
 
     socket =
       socket
@@ -525,23 +547,10 @@ defmodule Web.Actors.Show do
     {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
     {:ok, _identity} = Auth.delete_identity(identity, socket.assigns.subject)
 
-    {:ok, actor} =
-      Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
-        preload: [
-          identities: [:provider, created_by_identity: [:actor]]
-        ]
-      )
-
-    actor = %{
-      actor
-      | groups: socket.assigns.actor.groups,
-        clients: socket.assigns.actor.clients
-    }
-
     socket =
       socket
+      |> reload_live_table!("identities")
       |> put_flash(:info, "Identity was deleted.")
-      |> assign(actor: actor)
 
     {:noreply, socket}
   end

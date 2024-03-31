@@ -242,10 +242,22 @@ defmodule API.Client.ChannelTest do
 
   describe "handle_info/2 :config_changed" do
     test "sends updated configuration", %{
+      account: account,
       client: client,
       socket: socket
     } do
       channel_pid = socket.channel_pid
+
+      Fixtures.Accounts.update_account(
+        account,
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "1.2.3.1"},
+            %{protocol: "ip_port", address: "1.8.8.1:53"}
+          ]
+        }
+      )
+
       send(channel_pid, :config_changed)
 
       assert_push "config_changed", %{interface: interface}
@@ -254,8 +266,8 @@ defmodule API.Client.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                upstream_dns: [
-                 %{protocol: :ip_port, address: "1.1.1.1:53"},
-                 %{protocol: :ip_port, address: "8.8.8.8:53"}
+                 %{protocol: :ip_port, address: "1.2.3.1:53"},
+                 %{protocol: :ip_port, address: "1.8.8.1:53"}
                ]
              }
     end
@@ -465,6 +477,7 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
   describe "handle_in/3 create_log_sink" do
     test "returns error when feature is disabled", %{socket: socket} do
       Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)

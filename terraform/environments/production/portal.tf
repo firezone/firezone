@@ -332,7 +332,7 @@ locals {
     # Feature Flags
     {
       name  = "FEATURE_SIGN_UP_ENABLED"
-      value = false
+      value = true
     }
   ]
 }

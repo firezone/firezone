@@ -96,7 +96,7 @@ defmodule Web.Live.Resources.IndexTest do
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
       assert row["sites"] =~ group.name
-      assert row["authorized groups"] == "None, create a Policy to grant access."
+      assert row["authorized groups"] == "None - Create a Policy to grant access."
     end)
   end
 

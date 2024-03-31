@@ -89,7 +89,7 @@ where
             Instant::now(),
         );
 
-        self.new_peer(ips, client_id, id, expires_at, resource_addresses.clone())?;
+        self.new_peer(ips, client_id, id, expires_at, resource_addresses.clone());
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
@@ -121,9 +121,7 @@ where
 
         let (addresses, resource_id) = match &resource {
             ResourceDescription::Dns(r) => {
-                let Some(domain) = domain.clone() else {
-                    return None;
-                };
+                let domain = domain.clone()?;
 
                 if !crate::dns::is_subdomain(&domain, &r.domain) {
                     return None;
@@ -178,7 +176,7 @@ where
         resource: ResourceId,
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
-    ) -> Result<()> {
+    ) {
         let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
 
         for address in resource_addresses {
@@ -186,8 +184,6 @@ where
         }
 
         self.role_state.peers.insert(peer, &ips);
-
-        Ok(())
     }
 }
 

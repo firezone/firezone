@@ -15,7 +15,13 @@ use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, ResourceDescription, Sockets};
 use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -25,15 +31,18 @@ mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
+#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
@@ -143,6 +152,8 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
     tracing::debug!("Setting up Tauri app instance...");
+    let (setup_result_tx, mut setup_result_rx) =
+        tokio::sync::oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -186,102 +197,111 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         .setup(move |app| {
             tracing::debug!("Entered Tauri's `setup`");
 
-            // Check for updates
-            let ctlr_tx_clone = ctlr_tx.clone();
-            let always_show_update_notification = cli.always_show_update_notification;
-            tokio::spawn(async move {
-                if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
-                {
-                    tracing::error!(?error, "Error in check_for_updates");
-                }
-            });
-
-            // Make sure we're single-instance
-            // We register our deep links to call the `open-deep-link` subcommand,
-            // so if we're at this point, we know we've been launched manually
-            let server = deep_link::Server::new()?;
-
-            if let Some(client::Cmd::SmokeTest) = &cli.command {
-                let ctlr_tx = ctlr_tx.clone();
+            let setup_inner = move || {
+                // Check for updates
+                let ctlr_tx_clone = ctlr_tx.clone();
+                let always_show_update_notification = cli.always_show_update_notification;
                 tokio::spawn(async move {
-                    if let Err(error) = smoke_test(ctlr_tx).await {
-                        tracing::error!(?error, "Error during smoke test");
-                        tracing::error!("Crashing on purpose so a dev can see our stacktraces");
-                        unsafe { sadness_generator::raise_segfault() }
+                    if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+                    {
+                        tracing::error!(?error, "Error in check_for_updates");
                     }
                 });
-            }
 
-            tracing::debug!(cli.no_deep_links);
-            if !cli.no_deep_links {
-                // The single-instance check is done, so register our exe
-                // to handle deep links
-                deep_link::register().context("Failed to register deep link handler")?;
-                tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
-            }
+                // Make sure we're single-instance
+                // We register our deep links to call the `open-deep-link` subcommand,
+                // so if we're at this point, we know we've been launched manually
+                let server = deep_link::Server::new()?;
 
-            if let Some(failure) = cli.fail_on_purpose() {
-                let ctlr_tx = ctlr_tx.clone();
-                tokio::spawn(async move {
-                    let delay = 5;
-                    tracing::info!(
-                        "Will crash / error / panic on purpose in {delay} seconds to test error handling."
-                    );
-                    tokio::time::sleep(Duration::from_secs(delay)).await;
-                    tracing::info!("Crashing / erroring / panicking on purpose");
-                    ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
-                    Ok::<_, anyhow::Error>(())
-                });
-            }
-
-            assert_eq!(
-                BUNDLE_ID,
-                app.handle().config().tauri.bundle.identifier,
-                "BUNDLE_ID should match bundle ID in tauri.conf.json"
-            );
-
-            let app_handle = app.handle();
-            let _ctlr_task = tokio::spawn(async move {
-                let app_handle_2 = app_handle.clone();
-                // Spawn two nested Tasks so the outer can catch panics from the inner
-                let task = tokio::spawn(async move {
-                    run_controller(
-                        app_handle_2,
-                        ctlr_tx,
-                        ctlr_rx,
-                        logging_handles,
-                        advanced_settings,
-                    )
-                    .await
-                });
-
-                // See <https://github.com/tauri-apps/tauri/issues/8631>
-                // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
-                // because it exits the entire process without dropping anything.
-                //
-                // This seems to be a platform limitation that Tauri is unable to hide
-                // from us. It was the source of much consternation at time of writing.
-
-                match task.await {
-                    Err(error) => {
-                        tracing::error!(?error, "run_controller panicked");
-                        app_handle.exit(1);
-                    }
-                    Ok(Err(error)) => {
-                        tracing::error!(?error, "run_controller returned an error");
-                        app_handle.exit(1);
-                    }
-                    Ok(Ok(_)) => {
-                        tracing::info!("GUI controller task exited cleanly. Exiting process");
-                        app_handle.exit(0);
-                    }
+                if let Some(client::Cmd::SmokeTest) = &cli.command {
+                    let ctlr_tx = ctlr_tx.clone();
+                    tokio::spawn(async move {
+                        if let Err(error) = smoke_test(ctlr_tx).await {
+                            tracing::error!(?error, "Error during smoke test");
+                            tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                            unsafe { sadness_generator::raise_segfault() }
+                        }
+                    });
                 }
-            });
+
+                tracing::debug!(cli.no_deep_links);
+                if !cli.no_deep_links {
+                    // The single-instance check is done, so register our exe
+                    // to handle deep links
+                    deep_link::register().context("Failed to register deep link handler")?;
+                    tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+                }
+
+                if let Some(failure) = cli.fail_on_purpose() {
+                    let ctlr_tx = ctlr_tx.clone();
+                    tokio::spawn(async move {
+                        let delay = 5;
+                        tracing::info!(
+                            "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+                        );
+                        tokio::time::sleep(Duration::from_secs(delay)).await;
+                        tracing::info!("Crashing / erroring / panicking on purpose");
+                        ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                        Ok::<_, anyhow::Error>(())
+                    });
+                }
+
+                assert_eq!(
+                    BUNDLE_ID,
+                    app.handle().config().tauri.bundle.identifier,
+                    "BUNDLE_ID should match bundle ID in tauri.conf.json"
+                );
+
+                let app_handle = app.handle();
+                let _ctlr_task = tokio::spawn(async move {
+                    let app_handle_2 = app_handle.clone();
+                    // Spawn two nested Tasks so the outer can catch panics from the inner
+                    let task = tokio::spawn(async move {
+                        run_controller(
+                            app_handle_2,
+                            ctlr_tx,
+                            ctlr_rx,
+                            logging_handles,
+                            advanced_settings,
+                        )
+                        .await
+                    });
+
+                    // See <https://github.com/tauri-apps/tauri/issues/8631>
+                    // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
+                    // because it exits the entire process without dropping anything.
+                    //
+                    // This seems to be a platform limitation that Tauri is unable to hide
+                    // from us. It was the source of much consternation at time of writing.
+
+                    match task.await {
+                        Err(error) => {
+                            tracing::error!(?error, "run_controller panicked");
+                            app_handle.exit(1);
+                        }
+                        Ok(Err(error)) => {
+                            tracing::error!(?error, "run_controller returned an error");
+                            app_handle.exit(1);
+                        }
+                        Ok(Ok(_)) => {
+                            tracing::info!("GUI controller task exited cleanly. Exiting process");
+                            app_handle.exit(0);
+                        }
+                    }
+                });
+                Ok(())
+            };
+
+            setup_result_tx.send(setup_inner()).expect("should be able to send setup result");
 
             Ok(())
         });
     tracing::debug!("Building Tauri app...");
     let app = app.build(tauri::generate_context!());
+
+    setup_result_rx
+        .try_recv()
+        .context("couldn't receive result of setup")??;
 
     let app = match app {
         Ok(x) => x,
@@ -445,7 +465,7 @@ pub(crate) enum ControllerRequest {
 
 #[derive(Clone)]
 struct CallbackHandler {
-    logger: file_logger::Handle,
+    _logger: file_logger::Handle,
     notify_controller: Arc<Notify>,
     ctlr_tx: CtlrTx,
     resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
@@ -460,25 +480,18 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
             .expect("controller channel failed");
     }
 
-    fn on_tunnel_ready(&self) {
-        tracing::info!("on_tunnel_ready");
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+        tracing::info!("on_set_interface_config");
         self.ctlr_tx
             .try_send(ControllerRequest::TunnelReady)
             .expect("controller channel failed");
+        None
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        self.logger.roll_to_new_file().unwrap_or_else(|e| {
-            tracing::debug!("Failed to roll over to new file: {e}");
-
-            None
-        })
     }
 }
 
@@ -514,7 +527,7 @@ impl Controller {
 
         let callback_handler = CallbackHandler {
             ctlr_tx: self.ctlr_tx.clone(),
-            logger: self.logging_handles.logger.clone(),
+            _logger: self.logging_handles.logger.clone(),
             notify_controller: Arc::clone(&self.notify_controller),
             resources: Default::default(),
         };
@@ -542,7 +555,7 @@ impl Controller {
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
-        )?;
+        );
 
         connlib.set_dns(client::resolvers::get().unwrap_or_default());
 

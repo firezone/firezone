@@ -379,10 +379,17 @@ defmodule Web.SignUp do
         :account,
         fn _repo, _changes ->
           Accounts.create_account(%{
-            name: registration.account.name
+            name: registration.account.name,
+            metadata: %{stripe: %{billing_email: registration.email}}
           })
         end
       )
+      |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
+        Domain.Actors.create_managed_group(account, %{
+          name: "Everyone",
+          membership_rules: [%{operator: true}]
+        })
+      end)
       |> Ecto.Multi.run(
         :provider,
         fn _repo, %{account: account} ->
