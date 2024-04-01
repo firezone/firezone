@@ -41,25 +41,20 @@ updates:
           - windows-implement
           - windows-sys
   - package-ecosystem: gradle
-    directory: kotlin/android/
+    directory: kotlin/android/app/
     schedule:
       interval: monthly
-    groups:
-      com.squareup.moshi:
-        patterns:
-          - com.squareup.moshi.*
-      com.android:
-        patterns:
-          - com.android.*
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
       - dependency-name: org.jetbrains.kotlin.android
-  - package-ecosystem: gradle
-    directory: kotlin/android/app/
-    schedule:
-      interval: monthly
     groups:
+      com.android:
+        patterns:
+          - com.android.*
+      com.squareup.moshi:
+        patterns:
+          - com.squareup.moshi.*
       AndroidX:
         patterns:
           - androidx.core:core-ktx
