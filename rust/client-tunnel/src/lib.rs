@@ -17,11 +17,9 @@ pub fn run() {
 mod tests {
     use anyhow::Result;
     use serde::Serialize;
-    use std::time::Duration;
-    use tokio::{
-        io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-        net::{UnixListener, UnixStream},
-    };
+    use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+    const MESSAGE_ONE: &str = "message one";
 
     // Copied from <https://github.com/firezone/subzone>
 
@@ -51,49 +49,79 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn ipc_linux() {
-        let sock_path = dirs::runtime_dir()
-            .unwrap()
-            .join("dev.firezone.client_ipc_test");
+    mod linux {
+        use std::time::Duration;
+        use super::{MESSAGE_ONE, read_ipc_msg, write_ipc_msg};
+        use tokio::net::{UnixListener, UnixStream};
 
-        // Remove the socket if a previous run left it there
-        tokio::fs::remove_file(&sock_path).await.ok();
-        let listener = UnixListener::bind(&sock_path).unwrap();
+        const MESSAGE_TWO: &str = "message two";
 
-        let ipc_server_task = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let cred = stream.peer_cred().unwrap();
-            // TODO: Check that the user is in the `firezone` group
-            // For now, to make it work well in CI where that group isn't created,
-            // just check if it matches our own UID.
-            let actual_peer_uid = cred.uid();
-            let expected_peer_uid = nix::unistd::Uid::current().as_raw();
-            assert_eq!(actual_peer_uid, expected_peer_uid);
+        #[tokio::test]
+        async fn ipc_linux() {
+            let sock_path = dirs::runtime_dir()
+                .unwrap()
+                .join("dev.firezone.client_ipc_test");
 
-            let v = read_ipc_msg(&mut stream).await.unwrap();
+            // Remove the socket if a previous run left it there
+            tokio::fs::remove_file(&sock_path).await.ok();
+            let listener = UnixListener::bind(&sock_path).unwrap();
+
+            let ipc_server_task = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let cred = stream.peer_cred().unwrap();
+                // TODO: Check that the user is in the `firezone` group
+                // For now, to make it work well in CI where that group isn't created,
+                // just check if it matches our own UID.
+                let actual_peer_uid = cred.uid();
+                let expected_peer_uid = nix::unistd::Uid::current().as_raw();
+                assert_eq!(actual_peer_uid, expected_peer_uid);
+
+                let v = read_ipc_msg(&mut stream).await.unwrap();
+                let s = String::from_utf8(v).unwrap();
+                let decoded: String = serde_json::from_str(&s).unwrap();
+                assert_eq!(MESSAGE_ONE, decoded);
+
+                let v = read_ipc_msg(&mut stream).await.unwrap();
+                let s = String::from_utf8(v).unwrap();
+                let decoded: String = serde_json::from_str(&s).unwrap();
+                assert_eq!(MESSAGE_TWO, decoded);
+            });
+
+            let mut stream = UnixStream::connect(&sock_path).await.unwrap();
+            write_ipc_msg(&mut stream, &MESSAGE_ONE.to_string())
+                .await
+                .unwrap();
+
+            write_ipc_msg(&mut stream, &MESSAGE_TWO.to_string())
+                .await
+                .unwrap();
+
+            tokio::time::timeout(Duration::from_millis(2_000), ipc_server_task)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    mod windows {
+        use super::{MESSAGE_ONE, read_ipc_msg, write_ipc_msg};
+
+        #[tokio::test]
+        async fn ipc_windows() {
+            // Round-trip a message to avoid dead code warnings
+            let mut buffer = vec![];
+
+            write_ipc_msg(&mut buffer, &MESSAGE_ONE.to_string()).await.unwrap();
+
+            let mut cursor = std::io::Cursor::new(buffer);
+            let v = read_ipc_msg(&mut cursor).await.unwrap();
             let s = String::from_utf8(v).unwrap();
             let decoded: String = serde_json::from_str(&s).unwrap();
-            assert_eq!("message one", decoded);
+            assert_eq!(decoded, MESSAGE_ONE);
 
-            let v = read_ipc_msg(&mut stream).await.unwrap();
-            let s = String::from_utf8(v).unwrap();
-            let decoded: String = serde_json::from_str(&s).unwrap();
-            assert_eq!("message two", decoded);
-        });
-
-        let mut stream = UnixStream::connect(&sock_path).await.unwrap();
-        write_ipc_msg(&mut stream, &"message one".to_string())
-            .await
-            .unwrap();
-
-        write_ipc_msg(&mut stream, &"message two".to_string())
-            .await
-            .unwrap();
-
-        tokio::time::timeout(Duration::from_millis(2_000), ipc_server_task)
-            .await
-            .unwrap()
-            .unwrap();
+            // TODO: Windows process splitting
+            // <https://github.com/firezone/firezone/issues/3712>
+        }
     }
 }

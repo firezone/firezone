@@ -33,14 +33,14 @@ jobs:
       - run: cargo fmt -- --check
       - run: |
           source ../scripts/tests/${{ matrix.packages }}
-          cargo doc --all-features --no-deps --document-private-items $FIREZONE_PACKAGES
+          cargo doc --all-features --no-deps --document-private-items ${FIREZONE_PACKAGES[@]}
         env:
           RUSTDOCFLAGS: "-D warnings"
         name: "cargo doc"
         shell: bash
       - run: |
           source ../scripts/tests/${{ matrix.packages }}
-          cargo clippy --all-targets --all-features $FIREZONE_PACKAGES -- -D warnings
+          cargo clippy --all-targets --all-features ${FIREZONE_PACKAGES[@]} -- -D warnings
         name: "cargo clippy"
         shell: bash
 
@@ -72,7 +72,7 @@ jobs:
       - uses: ./.github/actions/setup-tauri
       - run: |
           source ../scripts/tests/${{ matrix.packages }}
-          cargo test --all-features $FIREZONE_PACKAGES -- --include-ignored
+          cargo test --all-features ${FIREZONE_PACKAGES[@]} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
