@@ -50,8 +50,8 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     mod linux {
+        use super::{read_ipc_msg, write_ipc_msg, MESSAGE_ONE};
         use std::time::Duration;
-        use super::{MESSAGE_ONE, read_ipc_msg, write_ipc_msg};
         use tokio::net::{UnixListener, UnixStream};
 
         const MESSAGE_TWO: &str = "message two";
@@ -105,14 +105,16 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     mod windows {
-        use super::{MESSAGE_ONE, read_ipc_msg, write_ipc_msg};
+        use super::{read_ipc_msg, write_ipc_msg, MESSAGE_ONE};
 
         #[tokio::test]
         async fn ipc_windows() {
             // Round-trip a message to avoid dead code warnings
             let mut buffer = vec![];
 
-            write_ipc_msg(&mut buffer, &MESSAGE_ONE.to_string()).await.unwrap();
+            write_ipc_msg(&mut buffer, &MESSAGE_ONE.to_string())
+                .await
+                .unwrap();
 
             let mut cursor = std::io::Cursor::new(buffer);
             let v = read_ipc_msg(&mut cursor).await.unwrap();
