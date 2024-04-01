@@ -114,7 +114,9 @@ defmodule Web.Actors.Users.NewIdentity do
       end
 
       socket =
-        push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}")
+        push_navigate(socket,
+          to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}/groups"
+        )
 
       {:noreply, socket}
     else

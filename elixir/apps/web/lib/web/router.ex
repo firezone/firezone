@@ -140,6 +140,7 @@ defmodule Web.Router do
         end
 
         live "/:id/edit", Edit
+        live "/:id/groups", Groups
       end
 
       scope "/groups", Groups do
