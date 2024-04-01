@@ -70,7 +70,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1001"
 
     match {
       expr {
@@ -84,7 +84,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1002"
 
     match {
       expr {
@@ -98,7 +98,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1003"
 
     match {
       expr {
@@ -112,7 +112,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1004"
 
     match {
       expr {
@@ -126,7 +126,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1005"
 
     match {
       expr {
@@ -140,7 +140,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1006"
 
     match {
       expr {
@@ -154,7 +154,7 @@ resource "google_compute_security_policy" "default" {
     preview     = true
 
     action   = "deny(403)"
-    priority = "2"
+    priority = "1007"
 
     match {
       expr {
@@ -211,7 +211,14 @@ resource "google_compute_backend_service" "default" {
   enable_cdn = var.application_cdn_enabled
 
   cdn_policy {
-    cache_mode  = "CACHE_ALL_STATIC"
+    cache_mode = "CACHE_ALL_STATIC"
+
+    cache_key_policy {
+      include_host         = true
+      include_protocol     = true
+      include_query_string = true
+    }
+
     default_ttl = 3600
     client_ttl  = 3600
     max_ttl     = 86400
