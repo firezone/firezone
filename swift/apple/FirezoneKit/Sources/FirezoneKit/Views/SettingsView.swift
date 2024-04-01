@@ -5,10 +5,8 @@
 //
 
 import Combine
-import Dependencies
 import OSLog
 import SwiftUI
-import XCTestDynamicOverlay
 
 enum SettingsViewError: Error {
   case logFolderIsUnavailable

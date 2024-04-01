@@ -7,13 +7,10 @@
 import AuthenticationServices
 import Combine
 import SwiftUI
-import XCTestDynamicOverlay
 
 @MainActor
 final class AuthViewModel: ObservableObject {
   let tunnelStore: TunnelStore
-
-  var settingsUndefined: () -> Void = unimplemented("\(AuthView.self).settingsUndefined")
 
   private var cancellables = Set<AnyCancellable>()
 

@@ -6,7 +6,6 @@
 
 import Combine
 import CryptoKit
-import Dependencies
 import Foundation
 import NetworkExtension
 import OSLog
@@ -60,9 +59,6 @@ public final class TunnelStore: ObservableObject {
     private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
     private let bundleDescription = "Firezone"
   #endif
-
-  @Dependency(\.keychain) private var keychain
-  @Dependency(\.mainQueue) private var mainQueue
 
   public init(logger: AppLogger) {
     self.logger = logger

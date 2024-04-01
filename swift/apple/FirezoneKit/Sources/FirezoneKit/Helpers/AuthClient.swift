@@ -5,7 +5,6 @@
 //
 
 import AuthenticationServices
-import Dependencies
 import Foundation
 
 enum AuthClientError: Error {

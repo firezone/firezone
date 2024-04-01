@@ -6,15 +6,12 @@
 
 #if os(macOS)
   import Combine
-  import Dependencies
   import OSLog
   import SwiftUI
   import NetworkExtension
 
   @MainActor
   public final class MenuBar: NSObject {
-    @Dependency(\.mainQueue) private var mainQueue
-
     private var cancellables: Set<AnyCancellable> = []
     private var statusItem: NSStatusItem
 
@@ -54,7 +51,7 @@
 
     private func setupObservers() {
       tunnelStore.$status
-        .receive(on: mainQueue)
+        .receive(on: RunLoop.main)
         .sink { [weak self] status in
           guard let self = self else { return }
           self.updateStatusItemIcon(status: status)
@@ -64,7 +61,7 @@
         .store(in: &cancellables)
 
       tunnelStore.$resourceListJSON
-        .receive(on: mainQueue)
+        .receive(on: RunLoop.main)
         .sink { [weak self] json in
           guard let self = self else { return }
 

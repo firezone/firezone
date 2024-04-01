@@ -5,14 +5,11 @@
 //
 
 import Combine
-import Dependencies
 import SwiftUI
 
 #if os(iOS)
   @MainActor
   final class WelcomeViewModel: ObservableObject {
-    @Dependency(\.mainQueue) private var mainQueue
-
     private var cancellables = Set<AnyCancellable>()
 
     enum State {
@@ -31,11 +28,7 @@ import SwiftUI
       }
     }
 
-    @Published var state: State? {
-      didSet {
-        bindState()
-      }
-    }
+    @Published var state: State?
 
     private let appStore: AppStore
     private let sessionNotificationHelper: SessionNotificationHelper
@@ -52,7 +45,7 @@ import SwiftUI
       self.sessionNotificationHelper = sessionNotificationHelper
 
       appStore.objectWillChange
-        .receive(on: mainQueue)
+        .receive(on: RunLoop.main)
         .sink { [weak self] in self?.objectWillChange.send() }
         .store(in: &cancellables)
 
@@ -60,7 +53,7 @@ import SwiftUI
         appStore.tunnelStore.$status,
         sessionNotificationHelper.$notificationDecision
       )
-      .receive(on: mainQueue)
+      .receive(on: RunLoop.main)
       .sink(receiveValue: { [weak self] status, notificationDecision in
         guard let self = self else { return }
         switch (status, notificationDecision) {
@@ -85,18 +78,6 @@ import SwiftUI
 
     func settingsButtonTapped() {
       isSettingsSheetPresented = true
-    }
-
-    private func bindState() {
-      switch state {
-      case .unauthenticated(let model):
-        model.settingsUndefined = { [weak self] in
-          self?.isSettingsSheetPresented = true
-        }
-
-      case .authenticated, .uninitialized, .needsPermission, .none:
-        break
-      }
     }
   }
 

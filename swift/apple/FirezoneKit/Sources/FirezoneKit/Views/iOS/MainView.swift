@@ -5,7 +5,6 @@
 //
 
 import Combine
-import Dependencies
 import NetworkExtension
 import OSLog
 import SwiftUI
@@ -17,8 +16,6 @@ import SwiftUI
     private var cancellables: Set<AnyCancellable> = []
 
     let tunnelStore: TunnelStore
-
-    @Dependency(\.mainQueue) private var mainQueue
 
     @Published private(set) var resources: [Resource]?
 
@@ -34,7 +31,7 @@ import SwiftUI
         tunnelStore.$status,
         tunnelStore.$resourceListJSON
       )
-      .receive(on: mainQueue)
+      .receive(on: RunLoop.main)
       .sink(receiveValue: { [weak self] status, json in
         guard let self = self else { return }
 
