@@ -231,10 +231,7 @@ where
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match self.decoder.decode(bytes) {
             Ok(Ok(message)) => {
@@ -331,10 +328,7 @@ where
         sender: PeerSocket,
         allocation: AllocationId,
     ) {
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
             tracing::debug!(target: "relay", "unknown allocation");
@@ -371,17 +365,12 @@ where
             return;
         }
 
-        tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         self.data_relayed_counter.add(bytes.len() as u64, &[]);
         self.data_relayed += bytes.len() as u64;
 
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
-
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&data);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: data,
@@ -780,15 +769,10 @@ where
         Span::current().record("recipient", field::display(&channel.peer_address));
         Span::current().record("channel", field::display(&channel_number));
 
-        tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
+        tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
-
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(data);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
 
         self.pending_commands.push_back(Command::ForwardData {
             id: channel.allocation,
@@ -914,10 +898,7 @@ where
             return;
         };
 
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: bytes,
