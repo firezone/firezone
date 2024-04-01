@@ -50,8 +50,9 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(target_os = "linux")]
     #[tokio::test]
-    async fn ipc_protocol() {
+    async fn ipc_linux() {
         let sock_path = dirs::runtime_dir()
             .unwrap()
             .join("dev.firezone.client_ipc_test");

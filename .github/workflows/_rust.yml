@@ -1,10 +1,14 @@
+---
 name: Rust
-on:
+"on":
   workflow_call:
 
 defaults:
   run:
     working-directory: ./rust
+
+macos-packages: &macos-packages "-p connlib-client-apple -p snownet"
+windows-packages: &windows-packages "-p connlib-client-shared -p firezone-client-tunnel -p firezone-gui-client -p firezone-tunnel -p snownet"
 
 permissions:
   contents: 'read'
@@ -19,11 +23,11 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-22.04
-            packages: # Intentionally blank as a package catch-all linter
+            packages:  # Intentionally blank as a package catch-all linter
           - runs-on: macos-14
-            packages: -p connlib-client-apple -p snownet
+            packages: *macos-packages
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-gui-client -p snownet
+            packages: *windows-packages
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -49,15 +53,15 @@ jobs:
           - runs-on: ubuntu-22.04
             packages: --workspace
           - runs-on: macos-12
-            packages: -p connlib-client-apple -p snownet
+            packages: *macos-packages
           - runs-on: macos-13
-            packages: -p connlib-client-apple -p snownet
+            packages: *macos-packages
           - runs-on: macos-14
-            packages: -p connlib-client-apple -p snownet
+            packages: *macos-packages
           - runs-on: windows-2019
-            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
+            packages: *windows-packages
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
+            packages: *windows-packages
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
