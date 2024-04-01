@@ -35,7 +35,7 @@ use stun_codec::rfc8656::attributes::{
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
-use tracing::{field, log, Span};
+use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
 
