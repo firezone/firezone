@@ -109,11 +109,23 @@ pub enum Command {
 
     ForwardData {
         id: AllocationId,
-        data: Vec<u8>,
+        data: ClientToPeer,
         receiver: PeerSocket,
     },
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
     Wake { deadline: SystemTime },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ClientToPeer(ChannelData);
+
+impl ClientToPeer {
+    /// Extract the data to forward to the peer.
+    ///
+    /// Data from clients arrives in [`ChannelData`] messages and we only forward the actual payload.
+    pub fn data(&self) -> &[u8] {
+        self.0.data()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -776,7 +788,7 @@ where
 
         self.pending_commands.push_back(Command::ForwardData {
             id: channel.allocation,
-            data: data.to_vec(),
+            data: ClientToPeer(message),
             receiver: channel.peer_address,
         });
     }

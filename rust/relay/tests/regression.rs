@@ -713,7 +713,7 @@ impl TestServer {
                         receiver,
                     },
                 ) => {
-                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data));
+                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data.data()));
                     assert_eq!(receiver, peer);
                     assert_eq!(self.id_to_port[&port], id);
                 }

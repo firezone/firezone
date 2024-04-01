@@ -1,4 +1,4 @@
-use crate::server::AllocationId;
+use crate::server::{AllocationId, ClientToPeer};
 use crate::udp_socket::UdpSocket;
 use crate::{AddressFamily, PeerSocket};
 use anyhow::{bail, Result};
@@ -17,7 +17,7 @@ pub struct Allocation {
     ///
     /// Stored here to make resource-cleanup easy.
     handle: task::JoinHandle<()>,
-    sender: mpsc::Sender<(Vec<u8>, PeerSocket)>,
+    sender: mpsc::Sender<(ClientToPeer, PeerSocket)>,
 }
 
 impl Allocation {
@@ -61,7 +61,7 @@ impl Allocation {
     ///
     /// All our data is relayed over UDP which by design is an unreliable protocol.
     /// Thus, any application running on top of this relay must already account for potential packet loss.
-    pub fn send(&mut self, data: Vec<u8>, recipient: PeerSocket) -> Result<()> {
+    pub fn send(&mut self, data: ClientToPeer, recipient: PeerSocket) -> Result<()> {
         match self.sender.try_send((data, recipient)) {
             Ok(()) => Ok(()),
             Err(e) if e.is_disconnected() => {
@@ -89,7 +89,7 @@ impl Drop for Allocation {
 
 async fn forward_incoming_relay_data(
     mut relayed_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
-    mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, PeerSocket)>,
+    mut client_to_peer_receiver: mpsc::Receiver<(ClientToPeer, PeerSocket)>,
     id: AllocationId,
     family: AddressFamily,
     port: u16,
@@ -104,7 +104,7 @@ async fn forward_incoming_relay_data(
             }
 
             Some((data, recipient)) = client_to_peer_receiver.next() => {
-                socket.send_to(&data, recipient.into_socket()).await?;
+                socket.send_to(data.data(), recipient.into_socket()).await?;
             }
         }
     }
