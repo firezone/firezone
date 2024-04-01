@@ -250,16 +250,16 @@ where
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
-                tracing::debug!(%error, "failed to decode channel data")
+                tracing::debug!(target: "relay", %error, "failed to decode channel data")
             }
             Err(client_message::Error::DecodeStun(ref error)) => {
-                tracing::debug!(%error, "failed to decode stun packet")
+                tracing::debug!(target: "relay", %error, "failed to decode stun packet")
             }
             Err(client_message::Error::UnknownMessageType(t)) => {
-                tracing::debug!(r#type = %t, "unknown STUN message type")
+                tracing::debug!(target: "relay", r#type = %t, "unknown STUN message type")
             }
             Err(client_message::Error::Eof) => {
-                tracing::debug!("unexpected EOF while parsing message")
+                tracing::debug!(target: "relay", "unexpected EOF while parsing message")
             }
         };
     }
@@ -812,7 +812,7 @@ where
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
-                log::debug!("failed to parse nonce: {e}");
+                tracing::debug!(target: "relay", "failed to parse nonce: {e}");
 
                 error_response(Unauthorized, request)
             })?;
@@ -955,7 +955,7 @@ where
 
     fn delete_allocation(&mut self, id: AllocationId) {
         let Some(client) = self.clients_by_allocation.remove(&id) else {
-            tracing::debug!("Unable to delete unknown allocation");
+            tracing::debug!(target: "relay", "Unable to delete unknown allocation");
 
             return;
         };
