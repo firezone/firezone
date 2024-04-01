@@ -99,6 +99,19 @@ variable "scaling_horizontal_replicas" {
   description = "Number of replicas in an instance group."
 }
 
+variable "scaling_max_horizontal_replicas" {
+  type     = number
+  nullable = true
+  default  = null
+
+  validation {
+    condition     = var.scaling_max_horizontal_replicas > 0 || var.scaling_max_horizontal_replicas == null
+    error_message = "Number of replicas should be greater or equal to 0."
+  }
+
+  description = "Maximum number of replacias an instance group can be auto-scaled to. `null` disables auto-scaling."
+}
+
 ################################################################################
 ## Observability
 ################################################################################

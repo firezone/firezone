@@ -420,7 +420,8 @@ module "web" {
   image      = "web"
   image_tag  = var.image_tag
 
-  scaling_horizontal_replicas = 2
+  scaling_horizontal_replicas     = 2
+  scaling_max_horizontal_replicas = 4
 
   observability_log_level = "debug"
 
@@ -494,7 +495,8 @@ module "api" {
   image      = "api"
   image_tag  = var.image_tag
 
-  scaling_horizontal_replicas = 2
+  scaling_horizontal_replicas     = 2
+  scaling_max_horizontal_replicas = 4
 
   observability_log_level = "debug"
 
