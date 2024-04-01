@@ -229,7 +229,7 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
+    #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
@@ -324,7 +324,7 @@ where
     }
 
     /// Process the bytes received from an allocation.
-    #[tracing::instrument(skip_all, fields(%sender, %allocation, recipient, channel), level = "error")]
+    #[tracing::instrument(level = "debug", skip_all, fields(%sender, %allocation, recipient, channel))]
     pub fn handle_peer_traffic(
         &mut self,
         bytes: &[u8],
@@ -389,7 +389,7 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub fn handle_deadline_reached(&mut self, now: SystemTime) {
         for action in self.time_events.pending_actions(now) {
             match action {
@@ -434,7 +434,7 @@ where
     }
 
     /// An allocation failed.
-    #[tracing::instrument(skip(self), fields(%allocation), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self), fields(%allocation))]
     pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
         self.delete_allocation(allocation)
     }
@@ -734,7 +734,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(skip(self, message, now), fields(%sender), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self, message, now), fields(%sender))]
     fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
