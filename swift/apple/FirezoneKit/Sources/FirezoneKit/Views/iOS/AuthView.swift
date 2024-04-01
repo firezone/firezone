@@ -6,16 +6,14 @@
 
 import AuthenticationServices
 import Combine
-import Dependencies
 import SwiftUI
 import XCTestDynamicOverlay
 
 @MainActor
 final class AuthViewModel: ObservableObject {
-
   let tunnelStore: TunnelStore
 
-  var settingsUndefined: () -> Void = unimplemented("\(AuthViewModel.self).settingsUndefined")
+  var settingsUndefined: () -> Void = unimplemented("\(AuthView.self).settingsUndefined")
 
   private var cancellables = Set<AnyCancellable>()
 
@@ -23,12 +21,8 @@ final class AuthViewModel: ObservableObject {
     self.tunnelStore = tunnelStore
   }
 
-  func signInButtonTapped() async {
-    do {
-      try await tunnelStore.signIn()
-    } catch {
-      dump(error)
-    }
+  func signInButtonTapped() {
+    WebAuthSession.signIn(tunnelStore: tunnelStore)
   }
 }
 
@@ -54,7 +48,7 @@ struct AuthView: View {
             tapped = true
 
             DispatchQueue.main.async {
-              Task { await model.signInButtonTapped() }
+               model.signInButtonTapped()
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

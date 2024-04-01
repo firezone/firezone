@@ -16,22 +16,18 @@ import OSLog
 #endif
 
 enum TunnelStoreError: Error {
-  case tunnelCouldNotBeStarted
-  case tunnelCouldNotBeStopped
   case cannotSaveIfMissing
-  case cannotSignOutWhenConnected
-  case stopAlreadyBeingAttempted
   case startTunnelErrored(Error)
 }
 
-public struct TunnelStoreKeys {
+public enum TunnelStoreKeys {
   static let actorName = "actorName"
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
   public static let logFilter = "logFilter"
 }
 
-/// A utility class for managing our VPN profile in System Preferences
+/// A utility class for managing our VPN profile in System Preferences and responding to its state updates
 public final class TunnelStore: ObservableObject {
   // Make our tunnel configuration convenient for SettingsView to consume
   @Published private(set) var settings: Settings
@@ -58,6 +54,7 @@ public final class TunnelStore: ObservableObject {
     private let bundleIdentifier = Bundle.main.bundleIdentifier.map {
       "\($0).debug.network-extension"
     }
+
     private let bundleDescription = "Firezone (Debug)"
   #else
     private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
@@ -65,14 +62,13 @@ public final class TunnelStore: ObservableObject {
   #endif
 
   @Dependency(\.keychain) private var keychain
-  @Dependency(\.auth) private var auth
   @Dependency(\.mainQueue) private var mainQueue
 
   public init(logger: AppLogger) {
     self.logger = logger
-    self.status = .disconnected
-    self.manager = nil
-    self.settings = Settings.defaultValue
+    status = .disconnected
+    manager = nil
+    settings = Settings.defaultValue
 
     // Connect UI state updates to this manager's status
     setupTunnelObservers()
@@ -84,7 +80,8 @@ public final class TunnelStore: ObservableObject {
       logger.log("\(#function): \(managers.count) tunnel managers found")
       for manager in managers {
         if let protocolConfiguration = (manager.protocolConfiguration as? NETunnelProviderProtocol),
-           protocolConfiguration.providerBundleIdentifier == bundleIdentifier {
+           protocolConfiguration.providerBundleIdentifier == bundleIdentifier
+        {
           // Found it
           self.settings = Settings.fromProviderConfiguration(
             providerConfiguration: protocolConfiguration.providerConfiguration
@@ -129,7 +126,7 @@ public final class TunnelStore: ObservableObject {
 
     self.manager = manager
     self.settings = settings
-    self.status = manager.connection.status
+    status = manager.connection.status
   }
 
   func start(token: String? = nil) async throws {
@@ -189,24 +186,28 @@ public final class TunnelStore: ObservableObject {
     }
   }
 
-  public func cancelSignIn() {
-    auth.cancelSignIn()
+  func authURL() -> URL? {
+    if let manager = manager,
+       let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+       let providerConfiguration = protocolConfiguration.providerConfiguration,
+       let authBaseURLString = providerConfiguration[TunnelStoreKeys.authBaseURL] as? String,
+       let authURL = URL(string: authBaseURLString)
+    {
+      return authURL
+    } else {
+      return nil
+    }
   }
 
-  func signIn() async throws {
+  func signIn(authResponse: AuthResponse) async throws {
     logger.log("\(#function)")
     guard let manager = manager,
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          var providerConfiguration = protocolConfiguration.providerConfiguration,
-          let authBaseURLString = providerConfiguration[TunnelStoreKeys.authBaseURL] as? String,
-          let authURL = URL(string: authBaseURLString)
+          var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
       logger.error("\(#function): Can't sign in if our tunnel configuration is missing or invalid!")
       return
     }
-
-    // Open webview and start sign in flow
-    let authResponse = try await auth.signIn(authURL)
 
     // Save actorName
     providerConfiguration[TunnelStoreKeys.actorName] = authResponse.actorName
@@ -234,7 +235,7 @@ public final class TunnelStore: ObservableObject {
   func beginUpdatingResources() {
     logger.log("\(#function)")
 
-    self.updateResources()
+    updateResources()
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
@@ -242,19 +243,19 @@ public final class TunnelStore: ObservableObject {
       self.updateResources()
     }
     RunLoop.main.add(timer, forMode: .common)
-    self.resourcesTimer = timer
+    resourcesTimer = timer
   }
 
   func endUpdatingResources() {
-    self.resourcesTimer = nil
+    resourcesTimer = nil
   }
 
   func save(_ settings: Settings) async throws {
     logger.log("\(#function)")
 
     guard let manager = manager,
-      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-      var providerConfiguration = protocolConfiguration.providerConfiguration
+          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
       logger.error("Manager doesn't seem initialized. Can't save advanced settings.")
       throw TunnelStoreError.cannotSaveIfMissing
@@ -269,14 +270,14 @@ public final class TunnelStore: ObservableObject {
     try await manager.loadFromPreferences()
 
     // Update our published settings
-    self.status = manager.connection.status
+    status = manager.connection.status
     self.settings = settings
   }
 
   func actorName() -> String? {
     guard let manager = manager,
-      let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-      let providerConfiguration = protocolConfiguration.providerConfiguration
+          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          let providerConfiguration = protocolConfiguration.providerConfiguration
     else {
       logger.error("\(#function): Manager not initialized!")
       return nil
@@ -318,7 +319,9 @@ public final class TunnelStore: ObservableObject {
   private func setupTunnelObservers() {
     logger.log("\(#function)")
 
-    for task in tunnelObservingTasks { task.cancel() }
+    for task in tunnelObservingTasks {
+      task.cancel()
+    }
     tunnelObservingTasks.removeAll()
 
     tunnelObservingTasks.append(
@@ -355,10 +358,10 @@ public final class TunnelStore: ObservableObject {
     status = session.status
 
     if case .disconnected = status,
-      let savedValue = try? String(contentsOf: SharedAccess.providerStopReasonURL, encoding: .utf8),
-      let rawValue = Int(savedValue),
-      let reason = NEProviderStopReason(rawValue: rawValue),
-      case .authenticationCanceled = reason
+       let savedValue = try? String(contentsOf: SharedAccess.providerStopReasonURL, encoding: .utf8),
+       let rawValue = Int(savedValue),
+       let reason = NEProviderStopReason(rawValue: rawValue),
+       case .authenticationCanceled = reason
     {
       await consumeCanceledAuthentication()
     }
@@ -383,8 +386,8 @@ public final class TunnelStore: ObservableObject {
     }
 
     try await manager.loadFromPreferences()
-    self.status = manager.connection.status
-    self.settings = Settings.fromProviderConfiguration(providerConfiguration: providerConfiguration)
+    status = manager.connection.status
+    settings = Settings.fromProviderConfiguration(providerConfiguration: providerConfiguration)
 
     if !manager.isEnabled {
       logger.log("\(#function): Something turned us off! Shutting down the tunnel")

@@ -195,12 +195,20 @@
     }
 
     @objc private func signInButtonTapped() {
-      Task {
-        do {
-          try await tunnelStore.signIn()
-        } catch {
-          logger.error("Error signing in: \(String(describing: error))")
+      guard let authURL = tunnelStore.authURL(),
+            let authClient = try? AuthClient(authURL: authURL),
+            let builtURL = try? authClient.build()
+      else { fatalError("Couldn't build authURL!") }
+
+      WebAuthSession.signIn(url: builtURL) { returnedURL, error in
+        guard error == nil,
+              let authResponse = try? authClient.response(url: returnedURL)
+        else {
+          dump(error)
+          return
         }
+
+        Task { try await self.tunnelStore.signIn(authResponse: authResponse) }
       }
     }
 

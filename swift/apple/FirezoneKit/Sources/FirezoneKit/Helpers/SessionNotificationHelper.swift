@@ -145,6 +145,7 @@ public class SessionNotificationHelper: NSObject {
   #elseif os(macOS)
     // In macOS, use a Cocoa alert.
     // This gets called from the app side.
+  @MainActor
     static func showSignedOutAlertmacOS(logger: AppLogger, tunnelStore: TunnelStore) {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
@@ -155,13 +156,7 @@ public class SessionNotificationHelper: NSObject {
       let response = alert.runModal()
       if response == NSApplication.ModalResponse.alertFirstButtonReturn {
         logger.log("SessionNotificationHelper: \(#function): 'Sign In' clicked in notification")
-        Task {
-          do {
-            try await tunnelStore.signIn()
-          } catch {
-            logger.error("Error signing in: \(error)")
-          }
-        }
+        AppStore.WindowDefinition.auth.openWindow()
       }
     }
     #endif
@@ -176,20 +171,11 @@ public class SessionNotificationHelper: NSObject {
       if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
          actionId == NotificationIndentifier.signInNotificationAction.rawValue {
         // User clicked on 'Sign In' in the notification
-        Task {
-          do {
-            try await tunnelStore.signIn()
-          } catch {
-            self.logger.error("Error signing in: \(error)")
-          }
-          DispatchQueue.main.async {
-            completionHandler()
-          }
-        }
-      } else {
-        DispatchQueue.main.async {
-          completionHandler()
-        }
+        WebAuthSession.signIn(tunnelStore: tunnelStore)
+      }
+
+      DispatchQueue.main.async {
+        completionHandler()
       }
     }
   }

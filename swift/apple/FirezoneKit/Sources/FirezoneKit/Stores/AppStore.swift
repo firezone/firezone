@@ -5,7 +5,6 @@
 //
 
 import Combine
-import Dependencies
 import OSLog
 
 #if os(macOS)
@@ -18,6 +17,7 @@ public final class AppStore: ObservableObject {
     public enum WindowDefinition: String, CaseIterable {
       case askPermission = "ask-permission"
       case settings = "settings"
+      case auth = "auth"
 
       public var identifier: String { "firezone-\(rawValue)" }
       public var externalEventMatchString: String { rawValue }

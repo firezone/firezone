@@ -90,9 +90,5 @@ struct FirezoneApp: App {
       // SwiftUI will show the first window group, so close it on launch
       _ = AppStore.WindowDefinition.allCases.map { $0.window()?.close() }
     }
-
-    func applicationWillTerminate(_: Notification) {
-      self.appStore?.tunnelStore.cancelSignIn()
-    }
   }
 #endif
