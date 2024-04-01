@@ -60,8 +60,6 @@ struct Args {
     #[arg(env = "FIREZONE_NAME")]
     name: Option<String>,
     /// A seed to use for all randomness operations.
-    ///
-    /// Only available in debug builds.
     #[arg(long, env, hide = true)]
     rng_seed: Option<u64>,
 
@@ -286,7 +284,6 @@ struct JoinMessage {
     stamp_secret: String,
 }
 
-#[cfg(debug_assertions)]
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
         return StdRng::from_entropy();
@@ -295,15 +292,6 @@ fn make_rng(seed: Option<u64>) -> StdRng {
     tracing::info!(target: "relay", "Seeding RNG from '{seed}'");
 
     StdRng::seed_from_u64(seed)
-}
-
-#[cfg(not(debug_assertions))]
-fn make_rng(seed: Option<u64>) -> StdRng {
-    if seed.is_some() {
-        tracing::debug!(target: "relay", "Ignoring rng-seed because we are running in release mode");
-    }
-
-    StdRng::from_entropy()
 }
 
 struct Eventloop<R> {
