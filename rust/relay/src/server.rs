@@ -239,7 +239,7 @@ where
         match self.decoder.decode(bytes) {
             Ok(Ok(message)) => {
                 if let Some(id) = message.transaction_id() {
-                    Span::current().record("transaction_id", hex::encode(id.as_bytes()));
+                    Span::current().record("transaction_id", field::debug(id));
                 }
 
                 self.handle_client_message(message, sender, now);
