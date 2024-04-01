@@ -169,9 +169,9 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.51")
+    implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.51")
+    kapt("com.google.dagger:hilt-android-compiler:2.51.1")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
