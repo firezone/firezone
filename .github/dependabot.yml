@@ -41,7 +41,7 @@ updates:
           - windows-implement
           - windows-sys
   - package-ecosystem: gradle
-    directory: kotlin/android/app/
+    directory: kotlin/android
     schedule:
       interval: monthly
     ignore:
