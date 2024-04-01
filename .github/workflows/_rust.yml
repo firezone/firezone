@@ -7,7 +7,7 @@ defaults:
   run:
     working-directory: ./rust
 
-macos-packages: &macos-packages "-p connlib-client-apple -p snownet"
+macos-packages: &macos-packages "-p connlib-client-apple -p connlib-client-shared -p firezone-tunnel -p snownet"
 windows-packages: &windows-packages "-p connlib-client-shared -p firezone-client-tunnel -p firezone-gui-client -p firezone-tunnel -p snownet"
 
 permissions:
