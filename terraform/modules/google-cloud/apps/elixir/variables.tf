@@ -47,16 +47,6 @@ variable "container_registry" {
   description = "Container registry URL to pull the image from."
 }
 
-# variable "container_registry_api_key" {
-#   type     = string
-#   nullable = false
-# }
-
-# variable "container_registry_user_name" {
-#   type     = string
-#   nullable = false
-# }
-
 ################################################################################
 ## Container Image
 ################################################################################
@@ -239,6 +229,14 @@ variable "application_dns_tld" {
   default  = null
 
   description = "DNS host which will be used to create DNS records for the application and provision SSL-certificates."
+}
+
+variable "application_cdn_enabled" {
+  type     = bool
+  nullable = false
+  default  = false
+
+  description = "Enable CDN for all static assets the application."
 }
 
 variable "application_ports" {

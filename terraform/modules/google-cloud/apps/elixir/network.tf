@@ -70,7 +70,15 @@ resource "google_compute_backend_service" "default" {
   timeout_sec                     = 86400
   connection_draining_timeout_sec = 120
 
-  enable_cdn       = false
+  enable_cdn = var.application_cdn_enabled
+
+  cdn_policy {
+    cache_mode  = "CACHE_ALL_STATIC"
+    default_ttl = 3600
+    client_ttl  = 3600
+    max_ttl     = 86400
+  }
+
   compression_mode = "DISABLED"
 
   custom_request_headers = [
