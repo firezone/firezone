@@ -471,7 +471,7 @@ where
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_client_input(&buffer, sender, now);
+                self.server.handle_client_input(buffer, sender, now);
                 continue; // Handle potentially new commands.
             }
 

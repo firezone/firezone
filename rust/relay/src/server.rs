@@ -230,7 +230,7 @@ where
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
+    pub fn handle_client_input(&mut self, bytes: Vec<u8>, sender: ClientSocket, now: SystemTime) {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match self.decoder.decode(bytes) {
@@ -370,7 +370,7 @@ where
         self.data_relayed_counter.add(bytes.len() as u64, &[]);
         self.data_relayed += bytes.len() as u64;
 
-        let data = ChannelData::new(*channel_number, bytes).to_bytes();
+        let data = ChannelData::new(*channel_number, bytes).into_msg();
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: data,

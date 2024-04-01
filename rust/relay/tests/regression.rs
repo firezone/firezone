@@ -699,7 +699,7 @@ impl TestServer {
                     Output::SendChannelData((peer, channeldata)),
                     Command::SendMessage { recipient, payload },
                 ) => {
-                    let expected_channel_data = hex::encode(channeldata.to_bytes());
+                    let expected_channel_data = hex::encode(channeldata.into_msg());
                     let actual_message = hex::encode(payload);
 
                     assert_eq!(expected_channel_data, actual_message);
@@ -800,39 +800,39 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
         .unwrap()
 }
 
-enum Input<'a> {
-    Client(ClientSocket, ClientMessage<'a>, SystemTime),
+enum Input {
+    Client(ClientSocket, ClientMessage, SystemTime),
     Peer(PeerSocket, Vec<u8>, u16),
     Time(SystemTime),
 }
 
-fn from_client<'a>(
+fn from_client(
     from: impl Into<SocketAddr>,
-    message: impl Into<ClientMessage<'a>>,
+    message: impl Into<ClientMessage>,
     now: SystemTime,
-) -> Input<'a> {
+) -> Input {
     Input::Client(ClientSocket::new(from.into()), message.into(), now)
 }
 
-fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input<'a> {
+fn from_peer(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input {
     Input::Peer(PeerSocket::new(from.into()), data.to_vec(), port)
 }
 
-fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
+fn forward_time_to(when: SystemTime) -> Input {
     Input::Time(when)
 }
 
 #[derive(Debug)]
-enum Output<'a> {
+enum Output {
     SendMessage((ClientSocket, Message<Attribute>)),
-    SendChannelData((ClientSocket, ChannelData<'a>)),
+    SendChannelData((ClientSocket, ChannelData)),
     Forward((PeerSocket, Vec<u8>, u16)),
     Wake(SystemTime),
     CreateAllocation(u16, AddressFamily),
     FreeAllocation(u16, AddressFamily),
 }
 
-fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output<'a> {
+fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output {
     Output::SendMessage((ClientSocket::new(source.into()), message))
 }
 
