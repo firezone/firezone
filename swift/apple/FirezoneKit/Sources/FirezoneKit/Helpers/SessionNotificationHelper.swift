@@ -46,13 +46,12 @@ public class SessionNotificationHelper: NSObject {
   @Published var notificationDecision: NotificationDecision = .uninitialized {
     didSet {
       self.logger.log(
-        "SessionNotificationHelper: notificationDecision changed to \(notificationDecision)"
+        "\(#function): notificationDecision changed to \(notificationDecision)"
       )
     }
   }
 
   public init(logger: AppLogger, tunnelStore: TunnelStore) {
-
     self.logger = logger
     self.tunnelStore = tunnelStore
 
@@ -81,7 +80,7 @@ public class SessionNotificationHelper: NSObject {
       notificationCenter.setNotificationCategories([certificateExpiryCategory])
       notificationCenter.getNotificationSettings { notificationSettings in
         self.logger.log(
-          "SessionNotificationHelper: getNotificationSettings returned. authorizationStatus is \(notificationSettings.authorizationStatus)"
+          "\(#function): authorizationStatus is \(notificationSettings.authorizationStatus)"
         )
         switch notificationSettings.authorizationStatus {
         case .notDetermined:
@@ -103,11 +102,11 @@ public class SessionNotificationHelper: NSObject {
       let notificationCenter = UNUserNotificationCenter.current()
       notificationCenter.requestAuthorization(options: [.sound, .alert]) { isAuthorized, error in
         self.logger.log(
-          "SessionNotificationHelper.askUserForNotificationPermissions: isAuthorized = \(isAuthorized)"
+          "\(#function): isAuthorized = \(isAuthorized)"
         )
         if let error = error {
           self.logger.log(
-            "SessionNotificationHelper.askUserForNotificationPermissions: Error: \(error)"
+            "\(#function): Error: \(error)"
           )
         }
         self.notificationDecision = .determined(isNotificationAllowed: isAuthorized)
@@ -134,9 +133,9 @@ public class SessionNotificationHelper: NSObject {
           )
           UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-              logger.error("showSignedOutNotificationiOS: Error requesting notification: \(error)")
+              logger.error("\(#function): Error requesting notification: \(error)")
             } else {
-              logger.error("showSignedOutNotificationiOS: Successfully requested notification")
+              logger.error("\(#function): Successfully requested notification")
             }
           }
         }
@@ -155,7 +154,7 @@ public class SessionNotificationHelper: NSObject {
       NSApp.activate(ignoringOtherApps: true)
       let response = alert.runModal()
       if response == NSApplication.ModalResponse.alertFirstButtonReturn {
-        logger.log("SessionNotificationHelper: \(#function): 'Sign In' clicked in notification")
+        logger.log("\(#function): 'Sign In' clicked in notification")
         AppStore.WindowDefinition.auth.openWindow()
       }
     }
@@ -165,7 +164,7 @@ public class SessionNotificationHelper: NSObject {
 #if os(iOS)
   extension SessionNotificationHelper: UNUserNotificationCenterDelegate {
     public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-      self.logger.log("SessionNotificationHelper: \(#function): 'Sign In' clicked in notification")
+      self.logger.log("\(#function): 'Sign In' clicked in notification")
       let actionId = response.actionIdentifier
       let categoryId = response.notification.request.content.categoryIdentifier
       if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,

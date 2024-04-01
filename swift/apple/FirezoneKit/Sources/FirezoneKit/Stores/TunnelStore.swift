@@ -235,7 +235,6 @@ public final class TunnelStore: ObservableObject {
   func beginUpdatingResources() {
     logger.log("\(#function)")
 
-    updateResources()
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
