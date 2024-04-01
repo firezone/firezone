@@ -36,10 +36,12 @@ jobs:
           cargo doc --all-features --no-deps --document-private-items $FIREZONE_PACKAGES
         env:
           RUSTDOCFLAGS: "-D warnings"
+        name: "cargo doc"
         shell: bash
       - run: |
           source ../scripts/tests/${{ matrix.packages }}
           cargo clippy --all-targets --all-features $FIREZONE_PACKAGES -- -D warnings
+        name: "cargo clippy"
         shell: bash
 
   test:
@@ -76,6 +78,7 @@ jobs:
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           RUST_BACKTRACE: full
+        name: "cargo test"
         shell: bash
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
