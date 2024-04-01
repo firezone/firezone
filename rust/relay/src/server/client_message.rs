@@ -47,7 +47,7 @@ impl Decoder {
                         let transaction_id = broken_message.transaction_id();
                         let error = broken_message.error().clone();
 
-                        tracing::debug!(transaction_id = %hex::encode(transaction_id.as_bytes()), %method, %error, "Failed to decode attributes of message");
+                        tracing::debug!(transaction_id = ?transaction_id, %method, %error, "Failed to decode attributes of message");
 
                         let error_code = ErrorCode::from(error);
 
