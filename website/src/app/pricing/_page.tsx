@@ -111,7 +111,7 @@ export default function _Page() {
               Team
             </h3>
             <p className="mb-8">
-              Zero trust network access for teams and small organizations
+              Zero trust network access for teams and organizations
             </p>
             <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold text-neutral-900">
               {annual && (
