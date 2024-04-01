@@ -23,7 +23,149 @@ resource "google_compute_security_policy" "default" {
 
   type = "CLOUD_ARMOR"
 
+  advanced_options_config {
+    json_parsing = "STANDARD"
+    log_level    = "NORMAL"
+  }
+
+  adaptive_protection_config {
+    layer_7_ddos_defense_config {
+      enable          = local.public_application
+      rule_visibility = "STANDARD"
+    }
+  }
+
   rule {
+    description = "rate limit all requests that match the default rule"
+
+    # TODO: disable preview when we make sure that rate limited logs look good for some time
+    preview = true
+
+    action   = "throttle"
+    priority = "1"
+
+    match {
+      versioned_expr = "SRC_IPS_V1"
+
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = 240
+        interval_sec = 60
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured sqli-v33-stable OWASP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured xss-v33-stable OWASP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured methodenforcement-v33-stable OWASP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('methodenforcement-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured scannerdetection-v33-stable OWASP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured protocolattack-v33-stable OWASP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured sessionfixation-v33-stable OWASP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('sessionfixation-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  rule {
+    description = "log all requests that match preconfigured cve-canary GCP rule"
+    preview     = true
+
+    action   = "deny(403)"
+    priority = "2"
+
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('cve-canary', {'sensitivity': 2})"
+      }
+    }
+  }
+
+  rule {
+    description = "default allow rule"
+
     action   = "allow"
     priority = "2147483647"
 
@@ -34,11 +176,7 @@ resource "google_compute_security_policy" "default" {
         src_ip_ranges = ["*"]
       }
     }
-
-    description = "default allow rule"
   }
-
-  # TODO: Configure more WAF rules
 
   depends_on = [
     google_project_service.compute,
