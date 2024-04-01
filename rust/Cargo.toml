@@ -82,3 +82,7 @@ strip = "none"
 debug = "full"
 split-debuginfo = "packed"
 strip = "none"
+
+# Override build settings for the relay, so we can capture flamegraphs
+[profile.release.package.firezone-relay]
+debug = "full"
