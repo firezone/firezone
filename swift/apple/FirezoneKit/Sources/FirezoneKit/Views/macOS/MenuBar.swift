@@ -195,21 +195,7 @@
     }
 
     @objc private func signInButtonTapped() {
-      guard let authURL = tunnelStore.authURL(),
-            let authClient = try? AuthClient(authURL: authURL),
-            let builtURL = try? authClient.build()
-      else { fatalError("Couldn't build authURL!") }
-
-      WebAuthSession.signIn(url: builtURL) { returnedURL, error in
-        guard error == nil,
-              let authResponse = try? authClient.response(url: returnedURL)
-        else {
-          dump(error)
-          return
-        }
-
-        Task { try await self.tunnelStore.signIn(authResponse: authResponse) }
-      }
+      WebAuthSession.signIn(tunnelStore: tunnelStore)
     }
 
     @objc private func signOutButtonTapped() {

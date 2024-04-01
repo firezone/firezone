@@ -38,7 +38,6 @@ struct FirezoneApp: App {
       self._appViewModel =
         StateObject(wrappedValue: AppViewModel(appStore: appStore))
     #endif
-
   }
 
   var body: some Scene {

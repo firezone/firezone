@@ -187,16 +187,16 @@ public final class TunnelStore: ObservableObject {
   }
 
   func authURL() -> URL? {
-    if let manager = manager,
+    guard let manager = manager,
        let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
        let providerConfiguration = protocolConfiguration.providerConfiguration,
        let authBaseURLString = providerConfiguration[TunnelStoreKeys.authBaseURL] as? String,
        let authURL = URL(string: authBaseURLString)
-    {
-      return authURL
-    } else {
+    else {
       return nil
     }
+
+    return authURL
   }
 
   func signIn(authResponse: AuthResponse) async throws {
@@ -235,10 +235,9 @@ public final class TunnelStore: ObservableObject {
   func beginUpdatingResources() {
     logger.log("\(#function)")
 
-    let intervalInSeconds: TimeInterval = 1
+    let intervalInSeconds: TimeInterval = 0.5
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
-      guard self.status == .connected else { return }
       self.updateResources()
     }
     RunLoop.main.add(timer, forMode: .common)

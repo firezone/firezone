@@ -7,8 +7,6 @@
 import Combine
 import Dependencies
 import SwiftUI
-import SwiftUINavigation
-import SwiftUINavigationCore
 
 #if os(iOS)
   @MainActor
