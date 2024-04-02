@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 axum = { version = "0.7.5", default-features = false, features = ["http1", "tokio"] }
 tokio = { version = "1.36.0", features = ["net"] }
-clap = { version = "4.5.3", features = ["derive", "env"] }
+clap = { version = "4.5.4", features = ["derive", "env"] }
 
 [lints]
 workspace = true
