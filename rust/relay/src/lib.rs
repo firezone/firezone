@@ -11,7 +11,7 @@ pub mod proptest;
 pub use allocation::Allocation;
 pub use net_ext::IpAddrExt;
 pub use server::{
-    Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
+    Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
     CreatePermission, PeerToClient, Refresh, Server,
 };
 pub use sleep::Sleep;

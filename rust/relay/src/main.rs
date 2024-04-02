@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::{
-    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket,
+    AddressFamily, Allocation, AllocationPort, ClientSocket, Command, IpStack, PeerSocket,
     PeerToClient, Server, Sleep, UdpSocket,
 };
 use futures::channel::mpsc;
@@ -304,9 +304,9 @@ struct Eventloop<R> {
     outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
     server: Server<R>,
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
-    allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
-    relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
-    relay_data_receiver: mpsc::Receiver<(PeerToClient, PeerSocket, AllocationId)>,
+    allocations: HashMap<(AllocationPort, AddressFamily), Allocation>,
+    relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationPort)>,
+    relay_data_receiver: mpsc::Receiver<(PeerToClient, PeerSocket, AllocationPort)>,
     sleep: Sleep,
 
     stats_log_interval: tokio::time::Interval,
@@ -390,41 +390,46 @@ where
                             }
                         }
                     }
-                    Command::CreateAllocation { id, family, port } => {
+                    Command::CreateAllocation { port, family } => {
                         let span =
-                            tracing::debug_span!("Command::CreateAllocation", %id, %family, %port);
+                            tracing::debug_span!("Command::CreateAllocation", %family, %port);
                         let _guard = span.enter();
 
                         self.allocations.insert(
-                            (id, family),
-                            Allocation::new(self.relay_data_sender.clone(), id, family, port),
+                            (port, family),
+                            Allocation::new(self.relay_data_sender.clone(), port, family),
                         );
                     }
-                    Command::FreeAllocation { id, family } => {
-                        let span = tracing::debug_span!("Command::FreeAllocation", %id, %family);
+                    Command::FreeAllocation { port, family } => {
+                        let span = tracing::debug_span!("Command::FreeAllocation", %family, %port);
                         let _guard = span.enter();
 
-                        if self.allocations.remove(&(id, family)).is_none() {
-                            tracing::debug!(target: "relay", "Unknown allocation {id}");
+                        if self.allocations.remove(&(port, family)).is_none() {
+                            tracing::debug!(target: "relay", "Unknown allocation {port}");
                             continue;
                         };
 
-                        tracing::info!(target: "relay", "Freeing addresses of allocation {id}");
+                        tracing::info!(target: "relay", "Freeing addresses of allocation {port}");
                     }
-                    Command::ForwardDataClientToPeer { id, data, receiver } => {
-                        let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
+                    Command::ForwardDataClientToPeer {
+                        port,
+                        data,
+                        receiver,
+                    } => {
+                        let span = tracing::debug_span!("Command::ForwardData", %port, %receiver);
                         let _guard = span.enter();
 
-                        let mut allocation = match self.allocations.entry((id, receiver.family())) {
+                        let mut allocation = match self.allocations.entry((port, receiver.family()))
+                        {
                             Entry::Occupied(entry) => entry,
                             Entry::Vacant(_) => {
-                                tracing::debug!(target: "relay", allocation = %id, family = %receiver.family(), "Unknown allocation");
+                                tracing::debug!(target: "relay", allocation = %port, family = %receiver.family(), "Unknown allocation");
                                 continue;
                             }
                         };
 
                         if allocation.get_mut().send(data, receiver).is_err() {
-                            self.server.handle_allocation_failed(id);
+                            self.server.handle_allocation_failed(port);
                             allocation.remove();
                         }
                     }

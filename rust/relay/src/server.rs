@@ -55,8 +55,7 @@ pub struct Server<R> {
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<ClientSocket, Allocation>,
-    clients_by_allocation: HashMap<AllocationId, ClientSocket>,
-    allocations_by_port: HashMap<u16, AllocationId>,
+    clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
 
     lowest_port: u16,
     highest_port: u16,
@@ -67,7 +66,6 @@ pub struct Server<R> {
     channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), u16>,
 
     pending_commands: VecDeque<Command>,
-    next_allocation_id: AllocationId,
 
     rng: R,
 
@@ -94,20 +92,19 @@ pub enum Command {
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_peer_traffic`].
     /// A single allocation can reference one of either [AddressFamily]s or both.
-    /// Only the combination of [AllocationId] and [AddressFamily] is unique.
+    /// Only the combination of [AllocationPort] and [AddressFamily] is unique.
     CreateAllocation {
-        id: AllocationId,
+        port: AllocationPort,
         family: AddressFamily,
-        port: u16,
     },
-    /// Free the allocation associated with the given [`AllocationId`] and [AddressFamily]
+    /// Free the allocation associated with the given [AllocationPort] and [AddressFamily].
     FreeAllocation {
-        id: AllocationId,
+        port: AllocationPort,
         family: AddressFamily,
     },
 
     ForwardDataClientToPeer {
-        id: AllocationId,
+        port: AllocationPort,
         data: ClientToPeer,
         receiver: PeerSocket,
     },
@@ -148,21 +145,21 @@ impl ClientToPeer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct AllocationId(u64);
+pub struct AllocationPort(u16);
 
-impl AllocationId {
-    fn next(&mut self) -> Self {
-        let id = self.0;
+impl AllocationPort {
+    pub fn new(port: u16) -> Self {
+        Self(port)
+    }
 
-        self.0 += 1;
-
-        AllocationId(id)
+    pub fn value(&self) -> u16 {
+        self.0
     }
 }
 
-impl fmt::Display for AllocationId {
+impl fmt::Display for AllocationPort {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AID-{}", self.0)
+        self.0.fmt(f)
     }
 }
 
@@ -221,13 +218,11 @@ where
             public_address: public_address.into(),
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
-            allocations_by_port: Default::default(),
             lowest_port,
             highest_port,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
-            next_allocation_id: AllocationId(1),
             auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
             rng,
             nonces: Default::default(),
@@ -361,7 +356,7 @@ where
         &mut self,
         mut msg: PeerToClient,
         sender: PeerSocket,
-        allocation: AllocationId,
+        allocation: AllocationPort,
     ) {
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -415,7 +410,7 @@ where
 
     /// An allocation failed.
     #[tracing::instrument(level = "debug", skip(self), fields(%allocation))]
-    pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
+    pub fn handle_allocation_failed(&mut self, allocation: AllocationPort) {
         self.delete_allocation(allocation)
     }
 
@@ -450,7 +445,7 @@ where
         let expired_allocations = self
             .allocations
             .values()
-            .filter_map(|a| a.is_expired(now).then_some(a.id))
+            .filter_map(|a| a.is_expired(now).then_some(a.port))
             .collect::<Vec<_>>();
 
         for id in expired_allocations {
@@ -501,14 +496,14 @@ where
         self.verify_auth(&request, now)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
-            Span::current().record("allocation", display(&allocation.id));
+            Span::current().record("allocation", display(&allocation.port));
             tracing::warn!(target: "relay", "Client already has an allocation");
 
             return Err(error_response(AllocationMismatch, &request));
         }
 
         let max_available_ports = self.max_available_ports() as usize;
-        if self.allocations_by_port.len() == max_available_ports {
+        if self.clients_by_allocation.len() == max_available_ports {
             tracing::warn!(target: "relay", %max_available_ports, "No more ports available");
 
             return Err(error_response(InsufficientCapacity, &request));
@@ -549,12 +544,12 @@ where
 
         message.add_attribute(XorRelayAddress::new(SocketAddr::new(
             first_relay_address,
-            port,
+            port.value(),
         )));
         if let Some(second_relay_address) = maybe_second_relay_addr {
             message.add_attribute(XorRelayAddress::new(SocketAddr::new(
                 second_relay_address,
-                port,
+                port.value(),
             )));
         }
 
@@ -562,20 +557,18 @@ where
         message.add_attribute(effective_lifetime.clone());
 
         self.pending_commands.push_back(Command::CreateAllocation {
-            id: allocation.id,
+            port: allocation.port,
             family: first_relay_address.family(),
-            port,
         });
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             self.pending_commands.push_back(Command::CreateAllocation {
-                id: allocation.id,
+                port: allocation.port,
                 family: second_relay_addr.family(),
-                port,
             });
         }
         self.send_message(message, sender);
 
-        Span::current().record("allocation", display(&allocation.id));
+        Span::current().record("allocation", display(&allocation.port));
 
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             tracing::info!(
@@ -594,7 +587,7 @@ where
             )
         }
 
-        self.clients_by_allocation.insert(allocation.id, sender);
+        self.clients_by_allocation.insert(allocation.port, sender);
         self.allocations.insert(sender, allocation);
         self.allocations_up_down_counter.add(1, &[]);
 
@@ -618,14 +611,14 @@ where
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
 
-        Span::current().record("allocation", display(&allocation.id));
+        Span::current().record("allocation", display(&allocation.port));
 
         let effective_lifetime = request.effective_lifetime();
 
         if effective_lifetime.lifetime().is_zero() {
-            let id = allocation.id;
+            let port = allocation.port;
 
-            self.delete_allocation(id);
+            self.delete_allocation(port);
             self.send_message(
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
@@ -670,7 +663,7 @@ where
         let requested_channel = request.channel_number().value();
         let peer_address = PeerSocket(request.xor_peer_address().address());
 
-        Span::current().record("allocation", display(&allocation.id));
+        Span::current().record("allocation", display(&allocation.port));
         Span::current().record("peer", display(&peer_address));
         Span::current().record("channel", display(&requested_channel));
 
@@ -723,8 +716,8 @@ where
         // TODO: Any additional validations would go here.
         // TODO: Capacity checking would go here.
 
-        let allocation_id = allocation.id;
-        self.create_channel_binding(sender, requested_channel, peer_address, allocation_id, now);
+        let port = allocation.port;
+        self.create_channel_binding(sender, requested_channel, peer_address, port, now);
         self.send_message(
             channel_bind_success_response(request.transaction_id()),
             sender,
@@ -794,7 +787,7 @@ where
 
         self.pending_commands
             .push_back(Command::ForwardDataClientToPeer {
-                id: channel.allocation,
+                port: channel.allocation,
                 data: ClientToPeer(message),
                 receiver: channel.peer_address,
             });
@@ -838,28 +831,20 @@ where
         first_relay_addr: IpAddr,
         second_relay_addr: Option<IpAddr>,
     ) -> Allocation {
-        // First, find an unused port.
-
         assert!(
-            self.allocations_by_port.len() < self.max_available_ports() as usize,
+            self.clients_by_allocation.len() < self.max_available_ports() as usize,
             "No more ports available; this would loop forever"
         );
 
         let port = loop {
-            let candidate = self.rng.gen_range(self.lowest_port..self.highest_port);
+            let candidate = AllocationPort(self.rng.gen_range(self.lowest_port..self.highest_port));
 
-            if !self.allocations_by_port.contains_key(&candidate) {
+            if !self.clients_by_allocation.contains_key(&candidate) {
                 break candidate;
             }
         };
 
-        // Second, grab a new allocation ID.
-        let id = self.next_allocation_id.next();
-
-        self.allocations_by_port.insert(port, id);
-
         Allocation {
-            id,
             port,
             expires_at: now + lifetime.lifetime(),
             first_relay_addr,
@@ -876,7 +861,7 @@ where
         client: ClientSocket,
         requested_channel: u16,
         peer: PeerSocket,
-        id: AllocationId,
+        id: AllocationPort,
         now: SystemTime,
     ) {
         let expiry = now + CHANNEL_BINDING_DURATION;
@@ -939,8 +924,8 @@ where
         );
     }
 
-    fn delete_allocation(&mut self, id: AllocationId) {
-        let Some(client) = self.clients_by_allocation.remove(&id) else {
+    fn delete_allocation(&mut self, port: AllocationPort) {
+        let Some(client) = self.clients_by_allocation.remove(&port) else {
             tracing::debug!(target: "relay", "Unable to delete unknown allocation");
 
             return;
@@ -952,16 +937,14 @@ where
 
         let port = allocation.port;
 
-        self.allocations_by_port.remove(&port);
-
         self.allocations_up_down_counter.add(-1, &[]);
         self.pending_commands.push_back(Command::FreeAllocation {
-            id,
+            port,
             family: allocation.first_relay_addr.family(),
         });
         if let Some(second_relay_addr) = allocation.second_relay_addr {
             self.pending_commands.push_back(Command::FreeAllocation {
-                id,
+                port,
                 family: second_relay_addr.family(),
             })
         }
@@ -1015,9 +998,8 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
 
 /// Represents an allocation of a client.
 struct Allocation {
-    id: AllocationId,
     /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
-    port: u16,
+    port: AllocationPort,
     expires_at: SystemTime,
 
     first_relay_addr: IpAddr,
@@ -1032,7 +1014,7 @@ struct Channel {
     peer_address: PeerSocket,
 
     /// The allocation this channel belongs to.
-    allocation: AllocationId,
+    allocation: AllocationPort,
 
     /// Whether the channel is currently bound.
     ///

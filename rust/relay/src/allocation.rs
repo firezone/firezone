@@ -1,9 +1,9 @@
-use crate::server::{AllocationId, ClientToPeer};
+use crate::server::{AllocationPort, ClientToPeer};
 use crate::udp_socket::UdpSocket;
 use crate::{AddressFamily, PeerSocket, PeerToClient};
 use anyhow::{bail, Result};
 use futures::channel::mpsc;
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt as _, StreamExt};
 use std::convert::Infallible;
 use tokio::task;
 
@@ -11,7 +11,7 @@ use tokio::task;
 const MAX_BUFFERED_ITEMS: usize = 1000;
 
 pub struct Allocation {
-    id: AllocationId,
+    port: AllocationPort,
 
     /// The handle to the task that is running the allocation.
     ///
@@ -22,10 +22,9 @@ pub struct Allocation {
 
 impl Allocation {
     pub fn new(
-        relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
-        id: AllocationId,
+        relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationPort)>,
+        port: AllocationPort,
         family: AddressFamily,
-        port: u16,
     ) -> Self {
         let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(MAX_BUFFERED_ITEMS);
 
@@ -33,22 +32,21 @@ impl Allocation {
             let Err(e) = forward_incoming_relay_data(
                 relay_data_sender,
                 client_to_peer_receiver,
-                id,
-                family,
                 port,
+                family,
             )
             .await
             else {
                 unreachable!()
             };
 
-            tracing::warn!(allocation = %id, %family, "Allocation task failed: {e:#}");
+            tracing::warn!(allocation = %port, %family, "Allocation task failed: {e:#}");
 
             // With the task stopping, the channel will be closed and any attempt to send data to it will fail.
         });
 
         Self {
-            id,
+            port,
             handle: task,
             sender: client_to_peer_sender,
         }
@@ -65,11 +63,11 @@ impl Allocation {
         match self.sender.try_send((data, recipient)) {
             Ok(()) => Ok(()),
             Err(e) if e.is_disconnected() => {
-                tracing::warn!(allocation = %self.id, %recipient, "Channel to allocation is disconnected");
-                bail!("Channel to allocation {} is disconnected", self.id)
+                tracing::warn!(allocation = %self.port, %recipient, "Channel to allocation is disconnected");
+                bail!("Channel to allocation {} is disconnected", self.port)
             }
             Err(e) if e.is_full() => {
-                tracing::warn!(allocation = %self.id, "Send buffer for allocation is full, dropping packet");
+                tracing::warn!(allocation = %self.port, "Send buffer for allocation is full, dropping packet");
                 Ok(())
             }
             Err(_) => {
@@ -88,19 +86,18 @@ impl Drop for Allocation {
 }
 
 async fn forward_incoming_relay_data(
-    mut relayed_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
+    mut relayed_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationPort)>,
     mut client_to_peer_receiver: mpsc::Receiver<(ClientToPeer, PeerSocket)>,
-    id: AllocationId,
+    port: AllocationPort,
     family: AddressFamily,
-    port: u16,
 ) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind(family, port)?;
+    let mut socket = UdpSocket::bind(family, port.value())?;
 
     loop {
         tokio::select! {
             result = socket.recv() => {
                 let (data, sender) = result?;
-                relayed_data_sender.send((PeerToClient::new(data), PeerSocket::new(sender), id)).await?;
+                relayed_data_sender.send((PeerToClient::new(data), PeerSocket::new(sender), port)).await?;
             }
 
             Some((data, recipient)) = client_to_peer_receiver.next() => {
