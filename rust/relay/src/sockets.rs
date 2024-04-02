@@ -1,0 +1,259 @@
+use anyhow::{bail, Result};
+use std::{
+    collections::HashMap,
+    io,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    task::{ready, Context, Poll},
+    time::Duration,
+};
+use stun_codec::rfc8656::attributes::AddressFamily;
+use tokio::sync::mpsc;
+
+const MAX_UDP_SIZE: usize = 65536;
+
+pub struct Sockets {
+    /// All currently active sockets.
+    ///
+    /// [`mio`] operates with a concept of [`mio::Token`]s so we need to store our sockets indexed by those tokens.
+    inner: HashMap<mio::Token, mio::net::UdpSocket>,
+
+    /// Which socket we should still be reading from.
+    ///
+    /// [`mio`] sends us a signal when a socket is ready for reading.
+    /// We must read from it until it returns [`io::ErrorKind::WouldBlock`].
+    current_ready_socket: Option<mio::Token>,
+
+    cmd_tx: mpsc::UnboundedSender<Command>,
+    event_rx: mpsc::Receiver<Event>,
+
+    buffer: [u8; MAX_UDP_SIZE],
+}
+
+impl Default for Sockets {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Sockets {
+    pub fn new() -> Self {
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::channel(1024);
+
+        std::thread::spawn(move || {
+            if let Err(e) = mio_worker_task(event_tx.clone(), cmd_rx) {
+                let _ = event_tx.blocking_send(Event::Crashed(e));
+            }
+        });
+
+        Self {
+            inner: Default::default(),
+            buffer: [0u8; MAX_UDP_SIZE],
+            cmd_tx,
+            event_rx,
+            current_ready_socket: None,
+        }
+    }
+
+    pub fn bind(&mut self, port: u16, address_family: AddressFamily) {
+        self.cmd_tx
+            .send(Command::NewSocket((port, address_family)))
+            .unwrap();
+    }
+
+    pub fn unbind(&mut self, port: u16, address_family: AddressFamily) {
+        let token = token_from_port_and_address_family(port, address_family);
+
+        let Some(socket) = self.inner.remove(&token) else {
+            return;
+        };
+
+        self.cmd_tx.send(Command::DisposeSocket(socket)).unwrap();
+    }
+
+    pub fn try_send(&self, port: u16, dest: SocketAddr, msg: &[u8]) -> io::Result<()> {
+        let address_family = match dest {
+            SocketAddr::V4(_) => AddressFamily::V4,
+            SocketAddr::V6(_) => AddressFamily::V6,
+        };
+        let token = token_from_port_and_address_family(port, address_family);
+
+        let socket = self
+            .inner
+            .get(&token)
+            .ok_or_else(|| not_connected(port, address_family))?;
+
+        let num_sent = socket.send_to(msg, dest)?;
+
+        debug_assert_eq!(num_sent, msg.len());
+
+        Ok(())
+    }
+
+    pub fn poll_recv_from<'s>(
+        &'s mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Received<'s>, Error>> {
+        loop {
+            if let Some(current) = self.current_ready_socket {
+                if let Some(socket) = self.inner.get(&current) {
+                    let (num_bytes, from) = match socket.recv_from(&mut self.buffer) {
+                        Ok(ok) => ok,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            self.current_ready_socket = None;
+                            continue;
+                        }
+                        Err(e) => {
+                            self.current_ready_socket = None;
+                            return Poll::Ready(Err(Error::Io(e)));
+                        }
+                    };
+
+                    let (port, _) = token_to_port_and_address_family(current);
+
+                    return Poll::Ready(Ok(Received {
+                        port,
+                        from,
+                        packet: &self.buffer[..num_bytes],
+                    }));
+                }
+            }
+
+            match ready!(self.event_rx.poll_recv(cx)) {
+                Some(Event::NewSocket(token, socket)) => {
+                    self.inner.insert(token, socket);
+                    continue;
+                }
+                Some(Event::SocketReady(ready)) => {
+                    self.current_ready_socket = Some(ready);
+                    continue;
+                }
+                Some(Event::Crashed(error)) => {
+                    return Poll::Ready(Err(Error::MioTaskCrashed(error)));
+                }
+                None => {
+                    panic!("must not poll `Sockets` after mio task exited")
+                }
+            };
+        }
+    }
+}
+
+/// A packet read from a socket.
+#[derive(Debug)]
+pub struct Received<'a> {
+    pub port: u16,
+    pub from: SocketAddr,
+    pub packet: &'a [u8],
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Io(io::Error),
+    MioTaskCrashed(anyhow::Error),
+}
+
+enum Command {
+    NewSocket((u16, AddressFamily)),
+    DisposeSocket(mio::net::UdpSocket),
+}
+
+enum Event {
+    NewSocket(mio::Token, mio::net::UdpSocket),
+    SocketReady(mio::Token),
+    Crashed(anyhow::Error),
+}
+
+fn not_connected(port: u16, address_family: AddressFamily) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::NotConnected,
+        format!("No socket for port {port} on address family {address_family}"),
+    )
+}
+
+fn mio_worker_task(
+    event_tx: mpsc::Sender<Event>,
+    mut cmd_rx: mpsc::UnboundedReceiver<Command>,
+) -> Result<()> {
+    let mut poll = mio::Poll::new()?;
+    let mut events = mio::Events::with_capacity(1024);
+
+    loop {
+        poll.poll(&mut events, Some(Duration::from_secs(1)))?;
+
+        for event in events.iter() {
+            event_tx.blocking_send(Event::SocketReady(event.token()))?;
+        }
+
+        match cmd_rx.try_recv() {
+            Ok(Command::NewSocket((port, af))) => {
+                let mut socket = mio::net::UdpSocket::from_std(make_wildcard_socket(af, port)?);
+                let token = token_from_port_and_address_family(port, af);
+
+                poll.registry()
+                    .register(&mut socket, token, mio::Interest::READABLE)?;
+
+                event_tx.blocking_send(Event::NewSocket(token, socket))?;
+            }
+            Ok(Command::DisposeSocket(mut socket)) => {
+                poll.registry().deregister(&mut socket)?;
+            }
+            Err(mpsc::error::TryRecvError::Empty) => {}
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                bail!("Command channel disconnected")
+            }
+        }
+    }
+}
+
+/// Encodes a port (u16) and an [`AddressFamily`] into an [`mio::Token`] by flipping the 17th bit of the internal [`usize`] based on the [`AddressFamily`].
+fn token_from_port_and_address_family(port: u16, address_family: AddressFamily) -> mio::Token {
+    let is_ipv6 = address_family == AddressFamily::V6;
+
+    let af_bit = (is_ipv6 as usize) << 16;
+
+    let token = port as usize | af_bit;
+
+    mio::Token(token)
+}
+
+/// Decodes an [`mio::Token`] into the port and [`AddressFamily`].
+fn token_to_port_and_address_family(token: mio::Token) -> (u16, AddressFamily) {
+    let port = (token.0 & 0xFFFF) as u16;
+
+    let is_ipv6 = (token.0 >> 16) & 1 != 0;
+
+    let address_family = if is_ipv6 {
+        AddressFamily::V6
+    } else {
+        AddressFamily::V4
+    };
+
+    (port, address_family)
+}
+
+/// Creates an [std::net::UdpSocket] via the [socket2] library that is configured for our needs.
+///
+/// Most importantly, this sets the `IPV6_V6ONLY` flag to ensure we disallow IP4-mapped IPv6 addresses and can bind to IP4 and IP6 addresses on the same port.
+fn make_wildcard_socket(family: AddressFamily, port: u16) -> io::Result<std::net::UdpSocket> {
+    use socket2::*;
+
+    let domain = match family {
+        AddressFamily::V4 => Domain::IPV4,
+        AddressFamily::V6 => Domain::IPV6,
+    };
+    let address = match family {
+        AddressFamily::V4 => IpAddr::from(Ipv4Addr::UNSPECIFIED),
+        AddressFamily::V6 => IpAddr::from(Ipv6Addr::UNSPECIFIED),
+    };
+
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+    if family == AddressFamily::V6 {
+        socket.set_only_v6(true)?;
+    }
+
+    socket.set_nonblocking(true)?;
+    socket.bind(&SockAddr::from(SocketAddr::new(address, port)))?;
+
+    Ok(socket.into())
+}

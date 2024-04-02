@@ -416,12 +416,6 @@ where
 
     /// Return the next command to be executed.
     pub fn next_command(&mut self) -> Option<Command> {
-        let num_commands = self.pending_commands.len();
-
-        if num_commands > 0 {
-            tracing::trace!(%num_commands, "Popping next command");
-        }
-
         self.pending_commands.pop_front()
     }
 

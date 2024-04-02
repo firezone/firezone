@@ -1,24 +1,21 @@
 use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
+use firezone_relay::sockets::Sockets;
 use firezone_relay::{
-    AddressFamily, Allocation, AllocationPort, ClientSocket, Command, IpStack, PeerSocket,
-    PeerToClient, Server, Sleep, UdpSocket,
+    sockets, AddressFamily, AllocationPort, ClientSocket, Command, IpStack, PeerSocket,
+    PeerToClient, Server, Sleep,
 };
-use futures::channel::mpsc;
-use futures::{future, FutureExt, SinkExt, StreamExt};
+use futures::{future, FutureExt};
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::convert::Infallible;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
-use std::task::{ready, Poll};
+use std::task::Poll;
 use std::time::{Duration, SystemTime};
 use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
 use tracing_core::Dispatch;
@@ -95,7 +92,7 @@ enum LogFormat {
     GoogleCloud,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -299,14 +296,10 @@ fn make_rng(seed: Option<u64>) -> StdRng {
 }
 
 struct Eventloop<R> {
-    inbound_data_receiver: mpsc::Receiver<(Vec<u8>, ClientSocket)>,
-    outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
-    outbound_ip6_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
+    sockets: Sockets,
+
     server: Server<R>,
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
-    allocations: HashMap<(AllocationPort, AddressFamily), Allocation>,
-    relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationPort)>,
-    relay_data_receiver: mpsc::Receiver<(PeerToClient, PeerSocket, AllocationPort)>,
     sleep: Sleep,
 
     stats_log_interval: tokio::time::Interval,
@@ -322,49 +315,29 @@ where
         channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
         public_address: IpStack,
     ) -> Self {
-        let (relay_data_sender, relay_data_receiver) = mpsc::channel(1);
-        let (inbound_data_sender, inbound_data_receiver) = mpsc::channel(1000);
-        let (outbound_ip4_data_sender, outbound_ip4_data_receiver) = mpsc::channel(1000);
-        let (outbound_ip6_data_sender, outbound_ip6_data_receiver) = mpsc::channel(1000);
+        let mut sockets = Sockets::new();
 
         if public_address.as_v4().is_some() {
-            tokio::spawn(main_udp_socket_task(
-                AddressFamily::V4,
-                inbound_data_sender.clone(),
-                outbound_ip4_data_receiver,
-            ));
+            sockets.bind(3478, AddressFamily::V4);
         }
         if public_address.as_v6().is_some() {
-            tokio::spawn(main_udp_socket_task(
-                AddressFamily::V6,
-                inbound_data_sender,
-                outbound_ip6_data_receiver,
-            ));
+            sockets.bind(3478, AddressFamily::V6);
         }
 
         Self {
-            inbound_data_receiver,
-            outbound_ip4_data_sender,
-            outbound_ip6_data_sender,
             server,
             channel,
-            allocations: Default::default(),
-            relay_data_sender,
-            relay_data_receiver,
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
+            sockets,
         }
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
+        let now = SystemTime::now();
+
         loop {
-            // Don't fail these results. One of the senders might not be active because we might not be listening on IP4 / IP6.
-            let _ = ready!(self.outbound_ip4_data_sender.poll_ready_unpin(cx));
-            let _ = ready!(self.outbound_ip6_data_sender.poll_ready_unpin(cx));
-
-            let now = SystemTime::now();
-
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
@@ -372,22 +345,11 @@ where
                         let span = tracing::debug_span!("Command::SendMessage");
                         let _guard = span.enter();
 
-                        let sender = match recipient.family() {
-                            AddressFamily::V4 => &mut self.outbound_ip4_data_sender,
-                            AddressFamily::V6 => &mut self.outbound_ip6_data_sender,
-                        };
-
-                        if let Err(e) = sender.try_send((payload, recipient)) {
-                            if e.is_disconnected() {
-                                return Poll::Ready(Err(anyhow!(
-                                    "Channel to primary UDP socket task has been closed"
-                                )));
-                            }
-
-                            // Should never happen because we poll for readiness above.
-                            if e.is_full() {
-                                tracing::warn!(target: "relay", %recipient, "Dropping message because channel to primary UDP socket task is full");
-                            }
+                        if let Err(e) =
+                            self.sockets
+                                .try_send(3478, recipient.into_socket(), &payload)
+                        {
+                            tracing::warn!(target: "relay", %recipient, "Failed to send message: {e}");
                         }
                     }
                     Command::CreateAllocation { port, family } => {
@@ -395,19 +357,13 @@ where
                             tracing::debug_span!("Command::CreateAllocation", %family, %port);
                         let _guard = span.enter();
 
-                        self.allocations.insert(
-                            (port, family),
-                            Allocation::new(self.relay_data_sender.clone(), port, family),
-                        );
+                        self.sockets.bind(port.value(), family);
                     }
                     Command::FreeAllocation { port, family } => {
                         let span = tracing::debug_span!("Command::FreeAllocation", %family, %port);
                         let _guard = span.enter();
 
-                        if self.allocations.remove(&(port, family)).is_none() {
-                            tracing::debug!(target: "relay", "Unknown allocation {port}");
-                            continue;
-                        };
+                        self.sockets.unbind(port.value(), family);
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {port}");
                     }
@@ -419,18 +375,11 @@ where
                         let span = tracing::debug_span!("Command::ForwardData", %port, %receiver);
                         let _guard = span.enter();
 
-                        let mut allocation = match self.allocations.entry((port, receiver.family()))
+                        if let Err(e) =
+                            self.sockets
+                                .try_send(port.value(), receiver.into_socket(), data.data())
                         {
-                            Entry::Occupied(entry) => entry,
-                            Entry::Vacant(_) => {
-                                tracing::debug!(target: "relay", allocation = %port, family = %receiver.family(), "Unknown allocation");
-                                continue;
-                            }
-                        };
-
-                        if allocation.get_mut().send(data, receiver).is_err() {
-                            self.server.handle_allocation_failed(port);
-                            allocation.remove();
+                            tracing::warn!(target: "relay", %receiver, "Failed to forward data: {e}");
                         }
                     }
                 }
@@ -444,29 +393,39 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 3: Handle relayed data (we prioritize latency for existing allocations over making new ones)
-            if let Poll::Ready(Some((data, sender, allocation))) =
-                self.relay_data_receiver.poll_next_unpin(cx)
-            {
-                self.server.handle_peer_traffic(data, sender, allocation);
-                continue; // Handle potentially new commands.
+            // Priority 3: Read from our sockets.
+            match self.sockets.poll_recv_from(cx) {
+                Poll::Ready(Ok(sockets::Received {
+                    port: 3478,
+                    from,
+                    packet,
+                })) => {
+                    self.server
+                        .handle_client_input(packet.to_vec(), ClientSocket::new(from), now);
+                    continue;
+                }
+                Poll::Ready(Ok(sockets::Received { port, from, packet })) => {
+                    self.server.handle_peer_traffic(
+                        PeerToClient::new(packet),
+                        PeerSocket::new(from),
+                        AllocationPort::new(port),
+                    );
+                    continue;
+                }
+                Poll::Ready(Err(sockets::Error::Io(e))) => {
+                    tracing::warn!(target: "relay", "Error while receiving message: {e}");
+                    continue;
+                }
+                Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)),
+                Poll::Pending => {}
             }
 
-            // Priority 4: Accept new allocations / answer STUN requests etc
-            if let Poll::Ready(Some((buffer, sender))) =
-                self.inbound_data_receiver.poll_next_unpin(cx)
-            {
-                self.server.handle_client_input(buffer, sender, now);
-                continue; // Handle potentially new commands.
-            }
-
-            // Priority 5: Check when we need to next be woken. This needs to happen after all state modifications.
+            // Priority 4: Check when we need to next be woken. This needs to happen after all state modifications.
             if let Some(timeout) = self.server.poll_timeout() {
                 Pin::new(&mut self.sleep).reset(timeout);
-                continue;
             }
 
-            // Priority 6: Handle portal messages
+            // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
@@ -502,6 +461,7 @@ where
                 let avg_throughput = bytes_relayed_since_last_tick / STATS_LOG_INTERVAL.as_secs();
 
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
+                continue;
             }
 
             return Poll::Pending;
@@ -521,27 +481,6 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
     }
 
     format!("{throughput:.2} TB/s")
-}
-
-async fn main_udp_socket_task(
-    family: AddressFamily,
-    mut inbound_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
-    mut outbound_data_receiver: mpsc::Receiver<(Vec<u8>, ClientSocket)>,
-) -> Result<Infallible> {
-    let mut socket = UdpSocket::bind(family, 3478)?;
-
-    loop {
-        tokio::select! {
-            result = socket.recv() => {
-                let (data, sender) = result?;
-                inbound_data_sender.send((data.to_vec(), ClientSocket::new(sender))).await?;
-            }
-            maybe_item = outbound_data_receiver.next() => {
-                let (data, recipient) = maybe_item.context("Outbound data channel closed")?;
-                socket.send_to(data.as_ref(), recipient.into_socket()).await?;
-            }
-        }
-    }
 }
 
 #[cfg(test)]
