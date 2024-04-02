@@ -1881,14 +1881,16 @@ dependencies = [
  "clap",
  "connlib-client-shared",
  "connlib-shared",
+ "dirs",
  "firezone-cli-utils",
  "humantime",
+ "nix 0.28.0",
  "resolv-conf",
  "secrecy",
- "thiserror",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "url",
 ]
 
