@@ -24,7 +24,7 @@
     "autoprefixer": "10.4.18",
     "fast-xml-parser": "^4.3.5",
     "flowbite": "^2.3.0",
-    "flowbite-react": "^0.7.2",
+    "flowbite-react": "^0.7.8",
     "highlight.js": "^11.9.0",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.49.0",
