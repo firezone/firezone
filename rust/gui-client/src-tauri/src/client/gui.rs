@@ -220,6 +220,10 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 
                 if let Some(client::Cmd::SmokeTest) = &cli.command {
                     let ctlr_tx = ctlr_tx.clone();
+                    // Generate the device ID so that the device ID code is covered
+                    // by the smoke test.
+                    // This is redundant since we will also lazily generate it when we boot connlib.
+                    connlib_shared::device_id::get().ok();
                     tokio::spawn(async move {
                         if let Err(error) = smoke_test(ctlr_tx).await {
                             tracing::error!(?error, "Error during smoke test");
@@ -487,7 +491,7 @@ struct Controller {
 /// Everything related to a signed-in user session
 struct Session {
     callback_handler: CallbackHandler,
-    connlib: connlib_client_shared::Session,
+    connlib: tunnel_wrapper::TunnelWrapper,
 }
 
 impl Controller {
@@ -765,13 +769,6 @@ async fn run_controller(
         tokio::fs::create_dir_all(&session_dir).await?;
         tokio::fs::write(&ran_before_path, &[]).await?;
     }
-
-    // TODO: This is temporary until process separation is done
-    // Try to create the device ID and ignore errors if we fail.
-    // This allows Linux to run with the "Generate device ID lazily" behavior,
-    // but Windows, which runs elevated, will write the device ID, and the smoke
-    // tests can cover it.
-    connlib_shared::device_id::get().ok();
 
     let mut controller = Controller {
         advanced_settings,

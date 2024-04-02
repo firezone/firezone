@@ -40,12 +40,35 @@ pub(crate) struct CallbackHandler {
     pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
+/// Forwards events to and from connlib
+///
+/// In the `in_proc` module this is just a stub. The real purpose is to abstract
+/// over both in-proc connlib instances and connlib instances living in the tunnel
+/// process, across an IPC boundary.
+pub(crate) struct TunnelWrapper {
+    session: connlib_client_shared::Session,
+}
+
+impl TunnelWrapper {
+    pub(crate) fn disconnect(self) {
+        self.session.disconnect()
+    }
+
+    pub(crate) fn reconnect(&self) {
+        self.session.reconnect()
+    }
+
+    pub(crate) fn set_dns(&self, dns: Vec<IpAddr>) {
+        self.session.set_dns(dns)
+    }
+}
+
 pub fn connect(
     api_url: &str,
     token: SecretString,
     callback_handler: CallbackHandler,
     tokio_handle: tokio::runtime::Handle,
-) -> Result<connlib_client_shared::Session> {
+) -> Result<TunnelWrapper> {
     // Device ID should be in the tunnel process
     let device_id = connlib_shared::device_id::get().context("Failed to read / create device ID")?;
 
@@ -70,7 +93,9 @@ pub fn connect(
         Some(MAX_PARTITION_TIME),
         tokio_handle,
     );
-    Ok(session)
+    Ok(TunnelWrapper {
+        session
+    })
 }
 
 // Callbacks must all be non-blocking
