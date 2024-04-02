@@ -124,8 +124,8 @@ jobs:
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
+          # Overrides the Client's env var in docker-compose.yml
           echo "FIREZONE_DNS_CONTROL=${{ matrix.dns-control }}" >> .env
-          cat .env
 
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
