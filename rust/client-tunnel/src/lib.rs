@@ -78,6 +78,8 @@ struct Cli {
 // Copied from <https://github.com/firezone/subzone>
 
 /// Reads a message from an async reader, with a 32-bit LE length prefix
+// Dead on Windows temporarily
+#[allow(dead_code)]
 async fn read_ipc_msg<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
@@ -91,6 +93,8 @@ async fn read_ipc_msg<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>> {
 /// Encodes a message as JSON and writes it to an async writer, with a 32-bit LE length prefix
 ///
 /// TODO: Why does this one take `T` and `read_ipc_msg` doesn't?
+// Dead on Windows temporarily
+#[allow(dead_code)]
 async fn write_ipc_msg<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg: &T) -> Result<()> {
     let buf = serde_json::to_string(msg)?;
     let len = u32::try_from(buf.len())?.to_le_bytes();
