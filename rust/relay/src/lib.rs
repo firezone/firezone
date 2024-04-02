@@ -3,7 +3,6 @@ mod auth;
 mod net_ext;
 mod server;
 mod sleep;
-mod time_events;
 mod udp_socket;
 
 #[cfg(feature = "proptest")]
@@ -18,8 +17,6 @@ pub use server::{
 pub use sleep::Sleep;
 pub use stun_codec::rfc8656::attributes::AddressFamily;
 pub use udp_socket::UdpSocket;
-
-pub(crate) use time_events::TimeEvents;
 
 use std::{
     fmt,

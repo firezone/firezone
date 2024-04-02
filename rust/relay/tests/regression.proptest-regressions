@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 019f4be1715b278ed4eec80b55e541d7f7d8c86917b47a75c06ccb32971643ba # shrinks to input = _AllowsRebindChannelAfterExpiryArgs { allocate_transaction_id: TransactionId(0x000000000000000000000000), channel_bind_transaction_id: TransactionId(0x000000000000000000000000), channel_bind_2_transaction_id: TransactionId(0x000000000000000000000000), username_salt: "aaAAa0A00a", channel: ChannelNumber(16384), source: 0.0.0.0:0, peer: 0.0.0.0:0, peer2: 0.0.0.0:0, public_relay_addr: 0.0.0.0, now: SystemTime { tv_sec: 946080000, tv_nsec: 0 }, nonce: 00000000-0000-0000-0000-000000000000 }
