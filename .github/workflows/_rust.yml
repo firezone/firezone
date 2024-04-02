@@ -29,7 +29,7 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
       - run: cargo fmt -- --check
-      - run: cargo doc --all-features --no-deps --document-private-items $${{ steps.setup-rust.outputs.packages }}
+      - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
         name: "cargo doc"
