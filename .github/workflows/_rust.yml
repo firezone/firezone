@@ -20,27 +20,21 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-22.04
-            packages: linux-rust-packages.sh
           - runs-on: macos-14
-            packages: macos-rust-packages.sh
           - runs-on: windows-2022
-            packages: windows-rust-packages.sh
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        id: setup-rust
       - uses: ./.github/actions/setup-tauri
       - run: cargo fmt -- --check
-      - run: |
-          source ../scripts/tests/${{ matrix.packages }}
-          cargo doc --all-features --no-deps --document-private-items ${FIREZONE_PACKAGES[@]}
+      - run: cargo doc --all-features --no-deps --document-private-items $${{ steps.setup-rust.outputs.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
         name: "cargo doc"
         shell: bash
-      - run: |
-          source ../scripts/tests/${{ matrix.packages }}
-          cargo clippy --all-targets --all-features ${FIREZONE_PACKAGES[@]} -- -D warnings
+      - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
         name: "cargo clippy"
         shell: bash
 
@@ -52,27 +46,18 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-20.04
-            packages: linux-rust-packages.sh
           - runs-on: ubuntu-22.04
-            packages: linux-rust-packages.sh
           - runs-on: macos-12
-            packages: macos-rust-packages.sh
           - runs-on: macos-13
-            packages: macos-rust-packages.sh
           - runs-on: macos-14
-            packages: macos-rust-packages.sh
           - runs-on: windows-2019
-            packages: windows-rust-packages.sh
           - runs-on: windows-2022
-            packages: windows-rust-packages.sh
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-      - run: |
-          source ../scripts/tests/${{ matrix.packages }}
-          cargo test --all-features ${FIREZONE_PACKAGES[@]} -- --include-ignored
+      - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
