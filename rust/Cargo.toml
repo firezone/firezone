@@ -39,6 +39,7 @@ rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_s
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
+firezone-client-tunnel = { path = "client-tunnel" }
 firezone-gateway = { path = "gateway"}
 firezone-linux-client = { path = "linux-client"}
 firezone-gui-client = { path = "gui-client/src-tauri"}
