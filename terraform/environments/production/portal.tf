@@ -420,7 +420,8 @@ module "web" {
   image      = "web"
   image_tag  = var.image_tag
 
-  scaling_horizontal_replicas = 2
+  scaling_horizontal_replicas     = 2
+  scaling_max_horizontal_replicas = 4
 
   observability_log_level = "debug"
 
@@ -431,6 +432,8 @@ module "web" {
   application_version = replace(var.image_tag, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
+
+  application_cdn_enabled = true
 
   application_ports = [
     {
@@ -494,7 +497,8 @@ module "api" {
   image      = "api"
   image_tag  = var.image_tag
 
-  scaling_horizontal_replicas = 2
+  scaling_horizontal_replicas     = 2
+  scaling_max_horizontal_replicas = 4
 
   observability_log_level = "debug"
 
