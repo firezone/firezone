@@ -21,7 +21,7 @@ use std::{
 use tokio::sync::Notify;
 
 use super::ControllerRequest;
-use super::CtlrTx as CtlrTx;
+use super::CtlrTx;
 
 /// The Windows client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Windows clients
@@ -70,18 +70,13 @@ pub fn connect(
     tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
     // Device ID should be in the tunnel process
-    let device_id = connlib_shared::device_id::get().context("Failed to read / create device ID")?;
+    let device_id =
+        connlib_shared::device_id::get().context("Failed to read / create device ID")?;
 
     // Private keys should be generated in the tunnel process
     let (private_key, public_key) = keypair();
 
-    let login = LoginUrl::client(
-        api_url,
-        &token,
-        device_id.id,
-        None,
-        public_key.to_bytes(),
-    )?;
+    let login = LoginUrl::client(api_url, &token, device_id.id, None, public_key.to_bytes())?;
 
     // All direct calls into connlib must be in the tunnel process
     let session = connlib_client_shared::Session::connect(
@@ -93,9 +88,7 @@ pub fn connect(
         Some(MAX_PARTITION_TIME),
         tokio_handle,
     );
-    Ok(TunnelWrapper {
-        session
-    })
+    Ok(TunnelWrapper { session })
 }
 
 // Callbacks must all be non-blocking

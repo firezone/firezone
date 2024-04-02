@@ -12,12 +12,7 @@ use anyhow::{bail, Context, Result};
 use connlib_client_shared::ResourceDescription;
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -44,16 +39,18 @@ mod os;
 mod os;
 
 // This syntax is odd, but it helps `cargo-mutants` understand the platform-specific modules
-#[cfg(not(target_os = "windows"))]
+// The IPC implementation of TunnelWrapper is not built yet
+/*
+#[cfg(target_os = "linux")]
 #[path = "tunnel-wrapper/ipc.rs"]
 mod tunnel_wrapper_ipc;
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 use tunnel_wrapper_ipc as tunnel_wrapper;
-
-#[cfg(target_os = "windows")]
+*/
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 #[path = "tunnel-wrapper/in_proc.rs"]
 mod tunnel_wrapper_in_proc;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use tunnel_wrapper_in_proc as tunnel_wrapper;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
@@ -515,8 +512,12 @@ impl Controller {
             "Calling connlib Session::connect"
         );
 
-
-        let connlib = tunnel_wrapper::connect(api_url.as_str(), token, callback_handler.clone(), tokio::runtime::Handle::current())?;
+        let connlib = tunnel_wrapper::connect(
+            api_url.as_str(),
+            token,
+            callback_handler.clone(),
+            tokio::runtime::Handle::current(),
+        )?;
 
         /*connlib_client_shared::Session::connect(
             login,
