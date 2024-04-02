@@ -71,9 +71,14 @@ defmodule Domain.Auth.Adapter.DirectorySync do
               | {:error, user_message :: String.t(), log_message :: String.t()}
 
   def sync_providers(module, providers) do
+    start_time = System.monotonic_time(:millisecond)
+
     providers
     |> Domain.Repo.preload(:account)
     |> Enum.each(&sync_provider(module, &1))
+
+    time_taken = calculate_elapsed_time(start_time)
+    Logger.info("Finished syncing providers in #{time_taken}")
   end
 
   defp sync_provider(module, provider) do
@@ -83,9 +88,20 @@ defmodule Domain.Auth.Adapter.DirectorySync do
       provider_adapter: provider.adapter
     )
 
+    start_time = System.monotonic_time(:millisecond)
+
     with true <- Domain.Accounts.idp_sync_enabled?(provider.account),
          {:ok, {identities_attrs, actor_groups_attrs, membership_tuples}} <-
            module.gather_provider_data(provider) do
+      time_taken = calculate_elapsed_time(start_time)
+
+      Logger.debug("Finished fetching data for provider in #{time_taken}",
+        account_id: provider.account_id,
+        provider_id: provider.id,
+        provider_adapter: provider.adapter,
+        time_taken: time_taken
+      )
+
       Ecto.Multi.new()
       |> Ecto.Multi.one(:lock_provider, fn _effects_so_far ->
         Auth.Provider.Query.not_disabled()
@@ -102,7 +118,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
       |> Repo.transaction(timeout: :timer.minutes(30))
       |> case do
         {:ok, effects} ->
-          log_sync_result(provider, effects)
+          log_sync_result(provider, start_time, effects)
           :ok
 
         {:error, reason} ->
@@ -138,7 +154,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
     end
   end
 
-  defp log_sync_result(provider, effects) do
+  defp log_sync_result(provider, start_time, effects) do
     %{
       # Identities
       plan_identities: {identities_insert_ids, identities_update_ids, identities_delete_ids},
@@ -155,10 +171,13 @@ defmodule Domain.Auth.Adapter.DirectorySync do
       delete_memberships: {deleted_memberships_count, _}
     } = effects
 
-    Logger.debug("Finished syncing provider",
+    time_taken = calculate_elapsed_time(start_time)
+
+    Logger.debug("Finished syncing provider in #{time_taken}",
       provider_id: provider.id,
       provider_adapter: provider.adapter,
       account_id: provider.account_id,
+      time_taken: time_taken,
       # Identities
       plan_identities_insert: length(identities_insert_ids),
       plan_identities_update: length(identities_update_ids),
@@ -177,6 +196,14 @@ defmodule Domain.Auth.Adapter.DirectorySync do
       memberships_inserted: length(memberships_inserted),
       memberships_deleted: deleted_memberships_count
     )
+  end
+
+  defp calculate_elapsed_time(start_time) do
+    finish_time = System.monotonic_time(:millisecond)
+
+    ~T[00:00:00]
+    |> Time.add(finish_time - start_time, :millisecond)
+    |> to_string()
   end
 
   defp log_sync_error(provider, message) do
