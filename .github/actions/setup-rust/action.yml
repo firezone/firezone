@@ -30,7 +30,7 @@ runs:
         elif [ "${{ runner.os }}" = "Windows" ]; then
           PACKAGES="-p connlib-client-shared -p firezone-client-tunnel -p firezone-gui-client -p firezone-tunnel -p snownet"
         fi
-        echo "packages=\"$PACKAGES\"" >> $GITHUB_OUTPUT
+        echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
       shell: bash
     # Setup sccache, works well for most Rust components
     - if: ${{ inputs.cache_backend == 'sccache' }}
