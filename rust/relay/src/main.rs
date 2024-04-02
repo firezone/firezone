@@ -60,8 +60,6 @@ struct Args {
     #[arg(env = "FIREZONE_NAME")]
     name: Option<String>,
     /// A seed to use for all randomness operations.
-    ///
-    /// Only available in debug builds.
     #[arg(long, env, hide = true)]
     rng_seed: Option<u64>,
 
@@ -74,6 +72,10 @@ struct Args {
     /// If set, we will report traces and metrics to this collector via gRPC.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<SocketAddr>,
+
+    /// The address of the local interface where we should serve the profiling controller.
+    #[arg(long, env, hide = true)]
+    profiler_ctrl_addr: Option<SocketAddr>,
 
     /// The Google Project ID to embed in spans.
     ///
@@ -119,7 +121,7 @@ async fn main() -> Result<()> {
         let base_url = args.api_url.clone();
         let stamp_secret = server.auth_secret();
 
-        let span = tracing::error_span!("connect_to_portal", config_url = %base_url);
+        let span = tracing::debug_span!("connect_to_portal", config_url = %base_url);
 
         connect_to_portal(&args, token, base_url, stamp_secret)
             .instrument(span)
@@ -286,7 +288,6 @@ struct JoinMessage {
     stamp_secret: String,
 }
 
-#[cfg(debug_assertions)]
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
         return StdRng::from_entropy();
@@ -295,15 +296,6 @@ fn make_rng(seed: Option<u64>) -> StdRng {
     tracing::info!(target: "relay", "Seeding RNG from '{seed}'");
 
     StdRng::seed_from_u64(seed)
-}
-
-#[cfg(not(debug_assertions))]
-fn make_rng(seed: Option<u64>) -> StdRng {
-    if seed.is_some() {
-        tracing::debug!(target: "relay", "Ignoring rng-seed because we are running in release mode");
-    }
-
-    StdRng::from_entropy()
 }
 
 struct Eventloop<R> {
@@ -366,9 +358,6 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
-        let span = tracing::error_span!("Eventloop::poll");
-        let _guard = span.enter();
-
         loop {
             // Don't fail these results. One of the senders might not be active because we might not be listening on IP4 / IP6.
             let _ = ready!(self.outbound_ip4_data_sender.poll_ready_unpin(cx));
@@ -380,7 +369,7 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        let span = tracing::error_span!("Command::SendMessage");
+                        let span = tracing::debug_span!("Command::SendMessage");
                         let _guard = span.enter();
 
                         let sender = match recipient.family() {
@@ -403,7 +392,7 @@ where
                     }
                     Command::CreateAllocation { id, family, port } => {
                         let span =
-                            tracing::error_span!("Command::CreateAllocation", %id, %family, %port);
+                            tracing::debug_span!("Command::CreateAllocation", %id, %family, %port);
                         let _guard = span.enter();
 
                         self.allocations.insert(
@@ -412,7 +401,7 @@ where
                         );
                     }
                     Command::FreeAllocation { id, family } => {
-                        let span = tracing::error_span!("Command::FreeAllocation", %id, %family);
+                        let span = tracing::debug_span!("Command::FreeAllocation", %id, %family);
                         let _guard = span.enter();
 
                         if self.allocations.remove(&(id, family)).is_none() {
@@ -423,7 +412,7 @@ where
                         tracing::info!(target: "relay", "Freeing addresses of allocation {id}");
                     }
                     Command::Wake { deadline } => {
-                        let span = tracing::error_span!("Command::Wake", ?deadline);
+                        let span = tracing::debug_span!("Command::Wake", ?deadline);
                         let _guard = span.enter();
 
                         match deadline.duration_since(now) {
@@ -443,7 +432,7 @@ where
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
                     Command::ForwardData { id, data, receiver } => {
-                        let span = tracing::error_span!("Command::ForwardData", %id, %receiver);
+                        let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
                         let _guard = span.enter();
 
                         let mut allocation = match self.allocations.entry((id, receiver.family())) {

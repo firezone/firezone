@@ -169,13 +169,13 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.51")
+    implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
-    kapt("com.google.dagger:hilt-android-compiler:2.51")
+    kapt("com.google.dagger:hilt-android-compiler:2.51.1")
 
     // Retrofit 2
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-moshi:2.9.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
 
     // OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -196,7 +196,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
+    implementation(platform("com.google.firebase:firebase-bom:32.8.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies

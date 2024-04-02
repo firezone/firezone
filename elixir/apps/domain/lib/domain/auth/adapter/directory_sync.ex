@@ -3,6 +3,8 @@ defmodule Domain.Auth.Adapter.DirectorySync do
   alias Domain.{Auth, Actors}
   require Logger
 
+  @async_data_fetch_timeout :infinity
+
   @doc """
   Returns a tuple with the data needed to sync all entities of the provider.
 
@@ -222,7 +224,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
         {:error, reason}
 
       {name, task}, {:ok, acc} ->
-        case Task.yield(task, :infinity) do
+        case Task.yield(task, @async_data_fetch_timeout) || Task.shutdown(task) do
           {:ok, {:ok, result}} -> {:ok, Map.put(acc, name, result)}
           {:ok, {:error, reason}} -> {:error, reason}
           {:exit, reason} -> {:error, reason}

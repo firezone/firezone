@@ -1878,11 +1878,20 @@ name = "firezone-client-tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "connlib-client-shared",
+ "connlib-shared",
  "dirs",
+ "firezone-cli-utils",
+ "humantime",
  "nix 0.28.0",
+ "resolv-conf",
+ "secrecy",
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -1977,19 +1986,8 @@ name = "firezone-linux-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "atomicwrites",
- "clap",
- "connlib-client-shared",
- "connlib-shared",
- "firezone-cli-utils",
- "humantime",
- "resolv-conf",
- "secrecy",
- "thiserror",
+ "firezone-client-tunnel",
  "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
