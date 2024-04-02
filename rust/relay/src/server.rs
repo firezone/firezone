@@ -8,7 +8,7 @@ pub use crate::server::client_message::{
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::{ClientSocket, IpStack, PeerSocket, TimeEvents};
+use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use bytes::BytesMut;
@@ -75,8 +75,6 @@ pub struct Server<R> {
 
     nonces: Nonces,
 
-    time_events: TimeEvents<TimedAction>,
-
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed_counter: Counter<u64>,
     data_relayed: u64, // Keep a separate counter because `Counter` doesn't expose the current value :(
@@ -113,9 +111,6 @@ pub enum Command {
         data: ClientToPeer,
         receiver: PeerSocket,
     },
-
-    /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
-    Wake { deadline: SystemTime },
 }
 
 #[derive(Debug, PartialEq)]
@@ -179,6 +174,11 @@ const UDP_TRANSPORT: u8 = 17;
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
 const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 
+/// The timeout before a channel be rebound.
+///
+/// See <https://www.rfc-editor.org/rfc/rfc8656#section-12-14>.
+const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
+
 impl<R> Server<R>
 where
     R: Rng,
@@ -230,7 +230,6 @@ where
             next_allocation_id: AllocationId(1),
             auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
             rng,
-            time_events: TimeEvents::default(),
             nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
@@ -414,50 +413,6 @@ where
         })
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub fn handle_deadline_reached(&mut self, now: SystemTime) {
-        for action in self.time_events.pending_actions(now) {
-            match action {
-                TimedAction::ExpireAllocation(id) => {
-                    let Some(allocation) = self.get_allocation(&id) else {
-                        tracing::debug!(target: "relay", allocation = %id, "Cannot expire non-existing allocation");
-
-                        continue;
-                    };
-
-                    if allocation.is_expired(now) {
-                        self.delete_allocation(id)
-                    }
-                }
-                TimedAction::UnbindChannel((client, chan)) => {
-                    let Some(channel) = self.channels_by_client_and_number.get_mut(&(client, chan))
-                    else {
-                        tracing::debug!(target: "relay", channel = %chan, %client, "Cannot expire non-existing channel binding");
-
-                        continue;
-                    };
-
-                    if channel.is_expired(now) {
-                        tracing::info!(target: "relay", channel = %chan, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
-
-                        channel.bound = false;
-
-                        let wake_deadline = self.time_events.add(
-                            now + Duration::from_secs(5 * 60),
-                            TimedAction::DeleteChannel((client, chan)),
-                        );
-                        self.pending_commands.push_back(Command::Wake {
-                            deadline: wake_deadline,
-                        });
-                    }
-                }
-                TimedAction::DeleteChannel((client, chan)) => {
-                    self.delete_channel_binding(client, chan);
-                }
-            }
-        }
-    }
-
     /// An allocation failed.
     #[tracing::instrument(level = "debug", skip(self), fields(%allocation))]
     pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
@@ -473,6 +428,54 @@ where
         }
 
         self.pending_commands.pop_front()
+    }
+
+    // TODO: It might be worth to do some caching here?
+    pub fn poll_timeout(&self) -> Option<SystemTime> {
+        let channel_expiries = self.channels_by_client_and_number.values().map(|c| {
+            if c.bound {
+                c.expiry
+            } else {
+                c.expiry + CHANNEL_REBIND_TIMEOUT
+            }
+        });
+        let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
+
+        channel_expiries
+            .chain(allocation_expiries)
+            .fold(None, |current, next| earliest(current, Some(next)))
+    }
+
+    pub fn handle_timeout(&mut self, now: SystemTime) {
+        let expired_allocations = self
+            .allocations
+            .values()
+            .filter_map(|a| a.is_expired(now).then_some(a.id))
+            .collect::<Vec<_>>();
+
+        for id in expired_allocations {
+            self.delete_allocation(id);
+        }
+
+        for ((client, number), channel) in self
+            .channels_by_client_and_number
+            .iter_mut()
+            .filter(|(_, c)| c.is_expired(now))
+        {
+            tracing::info!(target: "relay", channel = %number, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
+
+            channel.bound = false;
+        }
+
+        let channels_to_delete = self
+            .channels_by_client_and_number
+            .iter()
+            .filter_map(|(id, c)| c.can_be_deleted(now).then_some(*id))
+            .collect::<Vec<_>>();
+
+        for (client_socket, number) in channels_to_delete {
+            self.delete_channel_binding(client_socket, number);
+        }
     }
 
     fn handle_binding_request(&mut self, message: Binding, sender: ClientSocket) {
@@ -558,13 +561,6 @@ where
         message.add_attribute(XorMappedAddress::new(sender.0));
         message.add_attribute(effective_lifetime.clone());
 
-        let wake_deadline = self.time_events.add(
-            allocation.expires_at,
-            TimedAction::ExpireAllocation(allocation.id),
-        );
-        self.pending_commands.push_back(Command::Wake {
-            deadline: wake_deadline,
-        });
         self.pending_commands.push_back(Command::CreateAllocation {
             id: allocation.id,
             family: first_relay_address.family(),
@@ -646,13 +642,6 @@ where
             "Refreshed allocation",
         );
 
-        let wake_deadline = self.time_events.add(
-            allocation.expires_at,
-            TimedAction::ExpireAllocation(allocation.id),
-        );
-        self.pending_commands.push_back(Command::Wake {
-            deadline: wake_deadline,
-        });
         self.send_message(
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
@@ -721,13 +710,6 @@ where
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
-            let wake_deadline = self.time_events.add(
-                channel.expiry,
-                TimedAction::UnbindChannel((sender, requested_channel)),
-            );
-            self.pending_commands.push_back(Command::Wake {
-                deadline: wake_deadline,
-            });
             self.send_message(
                 channel_bind_success_response(request.transaction_id()),
                 sender,
@@ -915,14 +897,6 @@ where
             .insert((client, peer), requested_channel);
 
         debug_assert!(existing.is_none());
-
-        let wake_deadline = self.time_events.add(
-            expiry,
-            TimedAction::UnbindChannel((client, requested_channel)),
-        );
-        self.pending_commands.push_back(Command::Wake {
-            deadline: wake_deadline,
-        });
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
@@ -963,12 +937,6 @@ where
                 KeyValue::new("message_type", message_type),
             ],
         );
-    }
-
-    fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
-        self.clients_by_allocation
-            .get(id)
-            .and_then(|client| self.allocations.get(client))
     }
 
     fn delete_allocation(&mut self, id: AllocationId) {
@@ -1086,6 +1054,10 @@ impl Channel {
     fn is_expired(&self, now: SystemTime) -> bool {
         self.expiry <= now
     }
+
+    fn can_be_deleted(&self, now: SystemTime) -> bool {
+        self.expiry + CHANNEL_REBIND_TIMEOUT <= now
+    }
 }
 
 impl Allocation {
@@ -1108,13 +1080,6 @@ impl Allocation {
     fn is_expired(&self, now: SystemTime) -> bool {
         self.expires_at <= now
     }
-}
-
-#[derive(PartialEq, Debug)]
-enum TimedAction {
-    ExpireAllocation(AllocationId),
-    UnbindChannel((ClientSocket, u16)),
-    DeleteChannel((ClientSocket, u16)),
 }
 
 fn error_response(
@@ -1282,6 +1247,15 @@ stun_codec::define_attribute_enums!(
         AdditionalAddressFamily
     ]
 );
+
+fn earliest(left: Option<SystemTime>, right: Option<SystemTime>) -> Option<SystemTime> {
+    match (left, right) {
+        (None, None) => None,
+        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+    }
+}
 
 #[cfg(test)]
 mod tests {
