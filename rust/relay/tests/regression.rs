@@ -300,13 +300,12 @@ fn ping_pong_relay(
     #[strategy(firezone_relay::proptest::transaction_id())]
     channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
     source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
-    client_to_peer_ping: [u8; 32],
+    #[strategy(firezone_relay::proptest::channel_data())] client_to_peer_ping: ChannelData<'static>,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
     let _ = env_logger::try_init();
@@ -354,7 +353,7 @@ fn ping_pong_relay(
             source,
             ChannelBind::new(
                 channel_bind_transaction_id,
-                channel,
+                client_to_peer_ping.channel(),
                 XorPeerAddress::new(peer.into()),
                 valid_username(now, &username_salt),
                 &secret,
@@ -375,21 +374,29 @@ fn ping_pong_relay(
 
     let now = now + Duration::from_secs(1);
 
-    server.assert_commands(
-        from_client(
-            source,
-            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
-            now,
-        ),
-        [forward(peer, &client_to_peer_ping, 49152)],
+    let maybe_forward = server.server.handle_client_input(
+        client_to_peer_ping.as_msg(),
+        ClientSocket::new(source.into()),
+        now,
     );
 
-    server.assert_commands(
-        from_peer(peer, peer_to_client_ping.as_ref(), 49152),
-        [send_channel_data(
-            source,
-            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
-        )],
+    assert_eq!(
+        maybe_forward,
+        Some((AllocationPort::new(49152), PeerSocket::new(peer.into())))
+    );
+
+    let maybe_forward = server.server.handle_peer_traffic(
+        peer_to_client_ping.as_slice(),
+        PeerSocket::new(peer.into()),
+        AllocationPort::new(49152),
+    );
+
+    assert_eq!(
+        maybe_forward,
+        Some((
+            ClientSocket::new(source.into()),
+            client_to_peer_ping.channel().value()
+        ))
     );
 }
 
@@ -522,7 +529,7 @@ fn ping_pong_ip6_relay(
     public_relay_ip6_addr: Ipv6Addr,
     #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
-    client_to_peer_ping: [u8; 32],
+    mut client_to_peer_ping: [u8; 36],
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
     let _ = env_logger::try_init();
@@ -592,21 +599,27 @@ fn ping_pong_ip6_relay(
 
     let now = now + Duration::from_secs(1);
 
-    server.assert_commands(
-        from_client(
-            source,
-            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
-            now,
-        ),
-        [forward(peer, &client_to_peer_ping, 49152)],
+    ChannelData::encode_header_to_slice(channel.value(), 32, &mut client_to_peer_ping[..4]);
+    let maybe_forward = server.server.handle_client_input(
+        client_to_peer_ping.as_slice(),
+        ClientSocket::new(source.into()),
+        now,
     );
 
-    server.assert_commands(
-        from_peer(peer, peer_to_client_ping.as_ref(), 49152),
-        [send_channel_data(
-            source,
-            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
-        )],
+    assert_eq!(
+        maybe_forward,
+        Some((AllocationPort::new(49152), PeerSocket::new(peer.into())))
+    );
+
+    let maybe_forward = server.server.handle_peer_traffic(
+        peer_to_client_ping.as_slice(),
+        PeerSocket::new(peer.into()),
+        AllocationPort::new(49152),
+    );
+
+    assert_eq!(
+        maybe_forward,
+        Some((ClientSocket::new(source.into()), channel.value()))
     );
 }
 
@@ -639,9 +652,6 @@ impl TestServer {
             Input::Time(now) => {
                 self.server.handle_timeout(now);
             }
-            Input::Peer(peer, data, port) => {
-                self.server.handle_peer_traffic(data, peer, port);
-            }
         }
 
         for expected_output in output {
@@ -656,10 +666,6 @@ impl TestServer {
                     FreeAllocation(port, family) => {
                         format!("to free allocation on port {port} for address family {family}")
                     }
-                    Output::SendChannelData((peer, _)) => {
-                        format!("to send channel data from {peer} to client")
-                    }
-                    Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}"),
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -702,28 +708,6 @@ impl TestServer {
                 ) => {
                     assert_eq!(port, actual_port);
                     assert_eq!(family, actual_family);
-                }
-                (
-                    Output::SendChannelData((peer, channeldata)),
-                    Command::SendMessage { recipient, payload },
-                ) => {
-                    let expected_channel_data = hex::encode(channeldata.into_msg());
-                    let actual_message = hex::encode(payload);
-
-                    assert_eq!(expected_channel_data, actual_message);
-                    assert_eq!(recipient, peer);
-                }
-                (
-                    Output::Forward((peer, expected_data, port)),
-                    Command::ForwardDataClientToPeer {
-                        port: actual_port,
-                        data: actual_data,
-                        receiver,
-                    },
-                ) => {
-                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data.data()));
-                    assert_eq!(receiver, peer);
-                    assert_eq!(port, actual_port);
                 }
                 (expected, actual) => panic!("Unhandled combination: {expected:?} {actual:?}"),
             }
@@ -809,25 +793,16 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
 }
 
 enum Input<'a> {
-    Client(ClientSocket, ClientMessage, SystemTime),
-    Peer(PeerSocket, &'a [u8], AllocationPort),
+    Client(ClientSocket, ClientMessage<'a>, SystemTime),
     Time(SystemTime),
 }
 
 fn from_client<'a>(
     from: impl Into<SocketAddr>,
-    message: impl Into<ClientMessage>,
+    message: impl Into<ClientMessage<'a>>,
     now: SystemTime,
 ) -> Input<'a> {
     Input::Client(ClientSocket::new(from.into()), message.into(), now)
-}
-
-fn from_peer(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input {
-    Input::Peer(
-        PeerSocket::new(from.into()),
-        data,
-        AllocationPort::new(port),
-    )
 }
 
 fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
@@ -837,8 +812,6 @@ fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
 #[derive(Debug)]
 enum Output {
     SendMessage((ClientSocket, Message<Attribute>)),
-    SendChannelData((ClientSocket, ChannelData)),
-    Forward((PeerSocket, Vec<u8>, AllocationPort)),
     CreateAllocation(AllocationPort, AddressFamily),
     FreeAllocation(AllocationPort, AddressFamily),
 }
@@ -853,16 +826,4 @@ fn free_allocation(port: u16, fam: AddressFamily) -> Output {
 
 fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output {
     Output::SendMessage((ClientSocket::new(source.into()), message))
-}
-
-fn send_channel_data(source: impl Into<SocketAddr>, message: ChannelData) -> Output {
-    Output::SendChannelData((ClientSocket::new(source.into()), message))
-}
-
-fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> Output {
-    Output::Forward((
-        PeerSocket::new(source.into()),
-        data.to_vec(),
-        AllocationPort::new(port),
-    ))
 }

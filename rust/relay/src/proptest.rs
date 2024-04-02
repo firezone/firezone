@@ -1,4 +1,5 @@
 use crate::Binding;
+use crate::ChannelData;
 use proptest::arbitrary::any;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
@@ -26,7 +27,7 @@ pub fn allocation_lifetime() -> impl Strategy<Value = Lifetime> {
 }
 
 pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
-    (ChannelNumber::MIN..ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
+    (0x4000u16..0x4FFFu16).prop_map(|n| ChannelNumber::new(n).unwrap())
 }
 
 pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, u16)> {
@@ -39,6 +40,26 @@ pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, u16)> {
 
             (vec, len as u16)
         })
+}
+
+pub fn channel_data() -> impl Strategy<Value = ChannelData<'static>> {
+    let buffer = any::<Vec<u8>>()
+        .prop_filter("buffer must be at least 4 bytes", |v| v.len() >= 4)
+        .prop_filter("payload does not fit into u16", |vec| {
+            vec.len() <= u16::MAX as usize
+        });
+
+    (buffer, channel_number()).prop_map(|(payload, number)| {
+        let payload = payload.leak(); // This is okay because we only do this for testing.
+
+        ChannelData::encode_header_to_slice(
+            number.value(),
+            (payload.len() - 4) as u16,
+            &mut payload[..4],
+        );
+
+        ChannelData::parse(payload).unwrap()
+    })
 }
 
 pub fn username_salt() -> impl Strategy<Value = String> {

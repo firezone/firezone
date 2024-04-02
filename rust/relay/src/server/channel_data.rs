@@ -1,17 +1,17 @@
-use bytes::BufMut;
 use std::io;
+use stun_codec::rfc5766::attributes::ChannelNumber;
 
 const HEADER_LEN: usize = 4;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ChannelData {
-    channel: u16,
+pub struct ChannelData<'a> {
+    channel: ChannelNumber,
     length: usize,
-    msg: Vec<u8>,
+    msg: &'a [u8],
 }
 
-impl ChannelData {
-    pub fn parse(msg: Vec<u8>) -> Result<Self, io::Error> {
+impl<'a> ChannelData<'a> {
+    pub fn parse(msg: &'a [u8]) -> Result<Self, io::Error> {
         if msg.len() < HEADER_LEN {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
@@ -22,12 +22,10 @@ impl ChannelData {
         let (header, payload) = msg.split_at(HEADER_LEN);
 
         let channel_number = u16::from_be_bytes([header[0], header[1]]);
-        if !(0x4000..=0x7FFF).contains(&channel_number) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "channel number out of bounds",
-            ));
-        }
+        let channel_number = match ChannelNumber::new(channel_number) {
+            Ok(c) => c,
+            Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidInput, e)),
+        };
 
         let length = u16::from_be_bytes([header[2], header[3]]) as usize;
 
@@ -47,20 +45,51 @@ impl ChannelData {
         })
     }
 
-    pub fn channel(&self) -> u16 {
+    pub fn channel(&self) -> ChannelNumber {
         self.channel
     }
 
-    pub fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &'a [u8] {
         let (_, payload) = self.msg.split_at(HEADER_LEN);
 
         &payload[..self.length]
     }
 
-    pub fn encode_header_to_slice(channel: u16, data_len: u16, mut header: &mut [u8]) -> usize {
-        header.put_u16(channel);
-        header.put_u16(data_len);
+    pub fn as_msg(&self) -> &'a [u8] {
+        self.msg
+    }
+
+    pub fn encode_header_to_slice(channel: u16, data_len: u16, header: &mut [u8]) -> usize {
+        let [c1, c2] = channel.to_be_bytes();
+        let [l1, l2] = data_len.to_be_bytes();
+
+        header[0] = c1;
+        header[1] = c2;
+        header[2] = l1;
+        header[3] = l2;
 
         data_len as usize + HEADER_LEN
+    }
+}
+
+#[cfg(all(test, feature = "proptest"))]
+mod tests {
+    use super::*;
+    use stun_codec::rfc5766::attributes::ChannelNumber;
+
+    #[test_strategy::proptest]
+    fn can_reparse_encoded_header(
+        #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
+        payload: Vec<u8>,
+    ) {
+        let mut msg = vec![0; payload.len() + 4];
+        msg[4..].copy_from_slice(&payload);
+
+        ChannelData::encode_header_to_slice(channel.value(), payload.len() as u16, &mut msg[..4]);
+
+        let parsed = ChannelData::parse(&msg).unwrap();
+
+        assert_eq!(parsed.data(), payload);
+        assert_eq!(parsed.channel(), channel);
     }
 }

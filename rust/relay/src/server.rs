@@ -101,24 +101,6 @@ pub enum Command {
         port: AllocationPort,
         family: AddressFamily,
     },
-
-    ForwardDataClientToPeer {
-        port: AllocationPort,
-        data: ClientToPeer,
-        receiver: PeerSocket,
-    },
-}
-
-#[derive(Debug, PartialEq)]
-pub struct ClientToPeer<'a>(ChannelData<'a>);
-
-impl ClientToPeer {
-    /// Extract the data to forward to the peer.
-    ///
-    /// Data from clients arrives in [`ChannelData`] messages and we only forward the actual payload.
-    pub fn data(&self) -> &[u8] {
-        self.0.data()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -235,9 +217,17 @@ where
 
     /// Process the bytes received from a client.
     ///
-    /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
+    /// # Returns
+    ///
+    /// - [`Some`] if the provided bytes were a [`ChannelData`] message.
+    ///   In that case, you should forward the _payload_ to the [`PeerSocket`] on the [`AllocationPort`].
     #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
-    pub fn handle_client_input(&mut self, bytes: Vec<u8>, sender: ClientSocket, now: SystemTime) {
+    pub fn handle_client_input(
+        &mut self,
+        bytes: &[u8],
+        sender: ClientSocket,
+        now: SystemTime,
+    ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match self.decoder.decode(bytes) {
@@ -246,7 +236,7 @@ where
                     Span::current().record("transaction_id", field::debug(id));
                 }
 
-                self.handle_client_message(message, sender, now);
+                return self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
             Ok(Err(error_code)) => {
@@ -266,6 +256,8 @@ where
                 tracing::debug!(target: "relay", "unexpected EOF while parsing message")
             }
         };
+
+        None
     }
 
     pub fn handle_client_message(
@@ -273,7 +265,7 @@ where
         message: ClientMessage,
         sender: ClientSocket,
         now: SystemTime,
-    ) {
+    ) -> Option<(AllocationPort, PeerSocket)> {
         let result = match message {
             ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
             ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
@@ -285,19 +277,20 @@ where
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
-                return;
+                return None;
             }
             ClientMessage::ChannelData(msg) => {
-                self.handle_channel_data_message(msg, sender, now);
-                return;
+                return self.handle_channel_data_message(msg, sender, now);
             }
         };
 
         let Err(error_response) = result else {
-            return;
+            return None;
         };
 
-        self.queue_error_response(sender, error_response)
+        self.queue_error_response(sender, error_response);
+
+        None
     }
 
     fn queue_error_response(
@@ -727,8 +720,8 @@ where
         message: ChannelData,
         sender: ClientSocket,
         _: SystemTime,
-    ) {
-        let channel_number = message.channel();
+    ) -> Option<(AllocationPort, PeerSocket)> {
+        let channel_number = message.channel().value();
         let data = message.data();
 
         let Some(channel) = self
@@ -736,7 +729,7 @@ where
             .get(&(sender, channel_number))
         else {
             tracing::debug!(target: "relay", channel = %channel_number, "Channel does not exist, refusing to forward data");
-            return;
+            return None;
         };
 
         // TODO: Do we need to enforce that only the creator of the channel can relay data?
@@ -744,7 +737,7 @@ where
 
         if !channel.bound {
             tracing::debug!(target: "relay", channel = %channel_number, "Channel exists but is unbound");
-            return;
+            return None;
         }
 
         Span::current().record("allocation", field::display(&channel.allocation));
@@ -756,12 +749,7 @@ where
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
 
-        self.pending_commands
-            .push_back(Command::ForwardDataClientToPeer {
-                port: channel.allocation,
-                data: ClientToPeer(message),
-                receiver: channel.peer_address,
-            });
+        Some((channel.allocation, channel.peer_address))
     }
 
     fn verify_auth(

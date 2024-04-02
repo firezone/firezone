@@ -372,21 +372,6 @@ where
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {port}");
                     }
-                    Command::ForwardDataClientToPeer {
-                        port,
-                        data,
-                        receiver,
-                    } => {
-                        let span = tracing::debug_span!("Command::ForwardData", %port, %receiver);
-                        let _guard = span.enter();
-
-                        if let Err(e) =
-                            self.sockets
-                                .try_send(port.value(), receiver.into_socket(), data.data())
-                        {
-                            tracing::warn!(target: "relay", %receiver, "Failed to forward data: {e}");
-                        }
-                    }
                 }
 
                 continue; // Attempt to process more commands.
@@ -419,8 +404,22 @@ where
                     from,
                     packet,
                 })) => {
-                    self.server
-                        .handle_client_input(packet.to_vec(), ClientSocket::new(from), now);
+                    if let Some((port, peer)) =
+                        self.server
+                            .handle_client_input(packet, ClientSocket::new(from), now)
+                    {
+                        // Re-parse as `ChannelData` if we should relay it.
+                        let payload = ChannelData::parse(packet)
+                            .expect("valid ChannelData if we should relay it")
+                            .data();
+
+                        if let Err(e) =
+                            self.sockets
+                                .try_send(port.value(), peer.into_socket(), payload)
+                        {
+                            tracing::warn!(target: "relay", %peer, "Failed to relay data to peer: {e}");
+                        }
+                    };
                     continue;
                 }
                 Poll::Ready(Ok(sockets::Received { port, from, packet })) => {
