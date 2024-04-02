@@ -1,6 +1,6 @@
 use crate::server::{AllocationId, ClientToPeer};
 use crate::udp_socket::UdpSocket;
-use crate::{AddressFamily, PeerSocket};
+use crate::{AddressFamily, PeerSocket, PeerToClient};
 use anyhow::{bail, Result};
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
@@ -22,7 +22,7 @@ pub struct Allocation {
 
 impl Allocation {
     pub fn new(
-        relay_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
+        relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
         id: AllocationId,
         family: AddressFamily,
         port: u16,
@@ -88,7 +88,7 @@ impl Drop for Allocation {
 }
 
 async fn forward_incoming_relay_data(
-    mut relayed_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
+    mut relayed_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
     mut client_to_peer_receiver: mpsc::Receiver<(ClientToPeer, PeerSocket)>,
     id: AllocationId,
     family: AddressFamily,
@@ -100,7 +100,7 @@ async fn forward_incoming_relay_data(
         tokio::select! {
             result = socket.recv() => {
                 let (data, sender) = result?;
-                relayed_data_sender.send((data.to_vec(), PeerSocket::new(sender), id)).await?;
+                relayed_data_sender.send((PeerToClient::new(data), PeerSocket::new(sender), id)).await?;
             }
 
             Some((data, recipient)) = client_to_peer_receiver.next() => {

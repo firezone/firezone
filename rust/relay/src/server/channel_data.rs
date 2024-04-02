@@ -71,11 +71,15 @@ impl ChannelData {
     }
 }
 
+pub fn encode_to_slice(channel: u16, data_len: u16, mut header: &mut [u8]) {
+    header.put_u16(channel);
+    header.put_u16(data_len);
+}
+
 fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
     let mut message = BytesMut::with_capacity(HEADER_LEN + (len as usize));
 
-    message.put_u16(channel);
-    message.put_u16(len);
+    encode_to_slice(channel, len, &mut message);
     message.put_slice(payload);
 
     message.freeze().into()

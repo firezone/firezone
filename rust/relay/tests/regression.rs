@@ -1,7 +1,7 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, PeerToClient, Refresh, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -607,7 +607,7 @@ impl TestServer {
             }
             Input::Peer(peer, data, port) => {
                 self.server
-                    .handle_peer_traffic(&data, peer, self.id_to_port[&port]);
+                    .handle_peer_traffic(data, peer, self.id_to_port[&port]);
             }
         }
 
@@ -707,7 +707,7 @@ impl TestServer {
                 }
                 (
                     Output::Forward((peer, expected_data, port)),
-                    Command::ForwardData {
+                    Command::ForwardDataClientToPeer {
                         id,
                         data: actual_data,
                         receiver,
@@ -802,7 +802,7 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
 
 enum Input {
     Client(ClientSocket, ClientMessage, SystemTime),
-    Peer(PeerSocket, Vec<u8>, u16),
+    Peer(PeerSocket, PeerToClient, u16),
     Time(SystemTime),
 }
 
@@ -815,7 +815,7 @@ fn from_client(
 }
 
 fn from_peer(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input {
-    Input::Peer(PeerSocket::new(from.into()), data.to_vec(), port)
+    Input::Peer(PeerSocket::new(from.into()), PeerToClient::new(data), port)
 }
 
 fn forward_time_to(when: SystemTime) -> Input {
