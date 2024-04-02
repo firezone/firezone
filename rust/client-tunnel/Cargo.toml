@@ -20,9 +20,5 @@ thiserror = "1.0.57"
 tokio = { version = "1.36", default-features = false, features = ["rt", "macros", "signal"] }
 url = { version = "2.3.1", default-features = false }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-# Used to safely revert `/etc/resolv.conf`
-atomicwrites = "0.4.3"
-
 [lints]
 workspace = true
