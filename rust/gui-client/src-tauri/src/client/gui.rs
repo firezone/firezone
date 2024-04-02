@@ -58,7 +58,7 @@ pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
 /// Note that this never gets Dropped because of
-/// <https://github.com/tauri-apps/tauri/issues/8631>59
+/// <https://github.com/tauri-apps/tauri/issues/8631>
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
     pub inject_faults: bool,
