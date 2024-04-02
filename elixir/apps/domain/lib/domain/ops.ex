@@ -68,4 +68,19 @@ defmodule Domain.Ops do
       {actor, identity}
     end)
   end
+
+  def sync_pricing_plans do
+    {:ok, subscriptions} = Domain.Billing.list_all_subscriptions()
+
+    Enum.each(subscriptions, fn subscription ->
+      %{
+        "object" => "event",
+        "data" => %{
+          "object" => subscription
+        },
+        "type" => "customer.subscription.updated"
+      }
+      |> Domain.Billing.EventHandler.handle_event()
+    end)
+  end
 end
