@@ -273,12 +273,18 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       {:error, {:invalid_jwt, _reason}} ->
         {:error, :invalid_token}
 
-      {:error, {400, _reason}} ->
+      {:error, {status, _reason} = other} when status in 400..499 ->
+        Logger.info("Failed to connect OpenID Connect provider",
+          provider_id: provider.id,
+          reason: inspect(other)
+        )
+
         {:error, :invalid_token}
 
       {:error, other} ->
         Logger.error("Failed to connect OpenID Connect provider",
           provider_id: provider.id,
+          account_id: provider.account_id,
           reason: inspect(other)
         )
 

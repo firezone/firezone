@@ -1878,7 +1878,6 @@ name = "firezone-client-tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "atomicwrites",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
@@ -1893,7 +1892,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "url",
 ]
 
