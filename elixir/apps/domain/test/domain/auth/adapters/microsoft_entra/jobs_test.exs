@@ -528,6 +528,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.JobsTest do
       refute updated_provider.last_synced_at
       assert updated_provider.last_syncs_failed == 2
       assert updated_provider.last_sync_error == "Microsoft Graph API is temporarily unavailable"
+
+      cancel_bypass_expectations_check(bypass)
     end
   end
 end
