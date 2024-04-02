@@ -17,7 +17,6 @@ public final class AppStore: ObservableObject {
     public enum WindowDefinition: String, CaseIterable {
       case askPermission = "ask-permission"
       case settings = "settings"
-      case auth = "auth"
 
       public var identifier: String { "firezone-\(rawValue)" }
       public var externalEventMatchString: String { rawValue }
@@ -58,7 +57,6 @@ public final class AppStore: ObservableObject {
   #endif
 
   public let tunnelStore: TunnelStore
-  public let settingsViewModel: SettingsViewModel
 
   private var cancellables: Set<AnyCancellable> = []
   public let logger: AppLogger
@@ -66,10 +64,8 @@ public final class AppStore: ObservableObject {
   public init() {
     let logger = AppLogger(category: .app, folderURL: SharedAccess.appLogFolderURL)
     let tunnelStore = TunnelStore(logger: logger)
-    let settingsViewModel = SettingsViewModel(tunnelStore: tunnelStore, logger: logger)
 
     self.tunnelStore = tunnelStore
-    self.settingsViewModel = settingsViewModel
     self.logger = logger
 
     #if os(macOS)
@@ -77,10 +73,11 @@ public final class AppStore: ObservableObject {
         .sink { status in
           Task {
             await MainActor.run {
-              // FIXME: Clean up Swift UI window groups to use a multi-step wizard
               if case .invalid = status {
+                // Show grant VPN permission when config goes invalid
                 WindowDefinition.askPermission.openWindow()
               } else if !DeviceMetadata.firstTime() {
+                //
                 WindowDefinition.askPermission.window()?.close()
               }
             }

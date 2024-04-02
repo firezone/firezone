@@ -35,7 +35,7 @@ public final class TunnelStore: ObservableObject {
   // to observe
   @Published private(set) var status: NEVPNStatus
 
-  @Published private(set) var resourceListJSON: String?
+  private var resourceListHash = Data()
 
   public var manager: NETunnelProviderManager?
 
@@ -184,10 +184,10 @@ public final class TunnelStore: ObservableObject {
 
   func authURL() -> URL? {
     guard let manager = manager,
-       let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-       let providerConfiguration = protocolConfiguration.providerConfiguration,
-       let authBaseURLString = providerConfiguration[TunnelStoreKeys.authBaseURL] as? String,
-       let authURL = URL(string: authBaseURLString)
+          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          let providerConfiguration = protocolConfiguration.providerConfiguration,
+          let authBaseURLString = providerConfiguration[TunnelStoreKeys.authBaseURL] as? String,
+          let authURL = URL(string: authBaseURLString)
     else {
       return nil
     }
@@ -228,16 +228,37 @@ public final class TunnelStore: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources() {
+  func beginUpdatingResources(callback: @escaping (Data) -> Void) {
     logger.log("\(#function)")
 
-    let intervalInSeconds: TimeInterval = 0.5
+    updateResources(callback: callback)
+    let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
-      self.updateResources()
+      self.updateResources(callback: callback)
     }
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
+  }
+
+  private func updateResources(callback: @escaping (Data) -> Void) {
+    guard let manager = manager
+    else {
+      logger.error("\(#function): No manager created yet")
+      return
+    }
+
+    let session = castToSession(manager.connection)
+    do {
+      try session.sendProviderMessage(resourceListHash) { data in
+        if let data = data {
+          self.resourceListHash = Data(SHA256.hash(data: data))
+          callback(data)
+        }
+      }
+    } catch {
+      logger.error("Error: sendProviderMessage: \(error)")
+    }
   }
 
   func endUpdatingResources() {
@@ -286,26 +307,6 @@ public final class TunnelStore: ObservableObject {
     }
 
     return session
-  }
-
-  private func updateResources() {
-    guard let manager = manager
-    else {
-      logger.error("\(#function): No manager created yet")
-      return
-    }
-
-    let session = castToSession(manager.connection)
-    let hash = Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8)))
-    do {
-      try session.sendProviderMessage(hash) { [weak self] reply in
-        if let reply = reply {
-          self?.resourceListJSON = String(data: reply, encoding: .utf8)
-        }
-      }
-    } catch {
-      logger.error("Error: sendProviderMessage: \(error)")
-    }
   }
 
   // Receive notifications about our VPN profile status changing,
@@ -361,8 +362,8 @@ public final class TunnelStore: ObservableObject {
     }
 
     if status != .connected {
-      // Reset resources list
-      resourceListJSON = nil
+      // Reset resources hash
+      resourceListHash = Data()
     }
   }
 
