@@ -33,14 +33,14 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    pub fn decode<'a>(
+    pub fn decode(
         &mut self,
-        input: &'a [u8],
-    ) -> Result<Result<ClientMessage<'a>, Message<Attribute>>, Error> {
+        input: Vec<u8>,
+    ) -> Result<Result<ClientMessage, Message<Attribute>>, Error> {
         // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
         match input.first() {
             Some(0..=3) => {
-                let message = match self.stun_message_decoder.decode_from_bytes(input)? {
+                let message = match self.stun_message_decoder.decode_from_bytes(&input)? {
                     Ok(message) => message,
                     Err(broken_message) => {
                         let method = broken_message.method();
@@ -88,8 +88,8 @@ impl Decoder {
 }
 
 #[derive(derive_more::From)]
-pub enum ClientMessage<'a> {
-    ChannelData(ChannelData<'a>),
+pub enum ClientMessage {
+    ChannelData(ChannelData),
     Binding(Binding),
     Allocate(Allocate),
     Refresh(Refresh),
@@ -97,7 +97,7 @@ pub enum ClientMessage<'a> {
     CreatePermission(CreatePermission),
 }
 
-impl<'a> ClientMessage<'a> {
+impl ClientMessage {
     pub fn transaction_id(&self) -> Option<TransactionId> {
         match self {
             ClientMessage::Binding(request) => Some(request.transaction_id),

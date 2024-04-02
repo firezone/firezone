@@ -210,7 +210,10 @@ defmodule Web.Settings.Billing do
       {:noreply, redirect(socket, external: billing_portal_url)}
     else
       {:error, reason} ->
-        Logger.error("Failed to get billing portal URL", reason: inspect(reason))
+        Logger.error("Failed to get billing portal URL",
+          reason: inspect(reason),
+          account_id: socket.assigns.account.id
+        )
 
         socket =
           assign(socket,
