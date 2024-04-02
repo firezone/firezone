@@ -411,26 +411,6 @@ where
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {id}");
                     }
-                    Command::Wake { deadline } => {
-                        let span = tracing::debug_span!("Command::Wake", ?deadline);
-                        let _guard = span.enter();
-
-                        match deadline.duration_since(now) {
-                            Ok(duration) => {
-                                tracing::trace!(target: "relay", ?duration, "Suspending event loop")
-                            }
-                            Err(e) => {
-                                let difference = e.duration();
-
-                                tracing::warn!(target: "relay",
-                                    ?difference,
-                                    "Wake time is already in the past, waking now"
-                                )
-                            }
-                        }
-
-                        Pin::new(&mut self.sleep).reset(deadline);
-                    }
                     Command::ForwardDataClientToPeer { id, data, receiver } => {
                         let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
                         let _guard = span.enter();
@@ -455,7 +435,7 @@ where
 
             // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(now);
+                self.server.handle_timeout(now);
                 continue; // Handle potentially new commands.
             }
 
@@ -475,7 +455,13 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle portal messages
+            // Priority 5: Check when we need to next be woken. This needs to happen after all state modifications.
+            if let Some(timeout) = self.server.poll_timeout() {
+                Pin::new(&mut self.sleep).reset(timeout);
+                continue;
+            }
+
+            // Priority 6: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
