@@ -58,7 +58,7 @@ swift-bridge = { workspace = true }
 tracing-android = "0.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-# Needed to safely modify `/etc/resolv.conf` and write the device ID for `gui-client`
+# Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
 atomicwrites = "0.4.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]

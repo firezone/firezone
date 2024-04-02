@@ -24,12 +24,17 @@ make_hash "$BINARY_DEST_PATH"-amd64
 make_hash "$BINARY_DEST_PATH"-amd64.dwp
 make_hash "$BINARY_DEST_PATH"_amd64.deb
 
-# TODO: There must be a better place to put this
 # Test the deb package, since this script is the easiest place to get a release build
 sudo dpkg --install "$BINARY_DEST_PATH"_amd64.deb
 
 # Debug-print the files. The icons and both binaries should be in here
 dpkg --listfiles firezone
+
+# Confirm that both binaries and at least one icon were installed
 which firezone firezone-client-tunnel
-firezone-client-tunnel
-firezone || true
+stat /usr/share/icons/hicolor/512x512/apps/firezone.png
+
+# Make sure the binaries both got built, packaged, and installed, and at least
+# know their own names
+firezone-client-tunnel --help | grep "Usage: firezone-client-tunnel"
+firezone --help | grep "Usage: firezone"
