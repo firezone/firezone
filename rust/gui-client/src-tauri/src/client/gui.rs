@@ -3,20 +3,16 @@
 //! Most of this Client is stubbed out with panics on macOS.
 //! The real macOS Client is in `swift/apple`
 
-// TODO: `git grep` for unwraps before 1.0, especially this gui module <https://github.com/firezone/firezone/issues/3521>
-
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{bail, Context, Result};
-use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, ResourceDescription, Sockets};
-use connlib_shared::{keypair, messages::ResourceId, LoginUrl, BUNDLE_ID};
+use connlib_client_shared::ResourceDescription;
+use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -25,6 +21,8 @@ use std::{
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
+use tunnel_wrapper::CallbackHandler;
+
 use ControllerRequest as Req;
 
 mod system_tray_menu;
@@ -45,18 +43,25 @@ mod os;
 #[allow(clippy::unnecessary_wraps)]
 mod os;
 
-/// The Windows client doesn't use platform APIs to detect network connectivity changes,
-/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
-/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
-/// been a partition.
-const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
+// This syntax is odd, but it helps `cargo-mutants` understand the platform-specific modules
+#[cfg(not(target_os = "windows"))]
+#[path = "tunnel-wrapper/ipc.rs"]
+mod tunnel_wrapper_ipc;
+#[cfg(not(target_os = "windows"))]
+use tunnel_wrapper_ipc as tunnel_wrapper;
+
+#[cfg(target_os = "windows")]
+#[path = "tunnel-wrapper/in_proc.rs"]
+mod tunnel_wrapper_in_proc;
+#[cfg(target_os = "windows")]
+use tunnel_wrapper_in_proc as tunnel_wrapper;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
 /// Note that this never gets Dropped because of
-/// <https://github.com/tauri-apps/tauri/issues/8631>
+/// <https://github.com/tauri-apps/tauri/issues/8631>59
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
     pub inject_faults: bool,
@@ -247,7 +252,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                 }
 
                 assert_eq!(
-                    BUNDLE_ID,
+                    connlib_shared::BUNDLE_ID,
                     app.handle().config().tauri.bundle.identifier,
                     "BUNDLE_ID should match bundle ID in tauri.conf.json"
                 );
@@ -463,38 +468,6 @@ pub(crate) enum ControllerRequest {
     UpdateNotificationClicked(client::updates::Release),
 }
 
-#[derive(Clone)]
-struct CallbackHandler {
-    _logger: file_logger::Handle,
-    notify_controller: Arc<Notify>,
-    ctlr_tx: CtlrTx,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
-}
-
-// Callbacks must all be non-blocking
-impl connlib_client_shared::Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected)
-            .expect("controller channel failed");
-    }
-
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
-        tracing::info!("on_set_interface_config");
-        self.ctlr_tx
-            .try_send(ControllerRequest::TunnelReady)
-            .expect("controller channel failed");
-        None
-    }
-
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
-        tracing::debug!("on_update_resources");
-        self.resources.store(resources.into());
-        self.notify_controller.notify_one();
-    }
-}
-
 struct Controller {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
@@ -537,17 +510,11 @@ impl Controller {
             api_url = api_url.to_string(),
             "Calling connlib Session::connect"
         );
-        let device_id =
-            connlib_shared::device_id::get().context("Failed to read / create device ID")?;
-        let (private_key, public_key) = keypair();
-        let login = LoginUrl::client(
-            api_url.as_str(),
-            &token,
-            device_id.id,
-            None,
-            public_key.to_bytes(),
-        )?;
-        let connlib = connlib_client_shared::Session::connect(
+
+
+        let connlib = tunnel_wrapper::connect(api_url.as_str(), token, callback_handler.clone(), tokio::runtime::Handle::current())?;
+
+        /*connlib_client_shared::Session::connect(
             login,
             Sockets::new(),
             private_key,
@@ -555,7 +522,7 @@ impl Controller {
             callback_handler.clone(),
             Some(MAX_PARTITION_TIME),
             tokio::runtime::Handle::current(),
-        );
+        );*/
 
         connlib.set_dns(client::resolvers::get().unwrap_or_default());
 
