@@ -35,7 +35,7 @@ use stun_codec::rfc8656::attributes::{
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
-use tracing::{field, log, Span};
+use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
 
@@ -229,17 +229,14 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
+    #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match self.decoder.decode(bytes) {
             Ok(Ok(message)) => {
                 if let Some(id) = message.transaction_id() {
-                    Span::current().record("transaction_id", hex::encode(id.as_bytes()));
+                    Span::current().record("transaction_id", field::debug(id));
                 }
 
                 self.handle_client_message(message, sender, now);
@@ -250,16 +247,16 @@ where
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
-                tracing::debug!(%error, "failed to decode channel data")
+                tracing::debug!(target: "relay", %error, "failed to decode channel data")
             }
             Err(client_message::Error::DecodeStun(ref error)) => {
-                tracing::debug!(%error, "failed to decode stun packet")
+                tracing::debug!(target: "relay", %error, "failed to decode stun packet")
             }
             Err(client_message::Error::UnknownMessageType(t)) => {
-                tracing::debug!(r#type = %t, "unknown STUN message type")
+                tracing::debug!(target: "relay", r#type = %t, "unknown STUN message type")
             }
             Err(client_message::Error::Eof) => {
-                tracing::debug!("unexpected EOF while parsing message")
+                tracing::debug!(target: "relay", "unexpected EOF while parsing message")
             }
         };
     }
@@ -324,17 +321,14 @@ where
     }
 
     /// Process the bytes received from an allocation.
-    #[tracing::instrument(skip_all, fields(%sender, %allocation, recipient, channel), level = "error")]
+    #[tracing::instrument(level = "debug", skip_all, fields(%sender, %allocation, recipient, channel))]
     pub fn handle_peer_traffic(
         &mut self,
         bytes: &[u8],
         sender: PeerSocket,
         allocation: AllocationId,
     ) {
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
             tracing::debug!(target: "relay", "unknown allocation");
@@ -371,17 +365,12 @@ where
             return;
         }
 
-        tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         self.data_relayed_counter.add(bytes.len() as u64, &[]);
         self.data_relayed += bytes.len() as u64;
 
         let data = ChannelData::new(*channel_number, bytes).to_bytes();
-
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&data);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: data,
@@ -389,7 +378,7 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub fn handle_deadline_reached(&mut self, now: SystemTime) {
         for action in self.time_events.pending_actions(now) {
             match action {
@@ -434,7 +423,7 @@ where
     }
 
     /// An allocation failed.
-    #[tracing::instrument(skip(self), fields(%allocation), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self), fields(%allocation))]
     pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
         self.delete_allocation(allocation)
     }
@@ -734,7 +723,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(skip(self, message, now), fields(%sender), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self, message, now), fields(%sender))]
     fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
@@ -780,15 +769,10 @@ where
         Span::current().record("recipient", field::display(&channel.peer_address));
         Span::current().record("channel", field::display(&channel_number));
 
-        tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
+        tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
-
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(data);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
 
         self.pending_commands.push_back(Command::ForwardData {
             id: channel.allocation,
@@ -812,7 +796,7 @@ where
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
-                log::debug!("failed to parse nonce: {e}");
+                tracing::debug!(target: "relay", "failed to parse nonce: {e}");
 
                 error_response(Unauthorized, request)
             })?;
@@ -914,10 +898,7 @@ where
             return;
         };
 
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: bytes,
@@ -955,7 +936,7 @@ where
 
     fn delete_allocation(&mut self, id: AllocationId) {
         let Some(client) = self.clients_by_allocation.remove(&id) else {
-            tracing::debug!("Unable to delete unknown allocation");
+            tracing::debug!(target: "relay", "Unable to delete unknown allocation");
 
             return;
         };
