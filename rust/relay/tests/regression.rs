@@ -1,7 +1,7 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, PeerToClient, Refresh, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -607,7 +607,7 @@ impl TestServer {
             }
             Input::Peer(peer, data, port) => {
                 self.server
-                    .handle_peer_traffic(&data, peer, self.id_to_port[&port]);
+                    .handle_peer_traffic(data, peer, self.id_to_port[&port]);
             }
         }
 
@@ -699,7 +699,7 @@ impl TestServer {
                     Output::SendChannelData((peer, channeldata)),
                     Command::SendMessage { recipient, payload },
                 ) => {
-                    let expected_channel_data = hex::encode(channeldata.to_bytes());
+                    let expected_channel_data = hex::encode(channeldata.into_msg());
                     let actual_message = hex::encode(payload);
 
                     assert_eq!(expected_channel_data, actual_message);
@@ -707,13 +707,13 @@ impl TestServer {
                 }
                 (
                     Output::Forward((peer, expected_data, port)),
-                    Command::ForwardData {
+                    Command::ForwardDataClientToPeer {
                         id,
                         data: actual_data,
                         receiver,
                     },
                 ) => {
-                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data));
+                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data.data()));
                     assert_eq!(receiver, peer);
                     assert_eq!(self.id_to_port[&port], id);
                 }
@@ -800,39 +800,39 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
         .unwrap()
 }
 
-enum Input<'a> {
-    Client(ClientSocket, ClientMessage<'a>, SystemTime),
-    Peer(PeerSocket, Vec<u8>, u16),
+enum Input {
+    Client(ClientSocket, ClientMessage, SystemTime),
+    Peer(PeerSocket, PeerToClient, u16),
     Time(SystemTime),
 }
 
-fn from_client<'a>(
+fn from_client(
     from: impl Into<SocketAddr>,
-    message: impl Into<ClientMessage<'a>>,
+    message: impl Into<ClientMessage>,
     now: SystemTime,
-) -> Input<'a> {
+) -> Input {
     Input::Client(ClientSocket::new(from.into()), message.into(), now)
 }
 
-fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input<'a> {
-    Input::Peer(PeerSocket::new(from.into()), data.to_vec(), port)
+fn from_peer(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input {
+    Input::Peer(PeerSocket::new(from.into()), PeerToClient::new(data), port)
 }
 
-fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
+fn forward_time_to(when: SystemTime) -> Input {
     Input::Time(when)
 }
 
 #[derive(Debug)]
-enum Output<'a> {
+enum Output {
     SendMessage((ClientSocket, Message<Attribute>)),
-    SendChannelData((ClientSocket, ChannelData<'a>)),
+    SendChannelData((ClientSocket, ChannelData)),
     Forward((PeerSocket, Vec<u8>, u16)),
     Wake(SystemTime),
     CreateAllocation(u16, AddressFamily),
     FreeAllocation(u16, AddressFamily),
 }
 
-fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output<'a> {
+fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output {
     Output::SendMessage((ClientSocket::new(source.into()), message))
 }
 

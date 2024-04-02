@@ -11,6 +11,7 @@ use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket, TimeEvents};
 use anyhow::Result;
 use bytecodec::EncodeExt;
+use bytes::BytesMut;
 use core::fmt;
 use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -107,13 +108,48 @@ pub enum Command {
         family: AddressFamily,
     },
 
-    ForwardData {
+    ForwardDataClientToPeer {
         id: AllocationId,
-        data: Vec<u8>,
+        data: ClientToPeer,
         receiver: PeerSocket,
     },
+
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
     Wake { deadline: SystemTime },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ClientToPeer(ChannelData);
+
+#[derive(Debug, PartialEq)]
+pub struct PeerToClient {
+    buf: BytesMut,
+}
+
+impl PeerToClient {
+    pub fn new(msg: &[u8]) -> Self {
+        let mut buf = BytesMut::zeroed(msg.len() + 4);
+        buf[4..].copy_from_slice(msg);
+
+        Self { buf }
+    }
+
+    fn len(&self) -> usize {
+        self.buf.len() - 4
+    }
+
+    fn header_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[..4]
+    }
+}
+
+impl ClientToPeer {
+    /// Extract the data to forward to the peer.
+    ///
+    /// Data from clients arrives in [`ChannelData`] messages and we only forward the actual payload.
+    pub fn data(&self) -> &[u8] {
+        self.0.data()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -230,7 +266,7 @@ where
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
+    pub fn handle_client_input(&mut self, bytes: Vec<u8>, sender: ClientSocket, now: SystemTime) {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match self.decoder.decode(bytes) {
@@ -324,11 +360,11 @@ where
     #[tracing::instrument(level = "debug", skip_all, fields(%sender, %allocation, recipient, channel))]
     pub fn handle_peer_traffic(
         &mut self,
-        bytes: &[u8],
+        mut msg: PeerToClient,
         sender: PeerSocket,
         allocation: AllocationId,
     ) {
-        tracing::trace!(target: "wire", num_bytes = %bytes.len());
+        tracing::trace!(target: "wire", num_bytes = %msg.len());
 
         let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
             tracing::debug!(target: "relay", "unknown allocation");
@@ -341,7 +377,7 @@ where
             .channel_numbers_by_client_and_peer
             .get(&(client, sender))
         else {
-            tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", bytes.len());
+            tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", msg.len());
             return;
         };
 
@@ -365,15 +401,15 @@ where
             return;
         }
 
-        tracing::trace!(target: "wire", num_bytes = %bytes.len());
+        tracing::trace!(target: "wire", num_bytes = %msg.len());
 
-        self.data_relayed_counter.add(bytes.len() as u64, &[]);
-        self.data_relayed += bytes.len() as u64;
+        self.data_relayed_counter.add(msg.len() as u64, &[]);
+        self.data_relayed += msg.len() as u64;
 
-        let data = ChannelData::new(*channel_number, bytes).to_bytes();
+        channel_data::encode_to_slice(*channel_number, msg.len() as u16, msg.header_mut());
 
         self.pending_commands.push_back(Command::SendMessage {
-            payload: data,
+            payload: msg.buf.freeze().into(),
             recipient: client,
         })
     }
@@ -774,11 +810,12 @@ where
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
 
-        self.pending_commands.push_back(Command::ForwardData {
-            id: channel.allocation,
-            data: data.to_vec(),
-            receiver: channel.peer_address,
-        });
+        self.pending_commands
+            .push_back(Command::ForwardDataClientToPeer {
+                id: channel.allocation,
+                data: ClientToPeer(message),
+                receiver: channel.peer_address,
+            });
     }
 
     fn verify_auth(

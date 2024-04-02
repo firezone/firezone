@@ -13,7 +13,7 @@ pub use allocation::Allocation;
 pub use net_ext::IpAddrExt;
 pub use server::{
     Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
-    CreatePermission, Refresh, Server,
+    CreatePermission, PeerToClient, Refresh, Server,
 };
 pub use sleep::Sleep;
 pub use stun_codec::rfc8656::attributes::AddressFamily;

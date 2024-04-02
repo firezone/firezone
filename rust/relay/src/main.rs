@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::{
-    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, UdpSocket,
+    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket,
+    PeerToClient, Server, Sleep, UdpSocket,
 };
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -305,8 +305,8 @@ struct Eventloop<R> {
     server: Server<R>,
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
-    relay_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
-    relay_data_receiver: mpsc::Receiver<(Vec<u8>, PeerSocket, AllocationId)>,
+    relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
+    relay_data_receiver: mpsc::Receiver<(PeerToClient, PeerSocket, AllocationId)>,
     sleep: Sleep,
 
     stats_log_interval: tokio::time::Interval,
@@ -431,7 +431,7 @@ where
 
                         Pin::new(&mut self.sleep).reset(deadline);
                     }
-                    Command::ForwardData { id, data, receiver } => {
+                    Command::ForwardDataClientToPeer { id, data, receiver } => {
                         let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
                         let _guard = span.enter();
 
@@ -463,7 +463,7 @@ where
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_peer_traffic(&data, sender, allocation);
+                self.server.handle_peer_traffic(data, sender, allocation);
                 continue; // Handle potentially new commands.
             }
 
@@ -471,7 +471,7 @@ where
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_client_input(&buffer, sender, now);
+                self.server.handle_client_input(buffer, sender, now);
                 continue; // Handle potentially new commands.
             }
 
