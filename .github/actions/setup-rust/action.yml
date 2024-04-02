@@ -13,25 +13,15 @@ inputs:
 
 outputs:
   packages:
-    description:
-    value: ${{ steps.set-packages.outputs.packages }}
+    description: Compilable / testable packages for the current OS
+    value: ${{
+      (runner.os == 'Linux' && '--workspace') ||
+      (runner.os == 'macOS' && '-p connlib-client-apple -p connlib-client-shared -p firezone-tunnel -p snownet') ||
+      (runner.os == 'Windows' && '-p connlib-client-shared -p firezone-client-tunnel -p firezone-gui-client -p firezone-tunnel -p snownet') }}
 
 runs:
   using: "composite"
   steps:
-    # Compilable / testable packages for the current OS
-    - name: Set packages
-      id: set-packages
-      run: |
-        if [ "${{ runner.os }}" = "Linux" ]; then
-          PACKAGES="--workspace"
-        elif [ "${{ runner.os }}" = "macOS" ]; then
-          PACKAGES="-p connlib-client-apple -p connlib-client-shared -p firezone-tunnel -p snownet"
-        elif [ "${{ runner.os }}" = "Windows" ]; then
-          PACKAGES="-p connlib-client-shared -p firezone-client-tunnel -p firezone-gui-client -p firezone-tunnel -p snownet"
-        fi
-        echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
-      shell: bash
     # Setup sccache, works well for most Rust components
     - if: ${{ inputs.cache_backend == 'sccache' }}
       id: auth
