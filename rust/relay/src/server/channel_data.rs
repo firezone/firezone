@@ -6,6 +6,7 @@ const HEADER_LEN: usize = 4;
 #[derive(Debug, PartialEq, Clone)]
 pub struct ChannelData {
     channel: u16,
+    length: usize,
     msg: Vec<u8>,
 }
 
@@ -42,6 +43,7 @@ impl ChannelData {
         Ok(ChannelData {
             channel: channel_number,
             msg,
+            length,
         })
     }
 
@@ -50,9 +52,15 @@ impl ChannelData {
         debug_assert!(channel < 0x7FFF);
         debug_assert!(data.len() <= u16::MAX as usize);
 
-        let msg = to_bytes(channel, data.len() as u16, data);
+        let length = data.len();
 
-        ChannelData { channel, msg }
+        let msg = to_bytes(channel, length as u16, data);
+
+        ChannelData {
+            channel,
+            msg,
+            length,
+        }
     }
 
     // Panics if self.data.len() > u16::MAX
@@ -67,11 +75,11 @@ impl ChannelData {
     pub fn data(&self) -> &[u8] {
         let (_, payload) = self.msg.split_at(HEADER_LEN);
 
-        payload
+        &payload[..self.length]
     }
 }
 
-pub fn encode_to_slice(channel: u16, data_len: u16, mut header: &mut [u8]) {
+pub fn encode_to_slice(channel: u16, data_len: u16, mut header: impl BufMut) {
     header.put_u16(channel);
     header.put_u16(data_len);
 }
@@ -112,6 +120,6 @@ mod tests {
         let parsed = ChannelData::parse(encoded).unwrap();
 
         assert_eq!(channel.value(), parsed.channel);
-        assert_eq!(&payload.0[..(payload.1 as usize)], parsed.msg)
+        assert_eq!(&payload.0[..(payload.1 as usize)], parsed.data())
     }
 }
