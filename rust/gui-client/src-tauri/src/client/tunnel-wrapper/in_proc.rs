@@ -23,11 +23,9 @@ use tokio::sync::Notify;
 use super::ControllerRequest;
 use super::CtlrTx;
 
-/// The Windows client doesn't use platform APIs to detect network connectivity changes,
-/// so we rely on connlib to do so. We have valid use cases for headless Windows clients
+/// We have valid use cases for headless Windows clients
 /// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
 /// been a partition.
-/// (Update: This may no longer be needed, we do detect network changes now)
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 // This will stay in the GUI process
