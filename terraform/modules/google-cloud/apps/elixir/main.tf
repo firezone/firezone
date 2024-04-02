@@ -287,3 +287,27 @@ resource "google_compute_region_instance_group_manager" "application" {
     google_compute_instance_template.application
   ]
 }
+
+# Auto-scale instances with high CPU and Memory usage
+resource "google_compute_region_autoscaler" "application" {
+  count = var.scaling_max_horizontal_replicas != null ? 1 : 0
+
+  project = var.project_id
+
+  name = "${local.application_name}-autoscaler"
+
+  region = var.compute_instance_region
+  target = google_compute_region_instance_group_manager.application.id
+
+  autoscaling_policy {
+    max_replicas = var.scaling_max_horizontal_replicas
+    min_replicas = var.scaling_horizontal_replicas
+
+    # wait 3 minutes before trying to measure the CPU utilization for new instances
+    cooldown_period = 180
+
+    cpu_utilization {
+      target = 0.8
+    }
+  }
+}

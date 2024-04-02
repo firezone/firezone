@@ -436,6 +436,8 @@ module "web" {
 
   application_dns_tld = "app.${local.tld}"
 
+  application_cdn_enabled = true
+
   application_ports = [
     {
       name     = "http"
