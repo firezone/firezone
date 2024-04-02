@@ -47,16 +47,6 @@ variable "container_registry" {
   description = "Container registry URL to pull the image from."
 }
 
-# variable "container_registry_api_key" {
-#   type     = string
-#   nullable = false
-# }
-
-# variable "container_registry_user_name" {
-#   type     = string
-#   nullable = false
-# }
-
 ################################################################################
 ## Container Image
 ################################################################################
@@ -97,6 +87,14 @@ variable "scaling_horizontal_replicas" {
   }
 
   description = "Number of replicas in an instance group."
+}
+
+variable "scaling_max_horizontal_replicas" {
+  type     = number
+  nullable = true
+  default  = null
+
+  description = "Maximum number of replacias an instance group can be auto-scaled to. `null` disables auto-scaling."
 }
 
 ################################################################################
@@ -226,6 +224,14 @@ variable "application_dns_tld" {
   default  = null
 
   description = "DNS host which will be used to create DNS records for the application and provision SSL-certificates."
+}
+
+variable "application_cdn_enabled" {
+  type     = bool
+  nullable = false
+  default  = false
+
+  description = "Enable CDN for all static assets the application."
 }
 
 variable "application_ports" {
