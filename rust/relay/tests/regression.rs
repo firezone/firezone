@@ -1,7 +1,7 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, PeerToClient, Refresh, Server,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -808,29 +808,29 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
         .unwrap()
 }
 
-enum Input {
+enum Input<'a> {
     Client(ClientSocket, ClientMessage, SystemTime),
-    Peer(PeerSocket, PeerToClient, AllocationPort),
+    Peer(PeerSocket, &'a [u8], AllocationPort),
     Time(SystemTime),
 }
 
-fn from_client(
+fn from_client<'a>(
     from: impl Into<SocketAddr>,
     message: impl Into<ClientMessage>,
     now: SystemTime,
-) -> Input {
+) -> Input<'a> {
     Input::Client(ClientSocket::new(from.into()), message.into(), now)
 }
 
 fn from_peer(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input {
     Input::Peer(
         PeerSocket::new(from.into()),
-        PeerToClient::new(data),
+        data,
         AllocationPort::new(port),
     )
 }
 
-fn forward_time_to(when: SystemTime) -> Input {
+fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
     Input::Time(when)
 }
 

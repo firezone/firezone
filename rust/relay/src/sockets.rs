@@ -9,8 +9,10 @@ use std::{
 use stun_codec::rfc8656::attributes::AddressFamily;
 use tokio::sync::mpsc;
 
-const MAX_UDP_SIZE: usize = 65536;
-
+/// A dynamic collection of UDP sockets, listening on all interfaces of a particular IP family.
+///
+/// Internally, [`Sockets`] is powered by [`mio`] and uses a separate thread to poll for readiness of a socket.
+/// Whenever a socket is ready for reading, we send a message to the foreground task which then reads from the socket until it emits [`io::ErrorKind::WouldBlock`].
 pub struct Sockets {
     /// All currently active sockets.
     ///
@@ -25,8 +27,6 @@ pub struct Sockets {
 
     cmd_tx: mpsc::UnboundedSender<Command>,
     event_rx: mpsc::Receiver<Event>,
-
-    buffer: [u8; MAX_UDP_SIZE],
 }
 
 impl Default for Sockets {
@@ -48,7 +48,6 @@ impl Sockets {
 
         Self {
             inner: Default::default(),
-            buffer: [0u8; MAX_UDP_SIZE],
             cmd_tx,
             event_rx,
             current_ready_socket: None,
@@ -90,14 +89,15 @@ impl Sockets {
         Ok(())
     }
 
-    pub fn poll_recv_from<'s>(
-        &'s mut self,
+    pub fn poll_recv_from<'b>(
+        &mut self,
+        buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<Result<Received<'s>, Error>> {
+    ) -> Poll<Result<Received<'b>, Error>> {
         loop {
             if let Some(current) = self.current_ready_socket {
                 if let Some(socket) = self.inner.get(&current) {
-                    let (num_bytes, from) = match socket.recv_from(&mut self.buffer) {
+                    let (num_bytes, from) = match socket.recv_from(buf) {
                         Ok(ok) => ok,
                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                             self.current_ready_socket = None;
@@ -114,7 +114,7 @@ impl Sockets {
                     return Poll::Ready(Ok(Received {
                         port,
                         from,
-                        packet: &self.buffer[..num_bytes],
+                        packet: &buf[..num_bytes],
                     }));
                 }
             }

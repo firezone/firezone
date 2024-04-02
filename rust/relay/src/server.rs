@@ -11,7 +11,6 @@ use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
 use bytecodec::EncodeExt;
-use bytes::BytesMut;
 use core::fmt;
 use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -111,29 +110,7 @@ pub enum Command {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ClientToPeer(ChannelData);
-
-#[derive(Debug, PartialEq)]
-pub struct PeerToClient {
-    buf: BytesMut,
-}
-
-impl PeerToClient {
-    pub fn new(msg: &[u8]) -> Self {
-        let mut buf = BytesMut::zeroed(msg.len() + 4);
-        buf[4..].copy_from_slice(msg);
-
-        Self { buf }
-    }
-
-    fn len(&self) -> usize {
-        self.buf.len() - 4
-    }
-
-    fn header_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[..4]
-    }
-}
+pub struct ClientToPeer<'a>(ChannelData<'a>);
 
 impl ClientToPeer {
     /// Extract the data to forward to the peer.
@@ -351,18 +328,23 @@ where
     }
 
     /// Process the bytes received from an allocation.
+    ///
+    /// # Returns
+    ///
+    /// - [`Some`] if there is an active channel on this allocation for this peer.
+    ///   In that case, you should create a [`ChannelData`] message with the returned channel number and send it to the [`ClientSocket`].
     #[tracing::instrument(level = "debug", skip_all, fields(%sender, %allocation, recipient, channel))]
     pub fn handle_peer_traffic(
         &mut self,
-        mut msg: PeerToClient,
+        msg: &[u8],
         sender: PeerSocket,
         allocation: AllocationPort,
-    ) {
+    ) -> Option<(ClientSocket, u16)> {
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
         let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
             tracing::debug!(target: "relay", "unknown allocation");
-            return;
+            return None;
         };
 
         Span::current().record("recipient", field::display(&client));
@@ -372,7 +354,7 @@ where
             .get(&(client, sender))
         else {
             tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", msg.len());
-            return;
+            return None;
         };
 
         Span::current().record("channel", channel_number);
@@ -382,17 +364,17 @@ where
             .get(&(client, *channel_number))
         else {
             debug_assert!(false, "unknown channel {}", channel_number);
-            return;
+            return None;
         };
 
         if !channel.bound {
             tracing::debug!(target: "relay", "channel existed but is unbound");
-            return;
+            return None;
         }
 
         if channel.allocation != allocation {
             tracing::debug!(target: "relay", "channel is not associated with allocation");
-            return;
+            return None;
         }
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
@@ -400,12 +382,7 @@ where
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
 
-        channel_data::encode_to_slice(*channel_number, msg.len() as u16, msg.header_mut());
-
-        self.pending_commands.push_back(Command::SendMessage {
-            payload: msg.buf.freeze().into(),
-            recipient: client,
-        })
+        Some((*client, *channel_number))
     }
 
     /// An allocation failed.

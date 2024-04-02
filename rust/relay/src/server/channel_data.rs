@@ -1,4 +1,4 @@
-use bytes::{BufMut, BytesMut};
+use bytes::BufMut;
 use std::io;
 
 const HEADER_LEN: usize = 4;
@@ -47,27 +47,6 @@ impl ChannelData {
         })
     }
 
-    pub fn new(channel: u16, data: &[u8]) -> Self {
-        debug_assert!(channel > 0x400);
-        debug_assert!(channel < 0x7FFF);
-        debug_assert!(data.len() <= u16::MAX as usize);
-
-        let length = data.len();
-
-        let msg = to_bytes(channel, length as u16, data);
-
-        ChannelData {
-            channel,
-            msg,
-            length,
-        }
-    }
-
-    // Panics if self.data.len() > u16::MAX
-    pub fn into_msg(self) -> Vec<u8> {
-        self.msg
-    }
-
     pub fn channel(&self) -> u16 {
         self.channel
     }
@@ -77,49 +56,11 @@ impl ChannelData {
 
         &payload[..self.length]
     }
-}
 
-pub fn encode_to_slice(channel: u16, data_len: u16, mut header: impl BufMut) {
-    header.put_u16(channel);
-    header.put_u16(data_len);
-}
+    pub fn encode_header_to_slice(channel: u16, data_len: u16, mut header: &mut [u8]) -> usize {
+        header.put_u16(channel);
+        header.put_u16(data_len);
 
-fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
-    let mut message = BytesMut::with_capacity(HEADER_LEN + (len as usize));
-
-    encode_to_slice(channel, len, &mut message);
-    message.put_slice(payload);
-
-    message.freeze().into()
-}
-
-#[cfg(all(test, feature = "proptest"))]
-mod tests {
-    use super::*;
-    use stun_codec::rfc5766::attributes::ChannelNumber;
-
-    #[test_strategy::proptest]
-    fn channel_data_encoding_roundtrip(
-        #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
-        payload: Vec<u8>,
-    ) {
-        let channel_data = ChannelData::new(channel.value(), &payload);
-        let encoded = channel_data.clone().into_msg();
-
-        let parsed = ChannelData::parse(encoded).unwrap();
-
-        assert_eq!(channel_data, parsed)
-    }
-
-    #[test_strategy::proptest]
-    fn channel_data_decoding(
-        #[strategy(crate::proptest::channel_number())] channel: ChannelNumber,
-        #[strategy(crate::proptest::channel_payload())] payload: (Vec<u8>, u16),
-    ) {
-        let encoded = to_bytes(channel.value(), payload.1, &payload.0);
-        let parsed = ChannelData::parse(encoded).unwrap();
-
-        assert_eq!(channel.value(), parsed.channel);
-        assert_eq!(&payload.0[..(payload.1 as usize)], parsed.data())
+        data_len as usize + HEADER_LEN
     }
 }

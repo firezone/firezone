@@ -3,8 +3,8 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
-    sockets, AddressFamily, AllocationPort, ClientSocket, Command, IpStack, PeerSocket,
-    PeerToClient, Server, Sleep,
+    sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
+    PeerSocket, Server, Sleep,
 };
 use futures::{future, FutureExt};
 use opentelemetry::KeyValue;
@@ -295,6 +295,8 @@ fn make_rng(seed: Option<u64>) -> StdRng {
     StdRng::seed_from_u64(seed)
 }
 
+const MAX_UDP_SIZE: usize = 65536;
+
 struct Eventloop<R> {
     sockets: Sockets,
 
@@ -304,6 +306,8 @@ struct Eventloop<R> {
 
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
+
+    buffer: [u8; MAX_UDP_SIZE],
 }
 
 impl<R> Eventloop<R>
@@ -331,6 +335,7 @@ where
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
             sockets,
+            buffer: [0u8; MAX_UDP_SIZE],
         }
     }
 
@@ -394,7 +399,21 @@ where
             }
 
             // Priority 3: Read from our sockets.
-            match self.sockets.poll_recv_from(cx) {
+            // We read the packet with an offset of 4 bytes so we can encode the channel-data header into that without re-allocating.
+            //
+            //  01│23│456789....
+            // ┌──┼──┼──────────────────────────┐
+            // │CN│LN│PAYLOAD...                │
+            // └──┴──┴──────────────────────────┘
+            //       ▲
+            //       │
+            //       Start of read-buffer.
+            //
+            //  CN: Channel number
+            //  LN: Length
+            let (header, payload) = self.buffer.split_at_mut(4);
+
+            match self.sockets.poll_recv_from(payload, cx) {
                 Poll::Ready(Ok(sockets::Received {
                     port: 3478,
                     from,
@@ -405,11 +424,25 @@ where
                     continue;
                 }
                 Poll::Ready(Ok(sockets::Received { port, from, packet })) => {
-                    self.server.handle_peer_traffic(
-                        PeerToClient::new(packet),
+                    if let Some((client, channel)) = self.server.handle_peer_traffic(
+                        packet,
                         PeerSocket::new(from),
                         AllocationPort::new(port),
-                    );
+                    ) {
+                        let total_length = ChannelData::encode_header_to_slice(
+                            channel,
+                            packet.len() as u16,
+                            header,
+                        );
+
+                        if let Err(e) = self.sockets.try_send(
+                            3478,
+                            client.into_socket(),
+                            &self.buffer[..total_length],
+                        ) {
+                            tracing::warn!(target: "relay", %client, "Failed to relay data to client: {e}");
+                        };
+                    };
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::Io(e))) => {

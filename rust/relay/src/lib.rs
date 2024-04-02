@@ -10,7 +10,7 @@ pub mod sockets;
 pub use net_ext::IpAddrExt;
 pub use server::{
     Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
-    CreatePermission, PeerToClient, Refresh, Server,
+    CreatePermission, Refresh, Server,
 };
 pub use sleep::Sleep;
 pub use stun_codec::rfc8656::attributes::AddressFamily;
