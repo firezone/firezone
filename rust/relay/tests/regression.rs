@@ -469,18 +469,15 @@ fn allows_rebind_channel_after_expiry(
         )],
     );
 
-    assert_eq!(
-        server.server.poll_timeout(),
-        Some(now + Duration::from_secs(60 * 10)) // For channel expiry
-    );
+    let channel_expiry = now + Duration::from_secs(60 * 10);
+    let channel_rebind = channel_expiry + Duration::from_secs(60 * 5);
+
+    assert_eq!(server.server.poll_timeout(), Some(channel_expiry));
 
     let now = now + Duration::from_secs(60 * 10 + 1);
 
     server.server.handle_timeout(now);
-    assert_eq!(
-        server.server.poll_timeout(),
-        Some(now + Duration::from_secs(60 * 5)) // For channel deletion
-    );
+    assert_eq!(server.server.poll_timeout(), Some(channel_rebind));
 
     let now = now + Duration::from_secs(60 * 5 + 1);
 

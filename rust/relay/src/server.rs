@@ -432,10 +432,13 @@ where
 
     // TODO: It might be worth to do some caching here?
     pub fn poll_timeout(&self) -> Option<SystemTime> {
-        let channel_expiries = self
-            .channels_by_client_and_number
-            .values()
-            .map(|c| c.expiry);
+        let channel_expiries = self.channels_by_client_and_number.values().map(|c| {
+            if c.bound {
+                c.expiry
+            } else {
+                c.expiry + CHANNEL_REBIND_TIMEOUT
+            }
+        });
         let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
 
         channel_expiries
