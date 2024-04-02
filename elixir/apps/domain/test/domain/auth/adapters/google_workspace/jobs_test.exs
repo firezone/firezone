@@ -649,9 +649,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
     end
 
     test "persists the sync error on the provider", %{provider: provider} do
-      bypass = Bypass.open()
-      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-
       error_message =
         "Admin SDK API has not been used in project XXXX before or it is disabled. " <>
           "Enable it by visiting https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=XXXX " <>
@@ -694,6 +691,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
         }
       }
 
+      bypass = Bypass.open()
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
       for path <- [
             "/admin/directory/v1/users",
             "/admin/directory/v1/customer/my_customer/orgunits",
@@ -712,6 +712,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       assert updated_provider.last_sync_error == error_message
       refute updated_provider.sync_disabled_at
 
+      bypass = Bypass.open()
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
       for path <- [
             "/admin/directory/v1/users",
             "/admin/directory/v1/customer/my_customer/orgunits",
@@ -728,6 +731,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       refute updated_provider.last_synced_at
       assert updated_provider.last_syncs_failed == 2
       assert updated_provider.last_sync_error == "Google API is temporarily unavailable"
+
+      cancel_bypass_expectations_check(bypass)
     end
 
     test "disables the sync on 401 response code", %{provider: provider} do
@@ -793,6 +798,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.JobsTest do
       assert updated_provider.last_syncs_failed == 1
       assert updated_provider.last_sync_error == error_message
       assert updated_provider.sync_disabled_at
+
+      cancel_bypass_expectations_check(bypass)
     end
   end
 end
