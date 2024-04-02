@@ -55,6 +55,9 @@ pub struct Server<R> {
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<ClientSocket, Allocation>,
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
+    /// Redundant mapping so we can look route data with a single lookup.
+    /// TODO: Add similar optimisation for client-based traffic (i.e. incoming `ChannelData` messages)
+    channel_and_client_by_port_and_peer: HashMap<(AllocationPort, PeerSocket), (ClientSocket, u16)>,
 
     lowest_port: u16,
     highest_port: u16,
@@ -189,6 +192,7 @@ where
             responses_counter,
             data_relayed_counter,
             data_relayed: 0,
+            channel_and_client_by_port_and_peer: Default::default(),
         }
     }
 
@@ -335,42 +339,16 @@ where
     ) -> Option<(ClientSocket, u16)> {
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
-        let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
-            tracing::debug!(target: "relay", "unknown allocation");
+        let Some((client, channel_number)) = self
+            .channel_and_client_by_port_and_peer
+            .get(&(allocation, sender))
+        else {
+            tracing::debug!(target: "relay", "no channel");
+
             return None;
         };
 
         Span::current().record("recipient", field::display(&client));
-
-        let Some(channel_number) = self
-            .channel_numbers_by_client_and_peer
-            .get(&(client, sender))
-        else {
-            tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", msg.len());
-            return None;
-        };
-
-        Span::current().record("channel", channel_number);
-
-        let Some(channel) = self
-            .channels_by_client_and_number
-            .get(&(client, *channel_number))
-        else {
-            debug_assert!(false, "unknown channel {}", channel_number);
-            return None;
-        };
-
-        if !channel.bound {
-            tracing::debug!(target: "relay", "channel existed but is unbound");
-            return None;
-        }
-
-        if channel.allocation != allocation {
-            tracing::debug!(target: "relay", "channel is not associated with allocation");
-            return None;
-        }
-
-        tracing::trace!(target: "wire", num_bytes = %msg.len());
 
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
@@ -424,6 +402,8 @@ where
             tracing::info!(target: "relay", channel = %number, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
             channel.bound = false;
+            self.channel_and_client_by_port_and_peer
+                .remove(&(channel.allocation, channel.peer_address));
         }
 
         let channels_to_delete = self
@@ -839,6 +819,12 @@ where
         let existing = self
             .channel_numbers_by_client_and_peer
             .insert((client, peer), requested_channel);
+
+        debug_assert!(existing.is_none());
+
+        let existing = self
+            .channel_and_client_by_port_and_peer
+            .insert((id, peer), (client, requested_channel));
 
         debug_assert!(existing.is_none());
     }
