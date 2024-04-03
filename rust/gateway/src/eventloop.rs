@@ -24,7 +24,7 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 
 pub struct Eventloop {
     tunnel: GatewayTunnel<CallbackHandler>,
-    portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
+    portal: PhoenixChannel<(), IngressMessages, ()>,
 
     resolve_tasks:
         futures_bounded::FuturesTupleSet<Vec<IpNetwork>, Either<RequestConnection, AllowAccess>>,
@@ -33,7 +33,7 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel<CallbackHandler>,
-        portal: PhoenixChannel<(), IngressMessages, EgressMessages>,
+        portal: PhoenixChannel<(), IngressMessages, ()>,
     ) -> Self {
         Self {
             tunnel,
@@ -80,6 +80,7 @@ impl Eventloop {
                 }
                 Poll::Pending => {}
             }
+
             match self.portal.poll(cx)? {
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
                     msg: IngressMessages::RequestConnection(req),
@@ -125,7 +126,6 @@ impl Eventloop {
                     }
                     continue;
                 }
-
                 Poll::Ready(phoenix_channel::Event::InboundMessage {
                     msg:
                         IngressMessages::RejectAccess(RejectAccess {
