@@ -147,9 +147,7 @@ public final class Store: ObservableObject {
     tunnelManager.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
-      Log.app.log("Timer fire")
       guard let self = self else { return }
-      Log.app.log("Fetching resources")
       tunnelManager.fetchResources(callback: callback)
     }
     RunLoop.main.add(timer, forMode: .common)

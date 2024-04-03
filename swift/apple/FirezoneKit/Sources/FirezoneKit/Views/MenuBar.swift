@@ -56,10 +56,8 @@ public final class MenuBar: NSObject {
 
         if status == .connected {
           model.store.beginUpdatingResources { data in
-            Log.app.log("received data: \(data)")
             if let newResources = try? JSONDecoder().decode([Resource].self, from: data) {
               // Handle resource changes
-              Log.app.log("Setting new Resources: \(newResources.count)")
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
               self.resources = newResources

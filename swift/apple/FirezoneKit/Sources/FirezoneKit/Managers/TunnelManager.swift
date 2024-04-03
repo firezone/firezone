@@ -206,7 +206,6 @@ class TunnelManager {
 
     do {
       try session().sendProviderMessage(resourceListHash) { data in
-        Log.app.log("Data from tunnel: \(data)")
         if let data = data {
           self.resourceListHash = Data(SHA256.hash(data: data))
           self.resourcesListCache = data
