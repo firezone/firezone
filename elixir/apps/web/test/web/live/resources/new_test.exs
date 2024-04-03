@@ -185,8 +185,9 @@ defmodule Web.Live.Resources.NewTest do
            |> render_submit()
            |> form_validation_errors() == %{
              "resource[name]" => ["should be at most 255 character(s)"],
-             "connections" => ["can't be blank"],
-             "resource[address_description]" => ["can't be blank"]
+             "connections" => ["can't be blank"]
+             # TODO: uncomment when the address_description field is shown
+             #  "resource[address_description]" => ["can't be blank"]
            }
   end
 
