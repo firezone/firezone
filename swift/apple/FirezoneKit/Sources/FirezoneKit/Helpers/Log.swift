@@ -1,5 +1,5 @@
 //
-//  AppLogger.swift
+//  Log.swift
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
@@ -7,7 +7,10 @@
 import Foundation
 import OSLog
 
-public final class AppLogger {
+public final class Log {
+  public static let app = Log(category: .app, folderURL: SharedAccess.appLogFolderURL)
+  public static let tunnel = Log(category: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
+
   public enum Category: String, Codable {
     case app = "app"
     case tunnel = "tunnel"
@@ -62,20 +65,20 @@ private final class LogWriter {
 
   struct LogEntry: Codable {
     let time: String
-    let category: AppLogger.Category
+    let category: Log.Category
     let severity: Severity
     let message: String
   }
 
   // All log writes happen in the workQueue
   private let workQueue: DispatchQueue
-  private let category: AppLogger.Category
+  private let category: Log.Category
   private let logger: Logger
   private let logFileURL: URL
   private let dateFormatter: ISO8601DateFormatter
   private let jsonEncoder: JSONEncoder
 
-  init?(category: AppLogger.Category, folderURL: URL?, logger: Logger) {
+  init?(category: Log.Category, folderURL: URL?, logger: Logger) {
     let fileManager = FileManager.default
     let dateFormatter = ISO8601DateFormatter()
     let jsonEncoder = JSONEncoder()

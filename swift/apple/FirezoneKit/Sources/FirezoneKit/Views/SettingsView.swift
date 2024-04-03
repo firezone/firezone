@@ -12,54 +12,51 @@ enum SettingsViewError: Error {
   case logFolderIsUnavailable
 }
 
+@MainActor
 public final class SettingsViewModel: ObservableObject {
-  let tunnelStore: TunnelStore
+  let store: Store
 
   @Published var settings: Settings
 
-  let logger: AppLogger
   private var cancellables = Set<AnyCancellable>()
 
-  public init(tunnelStore: TunnelStore, logger: AppLogger) {
-    self.tunnelStore = tunnelStore
-    self.logger = logger
-    self.settings = tunnelStore.settings
+  public init(store: Store) {
+    self.store = store
+    self.settings = store.settings
 
     setupObservers()
   }
 
   func setupObservers() {
     // Load settings from saved VPN Profile
-    Task {
-      tunnelStore.$settings
-        .receive(on: RunLoop.main)
-        .sink { [weak self] settings in
-          guard let self = self else { return }
+    store.$settings
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] settings in
+        guard let self = self else { return }
 
-          self.settings = settings
-        }
-        .store(in: &cancellables)
-    }
+        self.settings = settings
+      }
+      .store(in: &cancellables)
   }
 
   func saveSettings() {
     Task {
-      if [.connected, .connecting, .reasserting].contains(tunnelStore.status) {
-        _ = try await tunnelStore.signOut()
+      if [.connected, .connecting, .reasserting].contains(store.status) {
+        _ = try await store.signOut()
       }
       do {
-        try await tunnelStore.save(settings)
+        try await store.save(settings)
       } catch {
-        logger.error("Error saving settings to tunnel store: \(error)")
+        Log.app.error("Error saving settings to tunnel store: \(error)")
       }
     }
   }
 
-  func calculateLogDirSize(logger: AppLogger) -> String? {
-    logger.log("\(#function)")
+  func calculateLogDirSize() -> String? {
+    Log.app.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      logger.error("\(#function): Log folder is unavailable")
+      Log.app.error("\(#function): Log folder is unavailable")
       return nil
     }
 
@@ -72,8 +69,7 @@ public final class SettingsViewModel: ObservableObject {
         .totalFileAllocatedSizeKey,
         .totalFileSizeKey,
         .isRegularFileKey,
-      ],
-      logger: logger
+      ]
     ) { url, resourceValues in
       if resourceValues.isRegularFile ?? false {
         totalSize += (resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
@@ -91,11 +87,11 @@ public final class SettingsViewModel: ObservableObject {
     return byteCountFormatter.string(fromByteCount: Int64(totalSize))
   }
 
-  func clearAllLogs(logger: AppLogger) throws {
-    logger.log("\(#function)")
+  func clearAllLogs() throws {
+    Log.app.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      logger.error("\(#function): Log folder is unavailable")
+      Log.app.error("\(#function): Log folder is unavailable")
       return
     }
 
@@ -105,21 +101,20 @@ public final class SettingsViewModel: ObservableObject {
       logFilesFolderURL,
       including: [
         .isRegularFileKey
-      ],
-      logger: logger
+      ]
     ) { url, resourceValues in
       if resourceValues.isRegularFile ?? false {
         do {
           try fileManager.removeItem(at: url)
         } catch {
           unremovedFilesCount += 1
-          logger.error("Unable to remove '\(url)': \(error)")
+          Log.app.error("Unable to remove '\(url)': \(error)")
         }
       }
     }
 
     if unremovedFilesCount > 0 {
-      logger.log("\(#function): Unable to remove \(unremovedFilesCount) files")
+      Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
     }
   }
 }
@@ -128,7 +123,6 @@ extension FileManager {
   func forEachFileUnder(
     _ dirURL: URL,
     including resourceKeys: Set<URLResourceKey>,
-    logger: AppLogger,
     handler: (URL, URLResourceValues) -> Void
   ) {
     // Deep-traverses the directory at dirURL
@@ -150,15 +144,13 @@ extension FileManager {
         let resourceValues = try url.resourceValues(forKeys: resourceKeys)
         handler(url, resourceValues)
       } catch {
-        logger.error("Unable to get resource value for '\(url)': \(error)")
+        Log.app.error("Unable to get resource value for '\(url)': \(error)")
       }
     }
   }
 }
 
 public struct SettingsView: View {
-  private let logger: AppLogger
-
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
@@ -209,7 +201,6 @@ public struct SettingsView: View {
 
   public init(model: SettingsViewModel) {
     self.model = model
-    self.logger = model.logger
   }
 
   public var body: some View {
@@ -232,7 +223,7 @@ public struct SettingsView: View {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
               let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-              if case .connected = model.tunnelStore.status {
+              if case .connected = model.store.status {
                 self.confirmationAlertContinueAction = action
                 self.isShowingConfirmationAlert = true
               } else {
@@ -240,7 +231,7 @@ public struct SettingsView: View {
               }
             }
             .disabled(
-              (model.settings == model.tunnelStore.settings || !model.settings.isValid)
+              (model.settings == model.store.settings || !model.settings.isValid)
             )
           }
           ToolbarItem(placement: .navigationBarLeading) {
@@ -347,7 +338,7 @@ public struct SettingsView: View {
                 "Apply",
                 action: {
                   let action = ConfirmationAlertContinueAction.saveSettings
-                  if [.connected, .connecting, .reasserting].contains(model.tunnelStore.status) {
+                  if [.connected, .connecting, .reasserting].contains(model.store.status) {
                     self.confirmationAlertContinueAction = action
                     self.isShowingConfirmationAlert = true
                   } else {
@@ -355,7 +346,7 @@ public struct SettingsView: View {
                   }
                 }
               )
-              .disabled(model.settings == model.tunnelStore.settings || !model.settings.isValid)
+              .disabled(model.settings == model.store.settings || !model.settings.isValid)
 
               Button(
                 "Reset to Defaults",
@@ -480,7 +471,7 @@ public struct SettingsView: View {
                 action: {
                   self.isExportingLogs = true
                   Task {
-                    let compressor = LogCompressor(logger: logger)
+                    let compressor = LogCompressor()
                     self.logTempZipFileURL = try await compressor.compressFolderReturningURL()
                     self.isPresentingExportLogShareSheet = true
                   }
@@ -556,13 +547,13 @@ public struct SettingsView: View {
   }
 
   func reloadSettings() {
-    model.settings = model.tunnelStore.settings
+    model.settings = model.store.settings
     dismiss()
   }
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
-      let compressor = LogCompressor(logger: logger)
+      let compressor = LogCompressor()
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
@@ -576,7 +567,7 @@ public struct SettingsView: View {
         })
       else {
         self.isExportingLogs = false
-        logger.log("Settings window not found. Can't show save panel.")
+        Log.app.log("Settings window not found. Can't show save panel.")
         return
       }
 
@@ -614,7 +605,7 @@ public struct SettingsView: View {
     }
     self.isCalculatingLogsSize = true
     self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
-      let calculatedLogsSize = await model.calculateLogDirSize(logger: self.logger)
+      let calculatedLogsSize = await model.calculateLogDirSize()
       await MainActor.run {
         self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
         self.isCalculatingLogsSize = false
@@ -631,7 +622,7 @@ public struct SettingsView: View {
     self.isClearingLogs = true
     self.cancelRefreshLogSize()
     Task.detached(priority: .userInitiated) {
-      try? await model.clearAllLogs(logger: self.logger)
+      try? await model.clearAllLogs()
       await MainActor.run {
         self.isClearingLogs = false
         if !self.isCalculatingLogsSize {

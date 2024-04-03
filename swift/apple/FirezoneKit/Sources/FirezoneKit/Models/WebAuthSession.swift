@@ -11,11 +11,12 @@ import AuthenticationServices
 
 /// Wraps the ASWebAuthenticationSession ordeal so it can be called from either
 /// the AuthView (iOS) or the MenuBar (macOS)
+@MainActor
 struct WebAuthSession {
   private static let scheme = "firezone-fd0020211111"
 
-  static func signIn(tunnelStore: TunnelStore) {
-    guard let authURL = tunnelStore.authURL(),
+  static func signIn(store: Store) async {
+    guard let authURL = store.authURL(),
           let authClient = try? AuthClient(authURL: authURL),
           let url = try? authClient.build()
     else { fatalError("authURL must be valid!") }
@@ -31,7 +32,7 @@ struct WebAuthSession {
         return
       }
 
-      Task { try await tunnelStore.signIn(authResponse: authResponse) }
+      Task { try await store.signIn(authResponse: authResponse) }
     }
 
     // Apple weirdness, doesn't seem to be actually used in macOS
@@ -47,6 +48,7 @@ struct WebAuthSession {
 
 // Required shim to use as "presentationAnchor" for the Webview. Why Apple?
 private final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+  @MainActor
   func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
     ASPresentationAnchor()
   }

@@ -10,17 +10,15 @@ import Foundation
 import SystemConfiguration
 
 class SystemConfigurationResolvers {
-  private let logger: AppLogger
   private var dynamicStore: SCDynamicStore?
 
   // Arbitrary name for the connection to the store
   private let storeName = "dev.firezone.firezone.dns" as CFString
 
-  init(logger: AppLogger) {
-    self.logger = logger
+  init() {
     guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
     else {
-      logger.error("\(#function): Failed to create dynamic store")
+      Log.tunnel.error("\(#function): Failed to create dynamic store")
       self.dynamicStore = nil
       return
     }
@@ -49,7 +47,7 @@ class SystemConfigurationResolvers {
     let interfaceSearchKey = "Setup:/Network/Service/.*/Interface" as CFString
     guard let services = SCDynamicStoreCopyKeyList(dynamicStore, interfaceSearchKey) as? [String]
     else {
-      logger.error("\(#function): Unable to retrieve network services")
+      Log.tunnel.error("\(#function): Unable to retrieve network services")
       return []
     }
 

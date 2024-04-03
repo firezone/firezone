@@ -1,68 +1,27 @@
 //
-//  MainView.swift
-//  (c) 2024 Firezone, Inc.
-//  LICENSE: Apache-2.0
+//  MenuBar.swift
+//
+//
+//  Created by Jamil Bou Kheir on 4/2/24.
 //
 
+import Foundation
 import Combine
 import NetworkExtension
 import OSLog
 import SwiftUI
 
-@MainActor
-final class MainViewModel: ObservableObject {
-  private let logger: AppLogger
-  private var cancellables: Set<AnyCancellable> = []
-  private let tunnelStore: TunnelStore
-
-  @Published private(set) var resources: [Resource]?
-
-  init(tunnelStore: TunnelStore, logger: AppLogger) {
-    self.tunnelStore = tunnelStore
-    self.logger = logger
-
-    setupObservers()
-  }
-
-  private func setupObservers() {
-    Publishers.CombineLatest(
-      tunnelStore.$status,
-      tunnelStore.$resourceListJSON
-    )
-    .receive(on: RunLoop.main)
-    .sink(receiveValue: { [weak self] status, json in
-      guard let self = self else { return }
-
-      if let json = json,
-        let data = json.data(using: .utf8)
-      {
-        resources = try? JSONDecoder().decode([Resource].self, from: data)
-      }
-
-      if status == .connected {
-        self.tunnelStore.beginUpdatingResources()
-      } else {
-        self.tunnelStore.endUpdatingResources()
-      }
-    })
-    .store(in: &cancellables)
-  }
-
-  func signOutButtonTapped() {
-    Task {
-      try await tunnelStore.signOut()
-    }
-  }
-}
 
 #if os(macOS)
 @MainActor
 // TODO: Refactor to MenuBarExtra for macOS 13+
 // https://developer.apple.com/documentation/swiftui/menubarextra
-public final class MainView: NSObject {
+public final class MenuBar: NSObject {
   private var statusItem: NSStatusItem
-  private let model: MainViewModel
-  private let logger: AppLogger
+  private var resources: [Resource]?
+  private var cancellables: Set<AnyCancellable> = []
+
+  @ObservedObject var model: SessionViewModel
 
   private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
   private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
@@ -75,10 +34,10 @@ public final class MainView: NSObject {
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
-  init(model: MainViewModel, logger: AppLogger) {
+  public init(model: SessionViewModel) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.model = model
-    self.logger = logger
+
     super.init()
 
     if let button = statusItem.button {
@@ -90,50 +49,33 @@ public final class MainView: NSObject {
   }
 
   private func setupObservers() {
-    tunnelStore.$status
-      .receive(on: RunLoop.main)
+    model.store.$status
+      .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
 
-        self.updateStatusItemIcon(status: status)
-        self.handleTunnelStatusChanged(status: status)
-
         if status == .connected {
-          tunnelStore.beginUpdatingResources()
+          model.store.beginUpdatingResources { data in
+            Log.app.log("received data: \(data)")
+            if let newResources = try? JSONDecoder().decode([Resource].self, from: data) {
+              // Handle resource changes
+              Log.app.log("Setting new Resources: \(newResources.count)")
+              self.populateResourceMenu(newResources)
+              self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
+              self.resources = newResources
+            }
+          }
         } else {
-          logger.log("\(status)")
-          tunnelStore.endUpdatingResources()
-        }
-      }).store(in: &cancellables)
-
-    tunnelStore.$resourceListJSON
-      .receive(on: RunLoop.main)
-      .sink(receiveValue: { [weak self] json in
-        guard let self = self else { return }
-
-        if let json = json,
-           let data = json.data(using: .utf8),
-           let newResources = try? JSONDecoder().decode([Resource].self, from: data)
-        {
-          logger.log("received resources: \(json)")
-          // Update menu in-place; does a diff against our current resources so send
-          // in the new ones before we update our local state
-          populateResourceMenu(newResources)
-          resourcesTitleMenuItem.title = resourceMenuTitle(newResources)
-          resources = newResources
-        } else {
+          model.store.endUpdatingResources()
           populateResourceMenu(nil)
           resources = nil
         }
+
+        // Handle status changes
+        self.updateStatusItemIcon(status: status)
+        self.handleTunnelStatusOrResourcesChanged(status: status, resources: resources)
+
       }).store(in: &cancellables)
-  }
-
-  private func decodeResources(_ json: String?) -> [Resource]? {
-    guard let json = json,
-          let data = json.data(using: .utf8)
-    else { return nil }
-
-    return try? JSONDecoder().decode([Resource].self, from: data)
   }
 
   // FIXME: Use SwiftUI for the menubar
@@ -244,17 +186,17 @@ public final class MainView: NSObject {
   }
 
   @objc private func signInButtonTapped() {
-    WebAuthSession.signIn(tunnelStore: tunnelStore)
+    Task { await WebAuthSession.signIn(store: model.store) }
   }
 
   @objc private func signOutButtonTapped() {
     Task {
-      try await tunnelStore.signOut()
+      try await model.store.signOut()
     }
   }
 
   @objc private func settingsButtonTapped() {
-    AppStore.WindowDefinition.settings.openWindow()
+    AppViewModel.WindowDefinition.settings.openWindow()
   }
 
   @objc private func aboutButtonTapped() {
@@ -264,11 +206,7 @@ public final class MainView: NSObject {
 
   @objc private func quitButtonTapped() {
     Task {
-      do {
-        try await tunnelStore.stop()
-      } catch {
-        logger.error("\(#function): Error stopping tunnel: \(error)")
-      }
+      model.store.stop()
       NSApp.terminate(self)
     }
   }
@@ -315,7 +253,7 @@ public final class MainView: NSObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusChanged(status: NEVPNStatus) {
+  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: [Resource]?) {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case .invalid:
@@ -336,12 +274,7 @@ public final class MainView: NSObject {
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
     case .connected, .reasserting, .connecting:
-      let title =
-      if let actorName = tunnelStore.actorName() {
-        "Signed in as \(actorName)"
-      } else {
-        "Signed in"
-      }
+      let title = "Signed in as \(model.store.actorName ?? "Unknown User")"
       signInMenuItem.title = title
       signInMenuItem.target = nil
       signOutMenuItem.isHidden = false
@@ -350,7 +283,7 @@ public final class MainView: NSObject {
       break
     }
     // Update resources "header" menu items
-    switch tunnelStore.status {
+    switch status {
     case .connecting:
       resourcesTitleMenuItem.isHidden = true
       resourcesUnavailableMenuItem.isHidden = false
@@ -400,10 +333,10 @@ public final class MainView: NSObject {
     }()
   }
 
-  private func resourceMenuTitle(_ newResources: [Resource]?) -> String {
-    guard let newResources = newResources else { return "Loading Resources..." }
+  private func resourceMenuTitle(_ resources: [Resource]?) -> String {
+    guard let resources = resources else { return "Loading Resources..." }
 
-    if newResources.isEmpty {
+    if resources.isEmpty {
       return "No Resources"
     } else {
       return "Resources"
@@ -460,74 +393,4 @@ public final class MainView: NSObject {
 
 extension MenuBar: NSMenuDelegate {
 }
-#endif
-
-#if os(iOS)
-  struct MainView: View {
-    @ObservedObject var model: MainViewModel
-
-    var body: some View {
-      List {
-        Section(header: Text("Authentication")) {
-          Group {
-            if case .connected = model.tunnelStore.status {
-              let actorName = model.tunnelStore.actorName() ?? ""
-              HStack {
-                Text(actorName.isEmpty ? "Signed in" : "Signed in as")
-                Spacer()
-                Text(actorName).foregroundColor(.secondary)
-              }
-              HStack {
-                Spacer()
-                Button("Sign Out") {
-                  model.signOutButtonTapped()
-                }
-                Spacer()
-              }
-            } else {
-              Text(model.tunnelStore.status.description)
-            }
-          }
-        }
-        if case .connected = model.tunnelStore.status {
-          Section(header: Text("Resources")) {
-            if let resources = model.resources {
-              if resources.isEmpty {
-                Text("No Resources")
-              } else {
-                ForEach(resources) { resource in
-                  Menu(
-                    content: {
-                      Button {
-                        copyResourceTapped(resource)
-                      } label: {
-                        Label("Copy Address", systemImage: "doc.on.doc")
-                      }
-                    },
-                    label: {
-                      HStack {
-                        Text(resource.name)
-                          .foregroundColor(.primary)
-                        Spacer()
-                        Text(resource.address)
-                          .foregroundColor(.secondary)
-                      }
-                    })
-                }
-              }
-            } else {
-              Text("Loading Resources...")
-            }
-          }
-        }
-      }
-      .listStyle(GroupedListStyle())
-      .navigationTitle("Firezone")
-    }
-
-    private func copyResourceTapped(_ resource: Resource) {
-      let pasteboard = UIPasteboard.general
-      pasteboard.string = resource.address
-    }
-  }
 #endif
