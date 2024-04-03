@@ -253,15 +253,8 @@ enum State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytecodec::DecodeExt;
-    use std::{
-        net::{Ipv4Addr, SocketAddrV4},
-        time::Duration,
-    };
-    use stun_codec::{
-        rfc5389::{attributes::XorMappedAddress, methods::BINDING},
-        Message,
-    };
+    use std::net::{Ipv4Addr, SocketAddrV4};
+    use stun_codec::rfc5389::methods::BINDING;
 
     const SERVER1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478));
     const SERVER2: SocketAddr =
