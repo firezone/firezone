@@ -425,20 +425,14 @@ mod tests {
             // Numbers first
             // Numbers are sorted byte-wise, if they don't use leading zeroes
             // they won't be in numeric order
-            ten.clone(),
-            nine.clone(),
-            // Then uppercase, in alphabetical order
-            cloudflare.clone(),
-            example.clone(),
-            fast.clone(),
+            ten, nine, // Then uppercase, in alphabetical order
+            cloudflare, example, fast,
             // UUIDs tie-break if the names are identical
-            metabase_1.clone(),
-            metabase_2.clone(),
-            // Lowercase comes after all uppercase are done
-            ifconfig.clone(),
+            metabase_1, metabase_2, // Lowercase comes after all uppercase are done
+            ifconfig,
             // Emojis start with a leading '1' bit, so they come after all
             // [Basic Latin](https://en.wikipedia.org/wiki/Basic_Latin_\(Unicode_block\)) chars
-            emoji.clone(),
+            emoji,
         ];
 
         assert_eq!(

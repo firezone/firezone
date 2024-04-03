@@ -159,7 +159,7 @@ pub(crate) fn create_local_answer<'a>(
         _ => unreachable!(),
     };
 
-    let response = build_dns_with_answer(message, question.qname(), &Some(resource.clone()))?;
+    let response = build_dns_with_answer(message, question.qname(), &Some(resource))?;
 
     build_response(packet, response)
 }
@@ -187,7 +187,7 @@ pub(crate) fn build_response_from_resolve_result(
                 panic!("Impossible - We matched on `ProtoErrorKind::NoRecordsFound` but then could not destructure that same variant");
             };
             if let Some(soa) = soa {
-                message.add_name_server(soa.clone().into_record_of_rdata());
+                message.add_name_server(soa.into_record_of_rdata());
             }
 
             message.set_response_code(response_code)
