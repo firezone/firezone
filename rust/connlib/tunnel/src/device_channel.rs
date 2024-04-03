@@ -35,7 +35,8 @@ use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
-use tun::Tun;
+
+pub use tun::Tun;
 
 pub struct Device {
     mtu: usize,
@@ -67,6 +68,14 @@ impl Device {
             mtu: 1_280,
             waker: None,
             mtu_refreshed_at: Instant::now(),
+        }
+    }
+
+    pub(crate) fn set_tun(&mut self, tun: Tun) {
+        self.tun = Some(tun);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
         }
     }
 

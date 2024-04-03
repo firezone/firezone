@@ -16,6 +16,7 @@ use std::{
 };
 
 pub use client::{ClientState, Request};
+pub use device_channel::Tun;
 pub use gateway::GatewayState;
 pub use sockets::Sockets;
 

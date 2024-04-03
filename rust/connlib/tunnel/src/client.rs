@@ -16,7 +16,7 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
 
 use crate::utils::{earliest, stun, turn};
-use crate::{ClientEvent, ClientTunnel};
+use crate::{ClientEvent, ClientTunnel, Tun};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ClientNode;
 use std::collections::hash_map::Entry;
@@ -122,6 +122,10 @@ where
         };
 
         Ok(())
+    }
+
+    pub fn set_tun(&mut self, tun: Tun) {
+        self.io.device_mut().set_tun(tun);
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

@@ -8,7 +8,7 @@ pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, Tun};
 use phoenix_channel::PhoenixChannel;
 use std::net::IpAddr;
 use std::time::Duration;
@@ -93,6 +93,11 @@ impl Session {
     /// The implementation is idempotent; calling it with the same set of servers is safe.
     pub fn set_dns(&self, new_dns: Vec<IpAddr>) {
         let _ = self.channel.send(Command::SetDns(new_dns));
+    }
+
+    /// Sets a new TUN device for this [`Session`].
+    pub fn set_tun(&self, new_tun: Tun) {
+        let _ = self.channel.send(Command::SetTun(new_tun));
     }
 
     /// Disconnect a [`Session`].
