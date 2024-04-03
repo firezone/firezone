@@ -144,7 +144,18 @@ impl Eventloop {
                     // TODO: Handle `init` message during operation.
                     continue;
                 }
-                _ => {}
+                Poll::Ready(phoenix_channel::Event::ErrorResponse { topic, req_id, res }) => {
+                    tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
+                    continue;
+                }
+                Poll::Ready(
+                    phoenix_channel::Event::SuccessResponse { res: (), .. }
+                    | phoenix_channel::Event::HeartbeatSent
+                    | phoenix_channel::Event::JoinedRoom { .. },
+                ) => {
+                    continue;
+                }
+                Poll::Pending => {}
             }
 
             return Poll::Pending;
