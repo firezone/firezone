@@ -379,15 +379,6 @@ defmodule Domain.Actors do
     end
   end
 
-  def list_actors_by_type(%Auth.Subject{} = subject, type, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.not_deleted()
-      |> Actor.Query.by_type(type)
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Actor.Query, opts)
-    end
-  end
-
   def new_actor(attrs \\ %{memberships: []}) do
     Actor.Changeset.create(attrs)
   end
