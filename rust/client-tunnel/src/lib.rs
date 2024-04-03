@@ -107,7 +107,7 @@ async fn write_ipc_msg<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg:
 mod tests {
     #[cfg(target_os = "windows")]
     mod windows {
-        use super::{read_ipc_msg, write_ipc_msg};
+        use crate::{read_ipc_msg, write_ipc_msg};
 
         const MESSAGE_ONE: &str = "message one";
 
