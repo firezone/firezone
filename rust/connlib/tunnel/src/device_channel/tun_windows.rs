@@ -31,8 +31,7 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
-    // TODO: Get rid of this mutex. It's a hack to deal with `poll_read` taking a `&self` instead of `&mut self`
-    packet_rx: std::sync::Mutex<mpsc::Receiver<wintun::Packet>>,
+    packet_rx: mpsc::Receiver<wintun::Packet>,
     _recv_thread: std::thread::JoinHandle<()>,
     session: Arc<wintun::Session>,
     routes: HashSet<IpNetwork>,
@@ -93,7 +92,6 @@ impl Tun {
         let (packet_tx, packet_rx) = mpsc::channel(5);
 
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
-        let packet_rx = std::sync::Mutex::new(packet_rx);
 
         Ok(Self {
             adapter,
@@ -206,10 +204,8 @@ impl Tun {
         Ok(())
     }
 
-    pub fn poll_read(&self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        let mut packet_rx = self.packet_rx.try_lock().unwrap();
-
-        let pkt = ready!(packet_rx.poll_recv(cx));
+    pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        let pkt = ready!(self.packet_rx.poll_recv(cx));
 
         match pkt {
             Some(pkt) => {
