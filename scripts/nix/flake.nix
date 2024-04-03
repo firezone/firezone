@@ -16,6 +16,14 @@
             overlays = [ (import rust-overlay) ];
           };
           naersk = pkgs.callPackage inputs.naersk { };
+          rust-nightly = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default);
+
+          # Wrap `cargo-udeps` to ensure it uses a nightly Rust version.
+          cargo-udeps = pkgs.writeShellScriptBin "cargo-udeps" ''
+            export RUSTC="${rust-nightly}/bin/rustc";
+            export CARGO="${rust-nightly}/bin/cargo";
+            exec "${pkgs.cargo-udeps}/bin/cargo-udeps" "$@"
+          '';
 
           libraries = with pkgs;[
             webkitgtk
@@ -43,7 +51,7 @@
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables cargo-udeps ];
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
