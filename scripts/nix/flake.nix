@@ -41,20 +41,10 @@
             librsvg
             libappindicator-gtk3
           ];
-        in
 
-        {
-
-          packages.firezone-linux-client = naersk.buildPackage {
-            name = "foo";
-            src = ../../rust/linux-client;
-          };
-
-          devShell = pkgs.mkShell {
+          mkShellWithRustVersion = rustVersion: pkgs.mkShell {
             packages = [ pkgs.cargo-tauri pkgs.iptables ];
-            buildInputs = [
-              (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
-            ] ++ packages;
+            buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
             shellHook =
@@ -63,7 +53,20 @@
                 export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
               '';
           };
-        }
+        in
+        {
+          packages.firezone-linux-client = naersk.buildPackage {
+            name = "foo";
+            src = ../../rust/linux-client;
+          };
 
+          devShells.default = mkShellWithRustVersion [
+            (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
+          ];
+
+          devShells.nightly = mkShellWithRustVersion [
+            (pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
+          ];
+        }
       );
 }
