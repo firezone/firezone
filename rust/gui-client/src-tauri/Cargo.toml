@@ -20,7 +20,6 @@ clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
-firezone-cli-utils = { workspace = true }
 firezone-client-tunnel = { path = "../../client-tunnel" }
 git-version = "0.3.9"
 hex = "0.4.3"

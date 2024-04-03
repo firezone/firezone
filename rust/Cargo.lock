@@ -1918,7 +1918,6 @@ dependencies = [
  "connlib-shared",
  "crash-handler",
  "dirs",
- "firezone-cli-utils",
  "firezone-client-tunnel",
  "futures",
  "git-version",
