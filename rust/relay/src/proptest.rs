@@ -52,11 +52,7 @@ pub fn channel_data() -> impl Strategy<Value = ChannelData<'static>> {
     (buffer, channel_number()).prop_map(|(payload, number)| {
         let payload = payload.leak(); // This is okay because we only do this for testing.
 
-        ChannelData::encode_header_to_slice(
-            number.value(),
-            (payload.len() - 4) as u16,
-            &mut payload[..4],
-        );
+        ChannelData::encode_header_to_slice(number, (payload.len() - 4) as u16, &mut payload[..4]);
 
         ChannelData::parse(payload).unwrap()
     })

@@ -56,16 +56,16 @@ pub struct Server<R> {
     allocations: HashMap<ClientSocket, Allocation>,
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
     /// Redundant mapping so we can look route data with a single lookup.
-    /// TODO: Add similar optimisation for client-based traffic (i.e. incoming `ChannelData` messages)
-    channel_and_client_by_port_and_peer: HashMap<(AllocationPort, PeerSocket), (ClientSocket, u16)>,
+    channel_and_client_by_port_and_peer:
+        HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
 
     lowest_port: u16,
     highest_port: u16,
 
     /// Channel numbers are unique by client, thus indexed by both.
-    channels_by_client_and_number: HashMap<(ClientSocket, u16), Channel>,
+    channels_by_client_and_number: HashMap<(ClientSocket, ChannelNumber), Channel>,
     /// Channel numbers are unique between clients and peers, thus indexed by both.
-    channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), u16>,
+    channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), ChannelNumber>,
 
     pending_commands: VecDeque<Command>,
 
@@ -336,7 +336,7 @@ where
         msg: &[u8],
         sender: PeerSocket,
         allocation: AllocationPort,
-    ) -> Option<(ClientSocket, u16)> {
+    ) -> Option<(ClientSocket, ChannelNumber)> {
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
         let Some((client, channel_number)) = self
@@ -399,7 +399,7 @@ where
             .iter_mut()
             .filter(|(_, c)| c.is_expired(now))
         {
-            tracing::info!(target: "relay", channel = %number, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
+            tracing::info!(target: "relay", channel = %number.value(), %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
             channel.bound = false;
             self.channel_and_client_by_port_and_peer
@@ -604,12 +604,12 @@ where
             .ok_or(error_response(AllocationMismatch, &request))?;
 
         // Note: `channel_number` is enforced to be in the correct range.
-        let requested_channel = request.channel_number().value();
+        let requested_channel = request.channel_number();
         let peer_address = PeerSocket(request.xor_peer_address().address());
 
         Span::current().record("allocation", display(&allocation.port));
         Span::current().record("peer", display(&peer_address));
-        Span::current().record("channel", display(&requested_channel));
+        Span::current().record("channel", display(&requested_channel.value()));
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
@@ -624,7 +624,7 @@ where
             .get(&(sender, peer_address))
         {
             if number != &requested_channel {
-                tracing::warn!(target: "relay", existing_channel = %number, "Peer is already bound to another channel");
+                tracing::warn!(target: "relay", existing_channel = %number.value(), "Peer is already bound to another channel");
 
                 return Err(error_response(BadRequest, &request));
             }
@@ -701,14 +701,14 @@ where
         sender: ClientSocket,
         _: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
-        let channel_number = message.channel().value();
+        let channel_number = message.channel();
         let data = message.data();
 
         let Some(channel) = self
             .channels_by_client_and_number
             .get(&(sender, channel_number))
         else {
-            tracing::debug!(target: "relay", channel = %channel_number, "Channel does not exist, refusing to forward data");
+            tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel does not exist, refusing to forward data");
             return None;
         };
 
@@ -716,13 +716,13 @@ where
         // The sender of a UDP packet can be spoofed, so why would we bother?
 
         if !channel.bound {
-            tracing::debug!(target: "relay", channel = %channel_number, "Channel exists but is unbound");
+            tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel exists but is unbound");
             return None;
         }
 
         Span::current().record("allocation", field::display(&channel.allocation));
         Span::current().record("recipient", field::display(&channel.peer_address));
-        Span::current().record("channel", field::display(&channel_number));
+        Span::current().record("channel", field::display(&channel_number.value()));
 
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
@@ -798,7 +798,7 @@ where
     fn create_channel_binding(
         &mut self,
         client: ClientSocket,
-        requested_channel: u16,
+        requested_channel: ChannelNumber,
         peer: PeerSocket,
         id: AllocationPort,
         now: SystemTime,
@@ -897,7 +897,7 @@ where
         tracing::info!(target: "relay", %port, "Deleted allocation");
     }
 
-    fn delete_channel_binding(&mut self, client: ClientSocket, chan: u16) {
+    fn delete_channel_binding(&mut self, client: ClientSocket, chan: ChannelNumber) {
         let Some(channel) = self.channels_by_client_and_number.get(&(client, chan)) else {
             return;
         };
@@ -916,7 +916,7 @@ where
 
         self.channels_by_client_and_number.remove(&(client, chan));
 
-        tracing::info!(target: "relay", channel = %chan, %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
+        tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 }
 

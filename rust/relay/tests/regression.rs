@@ -395,7 +395,7 @@ fn ping_pong_relay(
         maybe_forward,
         Some((
             ClientSocket::new(source.into()),
-            client_to_peer_ping.channel().value()
+            client_to_peer_ping.channel()
         ))
     );
 }
@@ -599,7 +599,7 @@ fn ping_pong_ip6_relay(
 
     let now = now + Duration::from_secs(1);
 
-    ChannelData::encode_header_to_slice(channel.value(), 32, &mut client_to_peer_ping[..4]);
+    ChannelData::encode_header_to_slice(channel, 32, &mut client_to_peer_ping[..4]);
     let maybe_forward = server.server.handle_client_input(
         client_to_peer_ping.as_slice(),
         ClientSocket::new(source.into()),
@@ -619,7 +619,7 @@ fn ping_pong_ip6_relay(
 
     assert_eq!(
         maybe_forward,
-        Some((ClientSocket::new(source.into()), channel.value()))
+        Some((ClientSocket::new(source.into()), channel))
     );
 }
 

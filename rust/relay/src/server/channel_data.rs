@@ -59,8 +59,12 @@ impl<'a> ChannelData<'a> {
         self.msg
     }
 
-    pub fn encode_header_to_slice(channel: u16, data_len: u16, header: &mut [u8]) -> usize {
-        let [c1, c2] = channel.to_be_bytes();
+    pub fn encode_header_to_slice(
+        channel: ChannelNumber,
+        data_len: u16,
+        header: &mut [u8],
+    ) -> usize {
+        let [c1, c2] = channel.value().to_be_bytes();
         let [l1, l2] = data_len.to_be_bytes();
 
         header[0] = c1;
@@ -85,7 +89,7 @@ mod tests {
         let mut msg = vec![0; payload.len() + 4];
         msg[4..].copy_from_slice(&payload);
 
-        ChannelData::encode_header_to_slice(channel.value(), payload.len() as u16, &mut msg[..4]);
+        ChannelData::encode_header_to_slice(channel, payload.len() as u16, &mut msg[..4]);
 
         let parsed = ChannelData::parse(&msg).unwrap();
 
