@@ -7,9 +7,9 @@
 //  Abstracts the nitty gritty of loading and saving to our
 //  VPN profile in system preferences.
 
+import CryptoKit
 import Foundation
 import NetworkExtension
-import CryptoKit
 
 enum TunnelManagerError: Error {
   case cannotSaveIfMissing
@@ -43,19 +43,19 @@ class TunnelManager {
 
   // Use separate bundle IDs for release and debug.
   // Helps with testing releases and dev builds on the same Mac.
-#if DEBUG
-  private let bundleIdentifier = Bundle.main.bundleIdentifier.map {
-    "\($0).debug.network-extension"
-  }
+  #if DEBUG
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map {
+      "\($0).debug.network-extension"
+    }
 
-  private let bundleDescription = "Firezone (Debug)"
-#else
-  private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
-  private let bundleDescription = "Firezone"
-#endif
+    private let bundleDescription = "Firezone (Debug)"
+  #else
+    private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
+    private let bundleDescription = "Firezone"
+  #endif
 
   init() {
-    self.manager = nil
+    manager = nil
   }
 
   // Initialize and save a new VPN profile in system Preferences
@@ -98,7 +98,6 @@ class TunnelManager {
            protocolConfiguration.providerBundleIdentifier == bundleIdentifier,
            let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
         {
-
           // Found it
           let settings = Settings.fromProviderConfiguration(providerConfiguration)
           let actorName = providerConfiguration[TunnelManagerKeys.actorName]
@@ -168,13 +167,13 @@ class TunnelManager {
     // We always set this to true when starting the tunnel in case our tunnel
     // was disabled by the system for some reason.
     manager.isEnabled = true
-    
+
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
 
   func start(token: String? = nil) {
-    var options: [String: NSObject]? = nil
+    var options: [String: NSObject]?
 
     if let token = token {
       options = ["token": token as NSObject]

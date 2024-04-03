@@ -5,8 +5,8 @@
 //
 
 import Combine
-import SwiftUI
 import NetworkExtension
+import SwiftUI
 import UserNotifications
 
 /// This is primary view manager for the app. It differs quite a bit between and macOS and
@@ -35,15 +35,15 @@ public class AppViewModel: ObservableObject {
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
         Log.app.log("Status: \(status)")
-        
+
         self.status = status
 
         #if os(macOS)
-        if status == .invalid || DeviceMetadata.firstTime() {
-          AppViewModel.WindowDefinition.main.openWindow()
-        } else {
-          AppViewModel.WindowDefinition.main.window()?.close()
-        }
+          if status == .invalid || DeviceMetadata.firstTime() {
+            AppViewModel.WindowDefinition.main.openWindow()
+          } else {
+            AppViewModel.WindowDefinition.main.window()?.close()
+          }
         #endif
       })
       .store(in: &cancellables)
@@ -80,69 +80,69 @@ public struct AppView: View {
 
   @ViewBuilder
   public var body: some View {
-#if os(iOS)
-    NavigationView {
-      switch (model.status, model.decision) {
-      case (nil, _), (_, nil):
-        ProgressView()
-      case (.invalid, _):
-        GrantVPNView(model: GrantVPNViewModel(store: model.store))
-      case (.disconnected, .notDetermined):
-        GrantNotificationsView(model: GrantNotificationsViewModel(store: model.store))
-      case (.disconnected, _):
-        WelcomeView(model: WelcomeViewModel(store: model.store))
-          .navigationBarItems(trailing: SettingsButton)
-      case (_, _):
-        SessionView(model: SessionViewModel(store: model.store))
-          .navigationBarItems(trailing: SettingsButton)
+    #if os(iOS)
+      NavigationView {
+        switch (model.status, model.decision) {
+        case (nil, _), (_, nil):
+          ProgressView()
+        case (.invalid, _):
+          GrantVPNView(model: GrantVPNViewModel(store: model.store))
+        case (.disconnected, .notDetermined):
+          GrantNotificationsView(model: GrantNotificationsViewModel(store: model.store))
+        case (.disconnected, _):
+          WelcomeView(model: WelcomeViewModel(store: model.store))
+            .navigationBarItems(trailing: SettingsButton)
+        case (_, _):
+          SessionView(model: SessionViewModel(store: model.store))
+            .navigationBarItems(trailing: SettingsButton)
+        }
       }
-    }
-    .sheet(isPresented: $isSettingsPresented) {
-      SettingsView(model: SettingsViewModel(store: model.store))
-    }
-    .navigationViewStyle(StackNavigationViewStyle())
-#elseif os(macOS)
+      .sheet(isPresented: $isSettingsPresented) {
+        SettingsView(model: SettingsViewModel(store: model.store))
+      }
+      .navigationViewStyle(StackNavigationViewStyle())
+    #elseif os(macOS)
       switch model.store.status {
       case .invalid:
         GrantVPNView(model: GrantVPNViewModel(store: model.store))
       default:
         FirstTimeView()
       }
-#endif
+    #endif
   }
 }
 
 #if os(macOS)
-extension AppViewModel {
-  public enum WindowDefinition: String, CaseIterable {
-    case main = "main"
-    case settings = "settings"
+  public extension AppViewModel {
+    enum WindowDefinition: String, CaseIterable {
+      case main
+      case settings
 
-    public var identifier: String { "firezone-\(rawValue)" }
-    public var externalEventMatchString: String { rawValue }
-    public var externalEventOpenURL: URL { URL(string: "firezone://\(rawValue)")! }
+      public var identifier: String { "firezone-\(rawValue)" }
+      public var externalEventMatchString: String { rawValue }
+      public var externalEventOpenURL: URL { URL(string: "firezone://\(rawValue)")! }
 
-    public func openWindow() {
-      if let window = NSApp.windows.first(where: {
-        $0.identifier?.rawValue.hasPrefix(identifier) ?? false
-      }) {
-        // Order existing window front
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(self)
-      } else {
-        // Open new window
-        NSWorkspace.shared.open(externalEventOpenURL)
-      }
-    }
-
-    public func window() -> NSWindow? {
-      NSApp.windows.first { window in
-        if let windowId = window.identifier?.rawValue {
-          return windowId.hasPrefix(self.identifier)
+      public func openWindow() {
+        if let window = NSApp.windows.first(where: {
+          $0.identifier?.rawValue.hasPrefix(identifier) ?? false
+        }) {
+          // Order existing window front
+          NSApp.activate(ignoringOtherApps: true)
+          window.makeKeyAndOrderFront(self)
+        } else {
+          // Open new window
+          NSWorkspace.shared.open(externalEventOpenURL)
         }
-        return false
+      }
+
+      public func window() -> NSWindow? {
+        NSApp.windows.first { window in
+          if let windowId = window.identifier?.rawValue {
+            return windowId.hasPrefix(self.identifier)
+          }
+          return false
+        }
       }
     }
   }
-}
 #endif
