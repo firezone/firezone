@@ -548,7 +548,7 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
+    fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -587,7 +587,6 @@ impl Controller {
             }
             Req::SchemeRequest(url) => self
                 .handle_deep_link(&url)
-                .await
                 .context("Couldn't handle deep link")?,
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self.auth.start_sign_in()? {

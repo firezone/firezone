@@ -285,7 +285,7 @@ async fn set_iface_config(
         Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config)
             .await
             .map_err(Error::ResolvConf)?,
-        Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config).await?,
+        Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config)?,
         Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
     }
 
@@ -450,7 +450,7 @@ impl ioctl::Request<SetTunFlagsPayload> {
     }
 }
 
-async fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
+fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
     Err(Error::Other(
         "DNS control with NetworkManager is not implemented yet",
     ))

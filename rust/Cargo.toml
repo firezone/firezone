@@ -56,6 +56,7 @@ clippy.dbg_macro = "warn"
 clippy.print_stdout = "warn"
 clippy.print_stderr = "warn"
 clippy.unnecessary_wraps = "warn"
+clippy.unused_async = "warn"
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }

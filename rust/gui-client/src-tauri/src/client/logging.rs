@@ -79,9 +79,7 @@ pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> StdResult<
 
 #[tauri::command]
 pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
-    export_logs_inner(managed.ctlr_tx.clone())
-        .await
-        .map_err(|e| e.to_string())
+    export_logs_inner(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -110,7 +108,7 @@ pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
 }
 
 /// Pops up the "Save File" dialog
-pub(crate) async fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
+pub(crate) fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("connlib-{datetime_string}"));
