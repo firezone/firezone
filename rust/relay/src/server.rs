@@ -230,8 +230,7 @@ where
         &mut self,
         bytes: &[u8],
         sender: ClientSocket,
-        now_instant: Instant,
-        now_unix: SystemTime,
+        now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
@@ -241,7 +240,7 @@ where
                     Span::current().record("transaction_id", field::debug(id));
                 }
 
-                return self.handle_client_message(message, sender, now_instant, now_unix);
+                return self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
             Ok(Err(error_code)) => {
@@ -269,21 +268,16 @@ where
         &mut self,
         message: ClientMessage,
         sender: ClientSocket,
-        now_instant: Instant,
-        now_unix: SystemTime,
+        now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let result = match message {
-            ClientMessage::Allocate(request) => {
-                self.handle_allocate_request(request, sender, now_instant, now_unix)
-            }
-            ClientMessage::Refresh(request) => {
-                self.handle_refresh_request(request, sender, now_instant, now_unix)
-            }
+            ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
+            ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
             ClientMessage::ChannelBind(request) => {
-                self.handle_channel_bind_request(request, sender, now_instant, now_unix)
+                self.handle_channel_bind_request(request, sender, now)
             }
             ClientMessage::CreatePermission(request) => {
-                self.handle_create_permission_request(request, sender, now_unix)
+                self.handle_create_permission_request(request, sender)
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
@@ -441,10 +435,9 @@ where
         &mut self,
         request: Allocate,
         sender: ClientSocket,
-        now_instant: Instant,
-        now_unix: SystemTime,
+        now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request, now_unix)?;
+        self.verify_auth(&request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             Span::current().record("allocation", display(&allocation.port));
@@ -479,7 +472,7 @@ where
         let effective_lifetime = request.effective_lifetime();
 
         let allocation = self.create_new_allocation(
-            now_instant,
+            now,
             &effective_lifetime,
             first_relay_address,
             maybe_second_relay_addr,
@@ -553,9 +546,8 @@ where
         request: Refresh,
         sender: ClientSocket,
         now: Instant,
-        now_unix: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request, now_unix)?;
+        self.verify_auth(&request)?;
 
         // TODO: Verify that this is the correct error code.
         let allocation = self
@@ -602,10 +594,9 @@ where
         &mut self,
         request: ChannelBind,
         sender: ClientSocket,
-        now_instant: Instant,
-        now_unix: SystemTime,
+        now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request, now_unix)?;
+        self.verify_auth(&request)?;
 
         let allocation = self
             .allocations
@@ -652,7 +643,7 @@ where
 
             // Binding requests for existing channels act as a refresh for the binding.
 
-            channel.refresh(now_instant);
+            channel.refresh(now);
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
@@ -670,7 +661,7 @@ where
         // TODO: Capacity checking would go here.
 
         let port = allocation.port;
-        self.create_channel_binding(sender, requested_channel, peer_address, port, now_instant);
+        self.create_channel_binding(sender, requested_channel, peer_address, port, now);
         self.send_message(
             channel_bind_success_response(request.transaction_id()),
             sender,
@@ -692,9 +683,8 @@ where
         &mut self,
         message: CreatePermission,
         sender: ClientSocket,
-        now_unix: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&message, now_unix)?;
+        self.verify_auth(&message)?;
 
         self.send_message(
             create_permission_success_response(message.transaction_id()),
@@ -743,7 +733,6 @@ where
     fn verify_auth(
         &mut self,
         request: &(impl StunRequest + ProtectedRequest),
-        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         let message_integrity = request
             .message_integrity()
@@ -765,7 +754,7 @@ where
             .map_err(|_| error_response(StaleNonce, request))?;
 
         message_integrity
-            .verify(&self.auth_secret, username.name(), now)
+            .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
             .map_err(|_| error_response(Unauthorized, request))?;
 
         Ok(())

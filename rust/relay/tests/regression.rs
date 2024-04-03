@@ -383,7 +383,6 @@ fn ping_pong_relay(
         client_to_peer_ping.as_msg(),
         ClientSocket::new(source.into()),
         now,
-        SystemTime::now(),
     );
 
     assert_eq!(
@@ -612,7 +611,6 @@ fn ping_pong_ip6_relay(
         client_to_peer_ping.as_slice(),
         ClientSocket::new(source.into()),
         now,
-        SystemTime::now(),
     );
 
     assert_eq!(
@@ -656,8 +654,7 @@ impl TestServer {
     fn assert_commands<const N: usize>(&mut self, input: Input, output: [Output; N]) {
         match input {
             Input::Client(sender, message, now) => {
-                self.server
-                    .handle_client_message(message, sender, now, SystemTime::now());
+                self.server.handle_client_message(message, sender, now);
             }
             Input::Time(now) => {
                 self.server.handle_timeout(now);

@@ -16,7 +16,7 @@ use secrecy::{Secret, SecretString};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -419,7 +419,6 @@ where
                         packet,
                         ClientSocket::new(from),
                         Instant::now(),
-                        SystemTime::now(),
                     ) {
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
