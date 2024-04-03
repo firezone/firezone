@@ -1,5 +1,5 @@
 //
-//  SystemConfiguration.swift
+//  SystemConfigurationResolvers.swift
 //  FirezoneNetworkExtensionmacOS
 //
 //  Created by Jamil Bou Kheir on 2/26/24.
