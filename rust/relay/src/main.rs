@@ -99,7 +99,7 @@ enum LogFormat {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    setup_tracing(&args).await?;
+    setup_tracing(&args)?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<()> {
+fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -411,26 +411,6 @@ where
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {id}");
                     }
-                    Command::Wake { deadline } => {
-                        let span = tracing::debug_span!("Command::Wake", ?deadline);
-                        let _guard = span.enter();
-
-                        match deadline.duration_since(now) {
-                            Ok(duration) => {
-                                tracing::trace!(target: "relay", ?duration, "Suspending event loop")
-                            }
-                            Err(e) => {
-                                let difference = e.duration();
-
-                                tracing::warn!(target: "relay",
-                                    ?difference,
-                                    "Wake time is already in the past, waking now"
-                                )
-                            }
-                        }
-
-                        Pin::new(&mut self.sleep).reset(deadline);
-                    }
                     Command::ForwardDataClientToPeer { id, data, receiver } => {
                         let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
                         let _guard = span.enter();
@@ -455,7 +435,7 @@ where
 
             // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(now);
+                self.server.handle_timeout(now);
                 continue; // Handle potentially new commands.
             }
 
@@ -475,7 +455,13 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle portal messages
+            // Priority 5: Check when we need to next be woken. This needs to happen after all state modifications.
+            if let Some(timeout) = self.server.poll_timeout() {
+                Pin::new(&mut self.sleep).reset(timeout);
+                continue;
+            }
+
+            // Priority 6: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));

@@ -41,8 +41,8 @@ jobs:
       - name: Pull and push
         run: |
           set -xe
-          IMAGES=(domain api web gateway relay client)
 
+          IMAGES=(domain api web gateway relay client)
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
