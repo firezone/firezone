@@ -4,6 +4,6 @@ set -euo pipefail
 
 source "./scripts/tests/lib.sh"
 
-sleep 61 # Ensure a couple heartbeats have elapsed
+sleep 70 # Ensure a couple heartbeats have allegedly elapsed
 
 client_curl_resource
