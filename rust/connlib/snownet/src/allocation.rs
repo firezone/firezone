@@ -1068,7 +1068,6 @@ mod tests {
     use stun_codec::{
         rfc5389::errors::{BadRequest, ServerError},
         rfc5766::errors::AllocationMismatch,
-        Message,
     };
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);

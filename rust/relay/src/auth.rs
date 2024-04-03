@@ -4,7 +4,6 @@ use once_cell::sync::Lazy;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::digest::FixedOutput;
 use sha2::Sha256;
-use std::borrow::ToOwned;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
@@ -145,7 +144,6 @@ pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
 mod tests {
     use super::*;
     use crate::Attribute;
-    use stun_codec::rfc5389::attributes::Username;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
 

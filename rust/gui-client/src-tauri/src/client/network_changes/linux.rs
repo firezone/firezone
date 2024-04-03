@@ -2,9 +2,6 @@
 
 use anyhow::Result;
 
-#[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {}
-
 pub(crate) fn run_dns_debug() -> Result<()> {
     tracing::warn!("network_changes not implemented yet on Linux");
     Ok(())
