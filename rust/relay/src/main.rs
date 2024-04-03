@@ -99,7 +99,7 @@ enum LogFormat {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    setup_tracing(&args).await?;
+    setup_tracing(&args)?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<()> {
+fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
