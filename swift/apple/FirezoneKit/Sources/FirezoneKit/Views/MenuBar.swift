@@ -76,7 +76,6 @@ public final class MenuBar: NSObject {
       }).store(in: &cancellables)
   }
 
-  // FIXME: Use SwiftUI for the menubar
   private lazy var menu = NSMenu()
 
   private lazy var signInMenuItem = createMenuItem(

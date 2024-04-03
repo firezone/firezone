@@ -155,7 +155,6 @@ class TunnelManager {
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
-    // Save and reload tunnel configuration
     var newProviderConfiguration = settings.toProviderConfiguration()
 
     // Don't clobber existing actorName
