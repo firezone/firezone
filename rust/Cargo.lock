@@ -209,19 +209,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-compression"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a116f46a969224200a0a97f29cfd4c50e7534e4b4826bd23ea2c3c533039c82c"
-dependencies = [
- "flate2",
- "futures-core",
- "memchr",
- "pin-project-lite",
- "tokio",
-]
-
-[[package]]
 name = "async-executor"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1122,7 +1109,6 @@ dependencies = [
 name = "connlib-client-apple"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "connlib-client-shared",
  "ip_network",
  "libc",
@@ -1136,7 +1122,6 @@ dependencies = [
  "tracing-oslog",
  "tracing-subscriber",
  "url",
- "walkdir",
 ]
 
 [[package]]
@@ -1144,7 +1129,6 @@ name = "connlib-client-shared"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "async-compression",
  "async-trait",
  "backoff",
  "bimap",
@@ -1154,7 +1138,6 @@ dependencies = [
  "ip_network",
  "parking_lot",
  "phoenix-channel",
- "reqwest",
  "secrecy",
  "serde",
  "serde_json",
@@ -1179,11 +1162,9 @@ dependencies = [
  "base64 0.22.0",
  "boringtun",
  "chrono",
- "dns-lookup",
  "domain",
  "futures",
  "futures-util",
- "hickory-resolver",
  "ip_network",
  "itertools 0.12.1",
  "known-folders",
@@ -1210,7 +1191,6 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "tracing-android",
- "tracing-appender",
  "url",
  "uuid",
  "windows 0.54.0",
@@ -1866,7 +1846,6 @@ name = "firezone-cli-utils"
 version = "1.0.0"
 dependencies = [
  "clap",
- "ip_network",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
@@ -1945,10 +1924,9 @@ dependencies = [
  "futures",
  "git-version",
  "hex",
- "hostname",
+ "hostname 0.3.1",
  "ipconfig",
  "keyring",
- "known-folders",
  "minidumper",
  "native-dialog",
  "output_vt100",
@@ -2005,7 +1983,6 @@ dependencies = [
  "env_logger",
  "futures",
  "hex",
- "hex-literal",
  "http-health-check",
  "once_cell",
  "opentelemetry",
@@ -2014,7 +1991,6 @@ dependencies = [
  "phoenix-channel",
  "proptest",
  "rand 0.8.5",
- "redis 0.25.2",
  "secrecy",
  "serde",
  "sha2",
@@ -2696,12 +2672,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "hex-literal"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
-
-[[package]]
 name = "hickory-proto"
 version = "0.24.0"
 source = "git+https://github.com/hickory-dns/hickory-dns?rev=a3669bd80f3f7b97f0c301c15f1cba6368d97b63#a3669bd80f3f7b97f0c301c15f1cba6368d97b63"
@@ -2780,6 +2750,17 @@ dependencies = [
  "libc",
  "match_cfg",
  "winapi",
+]
+
+[[package]]
+name = "hostname"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c7c7c8ac16c798734b8a24560c1362120597c40d5e1459f09498f8f6c8f2ba"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows 0.52.0",
 ]
 
 [[package]]
@@ -4431,12 +4412,11 @@ dependencies = [
 name = "phoenix-channel"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "backoff",
  "base64 0.22.0",
  "futures",
  "hex",
- "hostname",
+ "hostname 0.4.0",
  "libc",
  "rand_core 0.6.4",
  "secrecy",
@@ -5063,7 +5043,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52e44394d2086d010551b14b53b1f24e31647570cd1deb0379e2c21b329aba00"
 dependencies = [
- "hostname",
+ "hostname 0.3.1",
  "quick-error",
 ]
 
@@ -5660,12 +5640,10 @@ dependencies = [
 name = "snownet"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "backoff",
  "boringtun",
  "bytecodec",
  "bytes",
- "firezone-relay",
  "hex",
  "once_cell",
  "pnet_packet",
