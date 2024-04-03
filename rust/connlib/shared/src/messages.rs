@@ -422,14 +422,14 @@ mod tests {
         ];
 
         let expected = vec![
-            // Numbers first
-            // Numbers are sorted byte-wise, if they don't use leading zeroes
-            // they won't be in numeric order
-            ten, nine, // Then uppercase, in alphabetical order
-            cloudflare, example, fast,
-            // UUIDs tie-break if the names are identical
-            metabase_1, metabase_2, // Lowercase comes after all uppercase are done
-            ifconfig,
+            ten,        // Numbers first
+            nine,       // Numbers first
+            cloudflare, // Then uppercase, in alphabetical order
+            example,    // Then uppercase, in alphabetical order
+            fast,       // Then uppercase, in alphabetical order
+            metabase_1, // UUIDs tie-break if the names are identical
+            metabase_2, // UUIDs tie-break if the names are identical
+            ifconfig,   // Lowercase comes after all uppercase are done
             // Emojis start with a leading '1' bit, so they come after all
             // [Basic Latin](https://en.wikipedia.org/wiki/Basic_Latin_\(Unicode_block\)) chars
             emoji,
