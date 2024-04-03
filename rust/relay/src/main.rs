@@ -16,7 +16,7 @@ use secrecy::{Secret, SecretString};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -350,8 +350,6 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
-        let now = SystemTime::now();
-
         loop {
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
@@ -417,10 +415,12 @@ where
                     from,
                     packet,
                 })) => {
-                    if let Some((port, peer)) =
-                        self.server
-                            .handle_client_input(packet, ClientSocket::new(from), now)
-                    {
+                    if let Some((port, peer)) = self.server.handle_client_input(
+                        packet,
+                        ClientSocket::new(from),
+                        Instant::now(),
+                        SystemTime::now(),
+                    ) {
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
                             .expect("valid ChannelData if we should relay it")
@@ -476,8 +476,8 @@ where
             }
 
             // Priority 4: Handle time-sensitive tasks:
-            if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_timeout(now);
+            if let Poll::Ready(deadline) = self.sleep.poll_unpin(cx) {
+                self.server.handle_timeout(deadline);
                 continue; // Handle potentially new commands.
             }
 

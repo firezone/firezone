@@ -19,7 +19,7 @@ use secrecy::SecretString;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
 };
@@ -230,7 +230,8 @@ where
         &mut self,
         bytes: &[u8],
         sender: ClientSocket,
-        now: SystemTime,
+        now_instant: Instant,
+        now_unix: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
@@ -240,7 +241,7 @@ where
                     Span::current().record("transaction_id", field::debug(id));
                 }
 
-                return self.handle_client_message(message, sender, now);
+                return self.handle_client_message(message, sender, now_instant, now_unix);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
             Ok(Err(error_code)) => {
@@ -268,23 +269,28 @@ where
         &mut self,
         message: ClientMessage,
         sender: ClientSocket,
-        now: SystemTime,
+        now_instant: Instant,
+        now_unix: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let result = match message {
-            ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
-            ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
+            ClientMessage::Allocate(request) => {
+                self.handle_allocate_request(request, sender, now_instant, now_unix)
+            }
+            ClientMessage::Refresh(request) => {
+                self.handle_refresh_request(request, sender, now_instant, now_unix)
+            }
             ClientMessage::ChannelBind(request) => {
-                self.handle_channel_bind_request(request, sender, now)
+                self.handle_channel_bind_request(request, sender, now_instant, now_unix)
             }
             ClientMessage::CreatePermission(request) => {
-                self.handle_create_permission_request(request, sender, now)
+                self.handle_create_permission_request(request, sender, now_unix)
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
                 return None;
             }
             ClientMessage::ChannelData(msg) => {
-                return self.handle_channel_data_message(msg, sender, now);
+                return self.handle_channel_data_message(msg, sender);
             }
         };
 
@@ -368,7 +374,7 @@ where
     }
 
     // TODO: It might be worth to do some caching here?
-    pub fn poll_timeout(&self) -> Option<SystemTime> {
+    pub fn poll_timeout(&self) -> Option<Instant> {
         let channel_expiries = self.channels_by_client_and_number.values().map(|c| {
             if c.bound {
                 c.expiry
@@ -383,7 +389,7 @@ where
             .fold(None, |current, next| earliest(current, Some(next)))
     }
 
-    pub fn handle_timeout(&mut self, now: SystemTime) {
+    pub fn handle_timeout(&mut self, now: Instant) {
         let expired_allocations = self
             .allocations
             .values()
@@ -435,9 +441,10 @@ where
         &mut self,
         request: Allocate,
         sender: ClientSocket,
-        now: SystemTime,
+        now_instant: Instant,
+        now_unix: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request, now)?;
+        self.verify_auth(&request, now_unix)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             Span::current().record("allocation", display(&allocation.port));
@@ -472,7 +479,7 @@ where
         let effective_lifetime = request.effective_lifetime();
 
         let allocation = self.create_new_allocation(
-            now,
+            now_instant,
             &effective_lifetime,
             first_relay_address,
             maybe_second_relay_addr,
@@ -545,9 +552,10 @@ where
         &mut self,
         request: Refresh,
         sender: ClientSocket,
-        now: SystemTime,
+        now: Instant,
+        now_unix: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request, now)?;
+        self.verify_auth(&request, now_unix)?;
 
         // TODO: Verify that this is the correct error code.
         let allocation = self
@@ -594,9 +602,10 @@ where
         &mut self,
         request: ChannelBind,
         sender: ClientSocket,
-        now: SystemTime,
+        now_instant: Instant,
+        now_unix: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request, now)?;
+        self.verify_auth(&request, now_unix)?;
 
         let allocation = self
             .allocations
@@ -643,7 +652,7 @@ where
 
             // Binding requests for existing channels act as a refresh for the binding.
 
-            channel.refresh(now);
+            channel.refresh(now_instant);
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
@@ -661,7 +670,7 @@ where
         // TODO: Capacity checking would go here.
 
         let port = allocation.port;
-        self.create_channel_binding(sender, requested_channel, peer_address, port, now);
+        self.create_channel_binding(sender, requested_channel, peer_address, port, now_instant);
         self.send_message(
             channel_bind_success_response(request.transaction_id()),
             sender,
@@ -678,14 +687,14 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(level = "debug", skip(self, message, now), fields(%sender))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%sender))]
     fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
         sender: ClientSocket,
-        now: SystemTime,
+        now_unix: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&message, now)?;
+        self.verify_auth(&message, now_unix)?;
 
         self.send_message(
             create_permission_success_response(message.transaction_id()),
@@ -699,7 +708,6 @@ where
         &mut self,
         message: ChannelData,
         sender: ClientSocket,
-        _: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let channel_number = message.channel();
         let data = message.data();
@@ -765,7 +773,7 @@ where
 
     fn create_new_allocation(
         &mut self,
-        now: SystemTime,
+        now: Instant,
         lifetime: &Lifetime,
         first_relay_addr: IpAddr,
         second_relay_addr: Option<IpAddr>,
@@ -801,7 +809,7 @@ where
         requested_channel: ChannelNumber,
         peer: PeerSocket,
         id: AllocationPort,
-        now: SystemTime,
+        now: Instant,
     ) {
         let expiry = now + CHANNEL_BINDING_DURATION;
 
@@ -945,7 +953,7 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
 struct Allocation {
     /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
     port: AllocationPort,
-    expires_at: SystemTime,
+    expires_at: Instant,
 
     first_relay_addr: IpAddr,
     second_relay_addr: Option<IpAddr>,
@@ -953,7 +961,7 @@ struct Allocation {
 
 struct Channel {
     /// When the channel expires.
-    expiry: SystemTime,
+    expiry: Instant,
 
     /// The address of the peer that the channel is bound to.
     peer_address: PeerSocket,
@@ -974,15 +982,15 @@ struct Channel {
 }
 
 impl Channel {
-    fn refresh(&mut self, now: SystemTime) {
+    fn refresh(&mut self, now: Instant) {
         self.expiry = now + CHANNEL_BINDING_DURATION;
     }
 
-    fn is_expired(&self, now: SystemTime) -> bool {
+    fn is_expired(&self, now: Instant) -> bool {
         self.expiry <= now
     }
 
-    fn can_be_deleted(&self, now: SystemTime) -> bool {
+    fn can_be_deleted(&self, now: Instant) -> bool {
         self.expiry + CHANNEL_REBIND_TIMEOUT <= now
     }
 }
@@ -1004,7 +1012,7 @@ impl Allocation {
 }
 
 impl Allocation {
-    fn is_expired(&self, now: SystemTime) -> bool {
+    fn is_expired(&self, now: Instant) -> bool {
         self.expires_at <= now
     }
 }
@@ -1175,7 +1183,7 @@ stun_codec::define_attribute_enums!(
     ]
 );
 
-fn earliest(left: Option<SystemTime>, right: Option<SystemTime>) -> Option<SystemTime> {
+fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
     match (left, right) {
         (None, None) => None,
         (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
