@@ -1,8 +1,7 @@
 use super::utils;
 use crate::device_channel::{ioctl, ipv4, ipv6};
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Result};
 use ip_network::IpNetwork;
-use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -61,6 +60,8 @@ impl Tun {
             routes.iter().copied().filter_map(ipv4).collect(),
             routes.iter().copied().filter_map(ipv6).collect(),
         );
+
+        Ok(())
     }
 
     // SAFETY: must be called with a valid file descriptor

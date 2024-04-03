@@ -106,7 +106,7 @@ impl Tun {
     ///
     /// This will eventually disappear once updating of routes and interface config no longer happens within `firezone-tunnel`.
     /// At that point, `firezone-tunnel` will interact with a `Stream + Sink` of `IpPacket` and the corresponding implementation of it will sit in the client-crates.
-    pub fn with_fd(_: RawFd) -> Self {
+    pub fn with_fd(_: RawFd) -> Result<Self> {
         unimplemented!("This API should never be called on Linux.")
     }
 

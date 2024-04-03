@@ -74,6 +74,19 @@ pub enum CallbackError {
 }
 
 impl CallbackHandler {
+    fn set_new_tun(&self, new_fd: RawFd) {
+        match Tun::with_fd(new_fd) {
+            Ok(tun) => self
+                .session
+                .as_ref()
+                .expect("session must be set once callbacks get called")
+                .set_tun(tun),
+            Err(e) => {
+                tracing::error!("Failed to make new `Tun`: {e}");
+            }
+        };
+    }
+
     fn env<T>(
         &self,
         f: impl FnOnce(JNIEnv) -> Result<T, CallbackError>,
@@ -196,10 +209,7 @@ impl Callbacks for CallbackHandler {
             })
             .expect("onSetInterfaceConfig callback failed");
 
-        self.session
-            .as_ref()
-            .expect("session must be set once callbacks get called")
-            .set_tun(Tun::with_fd(new_fd));
+        self.set_new_tun(new_fd);
     }
 
     fn on_update_routes(&self, route_list_4: Vec<Cidrv4>, route_list_6: Vec<Cidrv6>) {
@@ -230,10 +240,7 @@ impl Callbacks for CallbackHandler {
             })
             .expect("onUpdateRoutes callback failed");
 
-        self.session
-            .as_ref()
-            .expect("session must be set once callbacks get called")
-            .set_tun(Tun::with_fd(new_fd));
+        self.set_new_tun(new_fd);
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
