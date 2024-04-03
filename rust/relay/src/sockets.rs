@@ -25,7 +25,7 @@ pub struct Sockets {
     /// We must read from it until it returns [`io::ErrorKind::WouldBlock`].
     current_ready_socket: Option<mio::Token>,
 
-    cmd_tx: mpsc::UnboundedSender<Command>,
+    cmd_tx: mpsc::Sender<Command>,
     event_rx: mpsc::Receiver<Event>,
 }
 
@@ -37,7 +37,7 @@ impl Default for Sockets {
 
 impl Sockets {
     pub fn new() -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel(1000);
         let (event_tx, event_rx) = mpsc::channel(1024);
 
         std::thread::spawn(move || {
@@ -54,20 +54,23 @@ impl Sockets {
         }
     }
 
-    pub fn bind(&mut self, port: u16, address_family: AddressFamily) {
+    pub fn bind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
         self.cmd_tx
-            .send(Command::NewSocket((port, address_family)))
-            .unwrap();
+            .try_send(Command::NewSocket((port, address_family)))?;
+
+        Ok(())
     }
 
-    pub fn unbind(&mut self, port: u16, address_family: AddressFamily) {
+    pub fn unbind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
         let token = token_from_port_and_address_family(port, address_family);
 
         let Some(socket) = self.inner.remove(&token) else {
-            return;
+            return Ok(());
         };
 
-        self.cmd_tx.send(Command::DisposeSocket(socket)).unwrap();
+        self.cmd_tx.try_send(Command::DisposeSocket(socket))?;
+
+        Ok(())
     }
 
     pub fn try_send(&self, port: u16, dest: SocketAddr, msg: &[u8]) -> io::Result<()> {
@@ -173,7 +176,7 @@ fn not_connected(port: u16, address_family: AddressFamily) -> io::Error {
 
 fn mio_worker_task(
     event_tx: mpsc::Sender<Event>,
-    mut cmd_rx: mpsc::UnboundedReceiver<Command>,
+    mut cmd_rx: mpsc::Receiver<Command>,
 ) -> Result<()> {
     let mut poll = mio::Poll::new()?;
     let mut events = mio::Events::with_capacity(1024);

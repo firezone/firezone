@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr);
+    let mut eventloop = Eventloop::new(server, channel, public_addr)?;
 
     tokio::spawn(http_health_check::serve(
         args.health_check.health_check_addr,
@@ -318,17 +318,21 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
         public_address: IpStack,
-    ) -> Self {
+    ) -> Result<Self> {
         let mut sockets = Sockets::new();
 
         if public_address.as_v4().is_some() {
-            sockets.bind(3478, AddressFamily::V4);
+            sockets
+                .bind(3478, AddressFamily::V4)
+                .context("Failed to bind to port 3478 on IPv4 interfaces")?;
         }
         if public_address.as_v6().is_some() {
-            sockets.bind(3478, AddressFamily::V6);
+            sockets
+                .bind(3478, AddressFamily::V6)
+                .context("Failed to bind to port 3478 on IPv6 interfaces")?;
         }
 
-        Self {
+        Ok(Self {
             server,
             channel,
             sleep: Sleep::default(),
@@ -336,7 +340,7 @@ where
             last_num_bytes_relayed: 0,
             sockets,
             buffer: [0u8; MAX_UDP_SIZE],
-        }
+        })
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
@@ -362,13 +366,23 @@ where
                             tracing::debug_span!("Command::CreateAllocation", %family, %port);
                         let _guard = span.enter();
 
-                        self.sockets.bind(port.value(), family);
+                        self.sockets.bind(port.value(), family).with_context(|| {
+                            format!(
+                                "Failed to bind to port {} on {family} interfaces",
+                                port.value()
+                            )
+                        })?;
                     }
                     Command::FreeAllocation { port, family } => {
                         let span = tracing::debug_span!("Command::FreeAllocation", %family, %port);
                         let _guard = span.enter();
 
-                        self.sockets.unbind(port.value(), family);
+                        self.sockets.unbind(port.value(), family).with_context(|| {
+                            format!(
+                                "Failed to unbind to port {} on {family} interfaces",
+                                port.value()
+                            )
+                        })?;
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {port}");
                     }
