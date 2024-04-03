@@ -27,6 +27,11 @@ struct FirezoneApp: App {
   }
 
   var body: some Scene {
+#if os(iOS)
+    WindowGroup {
+      AppView(model: appViewModel)
+    }
+#elseif os(macOS)
     WindowGroup(
       "Welcome to Firezone",
       id: AppViewModel.WindowDefinition.main.identifier
@@ -37,17 +42,16 @@ struct FirezoneApp: App {
       matching: [AppViewModel.WindowDefinition.main.externalEventMatchString]
     )
     // macOS doesn't have Sheets, need to use another Window group to show settings
-    #if os(macOS)
-      WindowGroup(
-        "Settings",
-        id: AppViewModel.WindowDefinition.settings.identifier
-      ) {
-        SettingsView(model: SettingsViewModel(store: store))
-      }
-      .handlesExternalEvents(
-        matching: [AppViewModel.WindowDefinition.settings.externalEventMatchString]
-      )
-    #endif
+    WindowGroup(
+      "Settings",
+      id: AppViewModel.WindowDefinition.settings.identifier
+    ) {
+      SettingsView(model: SettingsViewModel(store: store))
+    }
+    .handlesExternalEvents(
+      matching: [AppViewModel.WindowDefinition.settings.externalEventMatchString]
+    )
+#endif
   }
 }
 

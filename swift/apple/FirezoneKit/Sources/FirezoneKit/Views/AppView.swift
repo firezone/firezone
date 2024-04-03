@@ -69,6 +69,15 @@ public struct AppView: View {
     self.model = model
   }
 
+  private var SettingsButton: some View {
+    Button(action: {
+      isSettingsPresented = true
+    }) {
+      Label("Settings", systemImage: "gear")
+    }
+    .disabled(model.status == .invalid)
+  }
+
   @ViewBuilder
   public var body: some View {
 #if os(iOS)
@@ -82,19 +91,10 @@ public struct AppView: View {
         GrantNotificationsView(model: GrantNotificationsViewModel(store: model.store))
       case (.disconnected, _):
         WelcomeView(model: WelcomeViewModel(store: model.store))
+          .navigationBarItems(trailing: SettingsButton)
       case (_, _):
         SessionView(model: SessionViewModel(store: model.store))
-      }
-    }
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button {
-          isSettingsPresented = true
-        } label: {
-          Label("Settings", systemImage: "gear")
-        }
-        .disabled(false)
+          .navigationBarItems(trailing: SettingsButton)
       }
     }
     .sheet(isPresented: $isSettingsPresented) {

@@ -119,6 +119,7 @@ struct SessionView: View {
       }
     }
     .listStyle(GroupedListStyle())
+    .navigationBarTitleDisplayMode(.inline)
     .navigationTitle("Firezone")
   }
 
