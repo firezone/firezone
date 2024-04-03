@@ -4,9 +4,6 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-// Avoids having to map types for Windows
-type RawFd = i32;
-
 #[derive(Serialize, Clone, Copy, Debug)]
 /// Identical to `ip_network::Ipv4Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
 pub struct Cidrv4 {
@@ -42,17 +39,10 @@ impl From<Ipv6Network> for Cidrv6 {
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
-    ///
-    /// This should return a new `fd` if there is one.
-    /// (Only happens on android for now)
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<RawFd> {
-        None
-    }
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) {}
 
     /// Called when the route list changes.
-    fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Option<RawFd> {
-        None
-    }
+    fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) {}
 
     /// Called when the resource list changes.
     fn on_update_resources(&self, _: Vec<ResourceDescription>) {}

@@ -3,16 +3,21 @@ pub use connlib_shared::messages::ResourceDescription;
 pub use connlib_shared::{
     keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
+pub use eventloop::Eventloop;
 pub use firezone_tunnel::Sockets;
+pub use firezone_tunnel::Tun;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
-use firezone_tunnel::{ClientTunnel, Tun};
+use eventloop::Command;
+use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
+use secrecy::Secret;
 use std::net::IpAddr;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinHandle;
 
 mod eventloop;
 pub mod file_logger;
@@ -20,14 +25,10 @@ mod messages;
 
 const PHOENIX_TOPIC: &str = "client";
 
-use eventloop::Command;
-pub use eventloop::Eventloop;
-use secrecy::Secret;
-use tokio::task::JoinHandle;
-
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
+#[derive(Clone)]
 pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }

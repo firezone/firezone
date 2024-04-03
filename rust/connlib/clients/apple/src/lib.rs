@@ -8,7 +8,6 @@ use connlib_client_shared::{
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -107,28 +106,20 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
+    ) {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-
-        None
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
-    ) -> Option<RawFd> {
+    fn on_update_routes(&self, route_list_4: Vec<Cidrv4>, route_list_6: Vec<Cidrv6>) {
         self.inner.on_update_routes(
             serde_json::to_string(&route_list_4).unwrap(),
             serde_json::to_string(&route_list_6).unwrap(),
         );
-
-        None
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {

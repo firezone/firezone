@@ -38,14 +38,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<Self> {
-        let fd = callbacks
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config)
-            .ok_or(Error::NoFd)?;
+    pub fn with_fd(fd: RawFd) -> Result<Self> {
         // Safety: File descriptor is open.
         let name = unsafe { interface_name(fd)? };
 
@@ -64,17 +57,10 @@ impl Tun {
         routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks,
     ) -> Result<()> {
-        let fd = callbacks
-            .on_update_routes(
-                routes.iter().copied().filter_map(ipv4).collect(),
-                routes.iter().copied().filter_map(ipv6).collect(),
-            )
-            .ok_or(Error::NoFd)?;
-
-        // SAFETY: we expect the callback to return a valid file descriptor
-        unsafe { self.replace_fd(fd)? };
-
-        Ok(())
+        let fd = callbacks.on_update_routes(
+            routes.iter().copied().filter_map(ipv4).collect(),
+            routes.iter().copied().filter_map(ipv6).collect(),
+        );
     }
 
     // SAFETY: must be called with a valid file descriptor

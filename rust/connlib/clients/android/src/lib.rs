@@ -5,7 +5,7 @@
 
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
-    ResourceDescription, Session, Sockets,
+    ResourceDescription, Session, Sockets, Tun,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -34,6 +34,7 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
     handle: file_logger::Handle,
+    session: Option<Session>, // Circular dependency here because `CallbackHandler` also sits within `Session`. Should go away once we've eliminated the callbacks from `firezone-tunnel`.
 }
 
 impl Clone for CallbackHandler {
@@ -47,6 +48,7 @@ impl Clone for CallbackHandler {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
             handle: self.handle.clone(),
+            session: self.session.clone(),
         }
     }
 }
@@ -157,75 +159,81 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
-        self.env(|mut env| {
-            let tunnel_address_v4 =
-                env.new_string(tunnel_address_v4.to_string())
+    ) {
+        let new_fd = self
+            .env(|mut env| {
+                let tunnel_address_v4 =
+                    env.new_string(tunnel_address_v4.to_string())
+                        .map_err(|source| CallbackError::NewStringFailed {
+                            name: "tunnel_address_v4",
+                            source,
+                        })?;
+                let tunnel_address_v6 =
+                    env.new_string(tunnel_address_v6.to_string())
+                        .map_err(|source| CallbackError::NewStringFailed {
+                            name: "tunnel_address_v6",
+                            source,
+                        })?;
+                let dns_addresses = env
+                    .new_string(serde_json::to_string(&dns_addresses)?)
                     .map_err(|source| CallbackError::NewStringFailed {
-                        name: "tunnel_address_v4",
+                        name: "dns_addresses",
                         source,
                     })?;
-            let tunnel_address_v6 =
-                env.new_string(tunnel_address_v6.to_string())
-                    .map_err(|source| CallbackError::NewStringFailed {
-                        name: "tunnel_address_v6",
-                        source,
-                    })?;
-            let dns_addresses = env
-                .new_string(serde_json::to_string(&dns_addresses)?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "dns_addresses",
-                    source,
-                })?;
-            let name = "onSetInterfaceConfig";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
-                &[
-                    JValue::from(&tunnel_address_v4),
-                    JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_addresses),
-                ],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
-        })
-        .expect("onSetInterfaceConfig callback failed")
+                let name = "onSetInterfaceConfig";
+                env.call_method(
+                    &self.callback_handler,
+                    name,
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                    &[
+                        JValue::from(&tunnel_address_v4),
+                        JValue::from(&tunnel_address_v6),
+                        JValue::from(&dns_addresses),
+                    ],
+                )
+                .and_then(|val| val.i())
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            })
+            .expect("onSetInterfaceConfig callback failed");
+
+        self.session
+            .as_ref()
+            .expect("session must be set once callbacks get called")
+            .set_tun(Tun::with_fd(new_fd));
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
-    ) -> Option<RawFd> {
-        self.env(|mut env| {
-            let route_list_4 = env
-                .new_string(serde_json::to_string(&route_list_4)?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_list_4",
-                    source,
-                })?;
-            let route_list_6 = env
-                .new_string(serde_json::to_string(&route_list_6)?)
-                .map_err(|source| CallbackError::NewStringFailed {
-                    name: "route_list_6",
-                    source,
-                })?;
+    fn on_update_routes(&self, route_list_4: Vec<Cidrv4>, route_list_6: Vec<Cidrv6>) {
+        let new_fd = self
+            .env(|mut env| {
+                let route_list_4 = env
+                    .new_string(serde_json::to_string(&route_list_4)?)
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "route_list_4",
+                        source,
+                    })?;
+                let route_list_6 = env
+                    .new_string(serde_json::to_string(&route_list_6)?)
+                    .map_err(|source| CallbackError::NewStringFailed {
+                        name: "route_list_6",
+                        source,
+                    })?;
 
-            let name = "onUpdateRoutes";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;)I",
-                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
-            )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
-        })
-        .expect("onUpdateRoutes callback failed")
+                let name = "onUpdateRoutes";
+                env.call_method(
+                    &self.callback_handler,
+                    name,
+                    "(Ljava/lang/String;Ljava/lang/String;)I",
+                    &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
+                )
+                .and_then(|val| val.i())
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            })
+            .expect("onUpdateRoutes callback failed");
+
+        self.session
+            .as_ref()
+            .expect("session must be set once callbacks get called")
+            .set_tun(Tun::with_fd(new_fd));
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -346,10 +354,11 @@ fn connect(
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
 
-    let callback_handler = CallbackHandler {
+    let mut callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
         handle,
+        session: None,
     };
 
     let (private_key, public_key) = keypair();
@@ -381,10 +390,12 @@ fn connect(
         sockets,
         private_key,
         Some(os_version),
-        callback_handler,
+        callback_handler.clone(),
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     );
+
+    callback_handler.session = Some(session.clone());
 
     Ok(SessionWrapper {
         inner: session,

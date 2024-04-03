@@ -98,12 +98,11 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
             .expect("controller channel failed");
     }
 
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) {
         tracing::info!("on_set_interface_config");
         self.ctlr_tx
             .try_send(ControllerRequest::TunnelReady)
             .expect("controller channel failed");
-        None
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {

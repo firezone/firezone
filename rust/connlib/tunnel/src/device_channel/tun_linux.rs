@@ -102,6 +102,14 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
+    /// Stub implementation of the `with_fd` constructor that exists only for Android.
+    ///
+    /// This will eventually disappear once updating of routes and interface config no longer happens within `firezone-tunnel`.
+    /// At that point, `firezone-tunnel` will interact with a `Stream + Sink` of `IpPacket` and the corresponding implementation of it will sit in the client-crates.
+    pub fn with_fd(_: RawFd) -> Self {
+        unimplemented!("This API should never be called on Linux.")
+    }
+
     pub fn new(
         config: &InterfaceConfig,
         dns_config: Vec<IpAddr>,

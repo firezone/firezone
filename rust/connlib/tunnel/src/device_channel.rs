@@ -79,7 +79,19 @@ impl Device {
         }
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg(target_os = "android")]
+    pub(crate) fn set_config(
+        &mut self,
+        config: &Interface,
+        dns_config: Vec<IpAddr>,
+        callbacks: &impl Callbacks,
+    ) -> Result<(), ConnlibError> {
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
