@@ -97,6 +97,8 @@ jobs:
       fail-fast: false
       matrix:
         test: [
+          direct-curl-heartbeat-timeout,
+          relayed-curl-heartbeat-timeout,
           direct-curl-portal-restart,
           relayed-curl-portal-restart,
           relayed-curl-relay-restart,
