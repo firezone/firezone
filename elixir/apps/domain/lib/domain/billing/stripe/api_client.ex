@@ -58,6 +58,27 @@ defmodule Domain.Billing.Stripe.APIClient do
     request(api_token, :get, "customers/#{customer_id}", "")
   end
 
+  def list_all_subscriptions(api_token, page_after \\ nil, acc \\ []) do
+    query_params =
+      if page_after do
+        "?starting_after=#{page_after}"
+      else
+        ""
+      end
+
+    case request(api_token, :get, "subscriptions#{query_params}", "") do
+      {:ok, %{"has_more" => true, "data" => data}} ->
+        page_after = List.last(data)["id"]
+        list_all_subscriptions(api_token, page_after, acc ++ data)
+
+      {:ok, %{"has_more" => false, "data" => data}} ->
+        {:ok, acc ++ data}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def fetch_product(api_token, product_id) do
     request(api_token, :get, "products/#{product_id}", "")
   end

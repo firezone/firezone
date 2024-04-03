@@ -39,6 +39,7 @@ rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_s
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
+firezone-client-tunnel = { path = "client-tunnel" }
 firezone-gateway = { path = "gateway"}
 firezone-linux-client = { path = "linux-client"}
 firezone-gui-client = { path = "gui-client/src-tauri"}
@@ -55,6 +56,7 @@ clippy.dbg_macro = "warn"
 clippy.print_stdout = "warn"
 clippy.print_stderr = "warn"
 clippy.unnecessary_wraps = "warn"
+clippy.unused_async = "warn"
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
@@ -82,3 +84,7 @@ strip = "none"
 debug = "full"
 split-debuginfo = "packed"
 strip = "none"
+
+# Override build settings for the relay, so we can capture flamegraphs
+[profile.release.package.firezone-relay]
+debug = "full"

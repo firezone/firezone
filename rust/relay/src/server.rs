@@ -8,9 +8,10 @@ pub use crate::server::client_message::{
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::{ClientSocket, IpStack, PeerSocket, TimeEvents};
+use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
 use bytecodec::EncodeExt;
+use bytes::BytesMut;
 use core::fmt;
 use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -35,7 +36,7 @@ use stun_codec::rfc8656::attributes::{
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
-use tracing::{field, log, Span};
+use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
 
@@ -74,8 +75,6 @@ pub struct Server<R> {
 
     nonces: Nonces,
 
-    time_events: TimeEvents<TimedAction>,
-
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed_counter: Counter<u64>,
     data_relayed: u64, // Keep a separate counter because `Counter` doesn't expose the current value :(
@@ -107,13 +106,45 @@ pub enum Command {
         family: AddressFamily,
     },
 
-    ForwardData {
+    ForwardDataClientToPeer {
         id: AllocationId,
-        data: Vec<u8>,
+        data: ClientToPeer,
         receiver: PeerSocket,
     },
-    /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
-    Wake { deadline: SystemTime },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ClientToPeer(ChannelData);
+
+#[derive(Debug, PartialEq)]
+pub struct PeerToClient {
+    buf: BytesMut,
+}
+
+impl PeerToClient {
+    pub fn new(msg: &[u8]) -> Self {
+        let mut buf = BytesMut::zeroed(msg.len() + 4);
+        buf[4..].copy_from_slice(msg);
+
+        Self { buf }
+    }
+
+    fn len(&self) -> usize {
+        self.buf.len() - 4
+    }
+
+    fn header_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[..4]
+    }
+}
+
+impl ClientToPeer {
+    /// Extract the data to forward to the peer.
+    ///
+    /// Data from clients arrives in [`ChannelData`] messages and we only forward the actual payload.
+    pub fn data(&self) -> &[u8] {
+        self.0.data()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -142,6 +173,11 @@ const UDP_TRANSPORT: u8 = 17;
 ///
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
 const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
+
+/// The timeout before a channel be rebound.
+///
+/// See <https://www.rfc-editor.org/rfc/rfc8656#section-12-14>.
+const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<R> Server<R>
 where
@@ -194,7 +230,6 @@ where
             next_allocation_id: AllocationId(1),
             auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
             rng,
-            time_events: TimeEvents::default(),
             nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
@@ -229,17 +264,14 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    #[tracing::instrument(skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer), level = "error")]
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: ClientSocket, now: SystemTime) {
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
-        }
+    #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
+    pub fn handle_client_input(&mut self, bytes: Vec<u8>, sender: ClientSocket, now: SystemTime) {
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match self.decoder.decode(bytes) {
             Ok(Ok(message)) => {
                 if let Some(id) = message.transaction_id() {
-                    Span::current().record("transaction_id", hex::encode(id.as_bytes()));
+                    Span::current().record("transaction_id", field::debug(id));
                 }
 
                 self.handle_client_message(message, sender, now);
@@ -250,16 +282,16 @@ where
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
-                tracing::debug!(%error, "failed to decode channel data")
+                tracing::debug!(target: "relay", %error, "failed to decode channel data")
             }
             Err(client_message::Error::DecodeStun(ref error)) => {
-                tracing::debug!(%error, "failed to decode stun packet")
+                tracing::debug!(target: "relay", %error, "failed to decode stun packet")
             }
             Err(client_message::Error::UnknownMessageType(t)) => {
-                tracing::debug!(r#type = %t, "unknown STUN message type")
+                tracing::debug!(target: "relay", r#type = %t, "unknown STUN message type")
             }
             Err(client_message::Error::Eof) => {
-                tracing::debug!("unexpected EOF while parsing message")
+                tracing::debug!(target: "relay", "unexpected EOF while parsing message")
             }
         };
     }
@@ -324,17 +356,14 @@ where
     }
 
     /// Process the bytes received from an allocation.
-    #[tracing::instrument(skip_all, fields(%sender, %allocation, recipient, channel), level = "error")]
+    #[tracing::instrument(level = "debug", skip_all, fields(%sender, %allocation, recipient, channel))]
     pub fn handle_peer_traffic(
         &mut self,
-        bytes: &[u8],
+        mut msg: PeerToClient,
         sender: PeerSocket,
         allocation: AllocationId,
     ) {
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "receiving bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %msg.len());
 
         let Some(client) = self.clients_by_allocation.get(&allocation).copied() else {
             tracing::debug!(target: "relay", "unknown allocation");
@@ -347,7 +376,7 @@ where
             .channel_numbers_by_client_and_peer
             .get(&(client, sender))
         else {
-            tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", bytes.len());
+            tracing::debug!(target: "relay", "no active channel, refusing to relay {} bytes", msg.len());
             return;
         };
 
@@ -371,70 +400,21 @@ where
             return;
         }
 
-        tracing::debug!(target: "relay", "Relaying {} bytes", bytes.len());
+        tracing::trace!(target: "wire", num_bytes = %msg.len());
 
-        self.data_relayed_counter.add(bytes.len() as u64, &[]);
-        self.data_relayed += bytes.len() as u64;
+        self.data_relayed_counter.add(msg.len() as u64, &[]);
+        self.data_relayed += msg.len() as u64;
 
-        let data = ChannelData::new(*channel_number, bytes).to_bytes();
-
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&data);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
+        channel_data::encode_to_slice(*channel_number, msg.len() as u16, msg.header_mut());
 
         self.pending_commands.push_back(Command::SendMessage {
-            payload: data,
+            payload: msg.buf.freeze().into(),
             recipient: client,
         })
     }
 
-    #[tracing::instrument(skip(self), level = "error")]
-    pub fn handle_deadline_reached(&mut self, now: SystemTime) {
-        for action in self.time_events.pending_actions(now) {
-            match action {
-                TimedAction::ExpireAllocation(id) => {
-                    let Some(allocation) = self.get_allocation(&id) else {
-                        tracing::debug!(target: "relay", allocation = %id, "Cannot expire non-existing allocation");
-
-                        continue;
-                    };
-
-                    if allocation.is_expired(now) {
-                        self.delete_allocation(id)
-                    }
-                }
-                TimedAction::UnbindChannel((client, chan)) => {
-                    let Some(channel) = self.channels_by_client_and_number.get_mut(&(client, chan))
-                    else {
-                        tracing::debug!(target: "relay", channel = %chan, %client, "Cannot expire non-existing channel binding");
-
-                        continue;
-                    };
-
-                    if channel.is_expired(now) {
-                        tracing::info!(target: "relay", channel = %chan, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
-
-                        channel.bound = false;
-
-                        let wake_deadline = self.time_events.add(
-                            now + Duration::from_secs(5 * 60),
-                            TimedAction::DeleteChannel((client, chan)),
-                        );
-                        self.pending_commands.push_back(Command::Wake {
-                            deadline: wake_deadline,
-                        });
-                    }
-                }
-                TimedAction::DeleteChannel((client, chan)) => {
-                    self.delete_channel_binding(client, chan);
-                }
-            }
-        }
-    }
-
     /// An allocation failed.
-    #[tracing::instrument(skip(self), fields(%allocation), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self), fields(%allocation))]
     pub fn handle_allocation_failed(&mut self, allocation: AllocationId) {
         self.delete_allocation(allocation)
     }
@@ -448,6 +428,54 @@ where
         }
 
         self.pending_commands.pop_front()
+    }
+
+    // TODO: It might be worth to do some caching here?
+    pub fn poll_timeout(&self) -> Option<SystemTime> {
+        let channel_expiries = self.channels_by_client_and_number.values().map(|c| {
+            if c.bound {
+                c.expiry
+            } else {
+                c.expiry + CHANNEL_REBIND_TIMEOUT
+            }
+        });
+        let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
+
+        channel_expiries
+            .chain(allocation_expiries)
+            .fold(None, |current, next| earliest(current, Some(next)))
+    }
+
+    pub fn handle_timeout(&mut self, now: SystemTime) {
+        let expired_allocations = self
+            .allocations
+            .values()
+            .filter_map(|a| a.is_expired(now).then_some(a.id))
+            .collect::<Vec<_>>();
+
+        for id in expired_allocations {
+            self.delete_allocation(id);
+        }
+
+        for ((client, number), channel) in self
+            .channels_by_client_and_number
+            .iter_mut()
+            .filter(|(_, c)| c.is_expired(now))
+        {
+            tracing::info!(target: "relay", channel = %number, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
+
+            channel.bound = false;
+        }
+
+        let channels_to_delete = self
+            .channels_by_client_and_number
+            .iter()
+            .filter_map(|(id, c)| c.can_be_deleted(now).then_some(*id))
+            .collect::<Vec<_>>();
+
+        for (client_socket, number) in channels_to_delete {
+            self.delete_channel_binding(client_socket, number);
+        }
     }
 
     fn handle_binding_request(&mut self, message: Binding, sender: ClientSocket) {
@@ -533,13 +561,6 @@ where
         message.add_attribute(XorMappedAddress::new(sender.0));
         message.add_attribute(effective_lifetime.clone());
 
-        let wake_deadline = self.time_events.add(
-            allocation.expires_at,
-            TimedAction::ExpireAllocation(allocation.id),
-        );
-        self.pending_commands.push_back(Command::Wake {
-            deadline: wake_deadline,
-        });
         self.pending_commands.push_back(Command::CreateAllocation {
             id: allocation.id,
             family: first_relay_address.family(),
@@ -621,13 +642,6 @@ where
             "Refreshed allocation",
         );
 
-        let wake_deadline = self.time_events.add(
-            allocation.expires_at,
-            TimedAction::ExpireAllocation(allocation.id),
-        );
-        self.pending_commands.push_back(Command::Wake {
-            deadline: wake_deadline,
-        });
         self.send_message(
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
@@ -696,13 +710,6 @@ where
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
-            let wake_deadline = self.time_events.add(
-                channel.expiry,
-                TimedAction::UnbindChannel((sender, requested_channel)),
-            );
-            self.pending_commands.push_back(Command::Wake {
-                deadline: wake_deadline,
-            });
             self.send_message(
                 channel_bind_success_response(request.transaction_id()),
                 sender,
@@ -734,7 +741,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(skip(self, message, now), fields(%sender), level = "error")]
+    #[tracing::instrument(level = "debug", skip(self, message, now), fields(%sender))]
     fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
@@ -780,21 +787,17 @@ where
         Span::current().record("recipient", field::display(&channel.peer_address));
         Span::current().record("channel", field::display(&channel_number));
 
-        tracing::debug!(target: "relay", "Relaying {} bytes", data.len());
+        tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
 
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(data);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
-
-        self.pending_commands.push_back(Command::ForwardData {
-            id: channel.allocation,
-            data: data.to_vec(),
-            receiver: channel.peer_address,
-        });
+        self.pending_commands
+            .push_back(Command::ForwardDataClientToPeer {
+                id: channel.allocation,
+                data: ClientToPeer(message),
+                receiver: channel.peer_address,
+            });
     }
 
     fn verify_auth(
@@ -812,7 +815,7 @@ where
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
-                log::debug!("failed to parse nonce: {e}");
+                tracing::debug!(target: "relay", "failed to parse nonce: {e}");
 
                 error_response(Unauthorized, request)
             })?;
@@ -894,14 +897,6 @@ where
             .insert((client, peer), requested_channel);
 
         debug_assert!(existing.is_none());
-
-        let wake_deadline = self.time_events.add(
-            expiry,
-            TimedAction::UnbindChannel((client, requested_channel)),
-        );
-        self.pending_commands.push_back(Command::Wake {
-            deadline: wake_deadline,
-        });
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
@@ -914,10 +909,7 @@ where
             return;
         };
 
-        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&bytes);
-            tracing::trace!(target: "wire", %hex_bytes, "sending bytes");
-        }
+        tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: bytes,
@@ -947,15 +939,9 @@ where
         );
     }
 
-    fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
-        self.clients_by_allocation
-            .get(id)
-            .and_then(|client| self.allocations.get(client))
-    }
-
     fn delete_allocation(&mut self, id: AllocationId) {
         let Some(client) = self.clients_by_allocation.remove(&id) else {
-            tracing::debug!("Unable to delete unknown allocation");
+            tracing::debug!(target: "relay", "Unable to delete unknown allocation");
 
             return;
         };
@@ -1068,6 +1054,10 @@ impl Channel {
     fn is_expired(&self, now: SystemTime) -> bool {
         self.expiry <= now
     }
+
+    fn can_be_deleted(&self, now: SystemTime) -> bool {
+        self.expiry + CHANNEL_REBIND_TIMEOUT <= now
+    }
 }
 
 impl Allocation {
@@ -1090,13 +1080,6 @@ impl Allocation {
     fn is_expired(&self, now: SystemTime) -> bool {
         self.expires_at <= now
     }
-}
-
-#[derive(PartialEq, Debug)]
-enum TimedAction {
-    ExpireAllocation(AllocationId),
-    UnbindChannel((ClientSocket, u16)),
-    DeleteChannel((ClientSocket, u16)),
 }
 
 fn error_response(
@@ -1264,6 +1247,15 @@ stun_codec::define_attribute_enums!(
         AdditionalAddressFamily
     ]
 );
+
+fn earliest(left: Option<SystemTime>, right: Option<SystemTime>) -> Option<SystemTime> {
+    match (left, right) {
+        (None, None) => None,
+        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+    }
+}
 
 #[cfg(test)]
 mod tests {

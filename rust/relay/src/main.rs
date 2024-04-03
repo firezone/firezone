@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::{
-    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, UdpSocket,
+    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket,
+    PeerToClient, Server, Sleep, UdpSocket,
 };
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -60,8 +60,6 @@ struct Args {
     #[arg(env = "FIREZONE_NAME")]
     name: Option<String>,
     /// A seed to use for all randomness operations.
-    ///
-    /// Only available in debug builds.
     #[arg(long, env, hide = true)]
     rng_seed: Option<u64>,
 
@@ -74,6 +72,10 @@ struct Args {
     /// If set, we will report traces and metrics to this collector via gRPC.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<SocketAddr>,
+
+    /// The address of the local interface where we should serve the profiling controller.
+    #[arg(long, env, hide = true)]
+    profiler_ctrl_addr: Option<SocketAddr>,
 
     /// The Google Project ID to embed in spans.
     ///
@@ -97,7 +99,7 @@ enum LogFormat {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    setup_tracing(&args).await?;
+    setup_tracing(&args)?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -119,7 +121,7 @@ async fn main() -> Result<()> {
         let base_url = args.api_url.clone();
         let stamp_secret = server.auth_secret();
 
-        let span = tracing::error_span!("connect_to_portal", config_url = %base_url);
+        let span = tracing::debug_span!("connect_to_portal", config_url = %base_url);
 
         connect_to_portal(&args, token, base_url, stamp_secret)
             .instrument(span)
@@ -152,7 +154,7 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<()> {
+fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -286,7 +288,6 @@ struct JoinMessage {
     stamp_secret: String,
 }
 
-#[cfg(debug_assertions)]
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
         return StdRng::from_entropy();
@@ -297,15 +298,6 @@ fn make_rng(seed: Option<u64>) -> StdRng {
     StdRng::seed_from_u64(seed)
 }
 
-#[cfg(not(debug_assertions))]
-fn make_rng(seed: Option<u64>) -> StdRng {
-    if seed.is_some() {
-        tracing::debug!(target: "relay", "Ignoring rng-seed because we are running in release mode");
-    }
-
-    StdRng::from_entropy()
-}
-
 struct Eventloop<R> {
     inbound_data_receiver: mpsc::Receiver<(Vec<u8>, ClientSocket)>,
     outbound_ip4_data_sender: mpsc::Sender<(Vec<u8>, ClientSocket)>,
@@ -313,8 +305,8 @@ struct Eventloop<R> {
     server: Server<R>,
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
-    relay_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
-    relay_data_receiver: mpsc::Receiver<(Vec<u8>, PeerSocket, AllocationId)>,
+    relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
+    relay_data_receiver: mpsc::Receiver<(PeerToClient, PeerSocket, AllocationId)>,
     sleep: Sleep,
 
     stats_log_interval: tokio::time::Interval,
@@ -366,9 +358,6 @@ where
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
-        let span = tracing::error_span!("Eventloop::poll");
-        let _guard = span.enter();
-
         loop {
             // Don't fail these results. One of the senders might not be active because we might not be listening on IP4 / IP6.
             let _ = ready!(self.outbound_ip4_data_sender.poll_ready_unpin(cx));
@@ -380,7 +369,7 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        let span = tracing::error_span!("Command::SendMessage");
+                        let span = tracing::debug_span!("Command::SendMessage");
                         let _guard = span.enter();
 
                         let sender = match recipient.family() {
@@ -403,7 +392,7 @@ where
                     }
                     Command::CreateAllocation { id, family, port } => {
                         let span =
-                            tracing::error_span!("Command::CreateAllocation", %id, %family, %port);
+                            tracing::debug_span!("Command::CreateAllocation", %id, %family, %port);
                         let _guard = span.enter();
 
                         self.allocations.insert(
@@ -412,7 +401,7 @@ where
                         );
                     }
                     Command::FreeAllocation { id, family } => {
-                        let span = tracing::error_span!("Command::FreeAllocation", %id, %family);
+                        let span = tracing::debug_span!("Command::FreeAllocation", %id, %family);
                         let _guard = span.enter();
 
                         if self.allocations.remove(&(id, family)).is_none() {
@@ -422,28 +411,8 @@ where
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {id}");
                     }
-                    Command::Wake { deadline } => {
-                        let span = tracing::error_span!("Command::Wake", ?deadline);
-                        let _guard = span.enter();
-
-                        match deadline.duration_since(now) {
-                            Ok(duration) => {
-                                tracing::trace!(target: "relay", ?duration, "Suspending event loop")
-                            }
-                            Err(e) => {
-                                let difference = e.duration();
-
-                                tracing::warn!(target: "relay",
-                                    ?difference,
-                                    "Wake time is already in the past, waking now"
-                                )
-                            }
-                        }
-
-                        Pin::new(&mut self.sleep).reset(deadline);
-                    }
-                    Command::ForwardData { id, data, receiver } => {
-                        let span = tracing::error_span!("Command::ForwardData", %id, %receiver);
+                    Command::ForwardDataClientToPeer { id, data, receiver } => {
+                        let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
                         let _guard = span.enter();
 
                         let mut allocation = match self.allocations.entry((id, receiver.family())) {
@@ -466,7 +435,7 @@ where
 
             // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(now);
+                self.server.handle_timeout(now);
                 continue; // Handle potentially new commands.
             }
 
@@ -474,7 +443,7 @@ where
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_peer_traffic(&data, sender, allocation);
+                self.server.handle_peer_traffic(data, sender, allocation);
                 continue; // Handle potentially new commands.
             }
 
@@ -482,11 +451,17 @@ where
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_client_input(&buffer, sender, now);
+                self.server.handle_client_input(buffer, sender, now);
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle portal messages
+            // Priority 5: Check when we need to next be woken. This needs to happen after all state modifications.
+            if let Some(timeout) = self.server.poll_timeout() {
+                Pin::new(&mut self.sleep).reset(timeout);
+                continue;
+            }
+
+            // Priority 6: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
