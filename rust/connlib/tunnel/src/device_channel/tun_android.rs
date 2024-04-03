@@ -14,7 +14,7 @@ use tokio::io::unix::AsyncFd;
 pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
 
 #[derive(Debug)]
-pub(crate) struct Tun {
+pub struct Tun {
     fd: AsyncFd<RawFd>,
     name: String,
 }

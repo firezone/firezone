@@ -21,7 +21,7 @@ const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 pub(crate) const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
 #[derive(Debug)]
-pub(crate) struct Tun {
+pub struct Tun {
     name: String,
     fd: AsyncFd<RawFd>,
 }
