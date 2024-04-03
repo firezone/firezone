@@ -10,7 +10,6 @@ mock = ["connlib-shared/mock"]
 [dependencies]
 anyhow = "1.0.81"
 tokio = { version = "1.36", default-features = false, features = ["sync", "rt"] }
-tokio-util = "0.7.10"
 secrecy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
