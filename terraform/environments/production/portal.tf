@@ -351,7 +351,7 @@ locals {
       value = true
     },
     {
-      name  = "FEATURE_API_CLIENT_UI_ENABLED"
+      name  = "FEATURE_REST_API_ENABLED"
       value = false
     }
   ]

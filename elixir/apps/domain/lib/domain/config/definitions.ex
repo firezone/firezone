@@ -602,5 +602,5 @@ defmodule Domain.Config.Definitions do
   @doc """
   Boolean flag to turn API Client UI functionality on/off for all accounts.
   """
-  defconfig(:feature_api_client_ui_enabled, :boolean, default: false)
+  defconfig(:feature_rest_api_enabled, :boolean, default: false)
 end

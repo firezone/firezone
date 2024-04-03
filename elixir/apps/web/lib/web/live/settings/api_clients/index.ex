@@ -15,9 +15,11 @@ defmodule Web.Settings.ApiClients.Index do
           {:actors, :name},
           {:actors, :status}
         ],
+        enforce_filters: [
+          {:type, "api_client"}
+        ],
         hide_filters: [
-          :provider_id,
-          :type
+          :provider_id
         ],
         callback: &handle_api_clients_update!/2
       )
@@ -31,11 +33,6 @@ defmodule Web.Settings.ApiClients.Index do
   end
 
   def handle_api_clients_update!(socket, list_opts) do
-    list_opts =
-      Keyword.update(list_opts, :filter, [], fn filters ->
-        Keyword.put(filters, :type, "api_client")
-      end)
-
     with {:ok, actors, actors_metadata} <-
            Actors.list_actors(socket.assigns.subject, list_opts) do
       socket =

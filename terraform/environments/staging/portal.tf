@@ -339,7 +339,7 @@ locals {
       value = "firezone.dev,firez.one"
     },
     {
-      name  = "FEATURE_API_CLIENT_UI_ENABLED"
+      name  = "FEATURE_REST_API_ENABLED"
       value = true
     }
   ]

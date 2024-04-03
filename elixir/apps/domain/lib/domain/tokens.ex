@@ -54,14 +54,6 @@ defmodule Domain.Tokens do
     end
   end
 
-  def list_tokens_by_type(type, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_type(type)
-      |> list_tokens(subject, opts)
-    end
-  end
-
   defp list_tokens(queryable, subject, opts) do
     queryable
     |> Authorizer.for_subject(subject)
