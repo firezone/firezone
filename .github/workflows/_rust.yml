@@ -40,8 +40,8 @@ jobs:
 
       - uses: taiki-e/install-action@cargo-udeps
       - run: |
-          rustup install nightly-2024-01-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-01-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
+          rustup install nightly-2024-03-26 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
+          cargo +nightly-2024-03-26 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: Check for unused dependencies
 
   test:
