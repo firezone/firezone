@@ -59,6 +59,7 @@ defmodule Domain.DataCase do
   See https://github.com/PSPDFKit-labs/bypass/issues/120
   """
   def cancel_bypass_expectations_check(bypass) do
+    Bypass.down(bypass)
     on_exit({Bypass, bypass.pid}, fn -> :ok end)
   end
 end

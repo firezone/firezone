@@ -6,6 +6,27 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = { version = "1.0" }
+secrecy = { workspace = true }
+clap = { version = "4.5", features = ["derive",  "env"] }
+connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
+firezone-cli-utils = { workspace = true }
+humantime = "2.1"
+resolv-conf = "0.7.0"
+# This actually relies on many other features in Tokio, so this will probably
+# fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
+tokio = { version = "1.36.0", features = ["signal"] }
+tracing = { workspace = true }
+url = { version = "2.3.1", default-features = false }
+
+[dev-dependencies]
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+dirs = "5.0.1"
+nix = { version =  "0.28.0", features = ["user"] }
 
 [lints]
 workspace = true

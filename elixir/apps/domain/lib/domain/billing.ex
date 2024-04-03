@@ -190,6 +190,11 @@ defmodule Domain.Billing do
     end
   end
 
+  def list_all_subscriptions do
+    secret_key = fetch_config!(:secret_key)
+    APIClient.list_all_subscriptions(secret_key)
+  end
+
   def create_subscription(%Accounts.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
     default_price_id = fetch_config!(:default_price_id)

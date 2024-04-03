@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_relay::{
-    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, UdpSocket,
+    AddressFamily, Allocation, AllocationId, ClientSocket, Command, IpStack, PeerSocket,
+    PeerToClient, Server, Sleep, UdpSocket,
 };
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -305,8 +305,8 @@ struct Eventloop<R> {
     server: Server<R>,
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
     allocations: HashMap<(AllocationId, AddressFamily), Allocation>,
-    relay_data_sender: mpsc::Sender<(Vec<u8>, PeerSocket, AllocationId)>,
-    relay_data_receiver: mpsc::Receiver<(Vec<u8>, PeerSocket, AllocationId)>,
+    relay_data_sender: mpsc::Sender<(PeerToClient, PeerSocket, AllocationId)>,
+    relay_data_receiver: mpsc::Receiver<(PeerToClient, PeerSocket, AllocationId)>,
     sleep: Sleep,
 
     stats_log_interval: tokio::time::Interval,
@@ -411,27 +411,7 @@ where
 
                         tracing::info!(target: "relay", "Freeing addresses of allocation {id}");
                     }
-                    Command::Wake { deadline } => {
-                        let span = tracing::debug_span!("Command::Wake", ?deadline);
-                        let _guard = span.enter();
-
-                        match deadline.duration_since(now) {
-                            Ok(duration) => {
-                                tracing::trace!(target: "relay", ?duration, "Suspending event loop")
-                            }
-                            Err(e) => {
-                                let difference = e.duration();
-
-                                tracing::warn!(target: "relay",
-                                    ?difference,
-                                    "Wake time is already in the past, waking now"
-                                )
-                            }
-                        }
-
-                        Pin::new(&mut self.sleep).reset(deadline);
-                    }
-                    Command::ForwardData { id, data, receiver } => {
+                    Command::ForwardDataClientToPeer { id, data, receiver } => {
                         let span = tracing::debug_span!("Command::ForwardData", %id, %receiver);
                         let _guard = span.enter();
 
@@ -455,7 +435,7 @@ where
 
             // Priority 2: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(now);
+                self.server.handle_timeout(now);
                 continue; // Handle potentially new commands.
             }
 
@@ -463,7 +443,7 @@ where
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_peer_traffic(&data, sender, allocation);
+                self.server.handle_peer_traffic(data, sender, allocation);
                 continue; // Handle potentially new commands.
             }
 
@@ -471,11 +451,17 @@ where
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
-                self.server.handle_client_input(&buffer, sender, now);
+                self.server.handle_client_input(buffer, sender, now);
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Handle portal messages
+            // Priority 5: Check when we need to next be woken. This needs to happen after all state modifications.
+            if let Some(timeout) = self.server.poll_timeout() {
+                Pin::new(&mut self.sleep).reset(timeout);
+                continue;
+            }
+
+            // Priority 6: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));

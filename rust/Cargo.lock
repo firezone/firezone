@@ -971,9 +971,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.3"
+version = "4.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "949626d00e063efc93b6dca932419ceb5432f99769911c0b995f7e884c778813"
+checksum = "90bc066a67923782aa8515dbaea16946c5bcc5addbd668bb80af688e53e548a0"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -993,9 +993,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.3"
+version = "4.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90239a040c80f5e14809ca132ddc4176ab33d5e17e49691793296e3fcb34d72f"
+checksum = "528131438037fd55894f62d6e9f068b8f45ac57ffa77517819645d10aed04f64"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -1876,6 +1876,23 @@ dependencies = [
 [[package]]
 name = "firezone-client-tunnel"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "connlib-client-shared",
+ "connlib-shared",
+ "dirs",
+ "firezone-cli-utils",
+ "humantime",
+ "nix 0.28.0",
+ "resolv-conf",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "url",
+]
 
 [[package]]
 name = "firezone-gateway"
@@ -1969,19 +1986,8 @@ name = "firezone-linux-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "atomicwrites",
- "clap",
- "connlib-client-shared",
- "connlib-shared",
- "firezone-cli-utils",
- "humantime",
- "resolv-conf",
- "secrecy",
- "thiserror",
+ "firezone-client-tunnel",
  "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
@@ -5416,9 +5422,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.114"
+version = "1.0.115"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5f09b1bd632ef549eaa9f60a1f8de742bdbc698e6cee2095fc84dde5f549ae0"
+checksum = "12dc5c46daa8e9fdf4f5e71b6cf9a53f2487da0e86e55808e2d35539666497dd"
 dependencies = [
  "indexmap 2.2.6",
  "itoa 1.0.10",

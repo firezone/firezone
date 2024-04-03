@@ -198,6 +198,7 @@ mod tests {
         device_common().await;
     }
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn device_common() {
         let (private_key, _public_key) = connlib_shared::keypair();
         let sockets = crate::Sockets::new();

@@ -1,5 +1,6 @@
+---
 name: Rust
-on:
+"on":
   workflow_call:
 
 defaults:
@@ -19,23 +20,23 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-22.04
-            packages: # Intentionally blank as a package catch-all linter
           - runs-on: macos-14
-            packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-gui-client -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        id: setup-rust
       - uses: ./.github/actions/setup-tauri
       - run: cargo fmt -- --check
-      - run: |
-          cargo doc --all-features --no-deps --document-private-items ${{ matrix.packages }}
+      - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: |
-          cargo clippy --all-targets --all-features ${{ matrix.packages }} -- -D warnings
+        name: "cargo doc"
+        shell: bash
+      - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
+        name: "cargo clippy"
+        shell: bash
 
   test:
     name: test-${{ matrix.runs-on }}
@@ -45,30 +46,26 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-20.04
-            packages: --workspace
           - runs-on: ubuntu-22.04
-            packages: --workspace
           - runs-on: macos-12
-            packages: -p connlib-client-apple -p snownet
           - runs-on: macos-13
-            packages: -p connlib-client-apple -p snownet
           - runs-on: macos-14
-            packages: -p connlib-client-apple -p snownet
           - runs-on: windows-2019
-            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
           - runs-on: windows-2022
-            packages: -p connlib-client-shared -p firezone-gui-client -p firezone-tunnel -p snownet
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+        id: setup-rust
       - uses: ./.github/actions/setup-tauri
-      - run: cargo test --all-features ${{ matrix.packages }} -- --include-ignored
+      - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           RUST_BACKTRACE: full
+        name: "cargo test"
+        shell: bash
 
   # Runs the Windows client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
