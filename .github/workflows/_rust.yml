@@ -37,8 +37,11 @@ jobs:
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
         name: "cargo clippy"
         shell: bash
+
       - uses: taiki-e/install-action@cargo-udeps
-      - run: cargo udeps --all-targets --all-features
+      - run: |
+          rustup install nightly
+          cargo +nightly udeps --all-targets --all-features
         name: Check for unused dependencies
 
   test:
