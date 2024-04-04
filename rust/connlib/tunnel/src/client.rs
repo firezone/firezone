@@ -111,8 +111,6 @@ where
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
-        tracing::info!("Setting new DNS resolvers");
-
         self.update_interface()?;
 
         Ok(())
@@ -126,8 +124,6 @@ where
         if dns_changed {
             self.io
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-            tracing::info!("Setting new DNS resolvers");
         }
 
         self.update_interface()?;
