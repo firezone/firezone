@@ -67,7 +67,8 @@ where
         self.io
             .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        self.update_resource_list();
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
 
         Ok(())
     }
@@ -82,7 +83,8 @@ where
         self.io
             .device_mut()
             .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        self.update_resource_list();
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
 
         Ok(())
     }
@@ -98,12 +100,8 @@ where
             tracing::error!(?ids, "Failed to update routes: {err:?}");
         }
 
-        self.update_resource_list();
-    }
-
-    fn update_resource_list(&self) {
         self.callbacks
-            .on_update_resources(self.role_state.resources());
+            .on_update_resources(self.role_state.resources())
     }
 
     /// Updates the system's dns
