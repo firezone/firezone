@@ -37,8 +37,8 @@ impl Default for Sockets {
 
 impl Sockets {
     pub fn new() -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::channel(1000);
-        let (event_tx, event_rx) = mpsc::channel(1024);
+        let (cmd_tx, cmd_rx) = mpsc::channel(1_000_000); // Commands are really small and this channel should really never fill up unless we have serious problems in the "mio" worker thread.
+        let (event_tx, event_rx) = mpsc::channel(1_024);
 
         std::thread::spawn(move || {
             if let Err(e) = mio_worker_task(event_tx.clone(), cmd_rx) {
