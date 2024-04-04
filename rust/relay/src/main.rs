@@ -392,7 +392,14 @@ where
             }
 
             // Priority 2: Read from our sockets.
+            //
             // We read the packet with an offset of 4 bytes so we can encode the channel-data header into that without re-allocating.
+            // This only matters for relaying from an allocation to a client because the data coming in on an allocation is "raw" (i.e. unwrapped) application data.
+            // To allow clients to correctly associate this data, we need to wrap it in a channel-data message as depicted below.
+            //
+            // For traffic coming from clients that needs to be forwarded to peers, this doesn't matter because we already a channel data message and only need to forward its payload.
+            //
+            // However, we don't know which socket we will be reading from when we call `poll_recv_from`, which is why we always offset the read-buffer by 4 bytes like this:
             //
             //  01│23│456789....
             // ┌──┼──┼──────────────────────────┐
@@ -408,7 +415,7 @@ where
 
             match self.sockets.poll_recv_from(payload, cx) {
                 Poll::Ready(Ok(sockets::Received {
-                    port: 3478,
+                    port: 3478, // Packets coming in on port 3478 are from clients.
                     from,
                     packet,
                 })) => {
@@ -419,7 +426,7 @@ where
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
                             .expect("valid ChannelData if we should relay it")
-                            .data();
+                            .data(); // When relaying data from a client to peer, we need to forward only the channel-data's payload.
 
                         if let Err(e) =
                             self.sockets
@@ -430,7 +437,11 @@ where
                     };
                     continue;
                 }
-                Poll::Ready(Ok(sockets::Received { port, from, packet })) => {
+                Poll::Ready(Ok(sockets::Received {
+                    port, // Packets coming in on any other port are from peers.
+                    from,
+                    packet,
+                })) => {
                     if let Some((client, channel)) = self.server.handle_peer_traffic(
                         packet,
                         PeerSocket::new(from),
@@ -443,7 +454,7 @@ where
                         );
 
                         if let Err(e) = self.sockets.try_send(
-                            3478,
+                            3478, // Packets coming in from peers always go out on port 3478
                             client.into_socket(),
                             &self.buffer[..total_length],
                         ) {
