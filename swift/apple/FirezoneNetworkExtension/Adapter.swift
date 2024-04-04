@@ -31,10 +31,7 @@ private enum AdapterState: CustomStringConvertible {
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
 class Adapter {
-
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
-
-  private let logger: AppLogger
 
   private var callbackHandler: CallbackHandler
 
@@ -65,7 +62,7 @@ class Adapter {
   /// Adapter state.
   private var state: AdapterState {
     didSet {
-      logger.log("Adapter state changed to: \(self.state)")
+      Log.tunnel.log("Adapter state changed to: \(self.state)")
     }
   }
 
@@ -87,24 +84,23 @@ class Adapter {
     self.apiURL = apiURL
     self.token = token
     self.packetTunnelProvider = packetTunnelProvider
-    self.callbackHandler = CallbackHandler(logger: packetTunnelProvider.logger)
+    self.callbackHandler = CallbackHandler()
     self.state = .tunnelStopped
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
-    self.logger = packetTunnelProvider.logger
     self.networkSettings = nil
   }
 
   // Could happen abruptly if the process is killed.
   deinit {
-    logger.log("Adapter.deinit")
+    Log.tunnel.log("Adapter.deinit")
 
     // Cancel network monitor
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
     if case .tunnelStarted(let session) = self.state {
-      logger.log("Adapter.deinit: Shutting down connlib")
+      Log.tunnel.log("Adapter.deinit: Shutting down connlib")
       session.disconnect()
     }
   }
@@ -113,9 +109,9 @@ class Adapter {
   /// - Parameters:
   ///   - completionHandler: completion handler.
   public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
-    logger.log("Adapter.start")
+    Log.tunnel.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
-      logger.error("\(#function): Invalid Adapter state")
+      Log.tunnel.error("\(#function): Invalid Adapter state")
       completionHandler(.invalidState)
       return
     }
@@ -123,17 +119,17 @@ class Adapter {
     callbackHandler.delegate = self
 
     if connlibLogFolderPath.isEmpty {
-      logger.error("Cannot get shared log folder for connlib")
+      Log.tunnel.error("Cannot get shared log folder for connlib")
     }
 
-    self.logger.log("Adapter.start: Starting connlib")
+    Log.tunnel.log("Adapter.start: Starting connlib")
     do {
       // Grab a session pointer
       let session =
         try WrappedSession.connect(
           apiURL,
           token,
-          DeviceMetadata.getOrCreateFirezoneId(logger: self.logger),
+          DeviceMetadata.getOrCreateFirezoneId(),
           DeviceMetadata.getDeviceName(),
           DeviceMetadata.getOSVersion(),
           connlibLogFolderPath,
@@ -152,9 +148,9 @@ class Adapter {
       // `connected`.
       completionHandler(nil)
     } catch let error {
-      logger.error("\(#function): Adapter.start: Error: \(error)")
+      Log.tunnel.error("\(#function): Adapter.start: Error: \(error)")
       state = .tunnelStopped
-      completionHandler(AdapterError.connlibConnectError(error))
+      throw AdapterError.connlibConnectError(error)
     }
   }
 
@@ -168,7 +164,7 @@ class Adapter {
   ///  This can happen before the tunnel is in the tunnelReady state, such as if the portal
   ///  is slow to send the init.
   public func stop() {
-    logger.log("Adapter.stop")
+    Log.tunnel.log("Adapter.stop")
 
     if case .tunnelStarted(let session) = state {
       state = .tunnelStopped
@@ -204,7 +200,7 @@ class Adapter {
 
 extension Adapter {
   private func beginPathMonitoring() {
-    self.logger.log("Beginning path monitoring")
+    Log.tunnel.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.didReceivePathUpdate(path: path)
@@ -255,7 +251,7 @@ extension Adapter {
     guard case .tunnelStarted(let session) = state else { return }
 
     if path.status == .unsatisfied {
-      logger.log("\(#function): Detected network change: Offline.")
+      Log.tunnel.log("\(#function): Detected network change: Offline.")
 
       // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
       if packetTunnelProvider?.reasserting == false {
@@ -263,7 +259,7 @@ extension Adapter {
         packetTunnelProvider?.reasserting = true
       }
     } else {
-      self.logger.log("\(#function): Detected network change: Online.")
+      Log.tunnel.log("\(#function): Detected network change: Online.")
 
       // Hint to connlib we're back online, but only do so if our primary interface changes,
       // and therefore we need to bump sockets. On darwin, this is needed to send packets
@@ -330,10 +326,10 @@ extension Adapter: CallbackHandlerDelegate {
       if networkSettings == nil {
         // First time receiving this callback, so initialize our network settings
         networkSettings = NetworkSettings(
-          packetTunnelProvider: packetTunnelProvider, logger: logger)
+          packetTunnelProvider: packetTunnelProvider)
       }
 
-      logger.log(
+      Log.tunnel.log(
         "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
 
       switch state {
@@ -344,7 +340,7 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.dnsAddresses = dnsAddresses
         networkSettings.apply()
       case .tunnelStopped:
-        logger.error(
+        Log.tunnel.error(
           "\(#function): Unexpected state: \(self.state)")
       }
     }
@@ -359,7 +355,7 @@ extension Adapter: CallbackHandlerDelegate {
         fatalError("onUpdateRoutes called before network settings was initialized!")
       }
 
-      logger.log("\(#function): \(routeList4) \(routeList6)")
+      Log.tunnel.log("\(#function): \(routeList4) \(routeList6)")
 
       networkSettings.routes4 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
@@ -377,7 +373,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      logger.log("\(#function)")
+      Log.tunnel.log("\(#function)")
 
       // Update resource List. We don't care what's inside.
       resourceListJSON = resourceList
@@ -389,7 +385,7 @@ extension Adapter: CallbackHandlerDelegate {
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      logger.log("\(#function)")
+      Log.tunnel.log("\(#function)")
 
       // Set a default stop reason. In the future, we may have more to act upon in
       // different ways.
@@ -412,7 +408,7 @@ extension Adapter: CallbackHandlerDelegate {
 
   private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
     #if os(macOS)
-      let resolvers = SystemConfigurationResolvers(logger: logger).getDefaultDNSServers(
+      let resolvers = SystemConfigurationResolvers().getDefaultDNSServers(
         interfaceName: interfaceName)
     #elseif os(iOS)
       let resolvers = resetToSystemDNSGettingBindResolvers()

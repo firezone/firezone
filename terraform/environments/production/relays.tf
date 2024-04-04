@@ -94,12 +94,12 @@ module "relays" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "relay"
-  image_tag  = var.image_tag
+  image_tag  = local.relay_image_tag
 
   observability_log_level = "info,hyper=off,h2=warn,tower=warn"
 
   application_name    = "relay"
-  application_version = replace(var.image_tag, ".", "-")
+  application_version = replace(local.relay_image_tag, ".", "-")
 
   health_check = {
     name     = "health"
@@ -129,7 +129,7 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
 
   name    = "relays-ssh-ipv4"
-  network = module.google-cloud-vpc.id
+  network = module.relays[0].network
 
   allow {
     protocol = "tcp"
@@ -144,6 +144,10 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   allow {
     protocol = "sctp"
     ports    = [22]
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
   }
 
   # Only allows connections using IAP

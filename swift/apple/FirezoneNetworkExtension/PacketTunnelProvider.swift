@@ -4,7 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-import Dependencies
 import FirezoneKit
 import NetworkExtension
 import os
@@ -15,8 +14,6 @@ enum PacketTunnelProviderError: Error {
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
-  let logger = AppLogger(category: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
-
   private var adapter: Adapter?
 
   override func startTunnel(
@@ -24,7 +21,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping (Error?) -> Void
   ) {
     super.startTunnel(options: options, completionHandler: completionHandler)
-    logger.log("\(#function)")
+    Log.tunnel.log("\(#function)")
 
     Task {
       do {
@@ -67,7 +64,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         guard
           let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
             .providerConfiguration as? [String: String],
-          let logFilter = providerConfiguration[TunnelStoreKeys.logFilter]
+          let logFilter = providerConfiguration[TunnelManagerKeys.logFilter]
         else {
           completionHandler(
             PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
@@ -87,7 +84,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         try adapter.start(completionHandler: completionHandler)
       } catch {
-        logger.error("\(#function): Error! \(error)")
+        Log.tunnel.error("\(#function): Error! \(error)")
         completionHandler(error)
       }
     }
@@ -99,7 +96,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
   ) {
-    logger.log("stopTunnel: Reason: \(reason)")
+    Log.tunnel.log("stopTunnel: Reason: \(reason)")
 
     if case .authenticationCanceled = reason {
       do {
@@ -112,12 +109,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         try String(reason.rawValue).write(
           to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
       } catch {
-        logger.error(
+        Log.tunnel.error(
           "\(#function): Couldn't write provider stop reason to file. Notification won't work.")
       }
       #if os(iOS)
         // iOS notifications should be shown from the tunnel process
-        SessionNotificationHelper.showSignedOutNotificationiOS(logger: self.logger)
+        SessionNotification.showSignedOutNotificationiOS()
       #endif
     }
 
@@ -138,7 +135,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         do {
           try await clearToken()
         } catch {
-          logger.error("\(#function): Error: \(error)")
+          Log.tunnel.error("\(#function): Error: \(error)")
         }
       }
     default:
@@ -153,7 +150,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let keychain = Keychain()
     guard let ref = await keychain.search()
     else {
-      logger.error("\(#function): Error: token not found!")
+      Log.tunnel.error("\(#function): Error: token not found!")
       return
     }
 
