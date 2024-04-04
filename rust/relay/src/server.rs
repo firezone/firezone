@@ -460,7 +460,7 @@ where
         for ((client, number), channel) in self
             .channels_by_client_and_number
             .iter_mut()
-            .filter(|(_, c)| c.is_expired(now))
+            .filter(|(_, c)| c.is_expired(now) && c.bound)
         {
             tracing::info!(target: "relay", channel = %number, %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
