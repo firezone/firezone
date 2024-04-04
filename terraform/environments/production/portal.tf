@@ -331,9 +331,25 @@ locals {
     },
     # Feature Flags
     {
+      name  = "FEATURE_FLOW_ACTIVITIES_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_TRAFFIC_FILTERS_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_SELF_HOSTED_RELAYS_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_MULTI_SITE_RESOURCES_ENABLED"
+      value = true
+    },
+    {
       name  = "FEATURE_SIGN_UP_ENABLED"
       value = true
-    }
+    },
   ]
 }
 
