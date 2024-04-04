@@ -174,6 +174,9 @@ fn not_connected(port: u16, address_family: AddressFamily) -> io::Error {
     )
 }
 
+/// The [`mio`] worker task which checks for read-readiness on any of our sockets.
+///
+/// This task is connected with the main eventloop via two channels.
 fn mio_worker_task(
     event_tx: mpsc::Sender<Event>,
     mut cmd_rx: mpsc::Receiver<Command>,
@@ -182,8 +185,9 @@ fn mio_worker_task(
     let mut events = mio::Events::with_capacity(1024);
 
     loop {
-        poll.poll(&mut events, Some(Duration::from_secs(1)))?;
+        poll.poll(&mut events, Some(Duration::from_secs(1)))?; // Suspend for up to 1 second to wait for IO events.
 
+        // Send all events into the channel, block as necessary.
         for event in events.iter() {
             event_tx.blocking_send(Event::SocketReady(event.token()))?;
         }
