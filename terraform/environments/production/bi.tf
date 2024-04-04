@@ -190,6 +190,11 @@ resource "google_compute_firewall" "metabase-ssh-ipv4" {
     ports    = [22]
   }
 
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+
   # Only allows connections using IAP
   source_ranges = local.iap_ipv4_ranges
   target_tags   = module.metabase.target_tags

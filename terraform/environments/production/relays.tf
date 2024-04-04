@@ -146,6 +146,10 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
     ports    = [22]
   }
 
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+
   # Only allows connections using IAP
   source_ranges = local.iap_ipv4_ranges
   target_tags   = module.relays[0].target_tags
