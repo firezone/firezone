@@ -1497,12 +1497,13 @@ mod testutils {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
+    use connlib_shared::proptest::*;
     use testutils::*;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(connlib_shared::proptest::cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(connlib_shared::proptest::cidr_resource())] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1519,9 +1520,9 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(connlib_shared::proptest::cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(connlib_shared::proptest::dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(connlib_shared::proptest::cidr_resource())] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
+        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1552,8 +1553,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(connlib_shared::proptest::cidr_resource())] resource: ResourceDescriptionCidr,
-        #[strategy(connlib_shared::proptest::ip_network())] new_address: IpNetwork,
+        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
+        #[strategy(ip_network())] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
@@ -1577,8 +1578,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
-        #[strategy(connlib_shared::proptest::dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(connlib_shared::proptest::ip_network())] address: IpNetwork,
+        #[strategy(dns_resource())] resource: ResourceDescriptionDns,
+        #[strategy(ip_network())] address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
@@ -1603,9 +1604,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn resources_can_be_removed(
-        #[strategy(connlib_shared::proptest::dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(connlib_shared::proptest::cidr_resource())]
-        cidr_resource: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
+        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
