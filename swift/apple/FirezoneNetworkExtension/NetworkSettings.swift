@@ -16,7 +16,6 @@ class NetworkSettings {
 
   // These will only be initialized once and then don't change
   private weak var packetTunnelProvider: NEPacketTunnelProvider?
-  private(set) var logger: AppLogger
 
   // Modifiable values
   public var tunnelAddressIPv4: String?
@@ -26,9 +25,8 @@ class NetworkSettings {
   public var routes6: [NEIPv6Route] = []
   public var matchDomains: [String] = [""]
 
-  init(packetTunnelProvider: PacketTunnelProvider?, logger: AppLogger) {
+  init(packetTunnelProvider: PacketTunnelProvider?) {
     self.packetTunnelProvider = packetTunnelProvider
-    self.logger = logger
   }
 
   func apply(completionHandler: (() -> Void)? = nil) {
@@ -53,7 +51,7 @@ class NetworkSettings {
 
     packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
-        self.logger.error(
+        Log.tunnel.error(
           "\(#function): Error occurred while applying network settings! Error: \(error.localizedDescription)"
         )
       }

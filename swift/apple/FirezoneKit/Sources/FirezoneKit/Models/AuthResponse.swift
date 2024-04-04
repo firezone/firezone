@@ -8,35 +8,13 @@ import Foundation
 
 struct AuthResponse {
   // The user associated with this authResponse.
-  let actorName: String?
-
-  // The portal URL
-  let portalURL: URL
+  let actorName: String
 
   // The opaque auth token
   let token: String
 
-  init(portalURL: URL, token: String, actorName: String?) {
-    self.portalURL = portalURL
+  init(token: String, actorName: String) {
     self.actorName = actorName
     self.token = token
   }
 }
-
-#if DEBUG
-  extension AuthResponse {
-    static let invalid =
-      AuthResponse(
-        portalURL: URL(string: "http://localhost:4568")!,
-        token: "",
-        actorName: nil
-      )
-
-    static let valid =
-      AuthResponse(
-        portalURL: URL(string: "http://localhost:4568")!,
-        token: "b1zwwwAdf=",
-        actorName: "foobar"
-      )
-  }
-#endif

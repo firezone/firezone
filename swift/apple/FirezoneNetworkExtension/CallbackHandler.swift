@@ -29,18 +29,13 @@ public protocol CallbackHandlerDelegate: AnyObject {
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  private let logger: AppLogger
-
-  init(logger: AppLogger) {
-    self.logger = logger
-  }
 
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
     dnsAddresses: RustString
   ) {
-    logger.log(
+    Log.tunnel.log(
       """
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString())
@@ -59,18 +54,18 @@ public class CallbackHandler {
   }
 
   func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
-    logger.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
+    Log.tunnel.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
     delegate?.onUpdateRoutes(routeList4: routeList4.toString(), routeList6: routeList6.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {
-    logger.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
+    Log.tunnel.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
     delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
   func onDisconnect(error: RustString) {
     let error = error.toString()
-    logger.log("CallbackHandler.onDisconnect: \(error)")
+    Log.tunnel.log("CallbackHandler.onDisconnect: \(error)")
     delegate?.onDisconnect(error: error)
   }
 }

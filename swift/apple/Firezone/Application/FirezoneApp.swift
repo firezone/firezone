@@ -11,61 +11,47 @@ import SwiftUI
 struct FirezoneApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject var askPermissionViewModel: AskPermissionViewModel
   #endif
 
-  #if os(iOS)
-    @StateObject var appViewModel: AppViewModel
-  #endif
-
-  @StateObject var appStore = AppStore()
+  @StateObject var appViewModel: AppViewModel
+  @StateObject var store: Store
 
   init() {
-    let appStore = AppStore()
-    self._appStore = StateObject(wrappedValue: appStore)
+    let store = Store()
+    _store = StateObject(wrappedValue: store)
+    _appViewModel = StateObject(wrappedValue: AppViewModel(store: store))
 
     #if os(macOS)
-      self._askPermissionViewModel =
-        StateObject(
-          wrappedValue: AskPermissionViewModel(
-            tunnelStore: appStore.tunnelStore,
-            sessionNotificationHelper: SessionNotificationHelper(
-              logger: appStore.logger, tunnelStore: appStore.tunnelStore)
-          )
-        )
-      appDelegate.appStore = appStore
-    #elseif os(iOS)
-      self._appViewModel =
-        StateObject(wrappedValue: AppViewModel(appStore: appStore))
+      appDelegate.store = store
     #endif
-
   }
 
   var body: some Scene {
-    #if os(iOS)
-      WindowGroup {
-        AppView(model: appViewModel)
-      }
-    #else
-      WindowGroup(
-        "Welcome to Firezone",
-        id: AppStore.WindowDefinition.askPermission.identifier
-      ) {
-        AskPermissionView(model: askPermissionViewModel)
-      }
-      .handlesExternalEvents(
-        matching: [AppStore.WindowDefinition.askPermission.externalEventMatchString]
-      )
-      WindowGroup(
-        "Settings",
-        id: AppStore.WindowDefinition.settings.identifier
-      ) {
-        SettingsView(model: appStore.settingsViewModel)
-      }
-      .handlesExternalEvents(
-        matching: [AppStore.WindowDefinition.settings.externalEventMatchString]
-      )
-    #endif
+#if os(iOS)
+    WindowGroup {
+      AppView(model: appViewModel)
+    }
+#elseif os(macOS)
+    WindowGroup(
+      "Welcome to Firezone",
+      id: AppViewModel.WindowDefinition.main.identifier
+    ) {
+      AppView(model: appViewModel)
+    }
+    .handlesExternalEvents(
+      matching: [AppViewModel.WindowDefinition.main.externalEventMatchString]
+    )
+    // macOS doesn't have Sheets, need to use another Window group to show settings
+    WindowGroup(
+      "Settings",
+      id: AppViewModel.WindowDefinition.settings.identifier
+    ) {
+      SettingsView(model: SettingsViewModel(store: store))
+    }
+    .handlesExternalEvents(
+      matching: [AppViewModel.WindowDefinition.settings.externalEventMatchString]
+    )
+#endif
   }
 }
 
@@ -75,24 +61,16 @@ struct FirezoneApp: App {
     private var isAppLaunched = false
     private var menuBar: MenuBar?
 
-    public var appStore: AppStore?
+    public var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {
-      self.isAppLaunched = true
-      if let appStore = self.appStore {
-        self.menuBar = MenuBar(
-          tunnelStore: appStore.tunnelStore,
-          settingsViewModel: appStore.settingsViewModel,
-          logger: appStore.logger
-        )
+      isAppLaunched = true
+      if let store = store {
+        menuBar = MenuBar(model: SessionViewModel(store: store))
       }
 
       // SwiftUI will show the first window group, so close it on launch
-      _ = AppStore.WindowDefinition.allCases.map { $0.window()?.close() }
-    }
-
-    func applicationWillTerminate(_: Notification) {
-      self.appStore?.tunnelStore.cancelSignIn()
+      _ = AppViewModel.WindowDefinition.allCases.map { $0.window()?.close() }
     }
   }
 #endif

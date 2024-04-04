@@ -27,14 +27,14 @@ struct Settings: Equatable {
   }
 
   // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
-  static func fromProviderConfiguration(providerConfiguration: [String: Any]?) -> Settings {
+  static func fromProviderConfiguration(_ providerConfiguration: [String: Any]?) -> Settings {
     if let providerConfiguration = providerConfiguration as? [String: String] {
       return Settings(
-        authBaseURL: providerConfiguration[TunnelStoreKeys.authBaseURL]
+        authBaseURL: providerConfiguration[TunnelManagerKeys.authBaseURL]
           ?? Settings.defaultValue.authBaseURL,
-        apiURL: providerConfiguration[TunnelStoreKeys.apiURL]
+        apiURL: providerConfiguration[TunnelManagerKeys.apiURL]
           ?? Settings.defaultValue.apiURL,
-        logFilter: providerConfiguration[TunnelStoreKeys.logFilter]
+        logFilter: providerConfiguration[TunnelManagerKeys.logFilter]
           ?? Settings.defaultValue.logFilter
       )
     } else {
