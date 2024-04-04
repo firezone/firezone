@@ -2,6 +2,10 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
+  key:
+    description: "The key to use for the cache"
+    required: false
+    default: ${{ runner.os }}-${{ runner.arch }}
   cache_backend:
     description: "Choose between sccache or github"
     required: false
@@ -47,7 +51,7 @@ runs:
       uses: Swatinem/rust-cache@v2
       with:
         save-if: ${{ github.ref_name == 'main' }}
-        key: ${{ runner.os }}-${{ inputs.targets }}
+        key: ${{ inputs.key }}
         workspaces: ./rust
       # Download from GitHub actions can sometimes fail and it has a very long default timeout.
       env:
