@@ -357,9 +357,6 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        let span = tracing::debug_span!("Command::SendMessage");
-                        let _guard = span.enter();
-
                         if let Err(e) =
                             self.sockets
                                 .try_send(TURN_PORT, recipient.into_socket(), &payload)
@@ -368,21 +365,16 @@ where
                         }
                     }
                     Command::CreateAllocation { port, family } => {
-                        let span =
-                            tracing::debug_span!("Command::CreateAllocation", %family, %port);
-                        let _guard = span.enter();
-
                         self.sockets.bind(port.value(), family).with_context(|| {
                             format!(
                                 "Failed to bind to port {} on {family} interfaces",
                                 port.value()
                             )
                         })?;
+
+                        tracing::info!(target: "relay", %port, %family, "Created allocation");
                     }
                     Command::FreeAllocation { port, family } => {
-                        let span = tracing::debug_span!("Command::FreeAllocation", %family, %port);
-                        let _guard = span.enter();
-
                         self.sockets.unbind(port.value(), family).with_context(|| {
                             format!(
                                 "Failed to unbind to port {} on {family} interfaces",
@@ -390,7 +382,7 @@ where
                             )
                         })?;
 
-                        tracing::info!(target: "relay", "Freeing addresses of allocation {port}");
+                        tracing::info!(target: "relay", %port, %family, "Freeing allocation");
                     }
                 }
 
