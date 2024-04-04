@@ -99,7 +99,7 @@ where
     }
 
     /// Updates the system's dns
-    pub fn set_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
+    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
         // We store the sentinel dns both in the config and in the system's resolvers
         // but when we calculate the dns mapping, those are ignored.
         let dns_changed = self.role_state.update_system_resolvers(new_dns);
@@ -112,14 +112,17 @@ where
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
         if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_interface(config, self.role_state.dns_mapping())?;
+            self.update_device(config, self.role_state.dns_mapping())?;
         };
 
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
+    pub fn set_new_interface_config(
+        &mut self,
+        config: InterfaceConfig,
+    ) -> connlib_shared::Result<()> {
         self.role_state.interface_config = Some(config.clone());
         let dns_changed = self.role_state.update_dns_mapping();
 
@@ -128,12 +131,12 @@ where
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_interface(config, self.role_state.dns_mapping())?;
+        self.update_device(config, self.role_state.dns_mapping())?;
 
         Ok(())
     }
 
-    pub(crate) fn update_interface(
+    pub(crate) fn update_device(
         &mut self,
         config: InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,

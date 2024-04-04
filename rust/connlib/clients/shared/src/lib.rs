@@ -211,7 +211,7 @@ mod tests {
             ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
             upstream_dns,
         };
-        tunnel.set_interface(interface).unwrap();
+        tunnel.set_new_interface_config(interface).unwrap();
         let resources = vec![];
         tunnel.add_resources(&resources).unwrap();
 
