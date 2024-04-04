@@ -117,7 +117,17 @@ jobs:
         include:
           - test: direct-download-roaming-network
             dns-control: etc-resolv-conf
-          - test: dns-etc-resolvconf
+          - test: direct-dns-etc-resolvconf
+            dns-control: etc-resolv-conf
+          - test: direct-dns-etc-resolvconf-portal-restart
+            dns-control: etc-resolv-conf
+          - test: direct-dns-etc-resolvconf-relay-restart
+            dns-control: etc-resolv-conf
+          - test: relayed-dns-etc-resolvconf
+            dns-control: etc-resolv-conf
+          - test: relayed-dns-etc-resolvconf-portal-restart
+            dns-control: etc-resolv-conf
+          - test: relayed-dns-etc-resolvconf-relay-restart
             dns-control: etc-resolv-conf
     steps:
       - uses: actions/checkout@v4
