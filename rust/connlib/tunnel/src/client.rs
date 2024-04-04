@@ -104,10 +104,15 @@ where
         // but when we calculate the dns mapping, those are ignored.
         self.role_state.update_system_resolvers(new_dns);
 
-        let dns_changed = self.update_dns_mapping();
+        let dns_changed = self.role_state.update_dns_mapping();
         if !dns_changed {
             return Ok(());
         }
+
+        self.io
+            .set_upstream_dns_servers(self.role_state.dns_mapping());
+
+        tracing::info!("Setting new DNS resolvers");
 
         self.update_interface()?;
 
@@ -117,8 +122,18 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
         self.role_state.interface_config = Some(config);
-        self.update_dns_mapping();
-        self.update_interface()
+        let dns_changed = self.role_state.update_dns_mapping();
+
+        if dns_changed {
+            self.io
+                .set_upstream_dns_servers(self.role_state.dns_mapping());
+
+            tracing::info!("Setting new DNS resolvers");
+        }
+
+        self.update_interface()?;
+
+        Ok(())
     }
 
     pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
@@ -206,18 +221,6 @@ where
             .received_domain_parameters(resource_id, domain_response)?;
 
         Ok(())
-    }
-
-    fn update_dns_mapping(&mut self) -> bool {
-        if !self.role_state.update_dns_mapping() {
-            return false;
-        }
-
-        self.io
-            .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-        tracing::info!("Setting new DNS resolvers");
-        true
     }
 }
 
