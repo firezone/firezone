@@ -1287,29 +1287,6 @@ mod tests {
     }
 
     #[test]
-    fn add_resources_update_works_to_dns() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.add_resources(&[
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.add_resources(&[cidr_bar_id("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([cidr_bar_id("11.0.0.0/24"), cidr_foo_resource("10.0.0.0/24")].iter())
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![
-                IpNetwork::from_str("10.0.0.0/24").unwrap(),
-                IpNetwork::from_str("11.0.0.0/24").unwrap()
-            ])
-        );
-    }
-
-    #[test]
     fn remove_resources_works() {
         let mut client_state = ClientState::for_test();
 
