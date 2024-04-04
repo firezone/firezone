@@ -1599,8 +1599,10 @@ mod testutils {
         )
     }
 
-    pub fn hashset<T: std::hash::Hash + Eq>(val: impl Iterator<Item = T>) -> HashSet<T> {
-        HashSet::from_iter(val)
+    pub fn hashset<T: std::hash::Hash + Eq, B: ToOwned<Owned = T>>(
+        val: impl IntoIterator<Item = B>,
+    ) -> HashSet<T> {
+        HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
 }
 
@@ -1624,6 +1626,39 @@ mod proptests {
         assert_eq!(
             hashset(client_state.routes()),
             expected_routes(vec![resource1.address, resource2.address])
+        );
+    }
+
+    #[test_strategy::proptest]
+    fn added_resources_show_up_as_resoucres(
+        #[strategy(connlib_shared::proptest::cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(connlib_shared::proptest::dns_resource())] resource2: ResourceDescriptionDns,
+        #[strategy(connlib_shared::proptest::cidr_resource())] resource3: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+
+        client_state.add_resources(&[
+            ResourceDescription::Cidr(resource1.clone()),
+            ResourceDescription::Dns(resource2.clone()),
+        ]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[
+                ResourceDescription::Cidr(resource1.clone()),
+                ResourceDescription::Dns(resource2.clone())
+            ])
+        );
+
+        client_state.add_resources(&[ResourceDescription::Cidr(resource3.clone())]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[
+                ResourceDescription::Cidr(resource1),
+                ResourceDescription::Dns(resource2),
+                ResourceDescription::Cidr(resource3)
+            ])
         );
     }
 }
