@@ -112,7 +112,7 @@ where
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
         if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_interface(config)?;
+            self.update_interface(config, self.role_state.dns_mapping())?;
         };
 
         Ok(())
@@ -128,7 +128,7 @@ where
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_interface(config)?;
+        self.update_interface(config, self.role_state.dns_mapping())?;
 
         Ok(())
     }
@@ -136,18 +136,14 @@ where
     pub(crate) fn update_interface(
         &mut self,
         config: InterfaceConfig,
+        dns_mapping: BiMap<IpAddr, DnsServer>,
     ) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks.clone();
 
         self.io.device_mut().set_config(
             &config,
             // We can just sort in here because sentinel ips are created in order
-            self.role_state
-                .dns_mapping
-                .left_values()
-                .copied()
-                .sorted()
-                .collect(),
+            dns_mapping.left_values().copied().sorted().collect(),
             &callbacks,
         )?;
 
