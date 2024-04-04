@@ -1147,7 +1147,6 @@ dependencies = [
  "tracing",
  "tracing-android",
  "tracing-appender",
- "tracing-stackdriver",
  "tracing-subscriber",
  "url",
 ]

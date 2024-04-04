@@ -32,7 +32,9 @@ where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
     let (appender, handle) = new_appender(log_dir.to_path_buf());
-    let layer = tracing_stackdriver::layer().with_writer(appender).boxed();
+    let layer = tracing_subscriber::fmt::layer()
+        .with_writer(appender)
+        .boxed();
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
