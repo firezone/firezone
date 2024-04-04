@@ -855,6 +855,12 @@ impl ClientState {
         self.node.poll_transmit()
     }
 
+    /// Sets a new set of resources.
+    ///
+    /// This function does **not** perform a blanket "clear all and set new resources".
+    /// Instead, it diffs which resources to remove and which ones to add.
+    ///
+    /// This is important because we don't want to lose state like resolved DNS names for resources that didn't change.
     fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
         self.remove_resources(
             &HashSet::from_iter(self.resource_ids.keys().copied())
