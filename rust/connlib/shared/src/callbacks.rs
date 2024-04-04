@@ -3,7 +3,6 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use serde::Serialize;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::path::PathBuf;
 
 // Avoids having to map types for Windows
 type RawFd = i32;
@@ -66,9 +65,5 @@ pub trait Callbacks: Clone + Send + Sync {
         tracing::error!(error = ?error, "tunnel_disconnected");
         // Note that we can't panic here, since we already hooked the panic to this function.
         std::process::exit(0);
-    }
-
-    fn roll_log_file(&self) -> Option<PathBuf> {
-        None
     }
 }
