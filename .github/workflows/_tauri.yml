@@ -56,6 +56,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache_backend: "github"
+          key: ${{ matrix.runs-on }}
       - uses: ./.github/actions/setup-tauri
       - name: Install pnpm deps
         run: pnpm install
