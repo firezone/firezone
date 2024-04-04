@@ -268,7 +268,7 @@ locals {
         cluster_name          = local.cluster.name
         cluster_name_label    = "cluster_name"
         cluster_version_label = "cluster_version"
-        cluster_version       = split(".", var.image_tag)[0]
+        cluster_version       = split(".", local.portal_image_tag)[0]
         node_name_label       = "application"
         polling_interval_ms   = 7000
       })
@@ -331,9 +331,25 @@ locals {
     },
     # Feature Flags
     {
+      name  = "FEATURE_FLOW_ACTIVITIES_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_TRAFFIC_FILTERS_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_SELF_HOSTED_RELAYS_ENABLED"
+      value = true
+    },
+    {
+      name  = "FEATURE_MULTI_SITE_RESOURCES_ENABLED"
+      value = true
+    },
+    {
       name  = "FEATURE_SIGN_UP_ENABLED"
       value = true
-    }
+    },
   ]
 }
 
@@ -354,7 +370,7 @@ module "domain" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "domain"
-  image_tag  = var.image_tag
+  image_tag  = local.portal_image_tag
 
   scaling_horizontal_replicas = 1
 
@@ -364,7 +380,7 @@ module "domain" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "domain"
-  application_version = replace(var.image_tag, ".", "-")
+  application_version = replace(local.portal_image_tag, ".", "-")
 
   application_ports = [
     {
@@ -397,7 +413,7 @@ module "domain" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", var.image_tag)[0]
+    "cluster_version" = split(".", local.portal_image_tag)[0]
   }
 }
 
@@ -418,7 +434,7 @@ module "web" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "web"
-  image_tag  = var.image_tag
+  image_tag  = local.portal_image_tag
 
   scaling_horizontal_replicas     = 2
   scaling_max_horizontal_replicas = 4
@@ -429,7 +445,7 @@ module "web" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = replace(var.image_tag, ".", "-")
+  application_version = replace(local.portal_image_tag, ".", "-")
 
   application_dns_tld = "app.${local.tld}"
 
@@ -474,7 +490,7 @@ module "web" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", var.image_tag)[0]
+    "cluster_version" = split(".", local.portal_image_tag)[0]
   }
 }
 
@@ -495,7 +511,7 @@ module "api" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "api"
-  image_tag  = var.image_tag
+  image_tag  = local.portal_image_tag
 
   scaling_horizontal_replicas     = 2
   scaling_max_horizontal_replicas = 4
@@ -506,7 +522,7 @@ module "api" {
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "api"
-  application_version = replace(var.image_tag, ".", "-")
+  application_version = replace(local.portal_image_tag, ".", "-")
 
   application_dns_tld = "api.${local.tld}"
 
@@ -549,7 +565,7 @@ module "api" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", var.image_tag)[0]
+    "cluster_version" = split(".", local.portal_image_tag)[0]
   }
 
   application_token_scopes = [

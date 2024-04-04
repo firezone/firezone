@@ -8,6 +8,7 @@ defmodule API.Sockets do
   def options do
     [
       websocket: [
+        timeout: :timer.seconds(307),
         transport_log: :debug,
         check_origin: :conn,
         connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
