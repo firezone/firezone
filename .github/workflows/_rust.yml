@@ -100,6 +100,8 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache_backend: 'github'
+          # Cache needs to be scoped per OS version
+          key: ${{ matrix.runs-on }}
       - uses: ./.github/actions/setup-tauri
       - name: pnpm install
         run: |
