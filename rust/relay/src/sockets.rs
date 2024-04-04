@@ -192,22 +192,25 @@ fn mio_worker_task(
             event_tx.blocking_send(Event::SocketReady(event.token()))?;
         }
 
-        match cmd_rx.try_recv() {
-            Ok(Command::NewSocket((port, af))) => {
-                let mut socket = mio::net::UdpSocket::from_std(make_wildcard_socket(af, port)?);
-                let token = token_from_port_and_address_family(port, af);
+        loop {
+            match cmd_rx.try_recv() {
+                Err(mpsc::error::TryRecvError::Empty) => break, // Drain all events from the channel until it is empty.
 
-                poll.registry()
-                    .register(&mut socket, token, mio::Interest::READABLE)?;
+                Ok(Command::NewSocket((port, af))) => {
+                    let mut socket = mio::net::UdpSocket::from_std(make_wildcard_socket(af, port)?);
+                    let token = token_from_port_and_address_family(port, af);
 
-                event_tx.blocking_send(Event::NewSocket(token, socket))?;
-            }
-            Ok(Command::DisposeSocket(mut socket)) => {
-                poll.registry().deregister(&mut socket)?;
-            }
-            Err(mpsc::error::TryRecvError::Empty) => {}
-            Err(mpsc::error::TryRecvError::Disconnected) => {
-                bail!("Command channel disconnected")
+                    poll.registry()
+                        .register(&mut socket, token, mio::Interest::READABLE)?;
+
+                    event_tx.blocking_send(Event::NewSocket(token, socket))?;
+                }
+                Ok(Command::DisposeSocket(mut socket)) => {
+                    poll.registry().deregister(&mut socket)?;
+                }
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    bail!("Command channel disconnected")
+                }
             }
         }
     }
