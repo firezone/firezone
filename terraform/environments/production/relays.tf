@@ -129,7 +129,7 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   project = module.google-cloud-project.project.project_id
 
   name    = "relays-ssh-ipv4"
-  network = module.google-cloud-vpc.id
+  network = module.relays[0].network
 
   allow {
     protocol = "tcp"
