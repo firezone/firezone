@@ -202,7 +202,7 @@ jobs:
           # Cross doesn't support scccache without a lot of work
           cache_backend: github
           # Cache needs to be scoped per OS version
-          key: ubuntu-22.04
+          key: ubuntu-22.04-${{ runner.arch }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
