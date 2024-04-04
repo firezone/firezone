@@ -11,23 +11,24 @@ use std::time::Instant;
 pub struct Sleep {
     /// The inner sleep future. Boxed for convenience to make [`Sleep`] implement [`Unpin`].
     inner: Option<Pin<Box<tokio::time::Sleep>>>,
-    current_deadline: Option<Instant>,
     waker: Option<Waker>,
 }
 
 impl Sleep {
     pub fn reset(self: Pin<&mut Self>, deadline: Instant) {
         let this = self.get_mut();
+        let deadline = tokio::time::Instant::from_std(deadline);
 
-        if this.current_deadline.is_some_and(|c| c == deadline) {
-            return;
-        }
+        match this.inner.as_mut() {
+            Some(sleep) if sleep.deadline() != deadline => sleep.as_mut().reset(deadline),
+            Some(_) => (),
+            None => {
+                this.inner = Some(Box::pin(tokio::time::sleep_until(deadline)));
 
-        this.inner = Some(Box::pin(tokio::time::sleep_until(deadline.into())));
-        this.current_deadline = Some(deadline);
-
-        if let Some(waker) = this.waker.take() {
-            waker.wake();
+                if let Some(waker) = this.waker.take() {
+                    waker.wake();
+                }
+            }
         }
     }
 }
@@ -44,7 +45,6 @@ impl Future for Sleep {
             ready!(Pin::new(inner).poll(cx));
 
             this.inner = None;
-            this.current_deadline = None;
             return Poll::Ready(deadline.into());
         }
 
