@@ -23,7 +23,7 @@ module "gateways" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "gateway"
-  image_tag  = var.image_tag
+  image_tag  = local.gateway_image_tag
 
   observability_log_level = "debug"
 

@@ -94,12 +94,12 @@ module "relays" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "relay"
-  image_tag  = var.image_tag
+  image_tag  = local.relay_image_tag
 
   observability_log_level = "info,hyper=off,h2=warn,tower=warn"
 
   application_name    = "relay"
-  application_version = replace(var.image_tag, ".", "-")
+  application_version = replace(local.relay_image_tag, ".", "-")
 
   health_check = {
     name     = "health"
