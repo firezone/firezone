@@ -96,7 +96,7 @@ enum LogFormat {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    setup_tracing(&args).await?;
+    setup_tracing(&args)?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -151,7 +151,7 @@ async fn main() -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-async fn setup_tracing(args: &Args) -> Result<()> {
+fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -391,13 +391,7 @@ where
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Handle time-sensitive tasks:
-            if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_timeout(now);
-                continue; // Handle potentially new commands.
-            }
-
-            // Priority 3: Read from our sockets.
+            // Priority 2: Read from our sockets.
             // We read the packet with an offset of 4 bytes so we can encode the channel-data header into that without re-allocating.
             //
             //  01│23│456789....
@@ -466,9 +460,16 @@ where
                 Poll::Pending => {}
             }
 
-            // Priority 4: Check when we need to next be woken. This needs to happen after all state modifications.
+            // Priority 3: Check when we need to next be woken. This needs to happen after all state modifications.
             if let Some(timeout) = self.server.poll_timeout() {
                 Pin::new(&mut self.sleep).reset(timeout);
+                // Purposely no `continue` because we just change the state of `sleep` and we poll it below.
+            }
+
+            // Priority 4: Handle time-sensitive tasks:
+            if self.sleep.poll_unpin(cx).is_ready() {
+                self.server.handle_timeout(now);
+                continue; // Handle potentially new commands.
             }
 
             // Priority 5: Handle portal messages
@@ -476,24 +477,11 @@ where
                 Some(Poll::Ready(Err(e))) => {
                     return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
                 }
-                Some(Poll::Ready(Ok(Event::SuccessResponse { res: (), .. }))) => {
+                Some(Poll::Ready(Ok(event))) => {
+                    self.handle_portal_event(event);
                     continue;
                 }
-                Some(Poll::Ready(Ok(Event::JoinedRoom { topic }))) => {
-                    tracing::info!(target: "relay", "Successfully joined room '{topic}'");
-                    continue;
-                }
-                Some(Poll::Ready(Ok(Event::ErrorResponse { topic, req_id, res }))) => {
-                    tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
-                    continue;
-                }
-                Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {
-                    tracing::debug!(target: "relay", "Heartbeat sent to portal");
-                    continue;
-                }
-                Some(Poll::Ready(Ok(Event::InboundMessage { msg: (), .. })))
-                | Some(Poll::Pending)
-                | None => {}
+                Some(Poll::Pending) | None => {}
             }
 
             if self.stats_log_interval.poll_tick(cx).is_ready() {
@@ -507,10 +495,27 @@ where
                 let avg_throughput = bytes_relayed_since_last_tick / STATS_LOG_INTERVAL.as_secs();
 
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
+
                 continue;
             }
 
             return Poll::Pending;
+        }
+    }
+
+    fn handle_portal_event(&mut self, event: phoenix_channel::Event<(), ()>) {
+        match event {
+            Event::SuccessResponse { res: (), .. } => {}
+            Event::JoinedRoom { topic } => {
+                tracing::info!(target: "relay", "Successfully joined room '{topic}'");
+            }
+            Event::ErrorResponse { topic, req_id, res } => {
+                tracing::warn!(target: "relay", "Request with ID {req_id} on topic {topic} failed: {res:?}");
+            }
+            Event::HeartbeatSent => {
+                tracing::debug!(target: "relay", "Heartbeat sent to portal");
+            }
+            Event::InboundMessage { msg: (), .. } => {}
         }
     }
 }
