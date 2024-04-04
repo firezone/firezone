@@ -433,13 +433,7 @@ where
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Handle time-sensitive tasks:
-            if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_timeout(now);
-                continue; // Handle potentially new commands.
-            }
-
-            // Priority 3: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 2: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -447,7 +441,7 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 4: Accept new allocations / answer STUN requests etc
+            // Priority 3: Accept new allocations / answer STUN requests etc
             if let Poll::Ready(Some((buffer, sender))) =
                 self.inbound_data_receiver.poll_next_unpin(cx)
             {
@@ -455,10 +449,16 @@ where
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Check when we need to next be woken. This needs to happen after all state modifications.
+            // Priority 4: Check when we need to next be woken. This needs to happen after all state modifications.
             if let Some(timeout) = self.server.poll_timeout() {
                 Pin::new(&mut self.sleep).reset(timeout);
-                continue;
+                // Purposely no `continue` because we just change the state of `sleep` and we poll it below.
+            }
+
+            // Priority 5: Handle time-sensitive tasks:
+            if self.sleep.poll_unpin(cx).is_ready() {
+                self.server.handle_timeout(now);
+                continue; // Handle potentially new commands.
             }
 
             // Priority 6: Handle portal messages
