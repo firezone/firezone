@@ -64,7 +64,9 @@ where
     ) -> connlib_shared::Result<()> {
         self.role_state.set_resources(resources);
 
-        self.update_routes()?;
+        self.io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
         self.update_resource_list();
 
         Ok(())
@@ -77,7 +79,9 @@ where
     ) -> connlib_shared::Result<()> {
         self.role_state.add_resources(resources);
 
-        self.update_routes()?;
+        self.io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
         self.update_resource_list();
 
         Ok(())
@@ -86,7 +90,11 @@ where
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        if let Err(err) = self.update_routes() {
+        if let Err(err) = self
+            .io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)
+        {
             tracing::error!(?ids, "Failed to update routes: {err:?}");
         }
 
@@ -162,15 +170,6 @@ where
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
         self.role_state.on_connection_failed(id);
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-
-        Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
