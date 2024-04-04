@@ -10,16 +10,14 @@ import Foundation
 import System
 
 struct LogCompressor {
-  private let logger: AppLogger
   private let destinationURL: URL?
   let fileName: String
 
-  init(logger: AppLogger, destinationURL: URL? = nil) {
+  init(destinationURL: URL? = nil) {
     let dateFormatter = ISO8601DateFormatter()
     dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
     let timeStampString = dateFormatter.string(from: Date())
     self.fileName = "firezone_logs_\(timeStampString).aar"
-    self.logger = logger
     self.destinationURL = destinationURL
   }
 
@@ -51,7 +49,7 @@ struct LogCompressor {
         options: [.create],
         permissions: FilePermissions(rawValue: 0o644))
     else {
-      logger.error("\(#function): Couldn't create the file stream")
+      Log.app.error("\(#function): Couldn't create the file stream")
       return nil
     }
     defer {
@@ -64,7 +62,7 @@ struct LogCompressor {
         using: .lzfse,
         writingTo: writeFileStream)
     else {
-      logger.error("\(#function): Couldn't create the compression stream")
+      Log.app.error("\(#function): Couldn't create the compression stream")
       return nil
     }
     defer {
@@ -73,7 +71,7 @@ struct LogCompressor {
 
     // Create the encoding stream
     guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream) else {
-      logger.error("\(#function): Couldn't create encoding stream")
+      Log.app.error("\(#function): Couldn't create encoding stream")
       return nil
     }
     defer {
@@ -83,7 +81,7 @@ struct LogCompressor {
     // Define header keys
     guard let keySet = ArchiveHeader.FieldKeySet("TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM")
     else {
-      logger.error("\(#function): Couldn't define header keys")
+      Log.app.error("\(#function): Couldn't define header keys")
       return nil
     }
 
@@ -92,7 +90,7 @@ struct LogCompressor {
         archiveFrom: logFilesFolderPath,
         keySet: keySet)
     } catch {
-      logger.error("Write directory contents failed.")
+      Log.app.error("Write directory contents failed.")
       return nil
     }
 

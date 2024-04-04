@@ -42,7 +42,7 @@ public class DeviceMetadata {
   // Returns the Firezone ID as cached by the application or generates and persists a new one
   // if that doesn't exist. The Firezone ID is a UUIDv4 that is used to dedup this device
   // for upsert and identification in the admin portal.
-  public static func getOrCreateFirezoneId(logger: AppLogger) -> String {
+  public static func getOrCreateFirezoneId() -> String {
     let fileURL = SharedAccess.baseFolderURL.appendingPathComponent("firezone-id")
 
     do {
@@ -55,7 +55,7 @@ public class DeviceMetadata {
       do {
         try newUUIDString.write(to: fileURL, atomically: true, encoding: .utf8)
       } catch {
-        logger.error(
+        Log.app.error(
           "\(#function): Could not save firezone-id file \(fileURL.path)! Error: \(error)"
         )
       }
