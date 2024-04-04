@@ -54,6 +54,11 @@ impl Sockets {
         }
     }
 
+    /// Attempts to bind a new socket on the given port and address family.
+    ///
+    /// Fails if the channel is:
+    ///  - full (not expected to happen in production)
+    ///  - disconnected (we can't operate without the [`mio`] worker thread)
     pub fn bind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
         self.cmd_tx
             .try_send(Command::NewSocket((port, address_family)))?;
@@ -61,6 +66,11 @@ impl Sockets {
         Ok(())
     }
 
+    /// Attempts to unbind a socket on the given port and address family.
+    ///
+    /// Fails if the channel is:
+    ///  - full (not expected to happen in production)
+    ///  - disconnected (we can't operate without the [`mio`] worker thread)
     pub fn unbind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
         let token = token_from_port_and_address_family(port, address_family);
 

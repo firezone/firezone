@@ -473,7 +473,7 @@ where
                     tracing::warn!(target: "relay", "Error while receiving message: {e}");
                     continue;
                 }
-                Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)),
+                Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)), // Fail the event-loop. We can't operate without the `mio` worker-task.
                 Poll::Pending => {}
             }
 
