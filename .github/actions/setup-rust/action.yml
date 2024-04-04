@@ -5,6 +5,7 @@ inputs:
   key:
     description: "The key to use for the cache"
     required: false
+    # e.g. Linux-x86_64
     default: ${{ runner.os }}-${{ runner.arch }}
   cache_backend:
     description: "Choose between sccache or github"
