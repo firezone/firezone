@@ -39,12 +39,9 @@ defmodule Domain.Config.Definitions do
 
   def doc_sections do
     [
-      {"Background Jobs",
-       """
-       You need to make sure that at least one of the nodes in the cluster has background jobs enabled.
-       """,
+      {"General",
        [
-         :background_jobs_enabled
+         :role
        ]},
       {"WebServer",
        [
@@ -126,13 +123,32 @@ defmodule Domain.Config.Definitions do
   end
 
   ##############################################
-  ## Background Jobs
+  ## General
   ##############################################
 
   @doc """
-  Enabled or disable background job workers (eg. syncing IdP directory) for the app instance.
+  Changes the cluster role of the app instance.
+
+  * `api` - API server, used for serving REST and WebSocket API requests;
+  * `web` - Web server, used for serving the Portal UI and static assets;
+  * `background_jobs_runner` - Background job worker, used for remotely executing background jobs.
+
+  By default all roles are enabled for a node, which means you don't need to configure this
+  if you run just one instance of Firezone control plane.
   """
-  defconfig(:background_jobs_enabled, :boolean, default: false)
+  defconfig(
+    :role,
+    {:parameterized, Ecto.Enum,
+     Ecto.Enum.init(
+       values: [
+         :all,
+         :api,
+         :web,
+         :background_jobs_runner
+       ]
+     )},
+    default: :all
+  )
 
   ##############################################
   ## Web Server

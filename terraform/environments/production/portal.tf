@@ -379,8 +379,7 @@ module "domain" {
   erlang_release_name   = "firezone"
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
-  application_name    = "domain"
-  application_version = replace(var.image_tag, ".", "-")
+  application_name = "domain"
 
   application_ports = [
     {
@@ -444,8 +443,7 @@ module "web" {
   erlang_release_name   = "firezone"
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
-  application_name    = "web"
-  application_version = replace(var.image_tag, ".", "-")
+  application_name = "web"
 
   application_dns_tld = "app.${local.tld}"
 
@@ -521,8 +519,7 @@ module "api" {
   erlang_release_name   = "firezone"
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
-  application_name    = "api"
-  application_version = replace(var.image_tag, ".", "-")
+  application_name = "api"
 
   application_dns_tld = "api.${local.tld}"
 
