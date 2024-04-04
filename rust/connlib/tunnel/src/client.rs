@@ -1629,4 +1629,35 @@ mod proptests {
         assert_eq!(hashset(client_state.resources().iter()), hashset(&[]));
         assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
     }
+
+    #[test_strategy::proptest]
+    fn resources_can_be_replaced(
+        #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
+        #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
+        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[
+            ResourceDescription::Dns(dns_resource1),
+            ResourceDescription::Cidr(cidr_resource1),
+        ]);
+
+        client_state.set_resources(vec![
+            ResourceDescription::Dns(dns_resource2.clone()),
+            ResourceDescription::Cidr(cidr_resource2.clone()),
+        ]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[
+                ResourceDescription::Dns(dns_resource2.clone()),
+                ResourceDescription::Cidr(cidr_resource2.clone()),
+            ])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![cidr_resource2.address])
+        );
+    }
 }
