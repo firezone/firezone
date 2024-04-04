@@ -1614,4 +1614,30 @@ mod proptests {
             expected_routes(vec![new_address])
         );
     }
+
+    #[test_strategy::proptest]
+    fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
+        #[strategy(connlib_shared::proptest::dns_resource())] resource: ResourceDescriptionDns,
+        #[strategy(connlib_shared::proptest::ip_network())] address: IpNetwork,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
+
+        let dns_as_cidr_resource = ResourceDescriptionCidr {
+            address,
+            id: resource.id,
+            name: resource.name,
+        };
+
+        client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[ResourceDescription::Cidr(dns_as_cidr_resource),])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![address])
+        );
+    }
 }
