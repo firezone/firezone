@@ -1615,4 +1615,29 @@ mod proptests {
             ])
         );
     }
+
+    #[test_strategy::proptest]
+    fn adding_same_resource_with_different_address_updates_the_address(
+        #[strategy(connlib_shared::proptest::cidr_resource())] resource: ResourceDescriptionCidr,
+        #[strategy(connlib_shared::proptest::ip_network())] new_address: IpNetwork,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
+
+        let updated_resource = ResourceDescriptionCidr {
+            address: new_address,
+            ..resource
+        };
+
+        client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[ResourceDescription::Cidr(updated_resource),])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![new_address])
+        );
+    }
 }
