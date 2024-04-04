@@ -36,6 +36,7 @@ tracing-android = "0.2"
 [dev-dependencies]
 serde_json = { version = "1.0", features = ["std"] }
 chrono = { workspace = true }
+tokio = { version = "1.36", default-features = false, features = ["macros"] }
 
 [lints]
 workspace = true
