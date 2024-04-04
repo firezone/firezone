@@ -25,6 +25,8 @@ use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
+const TURN_PORT: u16 = 3478;
+
 #[derive(Parser, Debug)]
 struct Args {
     /// The public (i.e. internet-reachable) IPv4 address of the relay server.
@@ -135,7 +137,7 @@ async fn main() -> Result<()> {
         args.health_check.health_check_addr,
     ));
 
-    tracing::info!(target: "relay", "Listening for incoming traffic on UDP port 3478");
+    tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {TURN_PORT}");
 
     future::poll_fn(|cx| eventloop.poll(cx))
         .await
@@ -323,13 +325,17 @@ where
 
         if public_address.as_v4().is_some() {
             sockets
-                .bind(3478, AddressFamily::V4)
-                .context("Failed to bind to port 3478 on IPv4 interfaces")?;
+                .bind(TURN_PORT, AddressFamily::V4)
+                .with_context(|| {
+                    format!("Failed to bind to port {TURN_PORT} on IPv4 interfaces")
+                })?;
         }
         if public_address.as_v6().is_some() {
             sockets
-                .bind(3478, AddressFamily::V6)
-                .context("Failed to bind to port 3478 on IPv6 interfaces")?;
+                .bind(TURN_PORT, AddressFamily::V6)
+                .with_context(|| {
+                    format!("Failed to bind to port {TURN_PORT} on IPv6 interfaces")
+                })?;
         }
 
         Ok(Self {
@@ -356,7 +362,7 @@ where
 
                         if let Err(e) =
                             self.sockets
-                                .try_send(3478, recipient.into_socket(), &payload)
+                                .try_send(TURN_PORT, recipient.into_socket(), &payload)
                         {
                             tracing::warn!(target: "relay", %recipient, "Failed to send message: {e}");
                         }
@@ -415,7 +421,7 @@ where
 
             match self.sockets.poll_recv_from(payload, cx) {
                 Poll::Ready(Ok(sockets::Received {
-                    port: 3478, // Packets coming in on port 3478 are from clients.
+                    port: TURN_PORT, // Packets coming in on the TURN port are from clients.
                     from,
                     packet,
                 })) => {
@@ -454,7 +460,7 @@ where
                         );
 
                         if let Err(e) = self.sockets.try_send(
-                            3478, // Packets coming in from peers always go out on port 3478
+                            TURN_PORT, // Packets coming in from peers always go out on the TURN port
                             client.into_socket(),
                             &self.buffer[..total_length],
                         ) {
