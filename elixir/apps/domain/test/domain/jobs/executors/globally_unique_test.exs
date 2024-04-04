@@ -1,6 +1,6 @@
-defmodule Domain.Jobs.Executors.GlobalTest do
+defmodule Domain.Jobs.Executors.GloballyUniqueTest do
   use ExUnit.Case, async: true
-  import Domain.Jobs.Executors.Global
+  import Domain.Jobs.Executors.GloballyUnique
 
   def send_test_message(config) do
     send(config[:test_pid], {:executed, self(), :erlang.monotonic_time()})
@@ -31,7 +31,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
   test "registers itself as a leader if there is no global name registered" do
     assert {:ok, pid} = start_link({{__MODULE__, :send_test_message}, 25, test_pid: self()})
     assert_receive {:executed, ^pid, _time}, 1000
-    name = {Domain.Jobs.Executors.Global, __MODULE__, :send_test_message}
+    name = {Domain.Jobs.Executors.GloballyUnique, __MODULE__, :send_test_message}
     assert :global.whereis_name(name) == pid
 
     assert :sys.get_state(pid) ==
@@ -57,7 +57,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
 
     assert_receive {:executed, ^leader_pid, _time}, 500
 
-    name = {Domain.Jobs.Executors.Global, __MODULE__, :send_test_message}
+    name = {Domain.Jobs.Executors.GloballyUnique, __MODULE__, :send_test_message}
     assert :global.whereis_name(name) == leader_pid
 
     assert {_state, {:fallback, ^leader_pid, _monitor_ref}} = :sys.get_state(fallback1_pid)
@@ -91,7 +91,7 @@ defmodule Domain.Jobs.Executors.GlobalTest do
     assert {_state, {:fallback, ^new_leader_pid, _monitor_ref}} = :sys.get_state(fallback_pid)
     assert {_state, :leader} = :sys.get_state(new_leader_pid)
 
-    name = {Domain.Jobs.Executors.Global, __MODULE__, :send_test_message}
+    name = {Domain.Jobs.Executors.GloballyUnique, __MODULE__, :send_test_message}
     assert :global.whereis_name(name) == new_leader_pid
 
     assert_receive {:executed, ^new_leader_pid, _time}, 1000

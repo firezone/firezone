@@ -1,4 +1,4 @@
-defmodule Domain.Jobs.Executors.Global do
+defmodule Domain.Jobs.Pollers.GloballyUnique do
   @moduledoc """
   This module is an abstraction on top of a GenServer that executes a callback function
   on a given interval on a globally unique process in an Erlang cluster.
