@@ -111,14 +111,16 @@ where
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
-        self.update_interface()?;
+        if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
+            self.update_interface(config)?;
+        };
 
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
-        self.role_state.interface_config = Some(config);
+        self.role_state.interface_config = Some(config.clone());
         let dns_changed = self.role_state.update_dns_mapping();
 
         if dns_changed {
@@ -126,16 +128,15 @@ where
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_interface()?;
+        self.update_interface(config)?;
 
         Ok(())
     }
 
-    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
-        let Some(config) = self.role_state.interface_config.as_ref().cloned() else {
-            return Ok(());
-        };
-
+    pub(crate) fn update_interface(
+        &mut self,
+        config: InterfaceConfig,
+    ) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks.clone();
 
         self.io.device_mut().set_config(
