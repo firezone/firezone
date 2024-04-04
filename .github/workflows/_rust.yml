@@ -101,7 +101,7 @@ jobs:
         with:
           cache_backend: 'github'
           # Cache needs to be scoped per OS version
-          key: ${{ matrix.runs-on }}
+          key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: ./.github/actions/setup-tauri
       - name: pnpm install
         run: |
