@@ -9,7 +9,7 @@ import NetworkExtension
 import SwiftUI
 import UserNotifications
 
-/// This is primary view manager for the app. It differs quite a bit between and macOS and
+/// This is the primary view manager for the app. It differs quite a bit between and macOS and
 /// iOS so an effort was made to keep the platform-dependent logic as contained as possible.
 ///
 /// The main differences are:
