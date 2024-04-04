@@ -59,6 +59,8 @@ deployment.
   correctly.
 </Alert>
 
+<!-- TODO: Uncomment when we have more data on Gateway sizing
+
 ### Sizing recommendations
 
 Gateways, like the rest of Firezone's data plane stack, are written in Rust and
@@ -87,6 +89,8 @@ If you're unsure, start with a smaller Gateway and scale up as needed.
 To go beyond the table above, you can deploy additional Gateways and use
 Firezone's [automatic load balancing](#load-balancing) to distribute Client
 connections across them.
+
+-->
 
 ## Deploy a single Gateway
 
@@ -120,6 +124,11 @@ balancing.
   This can be any non-empty string and is used to identify the Gateway in the
   portal for audit trail and logging purposes.
 </Alert>
+
+### Deploy using Terraform
+
+For examples on how to deploy multiple Gateways using Terraform, see our example
+[Terraform modules](https://github.com/firezone/firezone/tree/main/terraform/examples).
 
 ## High availability
 
