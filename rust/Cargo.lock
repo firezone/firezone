@@ -1852,27 +1852,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-client-tunnel"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "connlib-client-shared",
- "connlib-shared",
- "dirs",
- "firezone-cli-utils",
- "humantime",
- "nix 0.28.0",
- "resolv-conf",
- "secrecy",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "firezone-gateway"
 version = "1.0.0"
 dependencies = [
@@ -1918,7 +1897,7 @@ dependencies = [
  "connlib-shared",
  "crash-handler",
  "dirs",
- "firezone-client-tunnel",
+ "firezone-headless-client",
  "futures",
  "git-version",
  "hex",
@@ -1958,12 +1937,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-linux-client"
+name = "firezone-headless-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "firezone-client-tunnel",
+ "clap",
+ "connlib-client-shared",
+ "connlib-shared",
+ "dirs",
+ "firezone-cli-utils",
+ "humantime",
+ "nix 0.28.0",
+ "resolv-conf",
+ "secrecy",
+ "serde",
+ "serde_json",
  "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

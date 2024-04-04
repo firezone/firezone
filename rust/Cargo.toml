@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "client-tunnel",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
@@ -8,8 +7,8 @@ members = [
   "connlib/tunnel",
   "connlib/snownet",
   "gateway",
-  "linux-client",
   "firezone-cli-utils",
+  "headless-client",
   "snownet-tests",
   "phoenix-channel",
   "relay",
@@ -39,9 +38,8 @@ rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_s
 connlib-client-android = { path = "connlib/clients/android"}
 connlib-client-apple = { path = "connlib/clients/apple"}
 connlib-client-shared = { path = "connlib/clients/shared"}
-firezone-client-tunnel = { path = "client-tunnel" }
 firezone-gateway = { path = "gateway"}
-firezone-linux-client = { path = "linux-client"}
+firezone-headless-client = { path = "headless-client"}
 firezone-gui-client = { path = "gui-client/src-tauri"}
 firezone-cli-utils = { path = "firezone-cli-utils"}
 snownet = { path = "connlib/snownet"}
