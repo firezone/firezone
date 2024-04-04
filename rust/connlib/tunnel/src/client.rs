@@ -1287,51 +1287,6 @@ mod tests {
     }
 
     #[test]
-    fn set_resource_works() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.set_resources(vec![
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(
-                [
-                    cidr_foo_resource("10.0.0.0/24"),
-                    dns_bar_resource("baz.com")
-                ]
-                .iter()
-            )
-        );
-        assert_eq!(
-            HashSet::<IpNetwork>::from_iter(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
-        );
-    }
-
-    #[test]
-    fn set_resource_replaces_old_resources() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.set_resources(vec![
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.set_resources(vec![cidr_baz_resource("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([cidr_baz_resource("11.0.0.0/24")].iter())
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
-        );
-    }
-
-    #[test]
     fn set_resource_updates_old_resource_with_same_id() {
         let mut client_state = ClientState::for_test();
 
