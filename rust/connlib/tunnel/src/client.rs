@@ -1202,10 +1202,10 @@ mod tests {
 
         assert!(dns_changed);
 
-        let mut new_config = interface_config_without_dns();
-        new_config.upstream_dns = vec![dns("8.8.8.8:53")];
-
-        let dns_changed = client_state.update_interface_config(new_config);
+        let dns_changed = client_state.update_interface_config(InterfaceConfig {
+            upstream_dns: vec![dns("8.8.8.8:53")],
+            ..interface_config_without_dns()
+        });
 
         assert!(dns_changed);
 
