@@ -1112,9 +1112,9 @@ impl IpProvider {
 
 #[cfg(test)]
 mod tests {
-    use rand_core::OsRng;
-
     use super::*;
+    use rand_core::OsRng;
+    use testutils::*;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1484,7 +1484,7 @@ mod tests {
     }
 
     impl ClientState {
-        fn for_test() -> ClientState {
+        pub fn for_test() -> ClientState {
             ClientState::new(StaticSecret::random_from_rng(OsRng))
         }
     }
@@ -1584,8 +1584,13 @@ mod tests {
     fn resource_id(id: &str) -> ResourceId {
         id.parse().unwrap()
     }
+}
 
-    fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
+#[cfg(test)]
+mod testutils {
+    use super::*;
+
+    pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
         HashSet::from_iter(
             resource_routes
                 .into_iter()
@@ -1594,7 +1599,31 @@ mod tests {
         )
     }
 
-    fn hashset<T: std::hash::Hash + Eq>(val: impl Iterator<Item = T>) -> HashSet<T> {
+    pub fn hashset<T: std::hash::Hash + Eq>(val: impl Iterator<Item = T>) -> HashSet<T> {
         HashSet::from_iter(val)
+    }
+}
+
+#[cfg(all(test, feature = "proptest"))]
+mod proptests {
+    use super::*;
+    use testutils::*;
+
+    #[test_strategy::proptest]
+    fn cidr_resources_are_turned_into_routes(
+        #[strategy(connlib_shared::proptest::cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(connlib_shared::proptest::cidr_resource())] resource2: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+
+        client_state.add_resources(&[
+            ResourceDescription::Cidr(resource1.clone()),
+            ResourceDescription::Cidr(resource2.clone()),
+        ]);
+
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![resource1.address, resource2.address])
+        );
     }
 }
