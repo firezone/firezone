@@ -1617,4 +1617,33 @@ mod proptests {
             expected_routes(vec![address])
         );
     }
+
+    #[test_strategy::proptest]
+    fn resources_can_be_removed(
+        #[strategy(connlib_shared::proptest::dns_resource())] dns_resource: ResourceDescriptionDns,
+        #[strategy(connlib_shared::proptest::cidr_resource())]
+        cidr_resource: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[
+            ResourceDescription::Dns(dns_resource.clone()),
+            ResourceDescription::Cidr(cidr_resource.clone()),
+        ]);
+
+        client_state.remove_resources(&[dns_resource.id]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[ResourceDescription::Cidr(cidr_resource.clone())])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![cidr_resource.address])
+        );
+
+        client_state.remove_resources(&[cidr_resource.id]);
+
+        assert_eq!(hashset(client_state.resources().iter()), hashset(&[]));
+        assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
+    }
 }
