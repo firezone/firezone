@@ -861,6 +861,9 @@ impl ClientState {
     /// Instead, it diffs which resources to remove and which ones to add.
     ///
     /// This is important because we don't want to lose state like resolved DNS names for resources that didn't change.
+    ///
+    /// TODO: Add a test that asserts the above.
+    ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resources`] and check that it did in fact not get deleted.
     fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
         self.remove_resources(
             &HashSet::from_iter(self.resource_ids.keys().copied())
@@ -1293,52 +1296,6 @@ mod tests {
                 .is_disjoint(&HashSet::from_iter(sentinel_dns_new.left_values()))
         )
     }
-
-    // FIXME: This test does not make any sense.
-    // I would expect `set_resources` to replace everything that is there.
-    // Naturally, that will result in "updates" to resources that changed in-between.
-    //
-    // #[test]
-    // fn set_resource_updates_old_resource_with_same_id() {
-    //     let mut client_state = ClientState::for_test();
-
-    //     client_state.set_resources(vec![
-    //         cidr_foo_resource("10.0.0.0/24"),
-    //         dns_bar_resource("baz.com"),
-    //     ]);
-    //     client_state.set_resources(vec![cidr_foo_resource("11.0.0.0/24")]);
-
-    //     assert_eq!(
-    //         hashset(client_state.resources().iter()),
-    //         hashset([cidr_foo_resource("11.0.0.0/24")].iter())
-    //     );
-    //     assert_eq!(
-    //         hashset(client_state.routes()),
-    //         expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
-    //     );
-    // }
-
-    // This test also does not make any sense.
-    // Replacing a set with an identical set can never be observed.
-    // #[test]
-    // fn set_resource_keeps_resource_if_unchanged() {
-    //     let mut client_state = ClientState::for_test();
-
-    //     client_state.set_resources(vec![
-    //         cidr_foo_resource("10.0.0.0/24"),
-    //         dns_bar_resource("baz.com"),
-    //     ]);
-    //     client_state.set_resources(vec![cidr_foo_resource("10.0.0.0/24")]);
-
-    //     assert_eq!(
-    //         hashset(client_state.resources().iter()),
-    //         hashset([cidr_foo_resource("10.0.0.0/24")].iter())
-    //     );
-    //     assert_eq!(
-    //         hashset(client_state.routes()),
-    //         expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
-    //     );
-    // }
 
     impl ClientState {
         pub fn for_test() -> ClientState {
