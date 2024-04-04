@@ -357,7 +357,7 @@ defmodule Domain.Relays do
     do: account_presence_topic(account_id)
 
   def global_groups_presence_topic,
-    do: "presences:#{global_groups_topic()}}"
+    do: "presences:#{global_groups_topic()}"
 
   def account_presence_topic(account_or_id),
     do: "presences:#{account_topic(account_or_id)}"
