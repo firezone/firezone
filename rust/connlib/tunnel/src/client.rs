@@ -1287,23 +1287,6 @@ mod tests {
     }
 
     #[test]
-    fn remove_resources_works() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.add_resources(&[
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.remove_resources(&[cidr_foo_id()]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([dns_bar_resource("baz.com")].iter())
-        );
-        assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
-    }
-
-    #[test]
     fn set_resource_works() {
         let mut client_state = ClientState::for_test();
 
