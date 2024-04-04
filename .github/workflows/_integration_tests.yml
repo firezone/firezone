@@ -105,6 +105,8 @@ jobs:
           direct-curl-portal-relay-down,
           direct-download-roaming-network,
           dns-etc-resolvconf,
+          dns-etc-resolvconf-portal-restart,
+          dns-etc-resolvconf-relay-restart,
           dns-nm,
           dns-failsafe, # Uses the default DNS control method
           systemd/dns-systemd-resolved,
