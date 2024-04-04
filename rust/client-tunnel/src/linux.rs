@@ -188,8 +188,13 @@ async fn ipc_listen(sock_path: &Path) -> Result<()> {
     loop {
         tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = listener.accept().await.unwrap();
-        tracing::info!("Got an IPC connection");
         let cred = stream.peer_cred().unwrap();
+        tracing::info!(
+            uid = cred.uid(),
+            gid = cred.gid(),
+            pid = cred.pid(),
+            "Got an IPC connection"
+        );
         // TODO: Check that the user is in the `firezone` group
         // For now, to make it work well in CI where that group isn't created,
         // just check if it matches our own UID.
@@ -258,6 +263,7 @@ mod tests {
             assert_eq!(MESSAGE_TWO, decoded);
         });
 
+        tracing::info!(pid = std::process::id(), "Connecting to IPC server");
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
         write_ipc_msg(&mut stream, &MESSAGE_ONE.to_string())
             .await
