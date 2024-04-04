@@ -1114,7 +1114,6 @@ impl IpProvider {
 mod tests {
     use super::*;
     use rand_core::OsRng;
-    use testutils::*;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1382,56 +1381,8 @@ mod tests {
         })
     }
 
-    fn cidr_foo_resource(addr: &str) -> ResourceDescription {
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: cidr_foo_id(),
-            address: addr.parse().unwrap(),
-            name: "foo".to_string(),
-        })
-    }
-
-    fn cidr_bar_id(addr: &str) -> ResourceDescription {
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: dns_bar_id(),
-            address: addr.parse().unwrap(),
-            name: "foo".to_string(),
-        })
-    }
-
-    fn dns_bar_resource(addr: &str) -> ResourceDescription {
-        ResourceDescription::Dns(ResourceDescriptionDns {
-            id: dns_bar_id(),
-            address: addr.to_string(),
-            name: "bar".to_string(),
-        })
-    }
-
-    fn cidr_baz_resource(addr: &str) -> ResourceDescription {
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: cidr_baz_id(),
-            address: addr.parse().unwrap(),
-            name: "baz".to_string(),
-        })
-    }
-
-    fn cidr_foo_id() -> ResourceId {
-        resource_id("fb51081a-2e06-4b59-b5a8-33592de9ebb1")
-    }
-
-    fn cidr_baz_id() -> ResourceId {
-        resource_id("4e0bf4ea-4175-4cdb-a7c2-cbeffa8ccc5d")
-    }
-
-    fn dns_bar_id() -> ResourceId {
-        resource_id("868483b6-431e-484d-bdd6-dad60ed26418")
-    }
-
     fn ip(addr: &str) -> IpAddr {
         addr.parse().unwrap()
-    }
-
-    fn resource_id(id: &str) -> ResourceId {
-        id.parse().unwrap()
     }
 }
 
