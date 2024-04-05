@@ -3,6 +3,7 @@ defmodule Domain.Accounts.Limits do
 
   @primary_key false
   embedded_schema do
+    field :users_count, :integer
     field :monthly_active_users_count, :integer
     field :service_accounts_count, :integer
     field :gateway_groups_count, :integer

@@ -354,12 +354,9 @@ defmodule Domain.Billing.EventHandler do
       end)
       |> Enum.into(%{})
 
-    {monthly_active_users_count, features_and_limits} =
-      Map.pop(features_and_limits, "monthly_active_users_count", quantity)
-
+    {users_count, features_and_limits} = Map.pop(features_and_limits, "users_count", quantity)
     {limits, features} = Map.split(features_and_limits, limit_fields)
-
-    limits = Map.merge(limits, %{"monthly_active_users_count" => monthly_active_users_count})
+    limits = Map.merge(limits, %{"users_count" => users_count})
 
     %{
       features: features,

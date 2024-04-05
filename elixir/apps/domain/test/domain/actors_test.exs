@@ -1947,6 +1947,41 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "count_users_for_account/1" do
+    test "returns 0 when actors are in another account", %{} do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :account_admin_user)
+
+      assert count_users_for_account(account) == 0
+    end
+
+    test "returns count of account users" do
+      account = Fixtures.Accounts.create_account()
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      assert count_users_for_account(account) == 2
+    end
+
+    test "does not count disabled" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
+      |> Fixtures.Actors.disable()
+
+      assert count_users_for_account(account) == 0
+    end
+
+    test "does not count deleted" do
+      account = Fixtures.Accounts.create_account()
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      |> Fixtures.Actors.delete()
+
+      assert count_users_for_account(account) == 0
+    end
+  end
+
   describe "count_account_admin_users_for_account/1" do
     test "returns 0 when actors are in another account", %{} do
       account = Fixtures.Accounts.create_account()

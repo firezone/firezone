@@ -47,6 +47,7 @@ defmodule Domain.Billing.JobsTest do
 
       Domain.Accounts.update_account(account, %{
         limits: %{
+          users_count: 1,
           monthly_active_users_count: 1,
           service_accounts_count: 1,
           gateway_groups_count: 1,
@@ -59,6 +60,7 @@ defmodule Domain.Billing.JobsTest do
       account = Repo.get!(Domain.Accounts.Account, account.id)
 
       assert account.warning =~ "You have exceeded the following limits:"
+      assert account.warning =~ "users"
       assert account.warning =~ "monthly active users"
       assert account.warning =~ "service accounts"
       assert account.warning =~ "sites"

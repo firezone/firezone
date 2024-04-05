@@ -45,6 +45,7 @@ account =
       }
     },
     limits: %{
+      users_count: 15,
       monthly_active_users_count: 10,
       service_accounts_count: 10,
       gateway_groups_count: 3,
