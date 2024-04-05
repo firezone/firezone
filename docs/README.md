@@ -144,7 +144,7 @@ want to use clients you build and distribute yourself as well.
 
 ### How long will 0.7 be supported until?
 
-**Firezone 0.7 is currently end-of-life and has stopped receiveing updates as of
+**Firezone 0.7 is currently end-of-life and has stopped receiving updates as of
 January 31st, 2024.** It will continue to be available indefinitely from the
 `legacy` branch of this repo under the Apache 2.0 license.
 
