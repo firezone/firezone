@@ -20,8 +20,12 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    # More than 5 seconds on the same host means we have a bug.
     client curl --fail "$1"
+}
+
+function client_ping_resource() {
+    client timeout 30 \
+        sh -c "until ping -W 1 -c 1 $1 &>/dev/null; do true; done"
 }
 
 function client_nslookup() {

@@ -19,7 +19,7 @@ echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"
 
 echo "# Try to ping httpbin as a DNS resource"
-client sh -c "ping -W 1 -c 30 $HTTPBIN"
+client_ping_resource "$HTTPBIN"
 
 echo "# Access httpbin by DNS"
 client_curl_resource "$HTTPBIN/get"
@@ -32,6 +32,6 @@ echo "# Make sure a non-resource doesn't go through the tunnel"
 
 echo "# Stop the gateway and make sure the resource is inaccessible"
 docker compose stop gateway
-client sh -c "curl --connect-timeout 15 --fail $HTTPBIN/get" && exit 1
+client_curl_resource "$HTTPBIN/get" && exit 1
 
 exit 0
