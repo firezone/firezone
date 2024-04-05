@@ -115,7 +115,7 @@ defmodule Web.Actors.Users.NewIdentity do
 
       socket =
         push_navigate(socket,
-          to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}/groups"
+          to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}/edit_groups"
         )
 
       {:noreply, socket}

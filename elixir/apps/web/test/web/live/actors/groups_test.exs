@@ -18,7 +18,7 @@ defmodule Web.Live.Actors.GroupsTest do
     actor: actor,
     conn: conn
   } do
-    path = ~p"/#{account}/actors/#{actor}/groups"
+    path = ~p"/#{account}/actors/#{actor}/edit_groups"
 
     assert live(conn, path) ==
              {:error,
@@ -41,7 +41,7 @@ defmodule Web.Live.Actors.GroupsTest do
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/#{actor}/groups")
+      |> live(~p"/#{account}/actors/#{actor}/edit_groups")
     end
   end
 
@@ -54,7 +54,7 @@ defmodule Web.Live.Actors.GroupsTest do
     {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/#{actor}/groups")
+      |> live(~p"/#{account}/actors/#{actor}/edit_groups")
 
     assert item = Floki.find(html, "[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
@@ -77,7 +77,7 @@ defmodule Web.Live.Actors.GroupsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/#{actor}/groups")
+      |> live(~p"/#{account}/actors/#{actor}/edit_groups")
 
     lv
     |> element("#groups")
@@ -111,7 +111,7 @@ defmodule Web.Live.Actors.GroupsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/#{actor}/groups")
+      |> live(~p"/#{account}/actors/#{actor}/edit_groups")
 
     lv
     |> tap(fn lv ->
@@ -162,7 +162,7 @@ defmodule Web.Live.Actors.GroupsTest do
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/#{actor}/groups")
+      |> live(~p"/#{account}/actors/#{actor}/edit_groups")
 
     lv
     |> element("#group-#{group1.id} button", "Remove")

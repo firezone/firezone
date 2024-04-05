@@ -462,7 +462,7 @@ defmodule Web.Actors.Show do
       <:title>Groups</:title>
 
       <:action>
-        <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/groups"}>
+        <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit_groups"}>
           Edit Groups
         </.edit_button>
       </:action>

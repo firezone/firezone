@@ -1,4 +1,4 @@
-defmodule Web.Actors.Groups do
+defmodule Web.Actors.EditGroups do
   use Web, :live_view
   alias Domain.Actors
 
@@ -57,7 +57,7 @@ defmodule Web.Actors.Groups do
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
         <%= @actor.name %>
       </.breadcrumb>
-      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}/groups"}>
+      <.breadcrumb path={~p"/#{@account}/actors/#{@actor}/edit_groups"}>
         Group Memberships
       </.breadcrumb>
     </.breadcrumbs>
@@ -186,12 +186,10 @@ defmodule Web.Actors.Groups do
       {:noreply, socket}
     else
       {:error, :unauthorized} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permissions to perform this action.")}
+        {:noreply, put_flash(socket, :error, "You don't have permission to perform this action.")}
 
       {:error, {:unauthorized, _context}} ->
-        {:noreply,
-         put_flash(socket, :error, "You don't have permissions to perform this action.")}
+        {:noreply, put_flash(socket, :error, "You don't have permission to perform this action.")}
     end
   end
 
@@ -224,9 +222,6 @@ defmodule Web.Actors.Groups do
   end
 
   defp remove_non_editable_memberships(memberships, editable_groups) do
-    # Memberships :: List of membership structs
-    # Groups :: List of group structs
-
     editable_group_ids =
       editable_groups
       |> Enum.map(& &1.id)
