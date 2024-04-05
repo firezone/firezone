@@ -85,7 +85,7 @@ defmodule Web.Settings.Billing do
 
           <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
             <:label>
-              <p>Seats</p>
+              <p>Users</p>
             </:label>
             <:value>
               <span class={[
@@ -95,6 +95,7 @@ defmodule Web.Settings.Billing do
                 <%= @active_users_count %> used
               </span>
               / <%= @account.limits.monthly_active_users_count %> allowed
+              <p class="text-xs">Includes both admins and regular users.</p>
             </:value>
           </.vertical_table_row>
 
