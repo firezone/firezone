@@ -54,13 +54,11 @@ defmodule Domain.Billing do
       not Accounts.account_active?(account) ->
         false
 
-      not is_nil(account.limits.monthly_active_users_count) and
-          active_users_count >= account.limits.monthly_active_users_count ->
-        false
+      not is_nil(account.limits.monthly_active_users_count) ->
+        active_users_count < account.limits.monthly_active_users_count
 
-      not is_nil(account.limits.users_count) and
-          users_count >= account.limits.users_count ->
-        false
+      not is_nil(account.limits.users_count) ->
+        users_count < account.limits.users_count
 
       true ->
         true
