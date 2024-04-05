@@ -4,7 +4,7 @@ defmodule Web.Settings.ApiClients.NewToken do
   alias Domain.{Auth, Actors, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:api_client_ui),
+    unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
     with {:ok, %{type: :api_client} = actor} <-

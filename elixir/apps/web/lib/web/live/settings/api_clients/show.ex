@@ -3,7 +3,7 @@ defmodule Web.Settings.ApiClients.Show do
   alias Domain.{Actors, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:api_client_ui),
+    unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
     with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do

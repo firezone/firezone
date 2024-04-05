@@ -86,7 +86,7 @@ config :domain, :enabled_features,
   flow_activities: true,
   self_hosted_relays: true,
   multi_site_resources: true,
-  api_client_ui: true
+  rest_api: true
 
 config :domain, sign_up_whitelisted_domains: []
 

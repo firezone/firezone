@@ -60,7 +60,7 @@ if config_env() == :prod do
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
     multi_site_resources: compile_config!(:feature_multi_site_resources_enabled),
-    api_client_ui: compile_config!(:feature_api_client_ui_enabled)
+    rest_api: compile_config!(:feature_rest_api_enabled)
 
   config :domain, sign_up_whitelisted_domains: compile_config!(:sign_up_whitelisted_domains)
 

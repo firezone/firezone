@@ -3,7 +3,7 @@ defmodule Web.Settings.ApiClients.Index do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:api_client_ui),
+    unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
     socket =

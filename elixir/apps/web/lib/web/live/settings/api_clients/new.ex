@@ -4,7 +4,7 @@ defmodule Web.Settings.ApiClients.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:api_client_ui),
+    unless Domain.Config.global_feature_enabled?(:rest_api),
       do: raise(Web.LiveErrors.NotFoundError)
 
     changeset = Actors.new_actor(%{type: :api_client})
