@@ -63,7 +63,7 @@ defmodule Domain.BillingTest do
       assert users_limit_exceeded?(account, 11) == true
     end
 
-    test "returns true when seats limit is not set", %{account: account} do
+    test "returns false when seats limit is not set", %{account: account} do
       assert users_limit_exceeded?(account, 0) == false
     end
   end
@@ -87,7 +87,7 @@ defmodule Domain.BillingTest do
       assert seats_limit_exceeded?(account, 11) == true
     end
 
-    test "returns true when seats limit is not set", %{account: account} do
+    test "returns false when seats limit is not set", %{account: account} do
       assert seats_limit_exceeded?(account, 0) == false
     end
   end
@@ -147,7 +147,7 @@ defmodule Domain.BillingTest do
       assert can_create_users?(account) == false
     end
 
-    test "returns true when seats limit is not set", %{account: account} do
+    test "returns false when seats limit is not set", %{account: account} do
       assert can_create_users?(account) == true
     end
   end
