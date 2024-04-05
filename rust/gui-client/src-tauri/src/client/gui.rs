@@ -273,6 +273,10 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                         .await
                     });
 
+                    // `Tun` may not always drop reliably
+                    // TODO: This won't compile on Linux / macOS
+                    connlib_shared::windows::dns::deactivate().ok();
+
                     // See <https://github.com/tauri-apps/tauri/issues/8631>
                     // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
                     // because it exits the entire process without dropping anything.

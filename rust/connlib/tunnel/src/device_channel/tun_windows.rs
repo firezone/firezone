@@ -39,6 +39,9 @@ pub struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        if let Err(error) = connlib_shared::windows::dns::deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
+        }
         if let Err(e) = self.session.shutdown() {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
         }
@@ -137,6 +140,12 @@ impl Tun {
 
         let iface_idx = self.adapter.get_adapter_index()?;
 
+        let dns_config_string = dns_config
+            .iter()
+            .map(|ip| format!("\"{ip}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+
         // Set our DNS IP as the DNS server for our interface
         // TODO: Known issue where web browsers will keep a connection open to a site,
         // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
@@ -146,16 +155,10 @@ impl Tun {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
-            .arg(format!(
-                "Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({})",
-                dns_config
-                    .iter()
-                    .map(|ip| format!("\"{ip}\""))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ))
-            .stdout(Stdio::null())
+            .arg(format!("Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({dns_config_string})"))
             .status()?;
+
+        connlib_shared::windows::dns::change(&dns_config_string).expect("Should be able to control DNS");
 
         Ok(())
     }
@@ -175,6 +178,9 @@ impl Tun {
         }
 
         self.routes = new_routes;
+
+        // TODO: Might be calling this more often than it needs
+        connlib_shared::windows::dns::flush().expect("Should be able to flush Windows' DNS cache");
 
         Ok(())
     }

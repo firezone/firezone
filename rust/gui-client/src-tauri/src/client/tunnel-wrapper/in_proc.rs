@@ -76,6 +76,12 @@ pub fn connect(
 
     let login = LoginUrl::client(api_url, &token, device_id.id, None, public_key.to_bytes())?;
 
+    // Deactivate DNS control since that can prevent us from bootstrapping a connection
+    // to the portal. Maybe we could bring up a sentinel resolver before
+    // connecting to the portal, but right now the portal seems to need system DNS
+    // for the first connection.
+    connlib_shared::windows::dns::deactivate()?;
+
     // All direct calls into connlib must be in the tunnel process
     let session = connlib_client_shared::Session::connect(
         login,
