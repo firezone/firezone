@@ -22,10 +22,14 @@ const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
+/// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy<T, U, V> {
+    /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(T),
+    /// The query is for a non-Resource, forward it to an upstream or system resolver
     ForwardQuery(U),
+    /// The query is for a Resource, but we can't map an IP until we connect to it, so defer the response while we connect in the background
     DeferredResponse(V),
 }
 
@@ -86,6 +90,11 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 // as we can therefore we won't do it.
 //
 // See: https://stackoverflow.com/a/55093896
+/// Parses an incoming packet as a DNS query and decides how to respond to it
+///
+/// Returns:
+/// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
+/// - Otherwise, a strategy for responding to the query
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
@@ -191,6 +200,7 @@ pub(crate) fn build_response_from_resolve_result(
     Ok(packet)
 }
 
+/// Constructs an IP packet responding to an IP packet containing a DNS query
 fn build_response(
     original_pkt: IpPacket<'_>,
     mut dns_answer: Vec<u8>,
@@ -341,6 +351,14 @@ fn get_description(
     })
 }
 
+/// Decide how to reply to an incoming DNS query
+///
+/// The Client will use this decision to make its response.
+///
+/// If the query is not for a Firezone Resource, the Client should forward it to an
+/// upstream (or system default) resolver.
+/// If we are connected to the Resource, the Client should reply immediately with the IP address(es) of the Resource.
+/// If we are not connected yet, the Client should defer the response and begin connecting.
 fn resource_from_question<N: ToDname>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
