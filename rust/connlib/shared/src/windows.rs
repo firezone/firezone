@@ -33,10 +33,7 @@ pub mod dns {
     //! <https://superuser.com/a/1752670>
 
     use anyhow::Result;
-    use std::{
-        os::windows::process::CommandExt,
-        process::Command,
-    };
+    use std::{os::windows::process::CommandExt, process::Command};
 
     /// Hides Powershell's console on Windows
     ///
@@ -114,10 +111,7 @@ pub mod dns {
         tracing::info!("Flushing Windows DNS cache");
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
-            .args([
-                "-Command",
-                "Clear-DnsClientCache",
-            ])
+            .args(["-Command", "Clear-DnsClientCache"])
             .status()?;
         Ok(())
     }

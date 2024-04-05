@@ -158,7 +158,8 @@ impl Tun {
             .arg(format!("Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({dns_config_string})"))
             .status()?;
 
-        connlib_shared::windows::dns::change(&dns_config_string).expect("Should be able to control DNS");
+        connlib_shared::windows::dns::change(&dns_config_string)
+            .expect("Should be able to control DNS");
 
         Ok(())
     }
