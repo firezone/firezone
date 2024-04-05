@@ -15,10 +15,11 @@ function run_test() {
 }
 
 install_iptables_drop_rules
-trap remove_iptables_drop_rules EXIT # Cleanup after us
+
+docker compose restart relay
 
 run_test
 
-docker compose stop api
+docker compose restart relay
 
 run_test

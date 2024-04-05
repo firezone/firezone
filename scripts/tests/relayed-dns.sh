@@ -10,7 +10,6 @@ source "./scripts/tests/lib.sh"
 HTTPBIN=dns.httpbin
 
 install_iptables_drop_rules
-trap remove_iptables_drop_rules EXIT # Cleanup after us
 
 # Re-up the gateway since a local dev setup may run this back-to-back
 docker compose up -d gateway --no-build
