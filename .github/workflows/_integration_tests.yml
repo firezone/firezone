@@ -100,16 +100,9 @@ jobs:
           direct-curl-portal-down,
           direct-curl-portal-restart,
           direct-curl-portal-relay-down,
-          direct-download-roaming-network,
-          direct-dns-etc-resolvconf,
-          direct-dns-etc-resolvconf-portal-down,
-          direct-dns-etc-resolvconf-relay-down,
           relayed-curl-portal-down,
           relayed-curl-portal-restart,
           relayed-curl-relay-restart,
-          relayed-dns-etc-resolvconf,
-          relayed-dns-etc-resolvconf-portal-down,
-          relayed-dns-etc-resolvconf-relay-restart,
           dns-nm,
           dns-failsafe, # Uses the default DNS control method
           systemd/dns-systemd-resolved,
@@ -119,13 +112,13 @@ jobs:
             dns-control: etc-resolv-conf
           - test: direct-dns-etc-resolvconf
             dns-control: etc-resolv-conf
-          - test: direct-dns-etc-resolvconf-portal-restart
+          - test: direct-dns-etc-resolvconf-portal-down
             dns-control: etc-resolv-conf
-          - test: direct-dns-etc-resolvconf-relay-restart
+          - test: direct-dns-etc-resolvconf-relay-down
             dns-control: etc-resolv-conf
           - test: relayed-dns-etc-resolvconf
             dns-control: etc-resolv-conf
-          - test: relayed-dns-etc-resolvconf-portal-restart
+          - test: relayed-dns-etc-resolvconf-portal-down
             dns-control: etc-resolv-conf
           - test: relayed-dns-etc-resolvconf-relay-restart
             dns-control: etc-resolv-conf
