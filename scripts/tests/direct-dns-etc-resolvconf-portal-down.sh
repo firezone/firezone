@@ -14,10 +14,8 @@ function run_test() {
     client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
 }
 
-docker compose restart relay
-
 run_test
 
-docker compose restart relay
+docker compose stop api
 
 run_test

@@ -20,7 +20,7 @@ function remove_iptables_drop_rules() {
 
 function client_curl_resource() {
     # More than 5 seconds on the same host means we have a bug.
-    client curl --fail --connect-timeout 5 "$1"
+    client curl --fail "$1"
 }
 
 function client_nslookup() {

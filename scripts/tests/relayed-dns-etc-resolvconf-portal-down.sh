@@ -14,10 +14,11 @@ function run_test() {
     client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
 }
 
-docker compose restart api
+install_iptables_drop_rules
+trap remove_iptables_drop_rules EXIT # Cleanup after us
 
 run_test
 
-docker compose restart api
+docker compose stop api
 
 run_test
