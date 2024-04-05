@@ -15,6 +15,10 @@ locals {
   iap_ipv4_ranges = [
     "35.235.240.0/20"
   ]
+
+  gateway_image_tag = var.gateway_image_tag != null ? var.gateway_image_tag : var.image_tag
+  relay_image_tag   = var.relay_image_tag != null ? var.relay_image_tag : var.image_tag
+  portal_image_tag  = var.portal_image_tag != null ? var.portal_image_tag : var.image_tag
 }
 
 terraform {
@@ -196,6 +200,10 @@ resource "google_compute_firewall" "ssh-ipv4" {
     ports    = [22]
   }
 
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+
   # Only allows connections using IAP
   source_ranges = local.iap_ipv4_ranges
   target_tags = concat(
@@ -214,6 +222,20 @@ module "ops" {
   slack_alerts_channel    = var.slack_alerts_channel
 
   pagerduty_auth_token = var.pagerduty_auth_token
+
+  additional_notification_channels = [
+    # Andrew
+    ## Mobile App
+    "projects/firezone-prod/notificationChannels/203795594709100952",
+    ## SMS
+    "projects/firezone-prod/notificationChannels/1314108963890678627",
+    # Brian
+    ## Mobile App
+    "projects/firezone-prod/notificationChannels/16177228986287373178",
+    # Jamil
+    ## Mobile App
+    "projects/firezone-prod/notificationChannels/1608881766413151733"
+  ]
 
   api_host = module.api.host
   web_host = module.web.host

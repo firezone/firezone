@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b330fcd2eaf43801cb31283e365e931440016bade272d3df11518c79b98827e7 # shrinks to input = _PingPongRelayArgs { allocate_transaction_id: TransactionId(0x03E58F3930F8F60DF97DAEE8), channel_bind_transaction_id: TransactionId(0xBF05622D8A2F3065912A225F), username_salt: "88Ubc3a8Nb", source: 41.164.18.144:34392, peer: 196.215.1.156:13359, public_relay_addr: 104.24.254.250, now: SystemTime { tv_sec: 1626617152, tv_nsec: 0 }, peer_to_client_ping: [32, 201, 133, 130, 222, 30, 15, 29, 88, 67, 8, 222, 199, 133, 238, 29, 150, 32, 206, 42, 236, 95, 230, 225, 140, 138, 42, 58, 200, 162, 124, 160], client_to_peer_ping: ChannelData { channel: ChannelNumber(22110), length: 40, msg: [86, 94, 0, 40, 236, 173, 89, 4, 230, 43, 87, 94, 24, 5, 16, 14, 41, 207, 53, 175, 255, 9, 56, 147, 122, 123, 26, 176, 217, 136, 101, 135, 122, 210, 25, 35, 70, 61, 12, 75, 16, 111, 67, 80] }, nonce: 5af48497-63e6-7544-25c0-b5e606c6caf2 }

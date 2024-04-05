@@ -1,11 +1,10 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
-    AddressFamily, Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData,
+    AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
     ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
-use std::collections::HashMap;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::{Duration, SystemTime};
@@ -17,7 +16,7 @@ use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
 use test_strategy::proptest;
 use uuid::Uuid;
-use Output::{CreateAllocation, FreeAllocation, Wake};
+use Output::{CreateAllocation, FreeAllocation};
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(
@@ -65,8 +64,7 @@ fn deallocate_once_time_expired(
             now,
         ),
         [
-            Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152, AddressFamily::V4),
+            create_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(transaction_id, public_relay_addr, 49152, source, &lifetime),
@@ -74,9 +72,14 @@ fn deallocate_once_time_expired(
         ],
     );
 
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + lifetime.lifetime())
+    );
+
     server.assert_commands(
         forward_time_to(now + lifetime.lifetime() + Duration::from_secs(1)),
-        [FreeAllocation(49152, AddressFamily::V4)],
+        [free_allocation(49152, AddressFamily::V4)],
     );
 }
 
@@ -120,13 +123,17 @@ fn unauthenticated_allocate_triggers_authentication(
             now,
         ),
         [
-            Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152, AddressFamily::V4),
+            create_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(transaction_id, public_relay_addr, 49152, source, &lifetime),
             ),
         ],
+    );
+
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + lifetime.lifetime())
     );
 }
 
@@ -159,8 +166,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
             now,
         ),
         [
-            Wake(first_wake),
-            CreateAllocation(49152, AddressFamily::V4),
+            create_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -173,6 +179,8 @@ fn when_refreshed_in_time_allocation_does_not_expire(
             ),
         ],
     );
+
+    assert_eq!(server.server.poll_timeout(), Some(first_wake));
 
     // Forward time
     let now = now + allocate_lifetime.lifetime() / 2;
@@ -190,14 +198,13 @@ fn when_refreshed_in_time_allocation_does_not_expire(
             ),
             now,
         ),
-        [
-            Wake(second_wake),
-            send_message(
-                source,
-                refresh_response(refresh_transaction_id, refresh_lifetime.clone()),
-            ),
-        ],
+        [send_message(
+            source,
+            refresh_response(refresh_transaction_id, refresh_lifetime.clone()),
+        )],
     );
+
+    assert_eq!(server.server.poll_timeout(), Some(second_wake));
 
     // The allocation MUST NOT be expired 1 sec before its refresh lifetime.
     // Note that depending on how the lifetimes were generated, this may still be before the initial allocation lifetime.
@@ -235,8 +242,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
             now,
         ),
         [
-            Wake(first_wake),
-            CreateAllocation(49152, AddressFamily::V4),
+            create_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -249,6 +255,8 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
             ),
         ],
     );
+
+    assert_eq!(server.server.poll_timeout(), Some(first_wake));
 
     // Forward time
     let now = now + allocate_lifetime.lifetime() / 2;
@@ -266,7 +274,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
             now,
         ),
         [
-            FreeAllocation(49152, AddressFamily::V4),
+            free_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 refresh_response(
@@ -292,13 +300,12 @@ fn ping_pong_relay(
     #[strategy(firezone_relay::proptest::transaction_id())]
     channel_bind_transaction_id: TransactionId,
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
-    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
     source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
-    client_to_peer_ping: [u8; 32],
+    #[strategy(firezone_relay::proptest::channel_data())] client_to_peer_ping: ChannelData<'static>,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
     let _ = env_logger::try_init();
@@ -320,8 +327,7 @@ fn ping_pong_relay(
             now,
         ),
         [
-            Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152, AddressFamily::V4),
+            create_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -335,6 +341,11 @@ fn ping_pong_relay(
         ],
     );
 
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + lifetime.lifetime())
+    );
+
     let now = now + Duration::from_secs(1);
 
     server.assert_commands(
@@ -342,7 +353,7 @@ fn ping_pong_relay(
             source,
             ChannelBind::new(
                 channel_bind_transaction_id,
-                channel,
+                client_to_peer_ping.channel(),
                 XorPeerAddress::new(peer.into()),
                 valid_username(now, &username_salt),
                 &secret,
@@ -350,29 +361,42 @@ fn ping_pong_relay(
             ),
             now,
         ),
-        [
-            Wake(now + Duration::from_secs(60 * 10)),
-            send_message(source, channel_bind_response(channel_bind_transaction_id)),
-        ],
+        [send_message(
+            source,
+            channel_bind_response(channel_bind_transaction_id),
+        )],
+    );
+
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + Duration::from_secs(60 * 10))
     );
 
     let now = now + Duration::from_secs(1);
 
-    server.assert_commands(
-        from_client(
-            source,
-            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
-            now,
-        ),
-        [forward(peer, &client_to_peer_ping, 49152)],
+    let maybe_forward = server.server.handle_client_input(
+        client_to_peer_ping.as_msg(),
+        ClientSocket::new(source.into()),
+        now,
     );
 
-    server.assert_commands(
-        from_peer(peer, peer_to_client_ping.as_ref(), 49152),
-        [send_channel_data(
-            source,
-            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
-        )],
+    assert_eq!(
+        maybe_forward,
+        Some((AllocationPort::new(49152), PeerSocket::new(peer.into())))
+    );
+
+    let maybe_forward = server.server.handle_peer_traffic(
+        peer_to_client_ping.as_slice(),
+        PeerSocket::new(peer.into()),
+        AllocationPort::new(49152),
+    );
+
+    assert_eq!(
+        maybe_forward,
+        Some((
+            ClientSocket::new(source.into()),
+            client_to_peer_ping.channel()
+        ))
     );
 }
 
@@ -411,8 +435,7 @@ fn allows_rebind_channel_after_expiry(
             now,
         ),
         [
-            Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152, AddressFamily::V4),
+            create_allocation(49152, AddressFamily::V4),
             send_message(
                 source,
                 allocate_response(
@@ -424,6 +447,11 @@ fn allows_rebind_channel_after_expiry(
                 ),
             ),
         ],
+    );
+
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + lifetime.lifetime())
     );
 
     let now = now + Duration::from_secs(1);
@@ -441,24 +469,25 @@ fn allows_rebind_channel_after_expiry(
             ),
             now,
         ),
-        [
-            Wake(now + Duration::from_secs(60 * 10)), // For channel expiry
-            send_message(source, channel_bind_response(channel_bind_transaction_id)),
-        ],
+        [send_message(
+            source,
+            channel_bind_response(channel_bind_transaction_id),
+        )],
     );
+
+    let channel_expiry = now + Duration::from_secs(60 * 10);
+    let channel_rebind = channel_expiry + Duration::from_secs(60 * 5);
+
+    assert_eq!(server.server.poll_timeout(), Some(channel_expiry));
 
     let now = now + Duration::from_secs(60 * 10 + 1);
 
-    server.assert_commands(
-        forward_time_to(now),
-        [
-            Wake(now + Duration::from_secs(60 * 5)), // For channel deletion
-        ],
-    );
+    server.server.handle_timeout(now);
+    assert_eq!(server.server.poll_timeout(), Some(channel_rebind));
 
     let now = now + Duration::from_secs(60 * 5 + 1);
 
-    server.assert_commands(forward_time_to(now), []);
+    server.server.handle_timeout(now);
 
     let now = now + Duration::from_secs(1);
 
@@ -475,10 +504,15 @@ fn allows_rebind_channel_after_expiry(
             ),
             now,
         ),
-        [
-            Wake(now + Duration::from_secs(60 * 10)), // For channel expiry
-            send_message(source, channel_bind_response(channel_bind_2_transaction_id)),
-        ],
+        [send_message(
+            source,
+            channel_bind_response(channel_bind_2_transaction_id),
+        )],
+    );
+
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + Duration::from_secs(60 * 10)) // For channel expiry
     );
 }
 
@@ -495,7 +529,7 @@ fn ping_pong_ip6_relay(
     public_relay_ip6_addr: Ipv6Addr,
     #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
-    client_to_peer_ping: [u8; 32],
+    mut client_to_peer_ping: [u8; 36],
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
     let _ = env_logger::try_init();
@@ -518,8 +552,7 @@ fn ping_pong_ip6_relay(
             now,
         ),
         [
-            Wake(now + lifetime.lifetime()),
-            CreateAllocation(49152, AddressFamily::V6),
+            create_allocation(49152, AddressFamily::V6),
             send_message(
                 source,
                 allocate_response(
@@ -531,6 +564,11 @@ fn ping_pong_ip6_relay(
                 ),
             ),
         ],
+    );
+
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + lifetime.lifetime())
     );
 
     let now = now + Duration::from_secs(1);
@@ -548,42 +586,51 @@ fn ping_pong_ip6_relay(
             ),
             now,
         ),
-        [
-            Wake(now + Duration::from_secs(60 * 10)),
-            send_message(source, channel_bind_response(channel_bind_transaction_id)),
-        ],
+        [send_message(
+            source,
+            channel_bind_response(channel_bind_transaction_id),
+        )],
+    );
+
+    assert_eq!(
+        server.server.poll_timeout(),
+        Some(now + Duration::from_secs(60 * 10))
     );
 
     let now = now + Duration::from_secs(1);
 
-    server.assert_commands(
-        from_client(
-            source,
-            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
-            now,
-        ),
-        [forward(peer, &client_to_peer_ping, 49152)],
+    ChannelData::encode_header_to_slice(channel, 32, &mut client_to_peer_ping[..4]);
+    let maybe_forward = server.server.handle_client_input(
+        client_to_peer_ping.as_slice(),
+        ClientSocket::new(source.into()),
+        now,
     );
 
-    server.assert_commands(
-        from_peer(peer, peer_to_client_ping.as_ref(), 49152),
-        [send_channel_data(
-            source,
-            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
-        )],
+    assert_eq!(
+        maybe_forward,
+        Some((AllocationPort::new(49152), PeerSocket::new(peer.into())))
+    );
+
+    let maybe_forward = server.server.handle_peer_traffic(
+        peer_to_client_ping.as_slice(),
+        PeerSocket::new(peer.into()),
+        AllocationPort::new(49152),
+    );
+
+    assert_eq!(
+        maybe_forward,
+        Some((ClientSocket::new(source.into()), channel))
     );
 }
 
 struct TestServer {
     server: Server<StepRng>,
-    id_to_port: HashMap<u16, AllocationId>,
 }
 
 impl TestServer {
     fn new(relay_public_addr: impl Into<IpStack>) -> Self {
         Self {
             server: Server::new(relay_public_addr, StepRng::new(0, 0), 49152, 65535),
-            id_to_port: Default::default(),
         }
     }
 
@@ -603,11 +650,7 @@ impl TestServer {
                 self.server.handle_client_message(message, sender, now);
             }
             Input::Time(now) => {
-                self.server.handle_deadline_reached(now);
-            }
-            Input::Peer(peer, data, port) => {
-                self.server
-                    .handle_peer_traffic(&data, peer, self.id_to_port[&port]);
+                self.server.handle_timeout(now);
             }
         }
 
@@ -617,17 +660,12 @@ impl TestServer {
                     Output::SendMessage((recipient, msg)) => {
                         format!("to send message {:?} to {recipient}", msg)
                     }
-                    Wake(time) => format!("to be woken at {time:?}"),
                     CreateAllocation(port, family) => {
                         format!("to create allocation on port {port} for address family {family}")
                     }
                     FreeAllocation(port, family) => {
                         format!("to free allocation on port {port} for address family {family}")
                     }
-                    Output::SendChannelData((peer, _)) => {
-                        format!("to send channel data from {peer} to client")
-                    }
-                    Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}"),
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -651,71 +689,25 @@ impl TestServer {
 
                     assert_eq!(recipient, to);
                 }
-                (Wake(when), Command::Wake { deadline }) => {
-                    assert_eq!(when, deadline);
-                }
                 (
                     CreateAllocation(expected_port, expected_family),
                     Command::CreateAllocation {
-                        id,
-                        family: actual_family,
                         port: actual_port,
+                        family: actual_family,
                     },
                 ) => {
-                    self.id_to_port.insert(actual_port, id);
                     assert_eq!(expected_port, actual_port);
                     assert_eq!(expected_family, actual_family);
                 }
                 (
                     FreeAllocation(port, family),
                     Command::FreeAllocation {
-                        id,
+                        port: actual_port,
                         family: actual_family,
                     },
                 ) => {
-                    let actual_id = self.id_to_port.remove(&port).expect("to have port in map");
-                    assert_eq!(id, actual_id);
+                    assert_eq!(port, actual_port);
                     assert_eq!(family, actual_family);
-                }
-                (Wake(when), Command::SendMessage { payload, .. }) => {
-                    panic!(
-                        "Expected `Wake({})`, got `SendMessage({:?})`",
-                        when.duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        parse_message(&payload)
-                    )
-                }
-                (Output::SendMessage((_, message)), Command::Wake { deadline, .. }) => {
-                    panic!(
-                        "Expected `SendMessage({message:?})`, got `Wake({})`",
-                        deadline
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                    )
-                }
-                (
-                    Output::SendChannelData((peer, channeldata)),
-                    Command::SendMessage { recipient, payload },
-                ) => {
-                    let expected_channel_data = hex::encode(channeldata.to_bytes());
-                    let actual_message = hex::encode(payload);
-
-                    assert_eq!(expected_channel_data, actual_message);
-                    assert_eq!(recipient, peer);
-                }
-                (
-                    Output::Forward((peer, expected_data, port)),
-                    Command::ForwardData {
-                        id,
-                        data: actual_data,
-                        receiver,
-                    },
-                ) => {
-                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data));
-                    assert_eq!(receiver, peer);
-                    assert_eq!(self.id_to_port[&port], id);
                 }
                 (expected, actual) => panic!("Unhandled combination: {expected:?} {actual:?}"),
             }
@@ -802,7 +794,6 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
 
 enum Input<'a> {
     Client(ClientSocket, ClientMessage<'a>, SystemTime),
-    Peer(PeerSocket, Vec<u8>, u16),
     Time(SystemTime),
 }
 
@@ -814,32 +805,25 @@ fn from_client<'a>(
     Input::Client(ClientSocket::new(from.into()), message.into(), now)
 }
 
-fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input<'a> {
-    Input::Peer(PeerSocket::new(from.into()), data.to_vec(), port)
-}
-
 fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
     Input::Time(when)
 }
 
 #[derive(Debug)]
-enum Output<'a> {
+enum Output {
     SendMessage((ClientSocket, Message<Attribute>)),
-    SendChannelData((ClientSocket, ChannelData<'a>)),
-    Forward((PeerSocket, Vec<u8>, u16)),
-    Wake(SystemTime),
-    CreateAllocation(u16, AddressFamily),
-    FreeAllocation(u16, AddressFamily),
+    CreateAllocation(AllocationPort, AddressFamily),
+    FreeAllocation(AllocationPort, AddressFamily),
 }
 
-fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output<'a> {
+fn create_allocation(port: u16, fam: AddressFamily) -> Output {
+    Output::CreateAllocation(AllocationPort::new(port), fam)
+}
+
+fn free_allocation(port: u16, fam: AddressFamily) -> Output {
+    Output::FreeAllocation(AllocationPort::new(port), fam)
+}
+
+fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output {
     Output::SendMessage((ClientSocket::new(source.into()), message))
-}
-
-fn send_channel_data(source: impl Into<SocketAddr>, message: ChannelData) -> Output {
-    Output::SendChannelData((ClientSocket::new(source.into()), message))
-}
-
-fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> Output {
-    Output::Forward((PeerSocket::new(source.into()), data.to_vec(), port))
 }

@@ -29,7 +29,8 @@ resource "google_monitoring_notification_channel" "pagerduty" {
 locals {
   notification_channels = concat(
     [google_monitoring_notification_channel.slack.name],
-    var.pagerduty_auth_token != null ? [google_monitoring_notification_channel.pagerduty[0].name] : []
+    var.additional_notification_channels,
+    google_monitoring_notification_channel.pagerduty[*].name
   )
 }
 

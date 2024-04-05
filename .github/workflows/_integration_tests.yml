@@ -106,8 +106,14 @@ jobs:
           direct-download-roaming-network,
           dns-etc-resolvconf,
           dns-nm,
+          dns-failsafe, # Uses the default DNS control method
           systemd/dns-systemd-resolved,
         ]
+        include:
+          - test: direct-download-roaming-network
+            dns-control: etc-resolv-conf
+          - test: dns-etc-resolvconf
+            dns-control: etc-resolv-conf
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -118,12 +124,16 @@ jobs:
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
+          # Overrides the Client's env var in docker-compose.yml
+          echo "FIREZONE_DNS_CONTROL=${{ matrix.dns-control }}" >> .env
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
           docker compose up -d relay --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
+          docker compose exec -it client env
 
       - run: ./scripts/tests/${{ matrix.test }}.sh
 

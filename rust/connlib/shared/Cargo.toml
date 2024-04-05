@@ -17,8 +17,6 @@ chrono = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
-# Needed to mark functions as exempt from `cargo-mutants` testing
-mutants = "0.0.3"
 os_info = { version = "3", default-features = false }
 parking_lot = "0.12"
 rand = { version = "0.8", default-features = false, features = ["std"] }
@@ -27,19 +25,15 @@ resolv-conf = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread"]}
+tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread", "fs"]}
 tokio-stream = { version = "0.1", features = ["time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
-tracing-appender = "0.2"
 url = { version = "2.4.1", default-features = false }
 uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
 ring = "0.17"
-hickory-resolver = { workspace = true }
 domain = { workspace = true }
 libc = "0.2"
-dns-lookup = { workspace = true }
-known-folders = "1.1.0"
 snownet = { workspace = true }
 phoenix-channel = { workspace = true }
 
@@ -50,6 +44,7 @@ log = "0.4"
 anyhow = "1.0"
 itertools = "0.12"
 tempfile = "3.10.1"
+mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
@@ -58,7 +53,7 @@ swift-bridge = { workspace = true }
 tracing-android = "0.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-# Needed to safely modify `/etc/resolv.conf` and write the device ID for `gui-client`
+# Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
 atomicwrites = "0.4.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -67,6 +62,7 @@ rtnetlink = { workspace = true }
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.4.0"
+known-folders = "1.1.0"
 
 # Windows Win32 API
 [target.'cfg(windows)'.dependencies.windows]

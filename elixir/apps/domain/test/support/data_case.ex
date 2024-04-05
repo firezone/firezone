@@ -47,4 +47,19 @@ defmodule Domain.DataCase do
       end)
     end)
   end
+
+  @doc """
+  When code makes async requests to the Bypass server, there is a chance that we will hit
+  a race condition: either a test process or task can be terminated before the Bypass server
+  sent a response, which will lead to a exit signal to the test process.
+
+  We work around it by cancelling the expectations check (because we don't really care about
+  them to be met in the case of `stub/3` calls).
+
+  See https://github.com/PSPDFKit-labs/bypass/issues/120
+  """
+  def cancel_bypass_expectations_check(bypass) do
+    Bypass.down(bypass)
+    on_exit({Bypass, bypass.pid}, fn -> :ok end)
+  end
 end

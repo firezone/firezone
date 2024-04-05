@@ -18,6 +18,12 @@ variable "pagerduty_auth_token" {
   default     = null
 }
 
+variable "additional_notification_channels" {
+  type        = list(string)
+  default     = []
+  description = "List of mobile app notification channels"
+}
+
 variable "api_host" {
   type = string
 }
