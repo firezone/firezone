@@ -51,7 +51,7 @@ export default function PlanTable() {
               role="tooltip"
               className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
-              Human operators and end-users of your Firezone account
+              Includes both admins and end-users of your Firezone account
               <div className="tooltip-arrow" data-popper-arrow></div>
             </div>
           </td>
