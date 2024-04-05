@@ -36,17 +36,35 @@ defmodule Domain.Billing do
 
   # Limits and Features
 
+  def users_limit_exceeded?(%Accounts.Account{} = account, users_count) do
+    not is_nil(account.limits.users_count) and
+      users_count > account.limits.users_count
+  end
+
   def seats_limit_exceeded?(%Accounts.Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and
       active_users_count > account.limits.monthly_active_users_count
   end
 
   def can_create_users?(%Accounts.Account{} = account) do
+    users_count = Actors.count_users_for_account(account)
     active_users_count = Clients.count_1m_active_users_for_account(account)
 
-    Accounts.account_active?(account) and
-      (is_nil(account.limits.monthly_active_users_count) or
-         active_users_count < account.limits.monthly_active_users_count)
+    cond do
+      not Accounts.account_active?(account) ->
+        false
+
+      not is_nil(account.limits.monthly_active_users_count) and
+          active_users_count >= account.limits.monthly_active_users_count ->
+        false
+
+      not is_nil(account.limits.users_count) and
+          users_count >= account.limits.users_count ->
+        false
+
+      true ->
+        true
+    end
   end
 
   def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do

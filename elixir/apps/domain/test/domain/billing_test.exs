@@ -44,6 +44,30 @@ defmodule Domain.BillingTest do
     end
   end
 
+  describe "users_limit_exceeded?/2" do
+    test "returns false when seats limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{monthly_active_users_count: 10}
+        })
+
+      assert users_limit_exceeded?(account, 10) == false
+    end
+
+    test "returns true when seats limit is exceeded", %{account: account} do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{users_count: 10}
+        })
+
+      assert users_limit_exceeded?(account, 11) == true
+    end
+
+    test "returns true when seats limit is not set", %{account: account} do
+      assert users_limit_exceeded?(account, 0) == false
+    end
+  end
+
   describe "seats_limit_exceeded?/2" do
     test "returns false when seats limit is not exceeded", %{account: account} do
       {:ok, account} =
@@ -97,6 +121,18 @@ defmodule Domain.BillingTest do
 
       actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
       Fixtures.Clients.create_client(account: account, actor: actor2)
+
+      assert can_create_users?(account) == false
+    end
+
+    test "returns false when users limit is exceeded", %{account: account} do
+      {:ok, account} =
+        Domain.Accounts.update_account(account, %{
+          limits: %{users_count: 1}
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
 
       assert can_create_users?(account) == false
     end
@@ -741,7 +777,8 @@ defmodule Domain.BillingTest do
           "self_hosted_relays" => "true",
           "monthly_active_users_count" => "15",
           "service_accounts_count" => "unlimited",
-          "gateway_groups_count" => 1
+          "gateway_groups_count" => 1,
+          "users_count" => 14
         }
       })
 
@@ -771,7 +808,8 @@ defmodule Domain.BillingTest do
       assert account.limits == %Domain.Accounts.Limits{
                monthly_active_users_count: 15,
                gateway_groups_count: 5,
-               service_accounts_count: nil
+               service_accounts_count: nil,
+               users_count: 14
              }
 
       assert account.features == %Domain.Accounts.Features{
