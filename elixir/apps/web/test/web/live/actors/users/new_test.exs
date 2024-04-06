@@ -162,7 +162,10 @@ defmodule Web.Live.Actors.User.NewTest do
     assert new_admin_actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
     assert new_admin_actor.type == :account_admin_user
 
-    assert_redirect(lv, ~p"/#{account}/actors/users/#{new_admin_actor}/new_identity")
+    assert_redirect(
+      lv,
+      ~p"/#{account}/actors/users/#{new_admin_actor}/new_identity?next_step=edit_groups"
+    )
 
     # Create non-admin actor
 
@@ -183,6 +186,9 @@ defmodule Web.Live.Actors.User.NewTest do
     assert new_actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
     assert new_actor.type == :account_user
 
-    assert_redirect(lv, ~p"/#{account}/actors/users/#{new_actor}/new_identity")
+    assert_redirect(
+      lv,
+      ~p"/#{account}/actors/users/#{new_actor}/new_identity?next_step=edit_groups"
+    )
   end
 end
