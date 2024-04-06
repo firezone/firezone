@@ -249,6 +249,13 @@ defmodule Web.SignUp do
           class={link_style()}
         >Terms of Use</.link>.
       </p>
+
+      <p class="py-2 text-center">
+        Already have an account?
+        <a href={~p"/"} class={[link_style()]}>
+          Sign in here.
+        </a>
+      </p>
     </.form>
     """
   end
