@@ -1,4 +1,3 @@
-import EarlyAccessForm from "@/components/EarlyAccessForm";
 import Link from "next/link";
 import Image from "next/image";
 import { Metadata } from "next";
@@ -18,21 +17,16 @@ export default function EarlyAccess() {
         <div className="grid flex gap-4 lg:grid-cols-2">
           <div className="flex items-center justify-center lg:justify-start">
             <div className="flex-wrap px-2">
-              <h1 className="mb-4 text-5xl sm:text-6xl text-center justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
-                Request early access
+              <h1 className="mb-4 text-4xl sm:text-6xl text-center justify-center lg:justify-end font-extrabold tracking-tight text-neutral-900 xl:text-6xl">
+                Firezone 1.0 is here.
               </h1>
-              <h2 className="flex flex-wrap mb-4 text-lg tracking-tight text-neutral-800 sm:text-xl justify-center lg:justify-end">
-                <strong className="mr-1">Firezone 1.0 is coming!</strong>
-                <span className="font-medium">
-                  Sign up below to get early access.
-                </span>
-              </h2>
-              <p className="text-lg sm:text-xl lg:justify-end">
+              <p className="flex flex-wrap mb-4 text-lg text-neutral-800 sm:text-xl sm:justify-start justify-center">
+                The early access program has ended.
                 <ActionLink
                   href="/blog/firezone-1-0"
-                  className="mb-8 justify-center lg:justify-end flex items-center text-accent-500 hover:no-underline underline"
+                  className="ml-1 font-medium text-accent-500 hover:no-underline underline"
                 >
-                  Read the announcement
+                  Sign up now
                 </ActionLink>
               </p>
             </div>
@@ -91,7 +85,7 @@ export default function EarlyAccess() {
                   <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-neutral-300 text-neutral-900 rounded-full ring-0 ring-accent-600 ring-8 shrink-0">
                     2
                   </div>
-                  <div className="hidden sm:flex w-full bg-neutral-300 h-0.5"></div>
+                  <div className="hidden sm:flex w-full bg-accent-600 h-1"></div>
                 </div>
                 <div className="mt-3 sm:pr-8">
                   <h3 className="text-lg font-semibold text-neutral-900">
@@ -107,10 +101,9 @@ export default function EarlyAccess() {
               </li>
               <li className="relative mb-6 sm:mb-0">
                 <div className="flex items-center">
-                  <div className="z-10 flex items-center font-semibold justify-center w-6 h-6 text-neutral-900 bg-white rounded-full ring-0 ring-neutral-300 ring-8 shrink-0">
+                  <div className="z-10 flex items-center justify-center font-semibold w-6 h-6 bg-neutral-300 text-neutral-900 rounded-full ring-0 ring-accent-600 ring-8 shrink-0">
                     3
                   </div>
-                  <div className="hidden sm:flex w-full bg-neutral-300 h-0.5"></div>
                 </div>
                 <div className="mt-3 sm:pr-8">
                   <h3 className="text-lg font-semibold text-neutral-900">
@@ -126,12 +119,6 @@ export default function EarlyAccess() {
               </li>
             </ol>
           </div>
-          <div className="pt-14 mx-auto max-w-screen-lg">
-            <h2 className="justify-center mb-8 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">
-              Join our early access program
-            </h2>
-          </div>
-          <EarlyAccessForm />
         </div>
       </section>
     </div>
