@@ -5,8 +5,8 @@ import Link from "next/link";
 import "@/app/globals.css";
 import "highlight.js/styles/a11y-dark.css";
 import RootNavbar from "@/components/RootNavbar";
-import Script from "next/script";
 import Banner from "@/components/Banner";
+import Script from "next/script";
 import Footer from "@/components/Footer";
 import { Source_Sans_3 } from "next/font/google";
 const source_sans_3 = Source_Sans_3({
@@ -60,6 +60,25 @@ export default function RootLayout({
         <Mixpanel />
       </Suspense>
       <body className={source_sans_3.className}>
+        <Banner active>
+          <p className="mx-auto text-center">
+            Firezone 1.0 is here!{" "}
+            <Link
+              href="https://app.firezone.dev/sign_up"
+              className="hover:underline inline-flex text-accent-500"
+            >
+              Sign up
+            </Link>{" "}
+            or{" "}
+            <Link
+              href="/kb/user-guides"
+              className="hover:underline text-accent-500"
+            >
+              download
+            </Link>{" "}
+            now to get started.
+          </p>
+        </Banner>
         <div className="min-h-screen h-auto antialiased">
           <RootNavbar />
           {children}
