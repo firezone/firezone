@@ -33,10 +33,10 @@ locals {
       name  = "GOOGLE_CLOUD_PROJECT_ID"
       value = var.project_id
     },
-    # {
-    #   name  = "OTLP_GRPC_ENDPOINT"
-    #   value = "127.0.0.1:4317"
-    # },
+    {
+      name  = "OTLP_GRPC_ENDPOINT"
+      value = "127.0.0.1:4317"
+    },
     {
       name  = "FIREZONE_TOKEN"
       value = var.token
@@ -328,9 +328,9 @@ resource "google_compute_region_instance_group_manager" "application" {
 
   update_policy {
     type           = "PROACTIVE"
-    minimal_action = "RESTART"
+    minimal_action = "REPLACE"
 
-    max_unavailable_fixed = 1
+    max_unavailable_fixed = each.value.replicas == 1 ? 0 : 1
     max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
   }
 

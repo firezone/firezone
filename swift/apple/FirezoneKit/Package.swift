@@ -11,19 +11,11 @@ let package = Package(
     // other packages.
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
-  dependencies: [
-    // Dependencies declare other packages that this package depends on.
-    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.0.0"),
-    .package(url: "https://github.com/pointfreeco/swiftui-navigation", from: "1.0.0"),
-  ],
+  dependencies: [],
   targets: [
     .target(
       name: "FirezoneKit",
-      dependencies: [
-        .product(name: "SwiftUINavigation", package: "swiftui-navigation"),
-        .product(name: "SwiftUINavigationCore", package: "swiftui-navigation"),
-        .product(name: "Dependencies", package: "swift-dependencies"),
-      ]
+      dependencies: []
     ),
     .testTarget(
       name: "FirezoneKitTests",

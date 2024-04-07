@@ -7,6 +7,7 @@ defmodule Web.Settings.Billing do
     if Billing.account_provisioned?(socket.assigns.account) do
       admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
       service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
+      users_count = Actors.count_users_for_account(socket.assigns.account)
       active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
       gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
 
@@ -15,6 +16,7 @@ defmodule Web.Settings.Billing do
           page_title: "Billing",
           error: nil,
           admins_count: admins_count,
+          users_count: users_count,
           active_users_count: active_users_count,
           service_accounts_count: service_accounts_count,
           gateway_groups_count: gateway_groups_count
@@ -80,6 +82,21 @@ defmodule Web.Settings.Billing do
             <:label>Billing Email</:label>
             <:value>
               <%= @account.metadata.stripe.billing_email %>
+            </:value>
+          </.vertical_table_row>
+
+          <.vertical_table_row :if={not is_nil(@account.limits.users_count)}>
+            <:label>
+              <p>Users</p>
+            </:label>
+            <:value>
+              <span class={[
+                not is_nil(@users_count) and
+                  @users_count > @account.limits.users_count && "text-red-500"
+              ]}>
+                <%= @users_count %> used
+              </span>
+              / <%= @account.limits.users_count %> allowed
             </:value>
           </.vertical_table_row>
 
@@ -209,7 +226,10 @@ defmodule Web.Settings.Billing do
       {:noreply, redirect(socket, external: billing_portal_url)}
     else
       {:error, reason} ->
-        Logger.error("Failed to get billing portal URL", reason: inspect(reason))
+        Logger.error("Failed to get billing portal URL",
+          reason: inspect(reason),
+          account_id: socket.assigns.account.id
+        )
 
         socket =
           assign(socket,
