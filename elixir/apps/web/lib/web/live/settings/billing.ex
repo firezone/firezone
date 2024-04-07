@@ -97,21 +97,6 @@ defmodule Web.Settings.Billing do
                 <%= @users_count %> used
               </span>
               / <%= @account.limits.users_count %> allowed
-            </:value>
-          </.vertical_table_row>
-
-          <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
-            <:label>
-              <p>Users</p>
-            </:label>
-            <:value>
-              <span class={[
-                not is_nil(@active_users_count) and
-                  @active_users_count > @account.limits.monthly_active_users_count && "text-red-500"
-              ]}>
-                <%= @active_users_count %> used
-              </span>
-              / <%= @account.limits.monthly_active_users_count %> allowed
               <p class="text-xs">Includes both admins and regular users.</p>
             </:value>
           </.vertical_table_row>
