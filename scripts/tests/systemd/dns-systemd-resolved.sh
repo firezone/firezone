@@ -5,7 +5,7 @@ set -euo pipefail
 
 BINARY_NAME=firezone-linux-client
 
-docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
+docker compose exec client cat firezone-linux-client >"$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 # TODO: Check whether this is redundant with the systemd service file
@@ -27,8 +27,7 @@ curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 
 echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
-if ! sudo systemctl start firezone-client
-then
+if ! sudo systemctl start firezone-client; then
     sudo systemctl status firezone-client
     exit 1
 fi

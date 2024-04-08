@@ -5,21 +5,11 @@
 
 set -euo pipefail
 
+source "./scripts/tests/lib.sh"
+
 HTTPBIN=dns.httpbin
 
-function client() {
-    docker compose exec -it client "$@"
-}
-
-function client_nslookup() {
-    # Skip the first 3 lines so that grep won't see the DNS server IP
-    # `tee` here copies stdout to stderr
-    client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
-}
-
-function gateway() {
-    docker compose exec -it gateway "$@"
-}
+install_iptables_drop_rules
 
 # Re-up the gateway since a local dev setup may run this back-to-back
 docker compose up -d gateway --no-build
@@ -31,10 +21,10 @@ echo "# Make sure gateway can reach httpbin by DNS"
 gateway sh -c "curl --fail $HTTPBIN/get"
 
 echo "# Try to ping httpbin as a DNS resource"
-client sh -c "ping -W 1 -c 30 $HTTPBIN"
+client_ping_resource "$HTTPBIN"
 
 echo "# Access httpbin by DNS"
-client sh -c "curl --fail $HTTPBIN/get"
+client_curl_resource "$HTTPBIN/get"
 
 echo "# Make sure it's going through the tunnel"
 client_nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
@@ -44,6 +34,6 @@ echo "# Make sure a non-resource doesn't go through the tunnel"
 
 echo "# Stop the gateway and make sure the resource is inaccessible"
 docker compose stop gateway
-client sh -c "curl --connect-timeout 15 --fail $HTTPBIN/get" && exit 1
+client_curl_resource "$HTTPBIN/get" && exit 1
 
 exit 0
