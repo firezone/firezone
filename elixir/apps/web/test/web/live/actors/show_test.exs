@@ -93,13 +93,15 @@ defmodule Web.Live.Actors.ShowTest do
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 500
 
-    [row] =
-      lv
-      |> element("#clients")
-      |> render()
-      |> table_to_map()
+    wait_for(fn ->
+      [row] =
+        lv
+        |> element("#clients")
+        |> render()
+        |> table_to_map()
 
-    assert row["status"] == "Online"
+      assert row["status"] == "Online"
+    end)
   end
 
   test "renders flows table", %{

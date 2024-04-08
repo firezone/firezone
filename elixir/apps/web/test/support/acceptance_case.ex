@@ -142,7 +142,11 @@ defmodule Web.AcceptanceCase do
   Allows to wait for an assertion to be true or to extend the wait timeout for acceptance
   assertions when we know the process is going to take a while.
   """
-  def wait_for(assertion_callback, wait_seconds \\ nil, started_at \\ nil) do
+  def wait_for(
+        assertion_callback,
+        wait_seconds \\ fetch_default_wait_seconds!(),
+        started_at \\ nil
+      ) do
     now = :erlang.monotonic_time(:milli_seconds)
     started_at = started_at || now
 
@@ -151,7 +155,6 @@ defmodule Web.AcceptanceCase do
     rescue
       e in [ExUnit.AssertionError, Wallaby.ExpectationNotMetError] ->
         time_spent = now - started_at
-        wait_seconds = wait_seconds || fetch_default_wait_seconds!()
 
         if time_spent > :timer.seconds(wait_seconds) do
           reraise(e, __STACKTRACE__)

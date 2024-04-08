@@ -121,12 +121,14 @@ defmodule Web.Live.RelayGroups.IndexTest do
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
 
-    lv
-    |> element("#groups")
-    |> render()
-    |> table_to_map()
-    |> with_table_row("instance", "#{relay.ipv4} #{relay.ipv6}", fn row ->
-      assert row["status"] =~ "Online"
+    wait_for(fn ->
+      lv
+      |> element("#groups")
+      |> render()
+      |> table_to_map()
+      |> with_table_row("instance", "#{relay.ipv4} #{relay.ipv6}", fn row ->
+        assert row["status"] =~ "Online"
+      end)
     end)
   end
 

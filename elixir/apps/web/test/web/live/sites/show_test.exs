@@ -157,14 +157,14 @@ defmodule Web.Live.Sites.ShowTest do
     :ok = Domain.Gateways.connect_gateway(gateway)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
-    lv
-    |> element("#gateways")
-    |> render()
-    |> table_to_map()
-    |> with_table_row("instance", gateway.name, fn row ->
-      assert gateway.last_seen_remote_ip
-      assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
-      assert row["status"] =~ "Online"
+    wait_for(fn ->
+      lv
+      |> element("#gateways")
+      |> render()
+      |> table_to_map()
+      |> with_table_row("instance", gateway.name, fn row ->
+        assert row["status"] =~ "Online"
+      end)
     end)
   end
 

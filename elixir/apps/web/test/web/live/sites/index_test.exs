@@ -102,12 +102,14 @@ defmodule Web.Live.Sites.IndexTest do
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
 
-    [row] =
-      lv
-      |> element("#groups")
-      |> render()
-      |> table_to_map()
+    wait_for(fn ->
+      [row] =
+        lv
+        |> element("#groups")
+        |> render()
+        |> table_to_map()
 
-    assert row["online gateways"] =~ gateway.name
+      assert row["online gateways"] =~ gateway.name
+    end)
   end
 end

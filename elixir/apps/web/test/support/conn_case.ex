@@ -233,4 +233,36 @@ defmodule Web.ConnCase do
     |> elements_to_text()
     |> Enum.reject(&(&1 in ["", "Previous", "Next", "Clear filters"]))
   end
+
+  ## Wait helpers
+
+  @doc """
+  Waits for an ExUnit assertion to be `true` before timing out.
+
+  This is helpful when we check UI state changes in LiveView tests,
+  where we don't know if the view was updated before or after the test.
+
+  Default wait time is 2 seconds.
+  """
+  def wait_for(assertion_callback, wait_seconds \\ 2, started_at \\ nil) do
+    now = :erlang.monotonic_time(:milli_seconds)
+    started_at = started_at || now
+
+    try do
+      assertion_callback.()
+    rescue
+      e in [ExUnit.AssertionError] ->
+        time_spent = now - started_at
+
+        if time_spent > :timer.seconds(wait_seconds) do
+          reraise(e, __STACKTRACE__)
+        else
+          floor(time_spent / 10)
+          |> max(100)
+          |> :timer.sleep()
+
+          wait_for(assertion_callback, wait_seconds, started_at)
+        end
+    end
+  end
 end
