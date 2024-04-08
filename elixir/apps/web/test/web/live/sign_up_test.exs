@@ -175,7 +175,7 @@ defmodule Web.Live.SignUpTest do
            |> form("form", registration: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "registration[email]" => ["has invalid format"]
+             "registration[email]" => ["is an invalid email address"]
            }
   end
 
