@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
+import ActionLink from "@/components/ActionLink";
 import DocsSidebarToggle from "./DocsSidebarToggle";
 import KbSidebarToggle from "./KbSidebarToggle";
 import { Navbar } from "flowbite-react";
@@ -13,19 +14,12 @@ import { HiChevronDown } from "react-icons/hi2";
 export default function RootNavbar() {
   const p = usePathname() || "";
   let productDropdown: any = null;
-  let docsDropdown: any = null;
 
   useEffect(() => {
     if (!productDropdown) {
       productDropdown = new Dropdown(
         document.getElementById("product-dropdown-menu"),
         document.getElementById("product-dropdown-link")
-      );
-    }
-    if (!docsDropdown) {
-      docsDropdown = new Dropdown(
-        document.getElementById("docs-dropdown-menu"),
-        document.getElementById("docs-dropdown-link")
       );
     }
     // Manually init flowbite's data-toggle listeners since we're using custom components
@@ -40,15 +34,7 @@ export default function RootNavbar() {
       );
     }
 
-    if (!docsDropdown) {
-      docsDropdown = new Dropdown(
-        document.getElementById("docs-dropdown-menu"),
-        document.getElementById("docs-dropdown-link")
-      );
-    }
-
     productDropdown.hide();
-    docsDropdown.hide();
   };
 
   return (
@@ -104,6 +90,20 @@ export default function RootNavbar() {
                 <li>
                   <Link
                     onClick={hideDropdown}
+                    href="/kb/user-guides"
+                    className={
+                      (p == "/kb/user-guides"
+                        ? "text-neutral-900 underline"
+                        : "text-neutral-800") +
+                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
+                    }
+                  >
+                    Download
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    onClick={hideDropdown}
                     href="/contact/sales"
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
@@ -113,24 +113,19 @@ export default function RootNavbar() {
                 <li>
                   <Link
                     onClick={hideDropdown}
-                    href="https://github.com/orgs/firezone/projects/9"
+                    href="https://github.com/firezone/firezone"
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
-                    Roadmap
+                    Open Source
                   </Link>
                 </li>
                 <li>
                   <Link
                     onClick={hideDropdown}
-                    href="/product/early-access"
-                    className={
-                      (p == "/product/early-access"
-                        ? "text-neutral-900 underline"
-                        : "text-neutral-800") +
-                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                    }
+                    href="https://github.com/orgs/firezone/projects/9"
+                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
-                    Early Access
+                    Roadmap
                   </Link>
                 </li>
                 <li>
@@ -147,16 +142,6 @@ export default function RootNavbar() {
                     Newsletter
                   </Link>
                 </li>
-                <li>
-                  {/* TODO: use <Link> here, toggling dropdown */}
-                  <Link
-                    onClick={hideDropdown}
-                    href="https://github.com/firezone/firezone"
-                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                  >
-                    Open Source
-                  </Link>
-                </li>
               </ul>
             </div>
             <Link
@@ -170,62 +155,17 @@ export default function RootNavbar() {
             >
               Blog
             </Link>
-            <button
-              id="docs-dropdown-link"
+            <Link
               className={
-                (p.startsWith("/docs") || p.startsWith("/kb")
-                  ? "text-neutral-900"
+                (p.startsWith("/kb")
+                  ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " hover:text-neutral-900 flex items-center justify-between p-0 sm:p-1 mr-1"
+                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
               }
+              href="/kb"
             >
-              <span
-                className={
-                  "hover:underline font-medium " +
-                  (p.startsWith("/docs") || p.startsWith("/kb")
-                    ? "underline"
-                    : "")
-                }
-              >
-                Docs
-              </span>
-              <HiChevronDown className="w-3 h-3 mx-1" />
-            </button>
-            <div
-              id="docs-dropdown-menu"
-              className="z-10 hidden bg-white divide-y divide-gray-100 rounded shadow-lg w-44"
-            >
-              <ul className="py-2" aria-labelledby="product-dropdown-link">
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="/kb"
-                    className={
-                      (p.startsWith("/kb")
-                        ? "text-neutral-900 underline"
-                        : "text-neutral-800") +
-                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                    }
-                  >
-                    Latest Docs
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="/docs"
-                    className={
-                      (p.startsWith("/docs")
-                        ? "text-neutral-900 underline"
-                        : "text-neutral-800") +
-                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                    }
-                  >
-                    Legacy (0.7) Docs
-                  </Link>
-                </li>
-              </ul>
-            </div>
+              Docs
+            </Link>
             <Link
               className={
                 (p == "/pricing"
@@ -253,7 +193,13 @@ export default function RootNavbar() {
               />
             </Link>
             <span className="mr-2">
-              <RequestDemoButton />
+              <ActionLink
+                size="ml-1 -mr-1 w-5 h-5"
+                href="https://app.firezone.dev"
+                className="hover:underline p-2 mr-1"
+              >
+                Admin Portal
+              </ActionLink>
             </span>
           </div>
         </div>
