@@ -313,6 +313,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         Ok(x) => x,
         Err(error) => {
             tracing::error!(?error, "Failed to build Tauri app instance");
+            #[allow(clippy::wildcard_enum_match_arm)]
             match error {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
                     return Err(Error::WebViewNotInstalled);
@@ -819,6 +820,8 @@ async fn run_controller(
                 let Some(req) = req else {
                     break;
                 };
+
+                #[allow(clippy::wildcard_enum_match_arm)]
                 match req {
                     // SAFETY: Crashing is unsafe
                     Req::Fail(Failure::Crash) => {

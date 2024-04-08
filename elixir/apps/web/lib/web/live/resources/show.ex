@@ -20,6 +20,7 @@ defmodule Web.Resources.Show do
           socket,
           page_title: "Resource #{resource.name}",
           traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
+          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           resource: resource,
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
           params: Map.take(params, ["site_id"])
@@ -298,7 +299,7 @@ defmodule Web.Resources.Show do
             </.link>
             (<%= flow.gateway_remote_ip %>)
           </:col>
-          <:col :let={flow} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>
