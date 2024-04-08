@@ -44,7 +44,9 @@ defmodule Web.Live.Sites.NewTokenTest do
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id}
 
-    assert element(lv, "#connection-status")
-           |> render() =~ "Connected, click to continue"
+    wait_for(fn ->
+      assert element(lv, "#connection-status")
+             |> render() =~ "Connected, click to continue"
+    end)
   end
 end
