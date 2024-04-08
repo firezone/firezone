@@ -2893,7 +2893,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.5.6",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -4749,7 +4749,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#a2a214b968fbcbc9aa66aba4393851b3d6ab5b49"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#cc0d2e95631475601f215b58b90a8105519162cb"
 dependencies = [
  "bytes",
  "libc",
