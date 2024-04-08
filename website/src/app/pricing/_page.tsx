@@ -124,7 +124,7 @@ export default function _Page() {
               <span className="h-full">
                 <span className="text-sm text-neutral-700 inline-block align-bottom ml-1 mb-1">
                   {" "}
-                  per seat / month
+                  per user / month
                   {annual && ", $50 billed annually"}
                 </span>
               </span>

@@ -81,13 +81,13 @@ impl StunBinding {
         let transaction_id = message.transaction_id();
 
         match self.state {
-            State::SentRequest { id, .. } if id == transaction_id => {
-                self.state = State::ReceivedResponse { at: now }
-            }
-            _ => {
-                return false;
+            State::SentRequest { id, .. } if id == transaction_id => {}
+            State::SentRequest { .. } | State::ReceivedResponse { .. } | State::Failed => {
+                return false
             }
         }
+
+        self.state = State::ReceivedResponse { at: now };
 
         let Some(mapped_address) = message.get_attribute::<XorMappedAddress>() else {
             tracing::warn!("STUN server replied but is missing `XOR-MAPPED-ADDRESS");
@@ -165,7 +165,7 @@ impl StunBinding {
                     .next_backoff()
                     .expect("we just reset the backoff")
             }
-            _ => return,
+            State::Failed | State::SentRequest { .. } | State::ReceivedResponse { .. } => return,
         };
 
         let (state, transmit) = new_binding_request(self.server, now, backoff);

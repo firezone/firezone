@@ -312,6 +312,13 @@ defmodule Domain.Actors do
 
   # Actors
 
+  def count_users_for_account(%Accounts.Account{} = account) do
+    Actor.Query.not_disabled()
+    |> Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_type({:in, [:account_admin_user, :account_user]})
+    |> Repo.aggregate(:count)
+  end
+
   def count_account_admin_users_for_account(%Accounts.Account{} = account) do
     Actor.Query.not_disabled()
     |> Actor.Query.by_account_id(account.id)

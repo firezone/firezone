@@ -23,7 +23,7 @@ module "gateways" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "gateway"
-  image_tag  = var.image_tag
+  image_tag  = local.gateway_image_tag
 
   observability_log_level = "debug"
 
@@ -107,6 +107,10 @@ resource "google_compute_firewall" "gateways-ssh-ipv4" {
   allow {
     protocol = "sctp"
     ports    = [22]
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
   }
 
   # Only allows connections using IAP

@@ -112,49 +112,39 @@ product documentation, organized as follows:
 
 ## Quickstart
 
-Firezone 1.x is currently accepting early access signups for closed testing.
-Fill out the
-[early access form](https://www.firezone.dev/product/early-access?utm_source=readme)
-to request access and we'll be in touch!
+The quickest way to get started with Firezone is to sign up for an account at
+[https://app.firezone.dev/sign_up](https://app.firezone.dev/sign_up?utm_source=readme).
+
+Once you've signed up, follow the instructions in the welcome email to get
+started.
 
 ## Frequently asked questions (FAQ)
 
 ### Can I self-host Firezone?
 
 Our [license](#license) won't stop you from self-hosting the entire Firezone
-product top to bottom, but we can't commit the resources to make this a smooth
-experience and therefore don't support self-hosting the control plane at this
-time.
-
-If you have a business case requiring an on-prem installation of Firezone please
-[get in touch](https://www.firezone.dev/contact/sales?utm_source=readme).
+product top to bottom, but our internal APIs are changing rapidly so we can't
+meaningfully support self-hosting Firezone in production at this time.
 
 If you're feeling especially adventurous and want to self-host Firezone for
-**educational** or **recreational** purposes, you'll want to build and
-distribute the clients from source to ensure they remain locked to a version
-compatible with your self-hosted control plane. Unfortunately, the following
-clients must be distributed through proprietary app stores due to restrictions
-imposed by Apple and Google:
+**educational** or **hobby** purposes, follow the instructions to spin up a
+local development environment in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- macOS
-- iOS
-- Android / ChromeOS
+The clients can be built from their respective directories.
 
-Because it's impossible to select which client version to install from a
-particular app store, building and distributing Firezone from source is the only
-to way self-host Firezone at this time.
+The latest published clients (on App Stores and on
+[releases](https://github.com/firezone/firezone/releases)) are only guaranteed
+to work with the managed version of Firezone and may not work with a self-hosted
+portal built from this repository. This is because Apple and Google can
+sometimes delay updates to their app stores, and so the latest published version
+may not be compatible with the tip of `main` from this repository.
 
-Otherwise, if you're hobbyist or developer and are looking to spin it up locally
-to contribute or experiment with, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### How do I upgrade from 0.7?
-
-Unfortunately, you can't. The good news is Firezone 1.x is _much_ easier to
-setup and manage than 0.x and so you probably don't need to.
+Therefore, if you're experimenting with self-hosting Firezone, you will probably
+want to use clients you build and distribute yourself as well.
 
 ### How long will 0.7 be supported until?
 
-**Firezone 0.7 is currently end-of-life and will stop receiving updates after
+**Firezone 0.7 is currently end-of-life and has stopped receiving updates as of
 January 31st, 2024.** It will continue to be available indefinitely from the
 `legacy` branch of this repo under the Apache 2.0 license.
 
@@ -166,7 +156,7 @@ https://www.firezone.dev/pricing?utm_source=readme
 ## Documentation
 
 Additional documentation on general usage, troubleshooting, and configuration
-can be found at [https://docs.firezone.dev](https://docs.firezone.dev).
+can be found at [https://www.firezone.dev/kb](https://www.firezone.dev/kb).
 
 ## Get Help
 
