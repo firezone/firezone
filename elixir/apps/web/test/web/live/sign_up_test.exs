@@ -75,6 +75,42 @@ defmodule Web.Live.SignUpTest do
     end)
   end
 
+  test "trims the user email", %{conn: conn} do
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+    account_name = "FooBar"
+
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+    email = Fixtures.Auth.email()
+
+    attrs = %{
+      account: %{name: account_name},
+      actor: %{name: "John Doe"},
+      email: " " <> email <> " "
+    }
+
+    Bypass.open()
+    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
+      id: Ecto.UUID.generate(),
+      name: account_name
+    })
+    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
+
+    lv
+    |> form("form", registration: attrs)
+    |> render_submit()
+
+    account = Repo.one(Domain.Accounts.Account)
+    assert account.name == account_name
+    assert account.metadata.stripe.customer_id
+    assert account.metadata.stripe.billing_email == email
+
+    identity = Repo.one(Domain.Auth.Identity)
+    assert identity.account_id == account.id
+    assert identity.provider_identifier == email
+  end
+
   test "allows whitelisted domains to create new account", %{conn: conn} do
     whitelisted_domain = "example.com"
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)

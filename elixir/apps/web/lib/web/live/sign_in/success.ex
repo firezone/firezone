@@ -26,7 +26,7 @@ defmodule Web.SignIn.Success do
   end
 
   def mount(_params, _session, _socket) do
-    raise Web.LiveErrors.NotFoundError
+    raise Web.LiveErrors.InvalidParamsError
   end
 
   def render(assigns) do
