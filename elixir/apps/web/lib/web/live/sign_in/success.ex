@@ -1,7 +1,16 @@
 defmodule Web.SignIn.Success do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
 
-  def mount(params, _session, socket) do
+  def mount(
+        %{
+          "fragment" => _,
+          "state" => _,
+          "actor_name" => _,
+          "identity_provider_identifier" => _
+        } = params,
+        _session,
+        socket
+      ) do
     if connected?(socket) do
       Process.send_after(self(), :redirect_client, 100)
     end
@@ -14,6 +23,10 @@ defmodule Web.SignIn.Success do
 
     socket = assign(socket, :params, query_params)
     {:ok, socket}
+  end
+
+  def mount(_params, _session, _socket) do
+    raise Web.LiveErrors.InvalidParamsError
   end
 
   def render(assigns) do

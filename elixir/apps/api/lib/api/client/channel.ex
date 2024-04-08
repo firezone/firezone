@@ -34,6 +34,10 @@ defmodule API.Client.Channel do
 
   defp schedule_expiration(%{assigns: %{subject: %{expires_at: expires_at}}} = socket) do
     expires_in = DateTime.diff(expires_at, DateTime.utc_now(), :millisecond)
+    # Protect from race conditions where the token might have expired during code execution
+    expires_in = max(0, expires_in)
+    # Expiration time is capped at 31 days even if IdP returns really long lived tokens
+    expires_in = min(expires_in, 2_678_400_000)
 
     if expires_in > 0 do
       Process.send_after(self(), :token_expired, expires_in)

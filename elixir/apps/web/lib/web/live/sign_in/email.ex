@@ -28,6 +28,10 @@ defmodule Web.SignIn.Email do
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
+  def mount(_params, _session, _socket) do
+    raise Web.LiveErrors.NotFoundError
+  end
+
   def render(assigns) do
     ~H"""
     <section>

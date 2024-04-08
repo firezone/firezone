@@ -22,7 +22,8 @@ defmodule Web.SignUp do
       %Registration{}
       |> Ecto.Changeset.cast(attrs, [:email])
       |> Ecto.Changeset.validate_required([:email])
-      |> Ecto.Changeset.validate_format(:email, ~r/.+@.+/)
+      |> Domain.Repo.Changeset.trim_change(:email)
+      |> Domain.Repo.Changeset.validate_email(:email)
       |> validate_email_allowed(whitelisted_domains)
       |> Ecto.Changeset.validate_confirmation(:email,
         required: true,

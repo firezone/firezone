@@ -34,4 +34,13 @@ defmodule Web.SignIn.SuccessTest do
     uri = URI.parse(path)
     assert URI.decode_query(uri.query) == expected_query_params
   end
+
+  test "returns 422 error when params are missing", %{
+    account: account,
+    conn: conn
+  } do
+    assert_raise Web.LiveErrors.InvalidParamsError, fn ->
+      live(conn, ~p"/#{account}/sign_in/success")
+    end
+  end
 end
