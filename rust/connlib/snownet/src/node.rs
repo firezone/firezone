@@ -1416,7 +1416,9 @@ impl Connection {
                 TunnResult::WriteToNetwork(b) => {
                     transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
                 }
-                _ => panic!("Unexpected result from update_timers"),
+                TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
+                    panic!("Unexpected result from update_timers")
+                }
             };
         }
 
@@ -1476,7 +1478,7 @@ impl Connection {
                         self.force_handshake(allocations, transmits, now);
                     }
                 }
-                _ => {}
+                IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
         }
 

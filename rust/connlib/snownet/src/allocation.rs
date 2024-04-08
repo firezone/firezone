@@ -808,12 +808,11 @@ fn make_channel_bind_request(target: SocketAddr, channel: u16) -> Message<Attrib
 }
 
 fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
-    let addr = match attr {
-        Attribute::XorMappedAddress(a) => a.address(),
-        _ => return None,
+    let Attribute::XorMappedAddress(a) = attr else {
+        return None;
     };
 
-    let new_candidate = match Candidate::server_reflexive(addr, local, Protocol::Udp) {
+    let new_candidate = match Candidate::server_reflexive(a.address(), local, Protocol::Udp) {
         Ok(c) => c,
         Err(e) => {
             tracing::debug!("Observed address is not a valid candidate: {e}");
@@ -828,9 +827,13 @@ fn relay_candidate(
     filter: impl Fn(SocketAddr) -> bool,
 ) -> impl Fn(&Attribute) -> Option<Candidate> {
     move |attr| {
-        let addr = match attr {
-            Attribute::XorRelayAddress(a) if filter(a.address()) => a.address(),
-            _ => return None,
+        let Attribute::XorRelayAddress(a) = attr else {
+            return None;
+        };
+        let addr = a.address();
+
+        if !filter(addr) {
+            return None;
         };
 
         let new_candidate = match Candidate::relayed(addr, Protocol::Udp) {

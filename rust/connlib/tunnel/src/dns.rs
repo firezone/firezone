@@ -130,6 +130,8 @@ pub(crate) fn create_local_answer<'a>(
     let message = to_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
     let qtype = question.qtype();
+
+    #[allow(clippy::wildcard_enum_match_arm)]
     let resource = match qtype {
         Rtype::A => RecordData::A(
             ips.iter()
@@ -349,6 +351,7 @@ fn resource_from_question<N: ToDname>(
     let name = ToDname::to_vec(question.qname());
     let qtype = question.qtype();
 
+    #[allow(clippy::wildcard_enum_match_arm)]
     match qtype {
         Rtype::A => {
             let Some(description) = get_description(&name, dns_resources) else {

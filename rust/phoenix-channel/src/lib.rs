@@ -92,6 +92,7 @@ where
     );
 
     let (channel, init_message) = loop {
+        #[allow(clippy::wildcard_enum_match_arm)]
         match future::poll_fn(|cx| channel.poll(cx)).await? {
             Event::InboundMessage {
                 topic,
@@ -144,6 +145,7 @@ enum InternalError {
     Serde(serde_json::Error),
     MissedHeartbeat,
     CloseMessage,
+    StreamClosed,
 }
 
 impl fmt::Display for InternalError {
@@ -163,6 +165,7 @@ impl fmt::Display for InternalError {
             InternalError::Serde(e) => write!(f, "failed to deserialize message: {e}"),
             InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
+            InternalError::StreamClosed => write!(f, "websocket stream was closed"),
         }
     }
 }
@@ -451,7 +454,11 @@ where
                     self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
-                _ => (),
+                Poll::Ready(None) => {
+                    self.reconnect_on_transient_error(InternalError::StreamClosed);
+                    continue;
+                }
+                Poll::Pending => {}
             }
 
             // Priority 3: Handle heartbeats.
@@ -469,7 +476,7 @@ where
                     self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
                     continue;
                 }
-                _ => (),
+                Poll::Pending => {}
             }
 
             // Priority 4: Flush out.

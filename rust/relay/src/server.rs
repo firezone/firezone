@@ -850,7 +850,7 @@ where
         let response_class = match class {
             MessageClass::SuccessResponse => "success",
             MessageClass::ErrorResponse => "error",
-            _ => return,
+            MessageClass::Indication | MessageClass::Request => return,
         };
         let message_type = match method {
             BINDING => "binding",
