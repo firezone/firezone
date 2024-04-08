@@ -1,13 +1,13 @@
 # Format: Semver
 # See discussion here: https://github.com/firezone/firezone/issues/2041
 # and PR changing it here: https://github.com/firezone/firezone/pull/2949
-apple-version = 1.0.0
+apple-version = 1.0.1
 android-version = 1.0.0
-rust-version = 1.0.0
+cargo-version = 1.0.0
 elixir-version = 1.0.0
 ci-version = 1.0.0
 
-.PHONY: version apple-version android-version rust-version ci-version elixir-version
+.PHONY: version apple-version android-version cargo-version ci-version elixir-version
 
 ifeq ($(shell uname),Darwin)
 SEDARG := -i ''
@@ -21,7 +21,7 @@ apple-version:
 android-version:
 	@find kotlin/ -name "*.gradle.kts" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/versionName =.*/versionName = "$(android-version)"/;}' {} \;
 
-rust-version:
+cargo-version:
 	@find rust/ -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(rust-version)/;}' {} \;
 	# TODO: This can fail on some platforms. You may need to specify the package
 	# to avoid hitting the wrong codepaths for your platform.
@@ -34,4 +34,4 @@ elixir-version:
 	@# Elixir can set its Application version from a file, but other components aren't so flexible.
 	@echo $(elixir-version) > elixir/VERSION
 
-version: apple-version android-version rust-version ci-version elixir-version
+version: apple-version android-version cargo-version ci-version elixir-version
