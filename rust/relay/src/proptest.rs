@@ -27,7 +27,7 @@ pub fn allocation_lifetime() -> impl Strategy<Value = Lifetime> {
 }
 
 pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
-    (0x4000u16..0x4FFFu16).prop_map(|n| ChannelNumber::new(n).unwrap())
+    (ChannelNumber::MIN..=ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
 }
 
 pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, u16)> {
