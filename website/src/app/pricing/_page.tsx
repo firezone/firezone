@@ -371,8 +371,8 @@ export default function _Page() {
             <p>When will I be billed?</p>
           </blockquote>
           <p className="mb-8">
-            The Team plan is billed when you start service, and then monthly
-            thereafter. Enterprise plans are billed annually.
+            The Team plan is billed monthly on the same day you start service
+            until canceled. Enterprise plans are billed annually.
           </p>
 
           <a id="payment-methods" className="pt-8"></a>
