@@ -32,7 +32,7 @@ defmodule Web.Flows.Show do
 
       {:ok, socket}
     else
-      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+      _other -> raise Web.LiveErrors.NotFoundError
     end
   end
 

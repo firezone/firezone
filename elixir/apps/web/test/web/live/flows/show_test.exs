@@ -36,6 +36,26 @@ defmodule Web.Live.Flows.ShowTest do
                }}}
   end
 
+  test "renders 404 error when flow activities are not enabled", %{
+    account: account,
+    identity: identity,
+    flow: flow,
+    conn: conn
+  } do
+    {:ok, account} =
+      Domain.Accounts.update_account(account, %{
+        features: %{
+          flow_activities: false
+        }
+      })
+
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/flows/#{flow}") =~ "404"
+    end
+  end
+
   test "renders breadcrumbs item", %{
     account: account,
     flow: flow,
