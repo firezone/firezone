@@ -80,8 +80,11 @@ impl StunBinding {
 
         let transaction_id = message.transaction_id();
 
-        if !matches!(self.state, State::SentRequest { id, .. } if id == transaction_id) {
-            return false;
+        match self.state {
+            State::SentRequest { id, .. } if id == transaction_id => {}
+            State::SentRequest { .. } | State::ReceivedResponse { .. } | State::Failed => {
+                return false
+            }
         }
 
         self.state = State::ReceivedResponse { at: now };
