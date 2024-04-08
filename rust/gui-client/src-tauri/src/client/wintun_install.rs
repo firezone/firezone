@@ -47,9 +47,12 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
     // `tun_windows.rs` in connlib, and `elevation.rs`, rely on thia.
     if !dll_already_exists(&path, &dll_bytes) {
-        fs::write(&path, dll_bytes.bytes).map_err(|e| match e.kind() {
-            io::ErrorKind::PermissionDenied => Error::PermissionDenied,
-            _ => Error::WriteFailed(e),
+        fs::write(&path, dll_bytes.bytes).map_err(|e| {
+            #[allow(clippy::wildcard_enum_match_arm)]
+            match e.kind() {
+                io::ErrorKind::PermissionDenied => Error::PermissionDenied,
+                _ => Error::WriteFailed(e),
+            }
         })?;
     }
     Ok(path)

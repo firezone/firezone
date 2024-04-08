@@ -23,7 +23,7 @@ resolver = "2"
 [workspace.dependencies]
 boringtun = { version = "0.6", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-swift-bridge = "0.1.52"
+swift-bridge = "0.1.53"
 backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
@@ -57,6 +57,7 @@ clippy.print_stdout = "warn"
 clippy.print_stderr = "warn"
 clippy.unnecessary_wraps = "warn"
 clippy.unused_async = "warn"
+clippy.wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }

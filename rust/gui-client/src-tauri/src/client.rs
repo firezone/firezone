@@ -122,6 +122,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 }
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
+    #[allow(clippy::wildcard_enum_match_arm)]
     let error_msg = match error {
         // TODO: Update this URL
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
