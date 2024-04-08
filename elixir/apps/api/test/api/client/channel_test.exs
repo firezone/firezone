@@ -113,6 +113,31 @@ defmodule API.Client.ChannelTest do
       assert is_number(online_at)
     end
 
+    test "does not crash when subject expiration is too large", %{
+      client: client,
+      subject: subject
+    } do
+      expires_at = DateTime.utc_now() |> DateTime.add(100_000_000_000, :millisecond)
+      subject = %{subject | expires_at: expires_at}
+
+      # We need to trap exits to avoid test process termination
+      # because it is linked to the created test channel process
+      Process.flag(:trap_exit, true)
+
+      {:ok, _reply, _socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      refute_receive {:EXIT, _pid, _}
+      refute_receive {:socket_close, _pid, _}
+    end
+
     test "expires the channel when token is expired", %{client: client, subject: subject} do
       expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
       subject = %{subject | expires_at: expires_at}

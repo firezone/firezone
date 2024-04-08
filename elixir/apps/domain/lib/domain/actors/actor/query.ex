@@ -30,6 +30,10 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
+  def by_type(queryable, {:in, types}) do
+    where(queryable, [actors: actors], actors.type in ^types)
+  end
+
   def by_type(queryable, type) do
     where(queryable, [actors: actors], actors.type == ^type)
   end
