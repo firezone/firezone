@@ -371,8 +371,8 @@ export default function _Page() {
             <p>When will I be billed?</p>
           </blockquote>
           <p className="mb-8">
-            When you start service, or at the beginning of each billing cycle.
-            Enterprise plans are billed quarterly or annually.
+            The Team plan is billed when you start service, and then monthly
+            thereafter. Enterprise plans are billed annually.
           </p>
 
           <a id="payment-methods" className="pt-8"></a>
@@ -381,9 +381,9 @@ export default function _Page() {
           </blockquote>
           <p className="mb-8">
             The Starter plan is free and does not require a credit card to get
-            started. Enterprise plans can be paid via credit card, ACH, or wire
-            transfer and will have a 100% discount applied for the duration of
-            the beta.
+            started. Team and Enterprise plans can be paid via credit card, ACH,
+            or wire transfer and will have a 100% discount applied for the
+            duration of the beta.
           </p>
 
           <a id="special-pricing" className="pt-8"></a>
