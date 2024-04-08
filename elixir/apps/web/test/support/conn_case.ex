@@ -244,7 +244,7 @@ defmodule Web.ConnCase do
 
   Default wait time is 2 seconds.
   """
-  def wait_for(assertion_callback, wait_seconds \\ nil, started_at \\ nil) do
+  def wait_for(assertion_callback, wait_seconds \\ 2, started_at \\ nil) do
     now = :erlang.monotonic_time(:milli_seconds)
     started_at = started_at || now
 
@@ -253,7 +253,6 @@ defmodule Web.ConnCase do
     rescue
       e in [ExUnit.AssertionError] ->
         time_spent = now - started_at
-        wait_seconds = wait_seconds || 2
 
         if time_spent > :timer.seconds(wait_seconds) do
           reraise(e, __STACKTRACE__)
