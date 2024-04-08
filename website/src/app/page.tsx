@@ -14,6 +14,26 @@ import {
   HiGlobeAlt,
 } from "react-icons/hi2";
 
+function ActionButtons() {
+  return (
+    <div className="w-full max-w-screen-sm flex justify-between mt-8">
+      <button
+        type="button"
+        className="w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
+      >
+        <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+      </button>
+      <button
+        type="button"
+        className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
+      >
+        <Link href="/contact/sales">Request demo</Link>
+        <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+      </button>
+    </div>
+  );
+}
+
 export default function Page() {
   return (
     <>
@@ -38,16 +58,8 @@ export default function Page() {
             </Link>
             .
           </h2>
-          <div className="flex mb-8 lg:mb-16 flex-row justify-center space-y-0 space-x-4">
-            <Link href="/contact/sales">
-              <button
-                type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-accent-450 hover:bg-accent-700 hover:scale-105 duration-0 transform transition"
-              >
-                Request demo
-                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-              </button>
-            </Link>
+          <div className="mb-12 flex flex-col px-4 justify-center items-center">
+            <ActionButtons />
           </div>
           <div className="flex items-center justify-center">
             <video
@@ -552,23 +564,7 @@ export default function Page() {
           <h3 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
             Give your team secure access to company resources in minutes.
           </h3>
-          <div className="w-full max-w-screen-sm flex justify-between mt-8">
-            <button
-              type="button"
-              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold text-center text-neutral-900 rounded bg-neutral-50 hover:scale-105 duration-0 transform transition"
-            >
-              <Link href="/product/early-access">
-                Register for early access
-              </Link>
-            </button>
-            <button
-              type="button"
-              className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
-            >
-              <Link href="/contact/sales">Request demo</Link>
-              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-            </button>
-          </div>
+          <ActionButtons />
         </div>
       </section>
     </>

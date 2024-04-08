@@ -9,6 +9,15 @@ function planBadge(plan: string) {
           ENTERPRISE
         </span>
       );
+    case "team":
+      return (
+        <span
+          className="bg-neutral-800 text-neutral-100 text-xs font-semibold me-2 px-2.5 py-0.5 rounded"
+          title="Feature available on the Team plan"
+        >
+          TEAM
+        </span>
+      );
     case "starter":
       return (
         <span
@@ -29,7 +38,7 @@ export default function PlanBadge({
 }) {
   const plansHtml = plans.map((plan) => planBadge(plan));
   return (
-    <div className="flex justify-between">
+    <div className="flex flex-wrap justify-between">
       {children}
       <div>{plansHtml}</div>
     </div>
