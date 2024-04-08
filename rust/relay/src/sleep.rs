@@ -13,6 +13,7 @@ use std::time::SystemTime;
 pub struct Sleep {
     /// The inner sleep future. Boxed for convenience to make [`Sleep`] implement [`Unpin`].
     inner: Option<BoxFuture<'static, ()>>,
+    current_deadline: Option<SystemTime>,
     waker: Option<Waker>,
 }
 
@@ -20,11 +21,16 @@ impl Sleep {
     pub fn reset(self: Pin<&mut Self>, deadline: SystemTime) {
         let this = self.get_mut();
 
+        if this.current_deadline.is_some_and(|c| c == deadline) {
+            return;
+        }
+
         let duration = deadline
             .duration_since(SystemTime::now())
             .unwrap_or_default();
 
         this.inner = Some(tokio::time::sleep(duration).boxed());
+        this.current_deadline = Some(deadline);
 
         if let Some(waker) = this.waker.take() {
             waker.wake();

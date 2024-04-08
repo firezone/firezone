@@ -174,6 +174,7 @@ impl ConnlibError {
 #[cfg(target_os = "linux")]
 impl From<rtnetlink::Error> for ConnlibError {
     fn from(err: rtnetlink::Error) -> Self {
+        #[allow(clippy::wildcard_enum_match_arm)]
         match err {
             rtnetlink::Error::NetlinkError(err) => Self::NetlinkErrorIo(err.to_io()),
             err => Self::NetlinkError(err),
