@@ -213,6 +213,7 @@ impl Allocation {
                     "Invalid credentials, refusing to re-authenticate {}",
                     original_request.method()
                 );
+                self.invalidate_allocation();
 
                 return true;
             }
