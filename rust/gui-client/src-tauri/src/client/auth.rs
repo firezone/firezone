@@ -117,7 +117,7 @@ impl Auth {
     pub fn session(&self) -> Option<&Session> {
         match &self.state {
             State::SignedIn(x) => Some(x),
-            _ => None,
+            State::NeedResponse(_) | State::SignedOut => None,
         }
     }
 
@@ -189,7 +189,7 @@ impl Auth {
     pub fn token(&self) -> Result<Option<SecretString>> {
         match self.state {
             State::SignedIn(_) => {}
-            _ => return Ok(None),
+            State::NeedResponse(_) | State::SignedOut => return Ok(None),
         }
 
         Ok(self
@@ -225,7 +225,7 @@ impl Auth {
     pub fn ongoing_request(&self) -> Result<&Request> {
         match &self.state {
             State::NeedResponse(x) => Ok(x),
-            _ => Err(Error::NoInflightRequest),
+            State::SignedIn(_) | State::SignedOut => Err(Error::NoInflightRequest),
         }
     }
 }

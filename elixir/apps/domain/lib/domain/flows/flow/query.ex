@@ -97,7 +97,7 @@ defmodule Domain.Flows.Flow.Query do
   @impl Domain.Repo.Query
   def cursor_fields,
     do: [
-      {:flows, :asc, :inserted_at},
+      {:flows, :desc, :inserted_at},
       {:flows, :asc, :id}
     ]
 end
