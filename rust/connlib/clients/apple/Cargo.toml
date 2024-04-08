@@ -8,7 +8,7 @@ edition = "2021"
 mock = ["connlib-client-shared/mock"]
 
 [build-dependencies]
-swift-bridge-build = "0.1.52"
+swift-bridge-build = "0.1.53"
 
 [dependencies]
 secrecy = { workspace = true }

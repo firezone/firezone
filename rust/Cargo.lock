@@ -3366,7 +3366,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.4",
 ]
 
 [[package]]
@@ -5865,9 +5865,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-build"
-version = "0.1.52"
+version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba4282dc94afa1b7d8f2445532a7c0b7508d470cee261132e26ec001b3185c3b"
+checksum = "a0216c84c63a11fb704946f9c4843c9fad28aaf2431cbbd674a37d86d71f2100"
 dependencies = [
  "proc-macro2",
  "swift-bridge-ir",
@@ -5877,9 +5877,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-ir"
-version = "0.1.52"
+version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2096a82fb42280699d9b5dde6674cb4f802931eca8623f1edc4587c50dc58da"
+checksum = "183036306714fcb1a53192dd80b89694eef24389b034f3392109b3447006550f"
 dependencies = [
  "proc-macro2",
  "quote",
