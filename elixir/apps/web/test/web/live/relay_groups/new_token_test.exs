@@ -44,8 +44,10 @@ defmodule Web.Live.RelayGroups.NewTokenTest do
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _group_id}
 
-    assert element(lv, "#connection-status")
-           |> render() =~ "Connected, click to continue"
+    wait_for(fn ->
+      assert element(lv, "#connection-status")
+             |> render() =~ "Connected, click to continue"
+    end)
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{
