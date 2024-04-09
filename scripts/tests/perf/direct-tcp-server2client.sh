@@ -2,6 +2,8 @@
 
 set -euox pipefail
 
+source "./scripts/tests/lib.sh"
+
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
   --reverse \
   --client 172.20.0.110 \
