@@ -28,8 +28,6 @@ impl ResourceId {
 }
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
-pub struct ActorId(Uuid);
 
 impl FromStr for ResourceId {
     type Err = uuid::Error;

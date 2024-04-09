@@ -1,8 +1,8 @@
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
-        ActorId, ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay,
-        ResourceDescription, ResourceId,
+        ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, ResourceDescription,
+        ResourceId,
     },
     Dname,
 };
@@ -14,11 +14,6 @@ use std::net::IpAddr;
 pub struct InitGateway {
     pub interface: Interface,
     pub config: Config,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Actor {
-    pub id: ActorId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -46,7 +41,6 @@ impl Eq for Client {}
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct RequestConnection {
-    pub actor: Actor,
     pub relays: Vec<Relay>,
     pub resource: ResourceDescription,
     pub client: Client,
