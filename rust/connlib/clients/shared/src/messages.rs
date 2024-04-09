@@ -1,11 +1,9 @@
-use std::{collections::HashSet, net::IpAddr};
-
-use serde::{Deserialize, Serialize};
-
 use connlib_shared::messages::{
     GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
     ResourceId, ReuseConnection,
 };
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, net::IpAddr};
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitClient {
