@@ -72,10 +72,6 @@ struct Args {
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<SocketAddr>,
 
-    /// The address of the local interface where we should serve the profiling controller.
-    #[arg(long, env, hide = true)]
-    profiler_ctrl_addr: Option<SocketAddr>,
-
     /// The Google Project ID to embed in spans.
     ///
     /// Set this if you are running on Google Cloud but using the OTLP trace collector.
