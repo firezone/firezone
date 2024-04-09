@@ -23,15 +23,6 @@ pub enum ConnlibError {
     /// Error while decoding a base64 value from a slice.
     #[error("There was an error while decoding a base64 value: {0}")]
     Base64DecodeSliceError(#[from] DecodeSliceError),
-    /// Request error for websocket connection.
-    #[error("Error forming request: {0}")]
-    RequestError(#[from] tokio_tungstenite::tungstenite::http::Error),
-    /// Websocket heartbeat timedout
-    #[error("Websocket heartbeat timedout")]
-    WebsocketTimeout(#[from] tokio_stream::Elapsed),
-    /// Error during websocket connection.
-    #[error("Portal connection error: {0}")]
-    PortalConnectionError(#[from] tokio_tungstenite::tungstenite::error::Error),
     /// Provided string was not formatted as a URL.
     #[error("Badly formatted URI")]
     UriError,
@@ -41,9 +32,6 @@ pub enum ConnlibError {
     /// Serde's serialize error.
     #[error(transparent)]
     SerializeError(#[from] serde_json::Error),
-    /// Error while sending through an async channelchannel.
-    #[error("Error sending message through an async channel")]
-    SendChannelError,
     /// Error when trying to establish connection between peers.
     #[error("Error while establishing connection between peers")]
     ConnectionEstablishError,
@@ -161,16 +149,6 @@ pub enum ConnlibError {
     PortalConnectionFailed(phoenix_channel::Error),
 }
 
-impl ConnlibError {
-    pub fn is_http_client_error(&self) -> bool {
-        matches!(
-            self,
-            Self::PortalConnectionError(tokio_tungstenite::tungstenite::error::Error::Http(e))
-            if e.status().is_client_error()
-        )
-    }
-}
-
 #[cfg(target_os = "linux")]
 impl From<rtnetlink::Error> for ConnlibError {
     fn from(err: rtnetlink::Error) -> Self {
@@ -191,17 +169,5 @@ impl From<WireGuardError> for ConnlibError {
 impl From<&'static str> for ConnlibError {
     fn from(e: &'static str) -> Self {
         ConnlibError::Other(e)
-    }
-}
-
-impl<T> From<tokio::sync::mpsc::error::SendError<T>> for ConnlibError {
-    fn from(_: tokio::sync::mpsc::error::SendError<T>) -> Self {
-        ConnlibError::SendChannelError
-    }
-}
-
-impl From<futures::channel::mpsc::SendError> for ConnlibError {
-    fn from(_: futures::channel::mpsc::SendError) -> Self {
-        ConnlibError::SendChannelError
     }
 }
