@@ -1108,7 +1108,7 @@ defmodule Web.CoreComponents do
 
   def feature_name(%{feature: :flow_activities} = assigns) do
     ~H"""
-    See detailed flow activities <span>(beta)</span>
+    See detailed Resource access logs <span>(beta)</span>
     """
   end
 
@@ -1120,13 +1120,19 @@ defmodule Web.CoreComponents do
 
   def feature_name(%{feature: :traffic_filters} = assigns) do
     ~H"""
-    Filter traffic using protocol and port rules <span>(beta)</span>
+    Restrict access based on port and protocol rules <span>(beta)</span>
     """
   end
 
   def feature_name(%{feature: :self_hosted_relays} = assigns) do
     ~H"""
     Host your own relays <span>(beta)</span>
+    """
+  end
+
+  def feature_name(%{feature: :rest_api} = assigns) do
+    ~H"""
+    REST API <span>(beta)</span>
     """
   end
 
