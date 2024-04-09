@@ -168,7 +168,7 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
            }
   end
 
-  test "creates a new actor on valid attrs", %{
+  test "creates a new identity on valid attrs when next_step not set", %{
     account: account,
     actor: actor,
     identity: identity,
@@ -194,6 +194,38 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
              Repo.get_by(Domain.Auth.Identity, provider_identifier: attrs.provider_identifier)
 
     assert_redirect(lv, ~p"/#{account}/actors/#{identity.actor_id}")
+
+    assert_email_sent(fn email ->
+      assert email.text_body =~ account.slug
+    end)
+  end
+
+  test "creates a new identity on valid attrs when next_step is set", %{
+    account: account,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    email_addr = Fixtures.Auth.email()
+
+    attrs = %{
+      provider_identifier: email_addr,
+      provider_identifier_confirmation: email_addr
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors/users/#{actor}/new_identity?next_step=edit_groups")
+
+    lv
+    |> form("form", identity: attrs)
+    |> render_submit()
+
+    assert identity =
+             Repo.get_by(Domain.Auth.Identity, provider_identifier: attrs.provider_identifier)
+
+    assert_redirect(lv, ~p"/#{account}/actors/#{identity.actor_id}/edit_groups")
 
     assert_email_sent(fn email ->
       assert email.text_body =~ account.slug
