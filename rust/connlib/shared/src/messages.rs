@@ -109,7 +109,7 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
     pub domain: Option<Dname>,
@@ -188,7 +188,7 @@ pub struct Answer {
     pub password: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Offer {
     pub username: String,
     pub password: String,

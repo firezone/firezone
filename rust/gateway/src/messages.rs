@@ -22,24 +22,14 @@ pub struct Config {
     pub ipv6_masquerade_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Client {
     pub id: ClientId,
     pub payload: ClientPayload,
     pub peer: Peer,
 }
 
-// rtc_sdp is ignored from eq since RTCSessionDescription doesn't implement this
-// this will probably be changed in the future.
-impl PartialEq for Client {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.peer == other.peer
-    }
-}
-
-impl Eq for Client {}
-
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct RequestConnection {
     pub relays: Vec<Relay>,
     pub resource: ResourceDescription,
@@ -93,7 +83,7 @@ pub struct RejectAccess {
 
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
