@@ -15,6 +15,7 @@ use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::{Duration, Instant};
 use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
@@ -118,9 +119,11 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
+    let last_heartbeat_sent = Arc::new(Mutex::new(Option::<Instant>::None));
+
     tokio::spawn(http_health_check::serve(
         args.health_check.health_check_addr,
-        || true,
+        make_is_healthy(last_heartbeat_sent.clone()),
     ));
 
     let channel = if let Some(token) = args.token.as_ref() {
@@ -138,7 +141,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr)?;
+    let mut eventloop = Eventloop::new(server, channel, public_addr, last_heartbeat_sent)?;
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {TURN_PORT}");
 
@@ -312,6 +315,8 @@ struct Eventloop<R> {
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
 
+    last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
+
     buffer: [u8; MAX_UDP_SIZE],
 }
 
@@ -323,6 +328,7 @@ where
         server: Server<R>,
         channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
         public_address: IpStack,
+        last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
         let mut sockets = Sockets::new();
 
@@ -349,6 +355,7 @@ where
             last_num_bytes_relayed: 0,
             sockets,
             buffer: [0u8; MAX_UDP_SIZE],
+            last_heartbeat_sent,
         })
     }
 
@@ -525,6 +532,7 @@ where
             }
             Event::HeartbeatSent => {
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
+                *self.last_heartbeat_sent.lock().unwrap() = Some(Instant::now());
             }
             Event::InboundMessage { msg: (), .. } => {}
         }
@@ -545,6 +553,23 @@ fn fmt_human_throughput(mut throughput: f64) -> String {
     format!("{throughput:.2} TB/s")
 }
 
+/// Factory fn for [`is_healthy`].
+fn make_is_healthy(
+    last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
+) -> impl Fn() -> bool + Clone + Send + Sync + 'static {
+    move || is_healthy(last_heartbeat_sent.clone())
+}
+
+fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
+    let guard = last_heartbeat_sent.lock().unwrap();
+
+    let Some(last_hearbeat_sent) = *guard else {
+        return true; // If we are not connected to the portal, we are always healthy.
+    };
+
+    last_hearbeat_sent.elapsed() < MAX_PARTITION_TIME
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,5 +580,31 @@ mod tests {
         assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
         assert_eq!(fmt_human_throughput(955_333_999.0), "955.33 MB/s");
         assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
+    }
+
+    // If we are running in standalone mode, we are always healthy.
+    #[test]
+    fn given_no_heartbeat_is_healthy() {
+        let is_healthy = is_healthy(Arc::new(Mutex::new(None)));
+
+        assert!(is_healthy)
+    }
+
+    #[test]
+    fn given_heartbeat_in_last_15_min_is_healthy() {
+        let is_healthy = is_healthy(Arc::new(Mutex::new(Some(
+            Instant::now() - Duration::from_secs(10),
+        ))));
+
+        assert!(is_healthy)
+    }
+
+    #[test]
+    fn given_last_heartbeat_older_than_15_min_is_not_healthy() {
+        let is_healthy = is_healthy(Arc::new(Mutex::new(Some(
+            Instant::now() - Duration::from_secs(60 * 15),
+        ))));
+
+        assert!(!is_healthy)
     }
 }
