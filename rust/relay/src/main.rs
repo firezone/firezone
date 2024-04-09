@@ -135,6 +135,7 @@ async fn main() -> Result<()> {
 
     tokio::spawn(http_health_check::serve(
         args.health_check.health_check_addr,
+        || true,
     ));
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {TURN_PORT}");
