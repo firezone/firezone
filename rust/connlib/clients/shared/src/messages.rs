@@ -8,7 +8,7 @@ use std::{collections::HashSet, net::IpAddr};
 #[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitClient {
     pub interface: Interface,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[serde(default)]
     pub resources: Vec<ResourceDescription>,
 }
 
