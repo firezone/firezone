@@ -134,13 +134,15 @@ defmodule Web.Live.Relays.ShowTest do
     :ok = Domain.Relays.connect_relay(relay, "foo")
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
 
-    table =
-      lv
-      |> element("#relay")
-      |> render()
-      |> vertical_table_to_map()
+    wait_for(fn ->
+      table =
+        lv
+        |> element("#relay")
+        |> render()
+        |> vertical_table_to_map()
 
-    assert table["status"] =~ "Online"
+      assert table["status"] =~ "Online"
+    end)
   end
 
   test "allows deleting relays", %{
