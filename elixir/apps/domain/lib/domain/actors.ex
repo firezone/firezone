@@ -74,6 +74,15 @@ defmodule Domain.Actors do
     |> Repo.preload(preload)
   end
 
+  def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Group.Query.not_deleted()
+      |> Group.Query.editable()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list(Group.Query, opts)
+    end
+  end
+
   def peek_group_actors(groups, limit, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()

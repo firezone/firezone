@@ -63,20 +63,6 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     assert find_inputs(form) == [
              "actor[name]"
            ]
-
-    Fixtures.Actors.create_group(account: account)
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/actors/service_accounts/new")
-
-    form = form(lv, "form")
-
-    assert find_inputs(form) == [
-             "actor[memberships][]",
-             "actor[name]"
-           ]
   end
 
   test "renders changeset errors on input change", %{
@@ -152,18 +138,11 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
 
   test "creates a new actor on valid attrs", %{
     account: account,
-    actor: actor,
     identity: identity,
     conn: conn
   } do
-    group1 = Fixtures.Actors.create_group(account: account)
-    Fixtures.Actors.create_membership(actor: actor, group: group1)
-
-    group2 = Fixtures.Actors.create_group(account: account)
-
     attrs = %{
-      name: Fixtures.Actors.actor_attrs().name,
-      memberships: [group1.id, group2.id]
+      name: Fixtures.Actors.actor_attrs().name
     }
 
     {:ok, lv, _html} =
@@ -176,6 +155,7 @@ defmodule Web.Live.Actors.ServiceAccount.NewTest do
     |> render_submit()
 
     assert actor = Repo.get_by(Domain.Actors.Actor, name: attrs.name)
+    assert actor.type == :service_account
 
     assert_redirect(lv, ~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
   end

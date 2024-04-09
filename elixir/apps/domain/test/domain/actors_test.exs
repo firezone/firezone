@@ -189,6 +189,68 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "list_editable_groups/1" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns empty list when there are no groups", %{subject: subject} do
+      assert {:ok, [], _metadata} = list_editable_groups(subject)
+    end
+
+    test "does not list groups from other accounts", %{
+      subject: subject
+    } do
+      Fixtures.Actors.create_group()
+      assert {:ok, [], _metadata} = list_editable_groups(subject)
+    end
+
+    test "does not list deleted groups", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Actors.create_group(account: account)
+      |> Fixtures.Actors.delete_group()
+
+      assert {:ok, [], _metadata} = list_editable_groups(subject)
+    end
+
+    test "returns all editable groups", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_managed_group(account: account)
+      Fixtures.Actors.create_group()
+
+      assert {:ok, groups, _metadata} = list_editable_groups(subject)
+      assert length(groups) == 2
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert list_editable_groups(subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
+    end
+  end
+
   describe "list_groups_for/2" do
     setup do
       account = Fixtures.Accounts.create_account()

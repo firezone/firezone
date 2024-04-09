@@ -4,14 +4,10 @@ defmodule Web.Actors.ServiceAccounts.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    groups =
-      Actors.all_editable_groups!(socket.assigns.subject, preload: :provider)
-
     changeset = Actors.new_actor(%{type: :service_account})
 
     socket =
       assign(socket,
-        groups: groups,
         form: to_form(changeset),
         page_title: "New Service Account"
       )
@@ -39,7 +35,7 @@ defmodule Web.Actors.ServiceAccounts.New do
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <.actor_form form={@form} type={:service_account} groups={@groups} subject={@subject} />
+              <.actor_form form={@form} type={:service_account} subject={@subject} />
             </div>
             <.submit_button>
               Create
@@ -54,7 +50,6 @@ defmodule Web.Actors.ServiceAccounts.New do
   def handle_event("change", %{"actor" => attrs}, socket) do
     changeset =
       attrs
-      |> map_actor_form_memberships_attr()
       |> Map.put("type", :service_account)
       |> Actors.new_actor()
       |> Map.put(:action, :insert)
@@ -66,7 +61,6 @@ defmodule Web.Actors.ServiceAccounts.New do
     attrs =
       attrs
       |> Map.put("type", :service_account)
-      |> map_actor_form_memberships_attr()
 
     with {:ok, actor} <-
            Actors.create_actor(

@@ -45,7 +45,6 @@ defmodule Web.Actors.Components do
 
   attr :type, :atom, required: true
   attr :actor, :any, default: %Actors.Actor{memberships: [], last_synced_at: nil}, required: false
-  attr :groups, :any, required: true
   attr :form, :any, required: true
   attr :subject, :any, required: true
 
@@ -76,29 +75,7 @@ defmodule Web.Actors.Components do
         required
       />
     </div>
-    <div :if={@groups != []}>
-      <.input
-        type="group_select"
-        multiple={true}
-        label="Groups"
-        field={@form[:memberships]}
-        value_id={fn membership -> membership.group_id end}
-        options={Web.Groups.Components.select_options(@groups)}
-        placeholder="Groups"
-      />
-      <p class="mt-2 text-xs text-neutral-500">
-        Hold <kbd>Ctrl</kbd> (or <kbd>Command</kbd> on Mac) to select or unselect multiple groups.
-      </p>
-    </div>
     """
-  end
-
-  def map_actor_form_memberships_attr(attrs) do
-    Map.update(attrs, "memberships", [], fn group_ids ->
-      Enum.map(group_ids, fn group_id ->
-        %{group_id: group_id}
-      end)
-    end)
   end
 
   attr :form, :any, required: true

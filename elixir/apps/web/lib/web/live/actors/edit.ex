@@ -11,17 +11,12 @@ defmodule Web.Actors.Edit do
                deleted?: false
              ]
            ) do
-      # TODO: unify this and dropdowns for filters
-      groups =
-        Actors.all_editable_groups!(socket.assigns.subject, preload: [:provider])
-
       changeset = Actors.change_actor(actor)
 
       socket =
         assign(socket,
           page_title: "Edit #{actor.name}",
           actor: actor,
-          groups: groups,
           form: to_form(changeset)
         )
 
@@ -53,13 +48,7 @@ defmodule Web.Actors.Edit do
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <.actor_form
-                form={@form}
-                type={@actor.type}
-                actor={@actor}
-                groups={@groups}
-                subject={@subject}
-              />
+              <.actor_form form={@form} type={@actor.type} actor={@actor} subject={@subject} />
             </div>
             <.submit_button>Save</.submit_button>
           </.form>
@@ -70,8 +59,6 @@ defmodule Web.Actors.Edit do
   end
 
   def handle_event("change", %{"actor" => attrs}, socket) do
-    attrs = map_actor_form_memberships_attr(attrs)
-
     changeset =
       Actors.change_actor(socket.assigns.actor, attrs)
       |> Map.put(:action, :insert)
@@ -80,8 +67,6 @@ defmodule Web.Actors.Edit do
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs = map_actor_form_memberships_attr(attrs)
-
     with {:ok, actor} <- Actors.update_actor(socket.assigns.actor, attrs, socket.assigns.subject) do
       socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors/#{actor}")
       {:noreply, socket}
