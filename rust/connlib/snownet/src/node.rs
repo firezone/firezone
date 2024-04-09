@@ -43,9 +43,9 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
-pub type ServerNode<TId> = Node<Server, TId>;
+pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
-pub type ClientNode<TId> = Node<Client, TId>;
+pub type ClientNode<TId, RId> = Node<Client, TId, RId>;
 
 pub enum Server {}
 pub enum Client {}
@@ -72,7 +72,14 @@ pub enum Client {}
 /// 1. Change [`Node`]'s state (either via network messages, adding a new connection, etc)
 /// 2. Check [`Node::poll_timeout`] for when to wake the [`Node`]
 /// 3. Call [`Node::handle_timeout`] once that time is reached
-pub struct Node<T, TId> {
+///
+/// A [`Node`] is generic over three things:
+/// - `T`: The mode it is operating in, either [`Client`] or [`Server`].
+/// - `TId`: The type to use for uniquely identifying connections.
+/// - `RId`: The type to use for uniquely identifying relays.
+///
+/// We favor these generic parameters over having our own IDs to avoid mapping back and forth in upper layers.
+pub struct Node<T, TId, RId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -82,7 +89,7 @@ pub struct Node<T, TId> {
     next_rate_limiter_reset: Option<Instant>,
 
     bindings: HashMap<SocketAddr, StunBinding>,
-    allocations: HashMap<SocketAddr, Allocation>,
+    allocations: HashMap<SocketAddr, Allocation<RId>>,
 
     connections: Connections<TId>,
     pending_events: VecDeque<Event<TId>>,
@@ -112,9 +119,10 @@ pub enum Error {
     BadLocalAddress(#[from] str0m::error::IceError),
 }
 
-impl<T, TId> Node<T, TId>
+impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy,
 {
     pub fn new(private_key: StaticSecret) -> Self {
         let public_key = &(&private_key).into();
@@ -230,7 +238,7 @@ where
     /// To do that, we need to check all candidates of each allocation and compare their IP.
     /// The same relay might be reachable over IPv4 and IPv6.
     #[must_use]
-    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation> {
+    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation<RId>> {
         self.allocations.iter_mut().find_map(|(_, allocation)| {
             allocation
                 .current_candidates()
@@ -674,11 +682,16 @@ where
             }
         }
     }
+
+    pub fn upsert_relays(&self, _: HashSet<(RId, SocketAddr, String, String, String)>) {
+        unimplemented!()
+    }
 }
 
-impl<TId> Node<Client, TId>
+impl<TId, RId> Node<Client, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy,
 {
     /// Create a new connection indexed by the given ID.
     ///
@@ -690,7 +703,7 @@ where
         &mut self,
         id: TId,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Offer {
@@ -775,9 +788,10 @@ where
     }
 }
 
-impl<TId> Node<Server, TId>
+impl<TId, RId> Node<Server, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy,
 {
     /// Accept a new connection indexed by the given ID.
     ///
@@ -791,7 +805,7 @@ where
         offer: Offer,
         remote: PublicKey,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
         now: Instant,
     ) -> Answer {
         debug_assert!(
@@ -838,9 +852,10 @@ where
     }
 }
 
-impl<T, TId> Node<T, TId>
+impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy,
 {
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
         for server in servers {
@@ -855,10 +870,10 @@ where
 
     fn upsert_turn_servers(
         &mut self,
-        servers: &HashSet<(SocketAddr, String, String, String)>,
+        servers: &HashSet<(RId, SocketAddr, String, String, String)>,
         now: Instant,
     ) {
-        for (server, username, password, realm) in servers {
+        for (id, server, username, password, realm) in servers {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -875,7 +890,7 @@ where
 
             self.allocations.insert(
                 *server,
-                Allocation::new(*server, username, password.clone(), realm, now),
+                Allocation::new(*id, *server, username, password.clone(), realm, now),
             );
 
             tracing::info!(address = %server, "Added new TURN server");
@@ -996,13 +1011,16 @@ where
 /// - `relay` is in fact a relay
 /// - We have an allocation on the relay
 /// - There is a channel bound to the provided peer
-fn encode_as_channel_data(
+fn encode_as_channel_data<RId>(
     relay: SocketAddr,
     dest: SocketAddr,
     contents: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation>,
+    allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
     now: Instant,
-) -> Result<Transmit<'static>, EncodeError> {
+) -> Result<Transmit<'static>, EncodeError>
+where
+    RId: Copy,
+{
     let allocation = allocations
         .get_mut(&relay)
         .ok_or(EncodeError::NoAllocation)?;
@@ -1268,14 +1286,15 @@ impl Connection {
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
-    fn handle_timeout<TId>(
+    fn handle_timeout<TId, RId>(
         &mut self,
         id: TId,
         now: Instant,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
         TId: fmt::Display + Copy,
+        RId: Copy,
     {
         self.agent.handle_timeout(now);
 
@@ -1440,17 +1459,20 @@ impl Connection {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn decapsulate<'b>(
+    fn decapsulate<'b, RId>(
         &mut self,
         from: SocketAddr,
         local: SocketAddr,
         packet: &[u8],
         relayed: Option<Socket>,
         buffer: &'b mut [u8],
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
+    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>>
+    where
+        RId: Copy,
+    {
         match self.tunnel.decapsulate(None, packet, buffer) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
@@ -1498,12 +1520,14 @@ impl Connection {
         }
     }
 
-    fn force_handshake(
+    fn force_handshake<RId>(
         &mut self,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) {
+    ) where
+        RId: Copy,
+    {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -1562,12 +1586,15 @@ impl Connection {
 }
 
 #[must_use]
-fn make_owned_transmit(
+fn make_owned_transmit<RId>(
     socket: PeerSocket,
     message: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation>,
+    allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
     now: Instant,
-) -> Option<Transmit<'static>> {
+) -> Option<Transmit<'static>>
+where
+    RId: Copy,
+{
     let transmit = match socket {
         PeerSocket::Direct {
             dest: remote,

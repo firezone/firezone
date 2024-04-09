@@ -110,6 +110,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     tunnel
         .set_interface(&init.interface)
         .context("Failed to set interface")?;
+    tunnel.upsert_relays(init.relays);
 
     let mut eventloop = Eventloop::new(tunnel, portal);
 

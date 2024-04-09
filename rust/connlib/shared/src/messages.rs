@@ -18,8 +18,20 @@ use crate::Dname;
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
+
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ResourceId(Uuid);
+
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RelayId(Uuid);
+
+impl FromStr for RelayId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(RelayId(Uuid::parse_str(s)?))
+    }
+}
 
 impl ResourceId {
     pub fn random() -> ResourceId {
@@ -364,6 +376,7 @@ pub enum Relay {
 /// Represent a TURN relay
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Turn {
+    pub id: RelayId,
     //// Expire time of the username/password in unix millisecond timestamp UTC
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
@@ -379,6 +392,8 @@ pub struct Turn {
 /// Stun kind of relay
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Stun {
+    pub id: RelayId,
+
     /// Address for the relay
     pub addr: SocketAddr,
 }

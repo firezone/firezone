@@ -35,7 +35,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 ///
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
 #[derive(Debug)]
-pub struct Allocation {
+pub struct Allocation<RId> {
+    id: RId,
+
     server: SocketAddr,
 
     /// If present, the last address the relay observed for us.
@@ -87,8 +89,12 @@ impl Socket {
     }
 }
 
-impl Allocation {
+impl<RId> Allocation<RId>
+where
+    RId: Copy,
+{
     pub fn new(
+        id: RId,
         server: SocketAddr,
         username: Username,
         password: String,
@@ -96,6 +102,7 @@ impl Allocation {
         now: Instant,
     ) -> Self {
         let mut allocation = Self {
+            id,
             server,
             last_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
@@ -117,6 +124,10 @@ impl Allocation {
         allocation.authenticate_and_queue(make_allocate_request());
 
         allocation
+    }
+
+    pub fn id(&self) -> RId {
+        self.id
     }
 
     pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -2007,9 +2018,10 @@ mod tests {
         message.get_attribute::<XorPeerAddress>().unwrap().address()
     }
 
-    impl Allocation {
-        fn for_test(start: Instant) -> Allocation {
+    impl Allocation<u64> {
+        fn for_test(start: Instant) -> Self {
             Allocation::new(
+                1,
                 RELAY,
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),

@@ -7,7 +7,7 @@ use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
-    Relay, ResolvedResourceDescriptionDns, ResourceDescription, ResourceId,
+    Relay, RelayId, ResolvedResourceDescriptionDns, ResourceDescription, ResourceId,
 };
 use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
@@ -189,8 +189,7 @@ where
 
 pub struct GatewayState {
     pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
-    node: ServerNode<ClientId>,
-
+    node: ServerNode<ClientId, RelayId>,
     next_expiry_resources_check: Option<Instant>,
     buffered_events: VecDeque<GatewayEvent>,
 }
@@ -308,5 +307,12 @@ impl GatewayState {
 
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
         self.buffered_events.pop_front()
+    }
+
+    pub(crate) fn upsert_relays(
+        &self,
+        relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+    ) {
+        self.node.upsert_relays(relays)
     }
 }

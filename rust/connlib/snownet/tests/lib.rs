@@ -177,11 +177,10 @@ fn answer_after_stale_connection_does_not_panic() {
 fn only_generate_candidate_event_after_answer() {
     let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
 
-    let mut alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
-
+    let mut alice = ClientNode::<u64, u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
     alice.add_local_host_candidate(local_candidate).unwrap();
 
-    let mut bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    let mut bob = ServerNode::<u64, u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     let offer = alice.new_connection(
         1,
@@ -219,12 +218,11 @@ fn only_generate_candidate_event_after_answer() {
 
 #[test]
 fn second_connection_with_same_relay_reuses_allocation() {
-    let mut alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
-
-    let _ = alice.new_connection(
+    let mut alice = ClientNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    _ = alice.new_connection(
         1,
         HashSet::new(),
-        HashSet::from([relay("user1", "pass1", "realm1")]),
+        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
         Instant::now(),
         Instant::now(),
     );
@@ -236,7 +234,7 @@ fn second_connection_with_same_relay_reuses_allocation() {
     let _ = alice.new_connection(
         2,
         HashSet::new(),
-        HashSet::from([relay("user1", "pass1", "realm1")]),
+        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
         Instant::now(),
         Instant::now(),
     );
@@ -252,14 +250,18 @@ fn setup_tracing() -> tracing::subscriber::DefaultGuard {
         .set_default()
 }
 
-fn alice_and_bob() -> (ClientNode<u64>, ServerNode<u64>) {
-    let alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
-    let bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
+fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
+    let alice = ClientNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    let bob = ServerNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     (alice, bob)
 }
 
-fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Instant) -> Answer {
+fn send_offer(
+    alice: &mut ClientNode<u64, u64>,
+    bob: &mut ServerNode<u64, u64>,
+    now: Instant,
+) -> Answer {
     let offer = alice.new_connection(1, HashSet::new(), HashSet::new(), Instant::now(), now);
 
     bob.accept_connection(
@@ -272,8 +274,14 @@ fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Insta
     )
 }
 
-fn relay(username: &str, pass: &str, realm: &str) -> (SocketAddr, String, String, String) {
+fn relay(
+    id: u64,
+    username: &str,
+    pass: &str,
+    realm: &str,
+) -> (u64, SocketAddr, String, String, String) {
     (
+        id,
         RELAY,
         username.to_owned(),
         pass.to_owned(),
@@ -520,18 +528,18 @@ impl TestRelay {
 }
 
 enum EitherNode {
-    Server(ServerNode<u64>),
-    Client(ClientNode<u64>),
+    Server(ServerNode<u64, u64>),
+    Client(ClientNode<u64, u64>),
 }
 
-impl From<ClientNode<u64>> for EitherNode {
-    fn from(value: ClientNode<u64>) -> Self {
+impl From<ClientNode<u64, u64>> for EitherNode {
+    fn from(value: ClientNode<u64, u64>) -> Self {
         Self::Client(value)
     }
 }
 
-impl From<ServerNode<u64>> for EitherNode {
-    fn from(value: ServerNode<u64>) -> Self {
+impl From<ServerNode<u64, u64>> for EitherNode {
+    fn from(value: ServerNode<u64, u64>) -> Self {
         Self::Server(value)
     }
 }
@@ -586,14 +594,14 @@ impl EitherNode {
         }
     }
 
-    fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64>> {
+    fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64, u64>> {
         match self {
             EitherNode::Server(_) => None,
             EitherNode::Client(c) => Some(c),
         }
     }
 
-    fn as_server_mut(&mut self) -> Option<&mut ServerNode<u64>> {
+    fn as_server_mut(&mut self) -> Option<&mut ServerNode<u64, u64>> {
         match self {
             EitherNode::Server(s) => Some(s),
             EitherNode::Client(_) => None,

@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 pub struct InitGateway {
     pub interface: Interface,
     pub config: Config,
+    #[serde(default)]
+    pub relays: Vec<Relay>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -178,6 +180,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
@@ -197,6 +200,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","irrelevant":"field","payload":{"more":"info","interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true,"ignored":"field"}}}"#;
@@ -216,6 +220,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":null,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
@@ -235,6 +240,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":0.3,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
@@ -254,6 +260,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":true,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
@@ -273,6 +280,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":{"ignored":"field"},"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
@@ -292,6 +300,7 @@ mod test {
                 ipv4_masquerade_enabled: true,
                 ipv6_masquerade_enabled: true,
             },
+            relays: vec![],
         });
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":[true,false],"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
