@@ -99,9 +99,3 @@ impl From<rtnetlink::Error> for ConnlibError {
         }
     }
 }
-
-impl From<&'static str> for ConnlibError {
-    fn from(e: &'static str) -> Self {
-        ConnlibError::Other(e)
-    }
-}
