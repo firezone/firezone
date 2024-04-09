@@ -118,6 +118,11 @@ async fn main() -> Result<()> {
         args.highest_port,
     );
 
+    tokio::spawn(http_health_check::serve(
+        args.health_check.health_check_addr,
+        || true,
+    ));
+
     let channel = if let Some(token) = args.token.as_ref() {
         let base_url = args.api_url.clone();
         let stamp_secret = server.auth_secret();
@@ -134,11 +139,6 @@ async fn main() -> Result<()> {
     };
 
     let mut eventloop = Eventloop::new(server, channel, public_addr)?;
-
-    tokio::spawn(http_health_check::serve(
-        args.health_check.health_check_addr,
-        || true,
-    ));
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {TURN_PORT}");
 
