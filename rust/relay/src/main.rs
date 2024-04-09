@@ -27,6 +27,8 @@ const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
 const TURN_PORT: u16 = 3478;
 
+const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 15);
+
 #[derive(Parser, Debug)]
 struct Args {
     /// The public (i.e. internet-reachable) IPv4 address of the relay server.
@@ -272,7 +274,7 @@ async fn connect_to_portal(
             stamp_secret: stamp_secret.expose_secret().to_string(),
         },
         ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(None)
+            .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
             .build(),
     )
     .await??;
