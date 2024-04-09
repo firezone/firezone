@@ -225,7 +225,7 @@ defmodule Web.Live.Actors.EditTest do
                  }}}
     end
 
-    test "renders not found error when gateway is deleted", %{
+    test "renders not found error when actor is deleted", %{
       account: account,
       actor: actor,
       identity: identity,

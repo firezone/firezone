@@ -109,6 +109,59 @@ defmodule Domain.Fixtures.Tokens do
     token
   end
 
+  def create_api_client_token(attrs \\ %{}) do
+    attrs = token_attrs(attrs)
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {actor, attrs} =
+      pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account})
+        |> Fixtures.Actors.create_actor()
+      end)
+
+    {expires_at, attrs} =
+      Map.pop_lazy(attrs, :expires_at, fn ->
+        DateTime.utc_now() |> DateTime.add(60, :second)
+      end)
+
+    {name, attrs} =
+      Map.pop_lazy(attrs, :name, fn ->
+        "api-token-#{unique_integer()}"
+      end)
+
+    {secret_fragment, attrs} =
+      Map.pop_lazy(attrs, :secret_fragment, fn ->
+        Domain.Crypto.random_token(32, encoder: :hex32)
+      end)
+
+    {subject, attrs} =
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
+      end)
+
+    attrs =
+      Map.merge(attrs, %{
+        name: name,
+        type: :api_client,
+        secret_fragment: secret_fragment,
+        account_id: actor.account_id,
+        actor_id: actor.id,
+        created_by_user_agent: subject.context.user_agent,
+        created_by_remote_ip: subject.context.remote_ip,
+        expires_at: expires_at
+      })
+
+    {:ok, token} = Domain.Tokens.create_token(attrs, subject)
+    token
+  end
+
   def delete_token(token) do
     token
     |> Tokens.Token.Changeset.delete()

@@ -350,6 +350,10 @@ locals {
       name  = "FEATURE_SIGN_UP_ENABLED"
       value = true
     },
+    {
+      name  = "FEATURE_REST_API_ENABLED"
+      value = false
+    }
   ]
 }
 

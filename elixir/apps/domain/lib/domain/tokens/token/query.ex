@@ -92,4 +92,26 @@ defmodule Domain.Tokens.Token.Query do
       {:tokens, :asc, :inserted_at},
       {:tokens, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :type,
+        type: :string,
+        values: [
+          {"API Client", "api_client"},
+          {"Browser", "browser"},
+          {"Client", "client"},
+          {"Email", "email"},
+          {"Gateway Group", "gateway_group"},
+          {"Relay Group", "relay_group"}
+        ],
+        fun: &filter_by_type/2
+      }
+    ]
+
+  def filter_by_type(queryable, type) do
+    {queryable, dynamic([tokens: tokens], tokens.type == ^type)}
+  end
 end
