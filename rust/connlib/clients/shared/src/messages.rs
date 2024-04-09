@@ -27,7 +27,7 @@ pub struct ConnectionDetails {
     pub gateway_remote_ip: IpAddr,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Connect {
     pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
@@ -35,18 +35,9 @@ pub struct Connect {
     pub persistent_keepalive: u64,
 }
 
-// Just because RTCSessionDescription doesn't implement partialeq
-impl PartialEq for Connect {
-    fn eq(&self, other: &Self) -> bool {
-        self.resource_id == other.resource_id && self.gateway_public_key == other.gateway_public_key
-    }
-}
-
-impl Eq for Connect {}
-
 // These messages are the messages that can be received
 // by a client.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     Init(InitClient),
@@ -61,7 +52,7 @@ pub enum IngressMessages {
 }
 
 /// A gateway's ice candidate message.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct BroadcastGatewayIceCandidates {
     /// Gateway's id the ice candidates are meant for
     pub gateway_ids: Vec<GatewayId>,
@@ -70,7 +61,7 @@ pub struct BroadcastGatewayIceCandidates {
 }
 
 /// A gateway's ice candidate message.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
@@ -79,7 +70,7 @@ pub struct GatewayIceCandidates {
 }
 
 /// The replies that can arrive from the channel by a client
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {
@@ -88,7 +79,7 @@ pub enum ReplyMessages {
 }
 
 // These messages can be sent from a client to a control pane
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {
