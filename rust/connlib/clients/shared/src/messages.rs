@@ -20,9 +20,6 @@ pub struct ConfigUpdate {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-pub struct RemoveResource(pub ResourceId);
-
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
     pub relays: Vec<Relay>,
     pub resource_id: ResourceId,
@@ -56,7 +53,7 @@ pub enum IngressMessages {
 
     // Resources: arrive in an orderly fashion
     ResourceCreatedOrUpdated(ResourceDescription),
-    ResourceDeleted(RemoveResource),
+    ResourceDeleted(ResourceId),
 
     IceCandidates(GatewayIceCandidates),
 
