@@ -3,7 +3,7 @@ defmodule Web.Actors.Users.NewIdentity do
   import Web.Actors.Components
   alias Domain.{Auth, Actors}
 
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [:memberships],
@@ -29,7 +29,8 @@ defmodule Web.Actors.Users.NewIdentity do
           providers: providers,
           provider: provider,
           form: to_form(changeset),
-          page_title: "New User Identity"
+          page_title: "New User Identity",
+          next_step: Map.get(params, "next_step")
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -113,13 +114,19 @@ defmodule Web.Actors.Users.NewIdentity do
         |> Web.Mailer.deliver()
       end
 
-      socket =
-        push_navigate(socket, to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}")
+      socket = push_navigate(socket, to: next_path(socket))
 
       {:noreply, socket}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defp next_path(socket) do
+    case socket.assigns.next_step do
+      "edit_groups" -> ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}/edit_groups"
+      _ -> ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}"
     end
   end
 end
