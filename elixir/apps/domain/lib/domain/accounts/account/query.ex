@@ -9,6 +9,10 @@ defmodule Domain.Accounts.Account.Query do
     where(queryable, [accounts: accounts], is_nil(accounts.deleted_at))
   end
 
+  def disabled(queryable \\ all()) do
+    where(queryable, [accounts: accounts], not is_nil(accounts.disabled_at))
+  end
+
   def not_disabled(queryable \\ not_deleted()) do
     where(queryable, [accounts: accounts], is_nil(accounts.disabled_at))
   end
