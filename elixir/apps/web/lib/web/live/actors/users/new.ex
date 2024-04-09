@@ -4,14 +4,10 @@ defmodule Web.Actors.Users.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    groups =
-      Actors.all_editable_groups!(socket.assigns.subject, preload: :provider)
-
     changeset = Actors.new_actor()
 
     socket =
       assign(socket,
-        groups: groups,
         form: to_form(changeset),
         page_title: "New User"
       )
@@ -37,7 +33,7 @@ defmodule Web.Actors.Users.New do
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <.actor_form form={@form} type={:user} groups={@groups} subject={@subject} />
+              <.actor_form form={@form} type={:user} subject={@subject} />
             </div>
             <.submit_button>
               Create
@@ -52,7 +48,6 @@ defmodule Web.Actors.Users.New do
   def handle_event("change", %{"actor" => attrs}, socket) do
     changeset =
       attrs
-      |> map_memberships_attr()
       |> Actors.new_actor()
       |> Map.put(:action, :insert)
 
@@ -60,8 +55,6 @@ defmodule Web.Actors.Users.New do
   end
 
   def handle_event("submit", %{"actor" => attrs}, socket) do
-    attrs = map_memberships_attr(attrs)
-
     with {:ok, actor} <-
            Actors.create_actor(
              socket.assigns.account,
@@ -70,7 +63,8 @@ defmodule Web.Actors.Users.New do
            ) do
       socket =
         push_navigate(socket,
-          to: ~p"/#{socket.assigns.account}/actors/users/#{actor}/new_identity"
+          to:
+            ~p"/#{socket.assigns.account}/actors/users/#{actor}/new_identity?next_step=edit_groups"
         )
 
       {:noreply, socket}
@@ -94,13 +88,5 @@ defmodule Web.Actors.Users.New do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  defp map_memberships_attr(attrs) do
-    Map.update(attrs, "memberships", [], fn group_ids ->
-      Enum.map(group_ids, fn group_id ->
-        %{group_id: group_id}
-      end)
-    end)
   end
 end
