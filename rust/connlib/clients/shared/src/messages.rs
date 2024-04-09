@@ -7,19 +7,19 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitClient {
     pub interface: Interface,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub resources: Vec<ResourceDescription>,
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct ConfigUpdate {
     pub interface: Interface,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource(pub ResourceId);
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub struct ConnectionDetails {
     pub gateway_remote_ip: IpAddr,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Connect {
     pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
@@ -49,7 +49,7 @@ impl Eq for Connect {}
 
 // These messages are the messages that can be received
 // by a client.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     Init(InitClient),
