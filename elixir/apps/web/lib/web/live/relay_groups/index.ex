@@ -122,7 +122,7 @@ defmodule Web.RelayGroups.Index do
             </:empty>
           </.table_with_groups>
 
-          <.paginator id="relays" metadata={@groups_metadata} />
+          <.paginator id="relays" metadata={@groups_metadata} rows_count={length(@groups)} />
         </div>
       </:content>
     </.section>
