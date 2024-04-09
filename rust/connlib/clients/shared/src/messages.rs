@@ -94,19 +94,14 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
+    use super::*;
+    use chrono::DateTime;
     use connlib_shared::messages::{
         DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
         ResourceDescriptionDns, Stun, Turn,
     };
     use phoenix_channel::PhoenixMessage;
-
-    use chrono::DateTime;
-
-    use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
-
-    use super::{ConfigUpdate, IngressMessages, InitClient};
+    use std::collections::HashSet;
 
     // TODO: request_connection tests
 
