@@ -90,44 +90,6 @@ pub enum ReplyMessages {
     Connect(Connect),
 }
 
-/// The totality of all messages (might have a macro in the future to derive the other types)
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
-pub enum Messages {
-    Init(InitClient),
-    ConnectionDetails(ConnectionDetails),
-    Connect(Connect),
-
-    // Resources: arrive in an orderly fashion
-    ResourceCreatedOrUpdated(ResourceDescription),
-    ResourceDeleted(RemoveResource),
-
-    IceCandidates(GatewayIceCandidates),
-
-    ConfigChanged(ConfigUpdate),
-}
-
-impl From<IngressMessages> for Messages {
-    fn from(value: IngressMessages) -> Self {
-        match value {
-            IngressMessages::Init(m) => Self::Init(m),
-            IngressMessages::ResourceCreatedOrUpdated(m) => Self::ResourceCreatedOrUpdated(m),
-            IngressMessages::ResourceDeleted(m) => Self::ResourceDeleted(m),
-            IngressMessages::IceCandidates(m) => Self::IceCandidates(m),
-            IngressMessages::ConfigChanged(m) => Self::ConfigChanged(m),
-        }
-    }
-}
-
-impl From<ReplyMessages> for Messages {
-    fn from(value: ReplyMessages) -> Self {
-        match value {
-            ReplyMessages::ConnectionDetails(m) => Self::ConnectionDetails(m),
-            ReplyMessages::Connect(m) => Self::Connect(m),
-        }
-    }
-}
-
 // These messages can be sent from a client to a control pane
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
