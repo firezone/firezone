@@ -58,6 +58,8 @@ clippy.print_stderr = "warn"
 clippy.unnecessary_wraps = "warn"
 clippy.unused_async = "warn"
 clippy.wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
+clippy.redundant_else = "warn"
+clippy.redundant_clone = "warn"
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }

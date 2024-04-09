@@ -855,7 +855,7 @@ fn decode(packet: &[u8]) -> bytecodec::Result<DecodedMessage<Attribute>> {
 
 fn encode(message: Message<Attribute>) -> Vec<u8> {
     MessageEncoder::default()
-        .encode_into_bytes(message.clone())
+        .encode_into_bytes(message)
         .expect("encoding always works")
 }
 

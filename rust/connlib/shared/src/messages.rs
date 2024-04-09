@@ -422,23 +422,17 @@ mod tests {
         ];
 
         let expected = vec![
-            // Numbers first
-            // Numbers are sorted byte-wise, if they don't use leading zeroes
-            // they won't be in numeric order
-            ten.clone(),
-            nine.clone(),
-            // Then uppercase, in alphabetical order
-            cloudflare.clone(),
-            example.clone(),
-            fast.clone(),
-            // UUIDs tie-break if the names are identical
-            metabase_1.clone(),
-            metabase_2.clone(),
-            // Lowercase comes after all uppercase are done
-            ifconfig.clone(),
+            ten,        // Numbers first
+            nine,       // Numbers first
+            cloudflare, // Then uppercase, in alphabetical order
+            example,    // Then uppercase, in alphabetical order
+            fast,       // Then uppercase, in alphabetical order
+            metabase_1, // UUIDs tie-break if the names are identical
+            metabase_2, // UUIDs tie-break if the names are identical
+            ifconfig,   // Lowercase comes after all uppercase are done
             // Emojis start with a leading '1' bit, so they come after all
             // [Basic Latin](https://en.wikipedia.org/wiki/Basic_Latin_\(Unicode_block\)) chars
-            emoji.clone(),
+            emoji,
         ];
 
         assert_eq!(

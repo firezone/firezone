@@ -45,9 +45,7 @@ fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
         directory,
         current: None,
     }));
-    let appender = Appender {
-        inner: inner.clone(),
-    };
+    let appender = Appender { inner };
 
     let (non_blocking, guard) = tracing_appender::non_blocking(appender);
     let handle = Handle {

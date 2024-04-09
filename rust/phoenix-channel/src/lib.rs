@@ -237,7 +237,7 @@ where
             next_request_id,
             pending_join_requests: Default::default(),
             login,
-            init_req: init_req.clone(),
+            init_req,
         }
     }
 
