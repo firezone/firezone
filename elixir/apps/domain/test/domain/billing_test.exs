@@ -765,7 +765,7 @@ defmodule Domain.BillingTest do
       assert account.disabled_reason == nil
     end
 
-    test "updates account features and limits on subscription update", %{
+    test "updates account on subscription update", %{
       account: account,
       customer_id: customer_id
     } do
@@ -778,7 +778,8 @@ defmodule Domain.BillingTest do
           "monthly_active_users_count" => "15",
           "service_accounts_count" => "unlimited",
           "gateway_groups_count" => 1,
-          "users_count" => 14
+          "users_count" => 14,
+          "support_type" => "email"
         }
       })
 
@@ -804,6 +805,7 @@ defmodule Domain.BillingTest do
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.subscription_id
       assert account.metadata.stripe.product_name == "Enterprise"
+      assert account.metadata.stripe.support_type == "email"
 
       assert account.limits == %Domain.Accounts.Limits{
                monthly_active_users_count: 15,
