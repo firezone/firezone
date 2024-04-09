@@ -7,22 +7,21 @@ use connlib_shared::{
     Dname,
 };
 use serde::{Deserialize, Serialize};
-use std::net::IpAddr;
 
 // TODO: Should this have a resource?
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitGateway {
     pub interface: Interface,
     pub config: Config,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Config {
     pub ipv4_masquerade_enabled: bool,
     pub ipv6_masquerade_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Client {
     pub id: ClientId,
     pub payload: ClientPayload,
@@ -41,30 +40,11 @@ pub struct RequestConnection {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub enum Destination {
-    DnsName(String),
-    Ip(Vec<IpAddr>),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Metrics {
-    peers_metrics: Vec<Metric>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Metric {
-    pub client_id: ClientId,
-    pub resource_id: ResourceId,
-    pub rx_bytes: u32,
-    pub tx_bytes: u32,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource {
     pub id: ResourceId,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct AllowAccess {
     pub client_id: ClientId,
     pub resource: ResourceDescription,
@@ -75,7 +55,7 @@ pub struct AllowAccess {
     pub reference: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct RejectAccess {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
@@ -94,7 +74,7 @@ pub enum IngressMessages {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct BroadcastClientIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
@@ -103,7 +83,7 @@ pub struct BroadcastClientIceCandidates {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
@@ -113,15 +93,14 @@ pub struct ClientIceCandidates {
 
 // These messages can be sent from a gateway
 // to a control pane.
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
-    Metrics(Metrics),
     BroadcastIceCandidates(BroadcastClientIceCandidates),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ConnectionReady {
     #[serde(rename = "ref")]
     pub reference: String,
