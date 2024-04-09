@@ -6704,7 +6704,8 @@ dependencies = [
 [[package]]
 name = "tracing-stackdriver"
 version = "0.10.0"
-source = "git+https://github.com/thomaseizinger/tracing-stackdriver?branch=deps/bump-otel-0.22#329d5c9fec0463f4f5db3b6e2a2e70b442dd8d64"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80048836e000e1f058562f01d69cc46f476955bf389c0dc2d2d7edb98ca63ac1"
 dependencies = [
  "Inflector",
  "opentelemetry",
