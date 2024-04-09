@@ -568,6 +568,9 @@ defmodule Domain.Actors do
   def actor_disabled?(%Actor{disabled_at: nil}), do: false
   def actor_disabled?(%Actor{}), do: true
 
+  def actor_active?(%Actor{disabled_at: nil, deleted_at: nil}), do: true
+  def actor_active?(%Actor{}), do: false
+
   defp other_enabled_admins_exist?(%Actor{
          type: :account_admin_user,
          account_id: account_id,
