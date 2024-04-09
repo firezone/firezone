@@ -33,3 +33,26 @@ function client_nslookup() {
     # `tee` here copies stdout to stderr
     client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
 }
+
+function assert_equals() {
+    local expected="$1"
+    local actual="$2"
+
+    if [[ "$expected" != "$actual" ]]; then
+        echo "Expected $expected but got $actual"
+        exit 1
+    fi
+}
+
+function process_state() {
+    local process_name="$1"
+
+    ps -C "$process_name" -o state=
+}
+
+function assert_process_state {
+    local process_name="$1"
+    local expected_state="$2"
+
+    assert_equals "$(process_state "$process_name")" "$expected_state"
+}
