@@ -152,6 +152,9 @@ where
             }
             phoenix_channel::Event::HeartbeatSent => {}
             phoenix_channel::Event::JoinedRoom { .. } => {}
+            phoenix_channel::Event::Closed => {
+                unimplemented!("Client never actively close the portal connection")
+            }
         }
     }
 
