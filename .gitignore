@@ -26,3 +26,5 @@ gha-creds-*.json
 
 # Ignore local `direnv` cache
 .direnv
+
+node_modules/
