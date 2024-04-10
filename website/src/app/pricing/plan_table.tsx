@@ -196,38 +196,32 @@ export default function PlanTable() {
           <td className="gmx-1 py-4 text-center">No limit</td>
         </tr>
         <tr>
-          <td className="gmx-1 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light">
+          <td
+            colSpan={4}
+            className="gmx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
+          >
             Networking Features
           </td>
-          <td></td>
-          <td></td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">NAT hole punching</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <span
+              data-tooltip-target="nat-holepunching-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              NAT hole punching
+            </span>
+            <div
+              id="nat-holepunching-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Connect directly to Resources without opening inbound firewall
+              ports
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
           </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Cloud & local networks</td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Native Firezone Clients</td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -239,31 +233,23 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Split tunneling</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <span
+              data-tooltip-target="native-firezone-clients-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Native Firezone Clients
+            </span>
+            <div
+              id="native-firezone-clients-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Native client apps for all major platforms
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
           </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">DNS-based routing</td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-          <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Gateway load-balancing</td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -275,7 +261,109 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Automatic Gateway failover</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="split-tunneling-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Split tunneling
+            </span>
+            <div
+              id="split-tunneling-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Route traffic to Resources through Firezone leaving other traffic
+              unaffected
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="split-horizon-dns-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Split horizon DNS
+            </span>
+            <div
+              id="split-horizon-dns-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Route traffic through Firezone based on DNS matching rules
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="gateway-load-balancing-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Gateway load-balancing
+            </span>
+            <div
+              id="gateway-load-balancing-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Spread traffic across multiple Gateways within a Site
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="automatic-gateway-failover-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Automatic Gateway failover
+            </span>
+            <div
+              id="automatic-gateway-failover-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Clients automatically switch from unhealthy Gateways to healthy
+              ones
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -312,13 +400,29 @@ export default function PlanTable() {
         <tr>
           <td
             colSpan={4}
-            className="mx-1 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light"
+            className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
           >
             Authentication & Authorization
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Resource-level access policies</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="resource-level-access-policies-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Resource-level access policies
+            </span>
+            <div
+              id="resource-level-access-policies-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Control access to Resources based on user identity and group
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -330,7 +434,51 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Email (OTP) authentication</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="email-otp-authentication-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Email (OTP) authentication
+            </span>
+            <div
+              id="email-otp-authentication-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Authenticate users with a one-time code sent to their email
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="openid-connect-authentication-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              OpenID Connect authentication
+            </span>
+            <div
+              id="openid-connect-authentication-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Authenticate users with any OIDC-compatible provider
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -342,10 +490,25 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">OpenID Connect authentication</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <span
+              data-tooltip-target="custom-account-slug-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Custom account slug
+            </span>
+            <div
+              id="custom-account-slug-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Customize the sign-in URL for your account. E.g.
+              https://app.firezone.dev/your-organization
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
           </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -354,7 +517,24 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Google Workspace directory sync</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="google-workspace-directory-sync-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Google Workspace directory sync
+            </span>
+            <div
+              id="google-workspace-directory-sync-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Automatically sync users and groups from Google Workspace to
+              Firezone
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
@@ -362,7 +542,24 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Microsoft Entra ID directory sync</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="microsoft-entra-id-directory-sync-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Microsoft Entra ID directory sync
+            </span>
+            <div
+              id="microsoft-entra-id-directory-sync-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Automatically sync users and groups from Microsoft Entra ID to
+              Firezone
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
@@ -370,7 +567,23 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Okta directory sync</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="okta-directory-sync-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Okta directory sync
+            </span>
+            <div
+              id="okta-directory-sync-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Automatically sync users and groups from Okta to Firezone
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
@@ -380,13 +593,29 @@ export default function PlanTable() {
         <tr>
           <td
             colSpan={4}
-            className="mx-1 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light"
+            className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
           >
             Security Features
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Session-based key rotation</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="session-based-key-rotation-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Session-based key rotation
+            </span>
+            <div
+              id="session-based-key-rotation-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Rotate WireGuard encryption keys each time a user signs in
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -398,7 +627,23 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Policy authorization logs</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="geoip-mapping-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              GeoIP Mapping
+            </span>
+            <div
+              id="geoip-mapping-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Show where your users are connecting from
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -410,10 +655,24 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">GeoIP Mapping</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <span
+              data-tooltip-target="resource-access-logs-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Resource access logs
+            </span>
+            <div
+              id="resource-access-logs-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              See who accessed which Resource and when
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
           </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
@@ -424,7 +683,7 @@ export default function PlanTable() {
         <tr>
           <td
             colSpan={4}
-            className="mx-1 pt-8 pb-4 text-lg font-semibold text-primary-450 tracking-light"
+            className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
           >
             Support
           </td>
@@ -472,7 +731,24 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Roadmap acceleration</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="roadmap-acceleration-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Roadmap acceleration
+            </span>
+            <div
+              id="roadmap-acceleration-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Shape the product roadmap with customized features and
+              integrations
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
@@ -480,7 +756,23 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">White-glove onboarding</td>
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="white-glove-onboarding-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              White-glove onboarding
+            </span>
+            <div
+              id="white-glove-onboarding-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Get personalized deployment support and training for your team
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
