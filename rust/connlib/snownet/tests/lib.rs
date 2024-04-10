@@ -27,13 +27,14 @@ fn smoke_direct() {
     let firewall = Firewall::default();
     let mut clock = Clock::new();
 
-    handshake(&mut alice, &mut bob, None, &clock);
+    handshake(&mut alice, &mut bob, &[], &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(&mut alice, &mut bob, None, &firewall, &mut clock);
+
+        progress(&mut alice, &mut bob, &mut [], &firewall, &mut clock);
     }
 }
 
@@ -46,25 +47,22 @@ fn smoke_relayed() {
 
     let (alice, bob) = alice_and_bob();
 
-    let mut relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
+    let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
     let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
     let firewall = Firewall::default().with_block_rule("1.1.1.1:80", "2.2.2.2:80");
     let mut clock = Clock::new();
 
-    handshake(&mut alice, &mut bob, Some(&relay), &clock);
+    let mut relays = [relay];
+
+    handshake(&mut alice, &mut bob, &relays, &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(
-            &mut alice,
-            &mut bob,
-            Some(&mut relay),
-            &firewall,
-            &mut clock,
-        );
+
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
 }
 
@@ -571,7 +569,7 @@ impl TestNode {
     fn drain_transmits(
         &mut self,
         other: &mut TestNode,
-        relay: &mut Option<&mut TestRelay>,
+        relays: &mut [TestRelay],
         firewall: &Firewall,
         now: Instant,
     ) {
@@ -582,10 +580,8 @@ impl TestNode {
         {
             let payload = &trans.payload;
             let Some(src) = trans.src else {
-                // `src` not set? Must client-facing traffic for the relay.
-                assert_eq!(trans.dst.port(), 3478);
-
-                if let Some(relay) = relay.as_mut() {
+                // `src` not set? Attempt to dispatch to a relay.
+                if let Some(relay) = relays.iter_mut().find(|r| r.listen_addr == trans.dst) {
                     relay.handle_client_input(payload, ClientSocket::new(self.local), other, now);
                 }
 
@@ -594,18 +590,19 @@ impl TestNode {
             let dst = trans.dst;
 
             // `src` is set, let's check if it is peer traffic for the relay.
-            if let Some(relay) = relay.as_mut() {
-                if dst.ip() == relay.listen_addr.ip() {
-                    relay.handle_peer_traffic(
-                        payload,
-                        PeerSocket::new(self.local),
-                        AllocationPort::new(dst.port()),
-                        other,
-                        now,
-                    );
+            if let Some(relay) = relays
+                .iter_mut()
+                .find(|r| r.listen_addr.ip() == trans.dst.ip())
+            {
+                relay.handle_peer_traffic(
+                    payload,
+                    PeerSocket::new(self.local),
+                    AllocationPort::new(dst.port()),
+                    other,
+                    now,
+                );
 
-                    return;
-                }
+                return;
             }
 
             // Wasn't traffic for the relay, let's check our firewall.
@@ -627,21 +624,16 @@ impl TestNode {
     }
 }
 
-fn handshake(
-    client: &mut TestNode,
-    server: &mut TestNode,
-    relay: Option<&TestRelay>,
-    clock: &Clock,
-) {
+fn handshake(client: &mut TestNode, server: &mut TestNode, relays: &[TestRelay], clock: &Clock) {
     let client_node = &mut client.node.as_client_mut().unwrap();
     let server_node = &mut server.node.as_server_mut().unwrap();
 
-    let client_credentials = relay.map(|relay| {
+    let client_credentials = relays.iter().map(|relay| {
         let (username, password) = relay.make_credentials("client");
 
         (relay.listen_addr, username, password, "firezone".to_owned())
     });
-    let server_credentials = relay.map(|relay| {
+    let server_credentials = relays.iter().map(|relay| {
         let (username, password) = relay.make_credentials("client");
 
         (relay.listen_addr, username, password, "firezone".to_owned())
@@ -674,7 +666,7 @@ fn handshake(
 fn progress(
     a1: &mut TestNode,
     a2: &mut TestNode,
-    mut relay: Option<&mut TestRelay>,
+    relays: &mut [TestRelay],
     firewall: &Firewall,
     clock: &mut Clock,
 ) {
@@ -683,10 +675,10 @@ fn progress(
     a1.drain_events(a2, clock.now);
     a2.drain_events(a1, clock.now);
 
-    a1.drain_transmits(a2, &mut relay, firewall, clock.now);
-    a2.drain_transmits(a1, &mut relay, firewall, clock.now);
+    a1.drain_transmits(a2, relays, firewall, clock.now);
+    a2.drain_transmits(a1, relays, firewall, clock.now);
 
-    if let Some(relay) = relay.as_mut() {
+    for relay in relays.iter_mut() {
         relay.drain_messages(a1, a2, clock.now);
     }
 
@@ -702,7 +694,7 @@ fn progress(
         }
     }
 
-    if let Some(relay) = relay {
+    for relay in relays {
         if let Some(timeout) = relay.inner.poll_timeout() {
             if clock.now >= timeout {
                 relay
