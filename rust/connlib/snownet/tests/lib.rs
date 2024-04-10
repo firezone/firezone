@@ -1,17 +1,19 @@
 use boringtun::x25519::{PublicKey, StaticSecret};
+use firezone_relay::{AllocationPort, ChannelData, ClientSocket, IpStack, PeerSocket};
+use rand::rngs::OsRng;
 use snownet::{Answer, ClientNode, Event, MutableIpPacket, ServerNode, Transmit};
 use std::{
     collections::HashSet,
     iter,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
     vec,
 };
 use str0m::{net::Protocol, Candidate};
-use tracing::{info_span, Span};
+use tracing::{debug_span, info_span, Span};
 
 #[test]
-fn smoke() {
+fn smoke_direct() {
     let _ = tracing_subscriber::fmt()
         .with_test_writer()
         .with_env_filter("debug")
@@ -19,19 +21,43 @@ fn smoke() {
 
     let (alice, bob) = alice_and_bob();
 
-    let mut alice = TestNode::new(info_span!("Alice"), alice);
-    alice.add_local_host_candidate("1.1.1.1:80");
+    let mut alice =
+        TestNode::new(info_span!("Alice"), alice, "1.1.1.1:80").with_local_host_candidate();
 
-    let mut bob = TestNode::new(info_span!("Bob"), bob);
-    bob.add_local_host_candidate("1.1.1.2:80");
+    let mut bob = TestNode::new(info_span!("Bob"), bob, "1.1.1.2:80").with_local_host_candidate();
 
-    handshake(&mut alice, &mut bob);
+    handshake(&mut alice, &mut bob, None);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(&mut alice, &mut bob);
+        progress(&mut alice, &mut bob, None);
+    }
+}
+
+#[test]
+fn smoke_relayed() {
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter("debug")
+        .try_init();
+
+    let (alice, bob) = alice_and_bob();
+
+    let mut relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
+        .with_drop_traffic_from("2.2.2.2:80");
+    let mut bob =
+        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_drop_traffic_from("1.1.1.1:80");
+
+    handshake(&mut alice, &mut bob, Some(&relay));
+
+    loop {
+        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
+            break;
+        }
+        progress(&mut alice, &mut bob, Some(&mut relay));
     }
 }
 
@@ -224,8 +250,43 @@ struct TestNode {
     received_packets: Vec<MutableIpPacket<'static>>,
     progress_count: u64,
     time: Instant,
+    local: SocketAddr,
+
+    drop_traffic_from: HashSet<SocketAddr>,
 
     buffer: Box<[u8; 10_000]>,
+}
+
+struct TestRelay {
+    inner: firezone_relay::Server<OsRng>,
+    listen_addr: SocketAddr,
+    span: Span,
+}
+
+impl TestRelay {
+    fn new(local: IpAddr, span: Span) -> Self {
+        let inner = firezone_relay::Server::new(IpStack::from(local), OsRng, 49152, 65535);
+
+        Self {
+            inner,
+            listen_addr: SocketAddr::from((local, 3478)),
+            span,
+        }
+    }
+
+    fn make_credentials(&self, username: &str) -> (String, String) {
+        let expiry = SystemTime::now() + Duration::from_secs(60);
+
+        let secs = expiry
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("expiry must be later than UNIX_EPOCH")
+            .as_secs();
+
+        let password =
+            firezone_relay::auth::generate_password(self.inner.auth_secret(), expiry, username);
+
+        (format!("{secs}:{username}"), password)
+    }
 }
 
 enum EitherNode {
@@ -274,10 +335,10 @@ impl EitherNode {
         }
     }
 
-    fn add_local_host_candidate(&mut self, socket: &str) {
+    fn add_local_host_candidate(&mut self, socket: SocketAddr) {
         match self {
-            EitherNode::Client(n) => n.add_local_host_candidate(s(socket)).unwrap(),
-            EitherNode::Server(n) => n.add_local_host_candidate(s(socket)).unwrap(),
+            EitherNode::Client(n) => n.add_local_host_candidate(socket).unwrap(),
+            EitherNode::Server(n) => n.add_local_host_candidate(socket).unwrap(),
         }
     }
 
@@ -332,7 +393,7 @@ impl EitherNode {
 }
 
 impl TestNode {
-    pub fn new(span: Span, node: impl Into<EitherNode>) -> Self {
+    pub fn new(span: Span, node: impl Into<EitherNode>, local: &str) -> Self {
         let now = Instant::now();
         TestNode {
             node: node.into(),
@@ -341,6 +402,8 @@ impl TestNode {
             time: now,
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
+            local: local.parse().unwrap(),
+            drop_traffic_from: HashSet::default(),
         }
     }
 
@@ -348,21 +411,40 @@ impl TestNode {
         self.node.is_connected_to(other.node.public_key())
     }
 
-    fn add_local_host_candidate(&mut self, socket: &str) {
+    fn with_local_host_candidate(mut self) -> Self {
         self.span
-            .in_scope(|| self.node.add_local_host_candidate(socket))
+            .in_scope(|| self.node.add_local_host_candidate(self.local));
+
+        self
+    }
+
+    fn with_drop_traffic_from(mut self, other: &str) -> Self {
+        self.drop_traffic_from.insert(other.parse().unwrap());
+
+        self
     }
 }
 
-fn handshake(client: &mut TestNode, server: &mut TestNode) {
+fn handshake(client: &mut TestNode, server: &mut TestNode, relay: Option<&TestRelay>) {
     let client_node = &mut client.node.as_client_mut().unwrap();
     let server_node = &mut server.node.as_server_mut().unwrap();
+
+    let client_credentials = relay.map(|relay| {
+        let (username, password) = relay.make_credentials("client");
+
+        (relay.listen_addr, username, password, "firezone".to_owned())
+    });
+    let server_credentials = relay.map(|relay| {
+        let (username, password) = relay.make_credentials("client");
+
+        (relay.listen_addr, username, password, "firezone".to_owned())
+    });
 
     let offer = client.span.in_scope(|| {
         client_node.new_connection(
             1,
             HashSet::default(),
-            HashSet::default(),
+            HashSet::from_iter(client_credentials),
             client.time,
             client.time,
         )
@@ -373,7 +455,7 @@ fn handshake(client: &mut TestNode, server: &mut TestNode) {
             offer,
             client_node.public_key(),
             HashSet::default(),
-            HashSet::default(),
+            HashSet::from_iter(server_credentials),
             server.time,
         )
     });
@@ -382,7 +464,47 @@ fn handshake(client: &mut TestNode, server: &mut TestNode) {
         .in_scope(|| client_node.accept_answer(1, server_node.public_key(), answer, client.time));
 }
 
-fn progress(a1: &mut TestNode, a2: &mut TestNode) {
+fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>) {
+    if let Some(relay) = r.as_mut() {
+        if let Some(command) = relay.inner.next_command() {
+            match command {
+                firezone_relay::Command::SendMessage { payload, recipient } => {
+                    let recipient = if recipient.into_socket() == a1.local {
+                        a1
+                    } else if recipient.into_socket() == a2.local {
+                        a2
+                    } else {
+                        panic!("Relay generated traffic for unknown client")
+                    };
+
+                    let buffer = recipient.buffer.as_mut();
+
+                    if let Some((_, packet)) = recipient
+                        .span
+                        .in_scope(|| {
+                            recipient.node.decapsulate(
+                                recipient.local,
+                                relay.listen_addr,
+                                &payload,
+                                recipient.time,
+                                buffer,
+                            )
+                        })
+                        .unwrap()
+                    {
+                        recipient.received_packets.push(packet.to_owned());
+                    }
+                }
+                firezone_relay::Command::CreateAllocation { .. }
+                | firezone_relay::Command::FreeAllocation { .. } => {
+                    // We ignore these because in our test this always succeeds.
+                }
+            }
+
+            return;
+        }
+    }
+
     let (f, t) = if a1.progress_count % 2 == a2.progress_count % 2 {
         (a2, a1)
     } else {
@@ -407,8 +529,134 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode) {
 
     if let Some(trans) = f.span.in_scope(|| f.node.poll_transmit()) {
         let Some(src) = trans.src else {
-            return; // Drop all packets to relays, we don't have any in these tests.
+            if let Some(relay) = r.as_mut() {
+                assert_eq!(trans.dst.port(), 3478);
+
+                if let Some((port, peer)) = relay.span.in_scope(|| {
+                    relay.inner.handle_client_input(
+                        &trans.payload,
+                        ClientSocket::new(f.local),
+                        f.time,
+                    )
+                }) {
+                    let payload = ChannelData::parse(&trans.payload)
+                        .expect("valid ChannelData if we should relay it")
+                        .data()
+                        .to_vec();
+
+                    // Check if we need to relay to ourselves (from one allocation to another)
+                    if peer.into_socket().ip() == relay.listen_addr.ip() {
+                        if let Some((client, channel)) =
+                            relay.inner.handle_peer_traffic(&payload, peer, port)
+                        {
+                            assert_eq!(
+                                client.into_socket(),
+                                f.local,
+                                "only relays to the other party"
+                            );
+
+                            let mut msg = vec![0u8; payload.len() + 4];
+                            msg[4..].copy_from_slice(&payload);
+                            firezone_relay::ChannelData::encode_header_to_slice(
+                                channel,
+                                payload.len() as u16,
+                                &mut msg[..4],
+                            );
+
+                            if let Some((_, packet)) = t
+                                .span
+                                .in_scope(|| {
+                                    t.node.decapsulate(
+                                        t.local,
+                                        relay.listen_addr,
+                                        &msg,
+                                        t.time,
+                                        t.buffer.as_mut(),
+                                    )
+                                })
+                                .unwrap()
+                            {
+                                t.received_packets.push(packet.to_owned());
+                            }
+                        }
+
+                        return;
+                    }
+
+                    let buffer = t.buffer.as_mut();
+
+                    if let Some((_, packet)) = t
+                        .span
+                        .in_scope(|| {
+                            t.node.decapsulate(
+                                t.local,
+                                SocketAddr::from((relay.listen_addr.ip(), port.value())),
+                                &payload,
+                                t.time,
+                                buffer,
+                            )
+                        })
+                        .unwrap()
+                    {
+                        t.received_packets.push(packet.to_owned());
+                    }
+                }
+
+                return;
+            }
+
+            return;
         };
+
+        if let Some(relay) = r.as_mut() {
+            if trans.dst.ip() == relay.listen_addr.ip() {
+                if let Some((client, channel)) = relay.span.in_scope(|| {
+                    relay.inner.handle_peer_traffic(
+                        &trans.payload,
+                        PeerSocket::new(f.local),
+                        AllocationPort::new(trans.dst.port()),
+                    )
+                }) {
+                    assert_eq!(
+                        client.into_socket(),
+                        f.local,
+                        "only relays to the other party"
+                    );
+
+                    let mut msg = vec![0u8; trans.payload.len() + 4];
+                    msg[4..].copy_from_slice(&trans.payload);
+                    firezone_relay::ChannelData::encode_header_to_slice(
+                        channel,
+                        trans.payload.len() as u16,
+                        &mut msg[..4],
+                    );
+
+                    if let Some((_, packet)) = t
+                        .span
+                        .in_scope(|| {
+                            t.node.decapsulate(
+                                t.local,
+                                relay.listen_addr,
+                                &msg,
+                                t.time,
+                                t.buffer.as_mut(),
+                            )
+                        })
+                        .unwrap()
+                    {
+                        t.received_packets.push(packet.to_owned());
+                    }
+                }
+
+                return;
+            }
+        }
+
+        if t.drop_traffic_from.contains(&src) {
+            t.span
+                .in_scope(|| tracing::debug!(target: "test_harness", %src, "Dropping traffic"));
+            return;
+        }
 
         if let Some((_, packet)) = t
             .span

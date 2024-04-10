@@ -337,8 +337,6 @@ where
         sender: PeerSocket,
         allocation: AllocationPort,
     ) -> Option<(ClientSocket, ChannelNumber)> {
-        tracing::trace!(target: "wire", num_bytes = %msg.len());
-
         let Some((client, channel_number)) = self
             .channel_and_client_by_port_and_peer
             .get(&(allocation, sender))
@@ -352,6 +350,8 @@ where
 
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
+
+        tracing::trace!(target: "wire", num_bytes = %msg.len());
 
         Some((*client, *channel_number))
     }
