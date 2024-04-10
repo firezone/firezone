@@ -208,7 +208,6 @@ defmodule Domain.GoogleCloudPlatform do
       :ok
     else
       {:ok, %{status: status, body: body}} ->
-        dbg({time_series, status, body})
         {:error, {status, body}}
 
       {:error, reason} ->
