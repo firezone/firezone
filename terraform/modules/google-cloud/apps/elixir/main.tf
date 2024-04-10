@@ -39,7 +39,7 @@ locals {
     },
     {
       name  = "TELEMETRY_METRICS_REPORTER"
-      value = "Domain.Telemetry.GoogleCloudMetricsReporter"
+      value = "Elixir.Domain.Telemetry.GoogleCloudMetricsReporter"
     },
     {
       name = "TELEMETRY_METRICS_REPORTER_OPTS"
