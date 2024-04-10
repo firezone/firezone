@@ -320,23 +320,37 @@ impl TestRelay {
         }
     }
 
+    fn ip(&self) -> IpAddr {
+        self.listen_addr.ip()
+    }
+
     fn handle_client_input(
         &mut self,
         payload: &[u8],
         client: ClientSocket,
-        sender: &mut TestNode,
         receiver: &mut TestNode,
         now: Instant,
     ) {
         if let Some((port, peer)) = self
             .span
-            .in_scope(|| self.inner.handle_client_input(&payload, client, now))
+            .in_scope(|| self.inner.handle_client_input(payload, client, now))
         {
             let payload = &payload[4..];
 
+            // The `src` of the relayed packet is the relay itself _from_ the allocated port.
+            let src = SocketAddr::new(self.ip(), port.value());
+
+            // The `dst` of the relayed packet is what TURN calls a "peer".
+            let dst = peer.into_socket();
+
             // Check if we need to relay to ourselves (from one allocation to another)
-            if peer.into_socket().ip() == self.listen_addr.ip() {
-                self.handle_peer_traffic(payload, peer, port, sender, receiver, now);
+            if dst.ip() == self.ip() {
+                // When relaying to ourselves, we become our own peer.
+                let peer_socket = PeerSocket::new(src);
+                // The allocation that the data is arriving on is the `dst`'s port.
+                let allocation_port = AllocationPort::new(dst.port());
+
+                self.handle_peer_traffic(payload, peer_socket, allocation_port, receiver, now);
 
                 return;
             }
@@ -346,7 +360,7 @@ impl TestRelay {
                 .in_scope(|| {
                     receiver.node.decapsulate(
                         receiver.local,
-                        SocketAddr::from((self.listen_addr.ip(), port.value())),
+                        src,
                         payload,
                         now,
                         receiver.buffer.as_mut(),
@@ -364,7 +378,6 @@ impl TestRelay {
         payload: &[u8],
         peer: PeerSocket,
         port: AllocationPort,
-        sender: &mut TestNode,
         receiver: &mut TestNode,
         now: Instant,
     ) {
@@ -374,7 +387,7 @@ impl TestRelay {
         {
             assert_eq!(
                 client.into_socket(),
-                sender.local,
+                receiver.local,
                 "only relays to the other party"
             );
 
@@ -563,7 +576,6 @@ impl TestNode {
         TestNode {
             node: node.into(),
             span,
-            progress_count: 0,
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
             local: local.parse().unwrap(),
@@ -605,13 +617,7 @@ impl TestNode {
                 assert_eq!(trans.dst.port(), 3478);
 
                 if let Some(relay) = relay.as_mut() {
-                    relay.handle_client_input(
-                        payload,
-                        ClientSocket::new(self.local),
-                        self,
-                        other,
-                        now,
-                    );
+                    relay.handle_client_input(payload, ClientSocket::new(self.local), other, now);
                 }
 
                 return;
@@ -625,7 +631,6 @@ impl TestNode {
                         payload,
                         PeerSocket::new(self.local),
                         AllocationPort::new(dst.port()),
-                        self,
                         other,
                         now,
                     );
@@ -716,15 +721,15 @@ fn progress(
 ) {
     clock.tick();
 
-    if let Some(relay) = relay.as_mut() {
-        relay.drain_messages(a1, a2, clock.now);
-    }
-
     a1.drain_events(a2, clock.now);
     a2.drain_events(a1, clock.now);
 
     a1.drain_transmits(a2, &mut relay, firewall, clock.now);
     a2.drain_transmits(a1, &mut relay, firewall, clock.now);
+
+    if let Some(relay) = relay.as_mut() {
+        relay.drain_messages(a1, a2, clock.now);
+    }
 
     if let Some(timeout) = a1.node.poll_timeout() {
         if clock.now >= timeout {
