@@ -338,6 +338,10 @@ locals {
       name  = "SIGN_UP_WHITELISTED_DOMAINS"
       value = "firezone.dev,firez.one"
     },
+    {
+      name  = "FEATURE_REST_API_ENABLED"
+      value = true
+    }
   ]
 }
 
