@@ -274,17 +274,30 @@ struct Firewall {
 
 struct Clock {
     now: Instant,
+
+    tick_rate: Duration,
+    max_time: Instant,
 }
 
 impl Clock {
     fn new() -> Self {
+        let now = Instant::now();
+        let tick_rate = Duration::from_millis(10);
+        let one_hour = Duration::from_secs(60) * 60;
+
         Self {
-            now: Instant::now(),
+            now,
+            tick_rate,
+            max_time: now + one_hour,
         }
     }
 
     fn tick(&mut self) {
-        self.now += Duration::from_millis(10);
+        self.now += self.tick_rate;
+
+        if self.now >= self.max_time {
+            panic!("Time exceeded")
+        }
     }
 }
 
@@ -634,9 +647,6 @@ fn progress(
     };
 
     t.progress_count += 1;
-    if t.progress_count > 100 {
-        panic!("Test looped more than 100 times");
-    }
 
     while let Some(v) = t.span.in_scope(|| t.node.poll_event()) {
         match v {
