@@ -377,7 +377,7 @@ impl TestRelay {
             let dst = peer.into_socket();
 
             // Check if we need to relay to ourselves (from one allocation to another)
-            if dst.ip() == self.ip() {
+            if self.wants(dst) {
                 // When relaying to ourselves, we become our own peer.
                 let peer_socket = PeerSocket::new(src);
                 // The allocation that the data is arriving on is the `dst`'s port.
