@@ -497,7 +497,7 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
                 }
                 firezone_relay::Command::CreateAllocation { .. }
                 | firezone_relay::Command::FreeAllocation { .. } => {
-                    // We ignore these because in our test this always succeeds.
+                    // We ignore these because in our test we don't perform any IO.
                 }
             }
 
