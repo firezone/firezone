@@ -50,7 +50,9 @@ fn smoke_relayed() {
     let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
     let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
-    let firewall = Firewall::default().with_block_rule("1.1.1.1:80", "2.2.2.2:80");
+    let firewall = Firewall::default()
+        .with_block_rule("1.1.1.1:80", "2.2.2.2:80")
+        .with_block_rule("2.2.2.2:80", "1.1.1.1:80");
     let mut clock = Clock::new();
 
     let mut relays = [relay];
