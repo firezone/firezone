@@ -274,6 +274,44 @@ impl TestRelay {
         }
     }
 
+    fn drain_messages(&mut self, a1: &mut TestNode, a2: &mut TestNode) {
+        while let Some(command) = self.inner.next_command() {
+            match command {
+                firezone_relay::Command::SendMessage { payload, recipient } => {
+                    let recipient = if recipient.into_socket() == a1.local {
+                        &mut *a1
+                    } else if recipient.into_socket() == a2.local {
+                        &mut *a2
+                    } else {
+                        panic!("Relay generated traffic for unknown client")
+                    };
+
+                    let buffer = recipient.buffer.as_mut();
+
+                    if let Some((_, packet)) = recipient
+                        .span
+                        .in_scope(|| {
+                            recipient.node.decapsulate(
+                                recipient.local,
+                                self.listen_addr,
+                                &payload,
+                                recipient.time,
+                                buffer,
+                            )
+                        })
+                        .unwrap()
+                    {
+                        recipient.received_packets.push(packet.to_owned());
+                    }
+                }
+                firezone_relay::Command::CreateAllocation { .. }
+                | firezone_relay::Command::FreeAllocation { .. } => {
+                    // We ignore these because in our test we don't perform any IO.
+                }
+            }
+        }
+    }
+
     fn make_credentials(&self, username: &str) -> (String, String) {
         let expiry = SystemTime::now() + Duration::from_secs(60);
 
@@ -466,43 +504,7 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, relay: Option<&TestRe
 
 fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>) {
     if let Some(relay) = r.as_mut() {
-        if let Some(command) = relay.inner.next_command() {
-            match command {
-                firezone_relay::Command::SendMessage { payload, recipient } => {
-                    let recipient = if recipient.into_socket() == a1.local {
-                        a1
-                    } else if recipient.into_socket() == a2.local {
-                        a2
-                    } else {
-                        panic!("Relay generated traffic for unknown client")
-                    };
-
-                    let buffer = recipient.buffer.as_mut();
-
-                    if let Some((_, packet)) = recipient
-                        .span
-                        .in_scope(|| {
-                            recipient.node.decapsulate(
-                                recipient.local,
-                                relay.listen_addr,
-                                &payload,
-                                recipient.time,
-                                buffer,
-                            )
-                        })
-                        .unwrap()
-                    {
-                        recipient.received_packets.push(packet.to_owned());
-                    }
-                }
-                firezone_relay::Command::CreateAllocation { .. }
-                | firezone_relay::Command::FreeAllocation { .. } => {
-                    // We ignore these because in our test we don't perform any IO.
-                }
-            }
-
-            return;
-        }
+        relay.drain_messages(a1, a2);
     }
 
     let (f, t) = if a1.progress_count % 2 == a2.progress_count % 2 {
