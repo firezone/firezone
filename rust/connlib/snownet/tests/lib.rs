@@ -274,6 +274,83 @@ impl TestRelay {
         }
     }
 
+    fn handle_client_input(
+        &mut self,
+        trans: Transmit<'_>,
+        sender: &mut TestNode,
+        receiver: &mut TestNode,
+    ) {
+        if let Some((port, peer)) = self.span.in_scope(|| {
+            self.inner.handle_client_input(
+                &trans.payload,
+                ClientSocket::new(sender.local),
+                sender.time,
+            )
+        }) {
+            let payload = ChannelData::parse(&trans.payload)
+                .expect("valid ChannelData if we should relay it")
+                .data()
+                .to_vec();
+
+            // Check if we need to relay to ourselves (from one allocation to another)
+            if peer.into_socket().ip() == self.listen_addr.ip() {
+                if let Some((client, channel)) =
+                    self.inner.handle_peer_traffic(&payload, peer, port)
+                {
+                    assert_eq!(
+                        client.into_socket(),
+                        sender.local,
+                        "only relays to the other party"
+                    );
+
+                    let mut msg = vec![0u8; payload.len() + 4];
+                    msg[4..].copy_from_slice(&payload);
+                    firezone_relay::ChannelData::encode_header_to_slice(
+                        channel,
+                        payload.len() as u16,
+                        &mut msg[..4],
+                    );
+
+                    if let Some((_, packet)) = receiver
+                        .span
+                        .in_scope(|| {
+                            receiver.node.decapsulate(
+                                receiver.local,
+                                self.listen_addr,
+                                &msg,
+                                receiver.time,
+                                receiver.buffer.as_mut(),
+                            )
+                        })
+                        .unwrap()
+                    {
+                        receiver.received_packets.push(packet.to_owned());
+                    }
+                }
+
+                return;
+            }
+
+            let buffer = receiver.buffer.as_mut();
+
+            if let Some((_, packet)) = receiver
+                .span
+                .in_scope(|| {
+                    receiver.node.decapsulate(
+                        receiver.local,
+                        SocketAddr::from((self.listen_addr.ip(), port.value())),
+                        &payload,
+                        receiver.time,
+                        buffer,
+                    )
+                })
+                .unwrap()
+            {
+                receiver.received_packets.push(packet.to_owned());
+            }
+        }
+    }
+
     fn drain_messages(&mut self, a1: &mut TestNode, a2: &mut TestNode) {
         while let Some(command) = self.inner.next_command() {
             match command {
@@ -534,77 +611,7 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
             if let Some(relay) = r.as_mut() {
                 assert_eq!(trans.dst.port(), 3478);
 
-                if let Some((port, peer)) = relay.span.in_scope(|| {
-                    relay.inner.handle_client_input(
-                        &trans.payload,
-                        ClientSocket::new(f.local),
-                        f.time,
-                    )
-                }) {
-                    let payload = ChannelData::parse(&trans.payload)
-                        .expect("valid ChannelData if we should relay it")
-                        .data()
-                        .to_vec();
-
-                    // Check if we need to relay to ourselves (from one allocation to another)
-                    if peer.into_socket().ip() == relay.listen_addr.ip() {
-                        if let Some((client, channel)) =
-                            relay.inner.handle_peer_traffic(&payload, peer, port)
-                        {
-                            assert_eq!(
-                                client.into_socket(),
-                                f.local,
-                                "only relays to the other party"
-                            );
-
-                            let mut msg = vec![0u8; payload.len() + 4];
-                            msg[4..].copy_from_slice(&payload);
-                            firezone_relay::ChannelData::encode_header_to_slice(
-                                channel,
-                                payload.len() as u16,
-                                &mut msg[..4],
-                            );
-
-                            if let Some((_, packet)) = t
-                                .span
-                                .in_scope(|| {
-                                    t.node.decapsulate(
-                                        t.local,
-                                        relay.listen_addr,
-                                        &msg,
-                                        t.time,
-                                        t.buffer.as_mut(),
-                                    )
-                                })
-                                .unwrap()
-                            {
-                                t.received_packets.push(packet.to_owned());
-                            }
-                        }
-
-                        return;
-                    }
-
-                    let buffer = t.buffer.as_mut();
-
-                    if let Some((_, packet)) = t
-                        .span
-                        .in_scope(|| {
-                            t.node.decapsulate(
-                                t.local,
-                                SocketAddr::from((relay.listen_addr.ip(), port.value())),
-                                &payload,
-                                t.time,
-                                buffer,
-                            )
-                        })
-                        .unwrap()
-                    {
-                        t.received_packets.push(packet.to_owned());
-                    }
-                }
-
-                return;
+                relay.handle_client_input(trans.into_owned(), f, t);
             }
 
             return;
