@@ -627,13 +627,14 @@ fn progress(
         .in_scope(|| f.node.poll_transmit())
         .map(|t| t.into_owned())
     {
+        let payload = &trans.payload;
         let Some(src) = trans.src else {
             // `src` not set? Must client-facing traffic for the relay.
 
             if let Some(relay) = r {
                 assert_eq!(trans.dst.port(), 3478);
 
-                relay.handle_client_input(&trans.payload, ClientSocket::new(f.local), f, t);
+                relay.handle_client_input(payload, ClientSocket::new(f.local), f, t);
             }
 
             return;
@@ -644,7 +645,7 @@ fn progress(
         if let Some(relay) = r {
             if dst.ip() == relay.listen_addr.ip() {
                 relay.handle_peer_traffic(
-                    &trans.payload,
+                    payload,
                     PeerSocket::new(f.local),
                     AllocationPort::new(dst.port()),
                     f,
@@ -666,7 +667,7 @@ fn progress(
             .span
             .in_scope(|| {
                 t.node
-                    .decapsulate(dst, src, &trans.payload, t.time, t.buffer.as_mut())
+                    .decapsulate(dst, src, payload, t.time, t.buffer.as_mut())
             })
             .unwrap()
         {
