@@ -20,7 +20,7 @@ clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
-firezone-client-tunnel = { path = "../../client-tunnel" }
+firezone-headless-client = { path = "../../headless-client" }
 git-version = "0.3.9"
 hex = "0.4.3"
 # Same crate Hickory uses
