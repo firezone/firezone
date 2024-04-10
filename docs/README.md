@@ -97,7 +97,7 @@ product documentation, organized as follows:
     and deployed to your infrastructure.
   - [rust/relay](../rust/relay): Relay - STUN/TURN server to facilitate
     holepunching.
-  - [rust/linux-client](../rust/linux-client): Linux CLI client.
+  - [rust/headless-client](../rust/headless-client): Cross-platform CLI client.
   - [rust/gui-client](../rust/gui-client): Cross-platform GUI client.
 - [swift/](../swift/apple): macOS / iOS clients.
 - [kotlin/](../kotlin/android): Android / ChromeOS clients.

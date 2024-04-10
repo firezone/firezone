@@ -3,13 +3,14 @@ name = "firezone-linux-client"
 # mark:automatic-version
 version = "1.0.0"
 edition = "2021"
+authors = ["Firezone, Inc."]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = { version = "1.0" }
-firezone-client-tunnel = { workspace = true }
-tokio = { version = "1.36", default-features = false, features = ["rt", "macros"] }
+firezone-headless-client = { path = "../headless-client" }
+tokio = { version = "1.36.0", features = ["macros", "signal"] }
 
 [lints]
 workspace = true

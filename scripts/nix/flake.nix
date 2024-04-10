@@ -63,9 +63,9 @@
           };
         in
         {
-          packages.firezone-linux-client = naersk.buildPackage {
+          packages.firezone-headless-client = naersk.buildPackage {
             name = "foo";
-            src = ../../rust/linux-client;
+            src = ../../rust/headless-client;
           };
 
           devShells.default = mkShellWithRustVersion [
