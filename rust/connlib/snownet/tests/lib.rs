@@ -1,5 +1,5 @@
 use boringtun::x25519::{PublicKey, StaticSecret};
-use firezone_relay::{AllocationPort, ClientSocket, IpStack, PeerSocket};
+use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use rand::rngs::OsRng;
 use snownet::{Answer, ClientNode, Event, MutableIpPacket, ServerNode, Transmit};
 use std::{
@@ -262,6 +262,8 @@ struct TestRelay {
     inner: firezone_relay::Server<OsRng>,
     listen_addr: SocketAddr,
     span: Span,
+
+    allocations: HashSet<(AddressFamily, AllocationPort)>,
 }
 
 #[derive(Default)]
@@ -315,11 +317,42 @@ impl TestRelay {
             inner,
             listen_addr: SocketAddr::from((local, 3478)),
             span,
+            allocations: HashSet::default(),
         }
+    }
+
+    fn wants(&self, dst: SocketAddr) -> bool {
+        self.listen_addr == dst
+            || self.allocations.contains(&match dst {
+                SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
+                SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
+            })
     }
 
     fn ip(&self) -> IpAddr {
         self.listen_addr.ip()
+    }
+
+    fn handle_packet(
+        &mut self,
+        payload: &[u8],
+        sender: SocketAddr,
+        dst: SocketAddr,
+        other: &mut TestNode,
+        now: Instant,
+    ) {
+        if dst == self.listen_addr {
+            self.handle_client_input(payload, ClientSocket::new(sender), other, now);
+            return;
+        }
+
+        self.handle_peer_traffic(
+            payload,
+            PeerSocket::new(sender),
+            AllocationPort::new(dst.port()),
+            other,
+            now,
+        )
     }
 
     fn handle_client_input(
@@ -399,9 +432,11 @@ impl TestRelay {
 
                     panic!("Relay generated traffic for unknown client")
                 }
-                firezone_relay::Command::CreateAllocation { .. }
-                | firezone_relay::Command::FreeAllocation { .. } => {
-                    // We ignore these because in our test we don't perform any IO.
+                firezone_relay::Command::CreateAllocation { port, family } => {
+                    self.allocations.insert((family, port));
+                }
+                firezone_relay::Command::FreeAllocation { port, family } => {
+                    self.allocations.remove(&(family, port));
                 }
             }
         }
@@ -579,36 +614,21 @@ impl TestNode {
             .map(|trans| trans.into_owned())
         {
             let payload = &trans.payload;
-            let Some(src) = trans.src else {
-                // `src` not set? Attempt to dispatch to a relay.
-                if let Some(relay) = relays.iter_mut().find(|r| r.listen_addr == trans.dst) {
-                    relay.handle_client_input(payload, ClientSocket::new(self.local), other, now);
-                }
-
-                return;
-            };
             let dst = trans.dst;
 
-            // `src` is set, let's check if it is peer traffic for the relay.
-            if let Some(relay) = relays
-                .iter_mut()
-                .find(|r| r.listen_addr.ip() == trans.dst.ip())
-            {
-                relay.handle_peer_traffic(
-                    payload,
-                    PeerSocket::new(self.local),
-                    AllocationPort::new(dst.port()),
-                    other,
-                    now,
-                );
-
-                return;
+            if let Some(relay) = relays.iter_mut().find(|r| r.wants(trans.dst)) {
+                relay.handle_packet(payload, self.local, dst, other, now);
+                continue;
             }
+
+            let src = trans
+                .src
+                .expect("transmits without `src` should always be handled by relays");
 
             // Wasn't traffic for the relay, let's check our firewall.
             if firewall.blocked.contains(&(src, dst)) {
                 tracing::debug!(target: "firewall", %src, %dst, "Dropping packet");
-                return;
+                continue;
             }
 
             // Firewall allowed traffic, let's dispatch it.
