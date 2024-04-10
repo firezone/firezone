@@ -23,8 +23,8 @@ fn smoke_direct() {
 
     let mut alice =
         TestNode::new(info_span!("Alice"), alice, "1.1.1.1:80").with_local_host_candidate();
-
     let mut bob = TestNode::new(info_span!("Bob"), bob, "1.1.1.2:80").with_local_host_candidate();
+    let firewall = Firewall::default();
 
     handshake(&mut alice, &mut bob, None);
 
@@ -32,7 +32,7 @@ fn smoke_direct() {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(&mut alice, &mut bob, None);
+        progress(&mut alice, &mut bob, None, &firewall);
     }
 }
 
@@ -46,10 +46,9 @@ fn smoke_relayed() {
     let (alice, bob) = alice_and_bob();
 
     let mut relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
-        .with_drop_traffic_from("2.2.2.2:80");
-    let mut bob =
-        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_drop_traffic_from("1.1.1.1:80");
+    let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
+    let firewall = Firewall::default().with_block_rule("1.1.1.1:80", "2.2.2.2:80");
 
     handshake(&mut alice, &mut bob, Some(&relay));
 
@@ -57,7 +56,7 @@ fn smoke_relayed() {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(&mut alice, &mut bob, Some(&mut relay));
+        progress(&mut alice, &mut bob, Some(&mut relay), &firewall);
     }
 }
 
@@ -252,8 +251,6 @@ struct TestNode {
     time: Instant,
     local: SocketAddr,
 
-    drop_traffic_from: HashSet<SocketAddr>,
-
     buffer: Box<[u8; 10_000]>,
 }
 
@@ -261,6 +258,20 @@ struct TestRelay {
     inner: firezone_relay::Server<OsRng>,
     listen_addr: SocketAddr,
     span: Span,
+}
+
+#[derive(Default)]
+struct Firewall {
+    blocked: Vec<(SocketAddr, SocketAddr)>,
+}
+
+impl Firewall {
+    fn with_block_rule(mut self, from: &str, to: &str) -> Self {
+        self.blocked
+            .push((from.parse().unwrap(), to.parse().unwrap()));
+
+        self
+    }
 }
 
 impl TestRelay {
@@ -525,7 +536,6 @@ impl TestNode {
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
             local: local.parse().unwrap(),
-            drop_traffic_from: HashSet::default(),
         }
     }
 
@@ -536,12 +546,6 @@ impl TestNode {
     fn with_local_host_candidate(mut self) -> Self {
         self.span
             .in_scope(|| self.node.add_local_host_candidate(self.local));
-
-        self
-    }
-
-    fn with_drop_traffic_from(mut self, other: &str) -> Self {
-        self.drop_traffic_from.insert(other.parse().unwrap());
 
         self
     }
@@ -586,7 +590,12 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, relay: Option<&TestRe
         .in_scope(|| client_node.accept_answer(1, server_node.public_key(), answer, client.time));
 }
 
-fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>) {
+fn progress(
+    a1: &mut TestNode,
+    a2: &mut TestNode,
+    mut r: Option<&mut TestRelay>,
+    firewall: &Firewall,
+) {
     if let Some(relay) = r.as_mut() {
         relay.drain_messages(a1, a2);
     }
@@ -629,14 +638,15 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
 
             return;
         };
+        let dst = trans.dst;
 
         // `src` is set, let's check if it is peer traffic for the relay.
         if let Some(relay) = r {
-            if trans.dst.ip() == relay.listen_addr.ip() {
+            if dst.ip() == relay.listen_addr.ip() {
                 relay.handle_peer_traffic(
                     &trans.payload,
                     PeerSocket::new(f.local),
-                    AllocationPort::new(trans.dst.port()),
+                    AllocationPort::new(dst.port()),
                     f,
                     t,
                 );
@@ -645,10 +655,9 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
             }
         }
 
-        // Wasn't traffic for the relay, let's check our "firewall".
-        if t.drop_traffic_from.contains(&src) {
-            t.span
-                .in_scope(|| tracing::debug!(target: "test_harness", %src, "Dropping traffic"));
+        // Wasn't traffic for the relay, let's check our firewall.
+        if firewall.blocked.contains(&(src, dst)) {
+            tracing::debug!(target: "firewall", %src, %dst, "Dropping packet");
             return;
         }
 
@@ -657,7 +666,7 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
             .span
             .in_scope(|| {
                 t.node
-                    .decapsulate(trans.dst, src, &trans.payload, t.time, t.buffer.as_mut())
+                    .decapsulate(dst, src, &trans.payload, t.time, t.buffer.as_mut())
             })
             .unwrap()
         {
