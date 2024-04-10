@@ -646,14 +646,14 @@ fn progress(
         (a1, a2)
     };
 
-    t.progress_count += 1;
+    f.progress_count += 1;
 
-    while let Some(v) = t.span.in_scope(|| t.node.poll_event()) {
+    while let Some(v) = f.span.in_scope(|| f.node.poll_event()) {
         match v {
             Event::SignalIceCandidate {
                 connection,
                 candidate,
-            } => f
+            } => t
                 .node
                 .add_remote_candidate(connection, candidate, clock.now),
             Event::ConnectionEstablished(_) => {}
