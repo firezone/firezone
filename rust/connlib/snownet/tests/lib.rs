@@ -575,6 +575,19 @@ impl TestNode {
         self.node.is_connected_to(other.node.public_key())
     }
 
+    fn drain_events(&mut self, other: &mut TestNode, now: Instant) {
+        while let Some(v) = self.span.in_scope(|| self.node.poll_event()) {
+            match v {
+                Event::SignalIceCandidate {
+                    connection,
+                    candidate,
+                } => other.node.add_remote_candidate(connection, candidate, now),
+                Event::ConnectionEstablished(_) => {}
+                Event::ConnectionFailed(_) => {}
+            };
+        }
+    }
+
     fn with_local_host_candidate(mut self) -> Self {
         self.span
             .in_scope(|| self.node.add_local_host_candidate(self.local));
@@ -640,6 +653,9 @@ fn progress(
         relay.drain_messages(a1, a2, clock.now);
     }
 
+    a1.drain_events(a2, clock.now);
+    a2.drain_events(a1, clock.now);
+
     let (f, t) = if a1.progress_count % 2 == a2.progress_count % 2 {
         (a2, a1)
     } else {
@@ -647,19 +663,6 @@ fn progress(
     };
 
     f.progress_count += 1;
-
-    while let Some(v) = f.span.in_scope(|| f.node.poll_event()) {
-        match v {
-            Event::SignalIceCandidate {
-                connection,
-                candidate,
-            } => t
-                .node
-                .add_remote_candidate(connection, candidate, clock.now),
-            Event::ConnectionEstablished(_) => {}
-            Event::ConnectionFailed(_) => {}
-        };
-    }
 
     if let Some(trans) = f
         .span
