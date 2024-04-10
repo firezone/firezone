@@ -121,7 +121,8 @@ defmodule Domain.Config.Definitions do
        [
          :instrumentation_client_logs_enabled,
          :instrumentation_client_logs_bucket,
-         :telemetry_metrics_reporter
+         :telemetry_metrics_reporter,
+         :telemetry_metrics_reporter_opts
        ]}
     ]
   end
@@ -463,7 +464,7 @@ defmodule Domain.Config.Definitions do
      Ecto.Enum.init(
        values: [
          Telemetry.Metrics.ConsoleReporter,
-         Domain.Telemetry.GoogleCloudMetricsReporter
+         Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
        ]
      )},
     default: nil
