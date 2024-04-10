@@ -1,15 +1,26 @@
+use axum::http::StatusCode;
 use axum::routing::get;
 use axum::Router;
 use std::net::SocketAddr;
 
-/// Runs an HTTP server that always responds to `GET /healthz` with 200 OK.
-///
-/// To signal an unhealthy state, simply stop the task.
-pub async fn serve(addr: impl Into<SocketAddr>) -> std::io::Result<()> {
+/// Runs an HTTP server that responds to `GET /healthz` with 200 OK or 400 BAD REQUEST, depending on the return value of `is_healthy`.
+pub async fn serve(
+    addr: impl Into<SocketAddr>,
+    is_healthy: impl Fn() -> bool + Clone + Send + Sync + 'static,
+) -> std::io::Result<()> {
     let addr = addr.into();
 
     let service = Router::new()
-        .route("/healthz", get(|| async { "" }))
+        .route(
+            "/healthz",
+            get(move || async move {
+                if is_healthy() {
+                    StatusCode::OK
+                } else {
+                    StatusCode::BAD_REQUEST
+                }
+            }),
+        )
         .into_make_service();
 
     axum::serve(tokio::net::TcpListener::bind(addr).await?, service).await?;
