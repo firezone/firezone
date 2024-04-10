@@ -464,7 +464,7 @@ where
             };
 
             if let Some(existing) = self.allocations.get_mut(id) {
-                existing.update_credentials(username, password, realm, now); // TODO: Pass new address here.
+                existing.update_credentials(*server, username, password, realm, now);
                 continue;
             }
 
