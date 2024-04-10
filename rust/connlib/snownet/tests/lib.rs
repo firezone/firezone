@@ -1,5 +1,5 @@
 use boringtun::x25519::{PublicKey, StaticSecret};
-use firezone_relay::{AllocationPort, ChannelData, ClientSocket, IpStack, PeerSocket};
+use firezone_relay::{AllocationPort, ClientSocket, IpStack, PeerSocket};
 use rand::rngs::OsRng;
 use snownet::{Answer, ClientNode, Event, MutableIpPacket, ServerNode, Transmit};
 use std::{
@@ -287,9 +287,7 @@ impl TestRelay {
                 sender.time,
             )
         }) {
-            let payload = ChannelData::parse(&trans.payload)
-                .expect("valid ChannelData if we should relay it")
-                .data();
+            let payload = &trans.payload[4..];
 
             // Check if we need to relay to ourselves (from one allocation to another)
             if peer.into_socket().ip() == self.listen_addr.ip() {
