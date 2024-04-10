@@ -38,6 +38,16 @@ locals {
       value = "application.name=${local.application_name}"
     },
     {
+      name  = "TELEMETRY_METRICS_REPORTER"
+      value = "Domain.Telemetry.GoogleCloudMetricsReporter"
+    },
+    {
+      name = "TELEMETRY_METRICS_REPORTER_OPTS"
+      value = jsonencode({
+        project_id = var.project_id
+      })
+    },
+    {
       name  = "PLATFORM_ADAPTER"
       value = "Elixir.Domain.GoogleCloudPlatform"
     },

@@ -37,9 +37,7 @@ config :domain, Domain.Gateways,
   gateway_ipv4_masquerade: true,
   gateway_ipv6_masquerade: true
 
-config :domain, Domain.Telemetry,
-  enabled: true,
-  id: "firezone-dev"
+config :domain, Domain.Telemetry, metrics_reporter: nil
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
@@ -68,6 +66,8 @@ config :domain, Domain.GoogleCloudPlatform,
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
   aggregated_list_endpoint_url:
     "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances",
+  cloud_metrics_endpoint_url:
+    "https://monitoring.googleapis.com/v3/projects/${project_id}/timeSeries",
   sign_endpoint_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/",
   cloud_storage_url: "https://storage.googleapis.com"
 

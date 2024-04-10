@@ -132,6 +132,33 @@ defmodule Domain.GoogleCloudPlatform do
     end
   end
 
+  @doc """
+  Sends metrics to Google Cloud Monitoring API.
+  """
+  def send_metrics(project_id, time_series) do
+    cloud_metrics_endpoint_url =
+      fetch_config!()
+      |> Keyword.fetch!(:cloud_metrics_endpoint_url)
+      |> String.replace("${project_id}", project_id)
+
+    body = Jason.encode!(%{"timeSeries" => time_series})
+
+    with {:ok, access_token} <- fetch_and_cache_access_token(),
+         request =
+           Finch.build(
+             :post,
+             cloud_metrics_endpoint_url,
+             [
+               {"Content-Type", "application/json"},
+               {"Authorization", "Bearer #{access_token}"}
+             ],
+             body
+           ),
+         {:ok, _response} <- Finch.request(request, __MODULE__.Finch) do
+      :ok
+    end
+  end
+
   defp fetch_config! do
     Domain.Config.fetch_env!(:domain, __MODULE__)
   end

@@ -180,4 +180,25 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
 
     bypass
   end
+
+  def mock_metrics_submit_endpoint(bypass) do
+    metrics_endpoint_path = "v3/projects/firezone-staging/timeSeries"
+
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", metrics_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      {:ok, binary, conn} = Plug.Conn.read_body(conn)
+      body = Jason.decode!(binary)
+      send(test_pid, {:bypass_request, conn, body})
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(%{}))
+    end)
+
+    override_endpoint_url(
+      :cloud_metrics_endpoint_url,
+      "http://localhost:#{bypass.port}/#{metrics_endpoint_path}"
+    )
+
+    bypass
+  end
 end
