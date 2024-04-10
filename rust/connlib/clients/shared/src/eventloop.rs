@@ -1,7 +1,7 @@
 use crate::{
     messages::{
         BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
-        GatewayIceCandidates, IngressMessages, InitClient, RemoveResource, ReplyMessages,
+        GatewayIceCandidates, IngressMessages, InitClient, ReplyMessages,
     },
     PHOENIX_TOPIC,
 };
@@ -189,7 +189,7 @@ where
                     tracing::warn!(%resource_id, "Failed to add resource: {e}");
                 }
             }
-            IngressMessages::ResourceDeleted(RemoveResource(resource)) => {
+            IngressMessages::ResourceDeleted(resource) => {
                 self.tunnel.remove_resources(&[resource]);
             }
         }
