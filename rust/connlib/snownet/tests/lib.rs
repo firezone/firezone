@@ -255,7 +255,6 @@ struct TestNode {
     node: EitherNode,
     span: Span,
     received_packets: Vec<MutableIpPacket<'static>>,
-    progress_count: u64,
     local: SocketAddr,
 
     buffer: Box<[u8; 10_000]>,
@@ -588,6 +587,74 @@ impl TestNode {
         }
     }
 
+    fn drain_transmits(
+        &mut self,
+        other: &mut TestNode,
+        relay: &mut Option<&mut TestRelay>,
+        firewall: &Firewall,
+        now: Instant,
+    ) {
+        while let Some(trans) = self
+            .span
+            .in_scope(|| self.node.poll_transmit())
+            .map(|trans| trans.into_owned())
+        {
+            let payload = &trans.payload;
+            let Some(src) = trans.src else {
+                // `src` not set? Must client-facing traffic for the relay.
+                assert_eq!(trans.dst.port(), 3478);
+
+                if let Some(relay) = relay.as_mut() {
+                    relay.handle_client_input(
+                        payload,
+                        ClientSocket::new(self.local),
+                        self,
+                        other,
+                        now,
+                    );
+                }
+
+                return;
+            };
+            let dst = trans.dst;
+
+            // `src` is set, let's check if it is peer traffic for the relay.
+            if let Some(relay) = relay.as_mut() {
+                if dst.ip() == relay.listen_addr.ip() {
+                    relay.handle_peer_traffic(
+                        payload,
+                        PeerSocket::new(self.local),
+                        AllocationPort::new(dst.port()),
+                        self,
+                        other,
+                        now,
+                    );
+
+                    return;
+                }
+            }
+
+            // Wasn't traffic for the relay, let's check our firewall.
+            if firewall.blocked.contains(&(src, dst)) {
+                tracing::debug!(target: "firewall", %src, %dst, "Dropping packet");
+                return;
+            }
+
+            // Firewall allowed traffic, let's dispatch it.
+            if let Some((_, packet)) = other
+                .span
+                .in_scope(|| {
+                    other
+                        .node
+                        .decapsulate(dst, src, payload, now, other.buffer.as_mut())
+                })
+                .unwrap()
+            {
+                other.received_packets.push(packet.to_owned())
+            }
+        }
+    }
+
     fn with_local_host_candidate(mut self) -> Self {
         self.span
             .in_scope(|| self.node.add_local_host_candidate(self.local));
@@ -643,93 +710,35 @@ fn handshake(
 fn progress(
     a1: &mut TestNode,
     a2: &mut TestNode,
-    mut r: Option<&mut TestRelay>,
+    mut relay: Option<&mut TestRelay>,
     firewall: &Firewall,
     clock: &mut Clock,
 ) {
     clock.tick();
 
-    if let Some(relay) = r.as_mut() {
+    if let Some(relay) = relay.as_mut() {
         relay.drain_messages(a1, a2, clock.now);
     }
 
     a1.drain_events(a2, clock.now);
     a2.drain_events(a1, clock.now);
 
-    let (f, t) = if a1.progress_count % 2 == a2.progress_count % 2 {
-        (a2, a1)
-    } else {
-        (a1, a2)
-    };
+    a1.drain_transmits(a2, &mut relay, firewall, clock.now);
+    a2.drain_transmits(a1, &mut relay, firewall, clock.now);
 
-    f.progress_count += 1;
-
-    if let Some(trans) = f
-        .span
-        .in_scope(|| f.node.poll_transmit())
-        .map(|t| t.into_owned())
-    {
-        let payload = &trans.payload;
-        let Some(src) = trans.src else {
-            // `src` not set? Must client-facing traffic for the relay.
-            assert_eq!(trans.dst.port(), 3478);
-
-            if let Some(relay) = r {
-                relay.handle_client_input(payload, ClientSocket::new(f.local), f, t, clock.now);
-            }
-
-            return;
-        };
-        let dst = trans.dst;
-
-        // `src` is set, let's check if it is peer traffic for the relay.
-        if let Some(relay) = &mut r {
-            if dst.ip() == relay.listen_addr.ip() {
-                relay.handle_peer_traffic(
-                    payload,
-                    PeerSocket::new(f.local),
-                    AllocationPort::new(dst.port()),
-                    f,
-                    t,
-                    clock.now,
-                );
-
-                return;
-            }
-        }
-
-        // Wasn't traffic for the relay, let's check our firewall.
-        if firewall.blocked.contains(&(src, dst)) {
-            tracing::debug!(target: "firewall", %src, %dst, "Dropping packet");
-            return;
-        }
-
-        // Firewall allowed traffic, let's dispatch it.
-        if let Some((_, packet)) = t
-            .span
-            .in_scope(|| {
-                t.node
-                    .decapsulate(dst, src, payload, clock.now, t.buffer.as_mut())
-            })
-            .unwrap()
-        {
-            t.received_packets.push(packet.to_owned())
-        }
-    }
-
-    if let Some(timeout) = f.node.poll_timeout() {
+    if let Some(timeout) = a1.node.poll_timeout() {
         if clock.now >= timeout {
-            f.span.in_scope(|| f.node.handle_timeout(clock.now));
+            a1.span.in_scope(|| a1.node.handle_timeout(clock.now));
         }
     }
 
-    if let Some(timeout) = t.node.poll_timeout() {
+    if let Some(timeout) = a2.node.poll_timeout() {
         if clock.now >= timeout {
-            t.span.in_scope(|| t.node.handle_timeout(clock.now));
+            a2.span.in_scope(|| a2.node.handle_timeout(clock.now));
         }
     }
 
-    if let Some(relay) = r {
+    if let Some(relay) = relay {
         if let Some(timeout) = relay.inner.poll_timeout() {
             if clock.now >= timeout {
                 relay
