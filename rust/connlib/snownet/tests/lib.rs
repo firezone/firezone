@@ -25,14 +25,15 @@ fn smoke_direct() {
         TestNode::new(info_span!("Alice"), alice, "1.1.1.1:80").with_local_host_candidate();
     let mut bob = TestNode::new(info_span!("Bob"), bob, "1.1.1.2:80").with_local_host_candidate();
     let firewall = Firewall::default();
+    let mut clock = Clock::new();
 
-    handshake(&mut alice, &mut bob, None);
+    handshake(&mut alice, &mut bob, None, &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(&mut alice, &mut bob, None, &firewall);
+        progress(&mut alice, &mut bob, None, &firewall, &mut clock);
     }
 }
 
@@ -49,14 +50,21 @@ fn smoke_relayed() {
     let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
     let firewall = Firewall::default().with_block_rule("1.1.1.1:80", "2.2.2.2:80");
+    let mut clock = Clock::new();
 
-    handshake(&mut alice, &mut bob, Some(&relay));
+    handshake(&mut alice, &mut bob, Some(&relay), &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
             break;
         }
-        progress(&mut alice, &mut bob, Some(&mut relay), &firewall);
+        progress(
+            &mut alice,
+            &mut bob,
+            Some(&mut relay),
+            &firewall,
+            &mut clock,
+        );
     }
 }
 
@@ -248,7 +256,6 @@ struct TestNode {
     span: Span,
     received_packets: Vec<MutableIpPacket<'static>>,
     progress_count: u64,
-    time: Instant,
     local: SocketAddr,
 
     buffer: Box<[u8; 10_000]>,
@@ -263,6 +270,22 @@ struct TestRelay {
 #[derive(Default)]
 struct Firewall {
     blocked: Vec<(SocketAddr, SocketAddr)>,
+}
+
+struct Clock {
+    now: Instant,
+}
+
+impl Clock {
+    fn new() -> Self {
+        Self {
+            now: Instant::now(),
+        }
+    }
+
+    fn tick(&mut self) {
+        self.now += Duration::from_millis(10);
+    }
 }
 
 impl Firewall {
@@ -291,16 +314,17 @@ impl TestRelay {
         client: ClientSocket,
         sender: &mut TestNode,
         receiver: &mut TestNode,
+        now: Instant,
     ) {
-        if let Some((port, peer)) = self.span.in_scope(|| {
-            self.inner
-                .handle_client_input(&payload, client, sender.time)
-        }) {
+        if let Some((port, peer)) = self
+            .span
+            .in_scope(|| self.inner.handle_client_input(&payload, client, now))
+        {
             let payload = &payload[4..];
 
             // Check if we need to relay to ourselves (from one allocation to another)
             if peer.into_socket().ip() == self.listen_addr.ip() {
-                self.handle_peer_traffic(payload, peer, port, sender, receiver);
+                self.handle_peer_traffic(payload, peer, port, sender, receiver, now);
 
                 return;
             }
@@ -312,7 +336,7 @@ impl TestRelay {
                         receiver.local,
                         SocketAddr::from((self.listen_addr.ip(), port.value())),
                         payload,
-                        receiver.time,
+                        now,
                         receiver.buffer.as_mut(),
                     )
                 })
@@ -330,6 +354,7 @@ impl TestRelay {
         port: AllocationPort,
         sender: &mut TestNode,
         receiver: &mut TestNode,
+        now: Instant,
     ) {
         if let Some((client, channel)) = self
             .span
@@ -356,7 +381,7 @@ impl TestRelay {
                         receiver.local,
                         self.listen_addr,
                         &msg,
-                        receiver.time,
+                        now,
                         receiver.buffer.as_mut(),
                     )
                 })
@@ -367,7 +392,7 @@ impl TestRelay {
         }
     }
 
-    fn drain_messages(&mut self, a1: &mut TestNode, a2: &mut TestNode) {
+    fn drain_messages(&mut self, a1: &mut TestNode, a2: &mut TestNode, now: Instant) {
         while let Some(command) = self.inner.next_command() {
             match command {
                 firezone_relay::Command::SendMessage { payload, recipient } => {
@@ -386,7 +411,7 @@ impl TestRelay {
                                 recipient.local,
                                 self.listen_addr,
                                 &payload,
-                                recipient.time,
+                                now,
                                 recipient.buffer.as_mut(),
                             )
                         })
@@ -523,12 +548,10 @@ impl EitherNode {
 
 impl TestNode {
     pub fn new(span: Span, node: impl Into<EitherNode>, local: &str) -> Self {
-        let now = Instant::now();
         TestNode {
             node: node.into(),
             span,
             progress_count: 0,
-            time: now,
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
             local: local.parse().unwrap(),
@@ -547,7 +570,12 @@ impl TestNode {
     }
 }
 
-fn handshake(client: &mut TestNode, server: &mut TestNode, relay: Option<&TestRelay>) {
+fn handshake(
+    client: &mut TestNode,
+    server: &mut TestNode,
+    relay: Option<&TestRelay>,
+    clock: &Clock,
+) {
     let client_node = &mut client.node.as_client_mut().unwrap();
     let server_node = &mut server.node.as_server_mut().unwrap();
 
@@ -567,8 +595,8 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, relay: Option<&TestRe
             1,
             HashSet::default(),
             HashSet::from_iter(client_credentials),
-            client.time,
-            client.time,
+            clock.now,
+            clock.now,
         )
     });
     let answer = server.span.in_scope(|| {
@@ -578,12 +606,12 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, relay: Option<&TestRe
             client_node.public_key(),
             HashSet::default(),
             HashSet::from_iter(server_credentials),
-            server.time,
+            clock.now,
         )
     });
     client
         .span
-        .in_scope(|| client_node.accept_answer(1, server_node.public_key(), answer, client.time));
+        .in_scope(|| client_node.accept_answer(1, server_node.public_key(), answer, clock.now));
 }
 
 fn progress(
@@ -591,9 +619,12 @@ fn progress(
     a2: &mut TestNode,
     mut r: Option<&mut TestRelay>,
     firewall: &Firewall,
+    clock: &mut Clock,
 ) {
+    clock.tick();
+
     if let Some(relay) = r.as_mut() {
-        relay.drain_messages(a1, a2);
+        relay.drain_messages(a1, a2, clock.now);
     }
 
     let (f, t) = if a1.progress_count % 2 == a2.progress_count % 2 {
@@ -612,7 +643,9 @@ fn progress(
             Event::SignalIceCandidate {
                 connection,
                 candidate,
-            } => f.node.add_remote_candidate(connection, candidate, f.time),
+            } => f
+                .node
+                .add_remote_candidate(connection, candidate, clock.now),
             Event::ConnectionEstablished(_) => {}
             Event::ConnectionFailed(_) => {}
         };
@@ -629,7 +662,7 @@ fn progress(
             assert_eq!(trans.dst.port(), 3478);
 
             if let Some(relay) = r {
-                relay.handle_client_input(payload, ClientSocket::new(f.local), f, t);
+                relay.handle_client_input(payload, ClientSocket::new(f.local), f, t, clock.now);
             }
 
             return;
@@ -637,7 +670,7 @@ fn progress(
         let dst = trans.dst;
 
         // `src` is set, let's check if it is peer traffic for the relay.
-        if let Some(relay) = r {
+        if let Some(relay) = &mut r {
             if dst.ip() == relay.listen_addr.ip() {
                 relay.handle_peer_traffic(
                     payload,
@@ -645,6 +678,7 @@ fn progress(
                     AllocationPort::new(dst.port()),
                     f,
                     t,
+                    clock.now,
                 );
 
                 return;
@@ -662,19 +696,27 @@ fn progress(
             .span
             .in_scope(|| {
                 t.node
-                    .decapsulate(dst, src, payload, t.time, t.buffer.as_mut())
+                    .decapsulate(dst, src, payload, clock.now, t.buffer.as_mut())
             })
             .unwrap()
         {
             t.received_packets.push(packet.to_owned())
         }
-    } else {
-        t.span.in_scope(|| t.node.handle_timeout(t.time));
     }
 
-    let tim_f = f.span.in_scope(|| f.node.poll_timeout()).unwrap_or(f.time);
-    f.time = tim_f;
+    if let Some(timeout) = f.node.poll_timeout() {
+        if clock.now >= timeout {
+            f.span.in_scope(|| f.node.handle_timeout(clock.now));
+        }
+    }
 
-    let tim_t = t.span.in_scope(|| t.node.poll_timeout()).unwrap_or(t.time);
-    t.time = tim_t;
+    if let Some(relay) = r {
+        if let Some(timeout) = relay.inner.poll_timeout() {
+            if clock.now >= timeout {
+                relay
+                    .span
+                    .in_scope(|| relay.inner.handle_timeout(clock.now))
+            }
+        }
+    }
 }
