@@ -174,9 +174,9 @@ if config_env() == :prod do
 
   config :domain, Domain.Telemetry, metrics_reporter: compile_config!(:telemetry_metrics_reporter)
 
-  config :domain,
-         compile_config!(:telemetry_metrics_reporter),
-         compile_config!(:telemetry_metrics_reporter_opts)
+  if telemetry_metrics_reporter = compile_config!(:telemetry_metrics_reporter) do
+    config :domain, telemetry_metrics_reporter, compile_config!(:telemetry_metrics_reporter_opts)
+  end
 
   config :domain,
     http_client_ssl_opts: compile_config!(:http_client_ssl_opts)
