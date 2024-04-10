@@ -1,6 +1,6 @@
 use connlib_shared::messages::{
-    GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
-    ResourceId, ReuseConnection,
+    GatewayId, GatewayResponse, Interface, Key, Relay, RelayStatusUpdate, RequestConnection,
+    ResourceDescription, ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, net::IpAddr};
@@ -49,6 +49,8 @@ pub enum IngressMessages {
     IceCandidates(GatewayIceCandidates),
 
     ConfigChanged(ConfigUpdate),
+
+    RelayStatusUpdate(RelayStatusUpdate),
 }
 
 /// A gateway's ice candidate message.
