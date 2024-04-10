@@ -284,7 +284,7 @@ struct Clock {
 impl Clock {
     fn new() -> Self {
         let now = Instant::now();
-        let tick_rate = Duration::from_millis(10);
+        let tick_rate = Duration::from_millis(100);
         let one_hour = Duration::from_secs(60) * 60;
 
         Self {
