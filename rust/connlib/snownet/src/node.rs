@@ -27,7 +27,7 @@ use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range, RangeInclusive};
 use stun_codec::rfc5389::attributes::{Realm, Username};
 use tracing::{field, info_span, Span};
 
@@ -531,6 +531,16 @@ where
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
+    ///
+    /// This functions is in the hot-path of packet processing and thus must be as efficient as possible.
+    /// Even look-ups in [`HashMap`]s are expensive at this point.
+    /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
+    ///
+    /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
+    ///
+    /// This heuristic might fail because we are also handling wireguard packets.
+    /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
+    /// We can detect this by further checking the origin of the packet.
     #[must_use]
     fn allocations_try_handle<'p>(
         &mut self,
@@ -539,15 +549,16 @@ where
         packet: &'p [u8],
         now: Instant,
     ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
-        // First, check whether the packet is from a known allocation.
-        let Some(allocation) = self.allocations.get_mut(&from) else {
-            return ControlFlow::Continue((from, packet, None));
-        };
-
-        // See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
-        match packet.first() {
+        match packet.first().copied() {
+            // STUN method range
             Some(0..=3) => {
+                let Some(allocation) = self.allocations.get_mut(&from) else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 if allocation.handle_input(from, local, packet, now) {
+                    // Successfully handled the packet
                     return ControlFlow::Break(());
                 }
 
@@ -555,8 +566,16 @@ where
 
                 ControlFlow::Break(()) // Stop processing the packet.
             }
+            // Channel data number range
             Some(64..=79) => {
+                let Some(allocation) = self.allocations.get_mut(&from) else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
+                    // Successfully handled the packet and decapsulated the channel data message.
+                    // Continue processing with the _unwrapped_ packet.
                     return ControlFlow::Continue((from, packet, Some(socket)));
                 }
 
@@ -564,7 +583,8 @@ where
 
                 ControlFlow::Break(()) // Stop processing the packet.
             }
-            _ => ControlFlow::Continue((from, packet, None)),
+            // Byte is in a different range? Move on with processing the packet.
+            Some(_) | None => ControlFlow::Continue((from, packet, None)),
         }
     }
 
