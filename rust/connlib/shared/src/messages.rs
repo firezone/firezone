@@ -28,8 +28,6 @@ impl ResourceId {
 }
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
-pub struct ActorId(Uuid);
 
 impl FromStr for ResourceId {
     type Err = uuid::Error;
@@ -111,7 +109,7 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
     pub domain: Option<Dname>,
@@ -184,30 +182,30 @@ pub struct DomainResponse {
     pub address: Vec<IpAddr>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Answer {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Offer {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ConnectionAccepted {
     pub ice_parameters: Answer,
     pub domain_response: Option<DomainResponse>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ResourceAccepted {
     pub domain_response: DomainResponse,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
     ResourceAccepted(ResourceAccepted),
