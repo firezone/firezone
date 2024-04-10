@@ -355,21 +355,7 @@ impl TestRelay {
                 return;
             }
 
-            if let Some((_, packet)) = receiver
-                .span
-                .in_scope(|| {
-                    receiver.node.decapsulate(
-                        receiver.local,
-                        src,
-                        payload,
-                        now,
-                        receiver.buffer.as_mut(),
-                    )
-                })
-                .unwrap()
-            {
-                receiver.received_packets.push(packet.to_owned());
-            }
+            receiver.receive(src, payload, now);
         }
     }
 
@@ -395,21 +381,7 @@ impl TestRelay {
                 &mut msg[..4],
             );
 
-            if let Some((_, packet)) = receiver
-                .span
-                .in_scope(|| {
-                    receiver.node.decapsulate(
-                        receiver.local,
-                        self.listen_addr,
-                        &msg,
-                        now,
-                        receiver.buffer.as_mut(),
-                    )
-                })
-                .unwrap()
-            {
-                receiver.received_packets.push(packet.to_owned());
-            }
+            receiver.receive(self.listen_addr, &msg, now);
         }
     }
 
@@ -417,29 +389,17 @@ impl TestRelay {
         while let Some(command) = self.inner.next_command() {
             match command {
                 firezone_relay::Command::SendMessage { payload, recipient } => {
-                    let recipient = if recipient.into_socket() == a1.local {
-                        &mut *a1
-                    } else if recipient.into_socket() == a2.local {
-                        &mut *a2
-                    } else {
-                        panic!("Relay generated traffic for unknown client")
-                    };
-
-                    if let Some((_, packet)) = recipient
-                        .span
-                        .in_scope(|| {
-                            recipient.node.decapsulate(
-                                recipient.local,
-                                self.listen_addr,
-                                &payload,
-                                now,
-                                recipient.buffer.as_mut(),
-                            )
-                        })
-                        .unwrap()
-                    {
-                        recipient.received_packets.push(packet.to_owned());
+                    if recipient.into_socket() == a1.local {
+                        a1.receive(self.listen_addr, &payload, now);
+                        continue;
                     }
+
+                    if recipient.into_socket() == a2.local {
+                        a2.receive(self.listen_addr, &payload, now);
+                        continue;
+                    }
+
+                    panic!("Relay generated traffic for unknown client")
                 }
                 firezone_relay::Command::CreateAllocation { .. }
                 | firezone_relay::Command::FreeAllocation { .. } => {
@@ -582,6 +542,19 @@ impl TestNode {
         self.node.is_connected_to(other.node.public_key())
     }
 
+    fn receive(&mut self, from: SocketAddr, packet: &[u8], now: Instant) {
+        if let Some((_, packet)) = self
+            .span
+            .in_scope(|| {
+                self.node
+                    .decapsulate(self.local, from, packet, now, self.buffer.as_mut())
+            })
+            .unwrap()
+        {
+            self.received_packets.push(packet.to_owned())
+        }
+    }
+
     fn drain_events(&mut self, other: &mut TestNode, now: Instant) {
         while let Some(v) = self.span.in_scope(|| self.node.poll_event()) {
             match v {
@@ -642,17 +615,7 @@ impl TestNode {
             }
 
             // Firewall allowed traffic, let's dispatch it.
-            if let Some((_, packet)) = other
-                .span
-                .in_scope(|| {
-                    other
-                        .node
-                        .decapsulate(dst, src, payload, now, other.buffer.as_mut())
-                })
-                .unwrap()
-            {
-                other.received_packets.push(packet.to_owned())
-            }
+            other.receive(src, payload, now);
         }
     }
 
