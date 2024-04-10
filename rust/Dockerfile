@@ -77,7 +77,7 @@ CMD $PACKAGE
 FROM runtime as test
 
 RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm
+  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium
 
 # used for local development
 FROM test AS dev

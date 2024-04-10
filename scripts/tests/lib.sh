@@ -6,6 +6,19 @@ function client() {
     docker compose exec -it client "$@"
 }
 
+function start_chromium() {
+    client chromium-browser --headless --no-sandbox --remote-debugging-port=9222&
+    client npm i /browser
+}
+
+function load_page() {
+    client node /browser/load.js
+}
+
+function refresh_page() {
+    client node /browser/refresh.js
+}
+
 function gateway() {
     docker compose exec -it gateway "$@"
 }

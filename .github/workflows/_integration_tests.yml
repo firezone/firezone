@@ -113,6 +113,7 @@ jobs:
           relayed-dns-api-down,
           relayed-dns-relay-restart,
           relayed-dns,
+          browser-restart-relay,
           systemd/dns-systemd-resolved,
         ]
     steps:
