@@ -3,8 +3,8 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Jan 2024 Product Update • Firezone Blog",
-  description: "January 2024 Product Update",
+  title: "Jan 2024 Update • Firezone Blog",
+  description: "January 2024 Update",
 };
 
 export default function Page() {
@@ -13,7 +13,7 @@ export default function Page() {
       authorName="Jamil Bou Kheir"
       authorTitle="Founder"
       authorEmail="jamil@firezone.dev"
-      title="January 2024 Product Update"
+      title="January 2024 Update"
       date="2024-01-01"
     >
       <Content />

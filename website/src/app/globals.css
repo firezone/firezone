@@ -7,18 +7,15 @@
     /* Fix anchor slug links and scroll position due to fixed navbar */
     @apply flex items-center gap-1 scroll-mt-20;
   }
-}
 
-@layer base {
-  .github-html h2 {
-    @apply text-lg font-semibold tracking-tight pt-4;
+  /* Remove styling for anchors inside headings */
+  *:is(h1, h2, h3, h4, h5, h6) a {
+    text-decoration: none !important;
+    font-weight: 700 !important;
+    color: var(--color-neutral-800) !important;
   }
 
-  .github-html ul {
-    @apply list-disc text-sm list-inside;
-  }
-
-  .github-html a {
-    @apply text-accent-500 underline hover:no-underline;
+  *:is(h1, h2, h3, h4, h5, h6) a:hover {
+    text-decoration: underline !important;
   }
 }
