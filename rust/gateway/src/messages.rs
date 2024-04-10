@@ -151,10 +151,12 @@ mod test {
                 },
                 "relays": [
                     {
+                        "id": "0bfc5e02-a093-423b-827b-002d7d2bb407",
                         "type": "stun",
                         "addr": "172.28.0.101:3478"
                     },
                     {
+                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
                         "type": "turn",
                         "username": "1719367575:ZQHcVGkdnfgGmcP1",
                         "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
