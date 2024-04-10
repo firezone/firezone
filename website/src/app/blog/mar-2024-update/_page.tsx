@@ -8,8 +8,8 @@ export default function _Page() {
       authorName="Jamil Bou Kheir"
       authorTitle="Founder"
       authorEmail="jamil@firezone.dev"
-      title="April 2024 Product Update"
-      date="2024-04-01"
+      title="March 2024 Update"
+      date="2024-03-01"
     >
       <Content />
     </Post>

@@ -16,10 +16,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {children}
       <div className="bg-neutral-50 w-screen">
         <div className="px-4 py-8 max-w-md md:max-w-screen-lg mx-auto">
-          <h2 className="justify-center mb-4 text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-4xl">
+          <h2 className="justify-center mb-4 text-2xl font-extrabold tracking-tight sm:text-4xl">
             Firezone Newsletter
           </h2>
-          <p className="mx-auto mb-8 text-center max-w-2xl text-neutral-900 md:mb-12 text-lg sm:text-xl">
+          <p className="mx-auto mb-8 text-center max-w-2xl md:mb-12 text-lg sm:text-xl">
             Sign up with your email to receive roadmap updates, how-tos, and
             product announcements from the Firezone team.
           </p>
