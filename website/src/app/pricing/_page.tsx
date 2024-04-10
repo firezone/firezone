@@ -156,7 +156,13 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Standard relay network
+                  Customize your account slug
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
+                  Faster relay network
                 </span>
               </li>
               <li className="flex space-x-2.5">
