@@ -448,6 +448,35 @@ where
         self.buffered_transmits.pop_front()
     }
 
+    pub fn upsert_turn_servers(
+        &mut self,
+        servers: &HashSet<(RId, SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
+        for (id, server, username, password, realm) in servers {
+            let Ok(username) = Username::new(username.to_owned()) else {
+                tracing::debug!(%username, "Invalid TURN username");
+                continue;
+            };
+            let Ok(realm) = Realm::new(realm.to_owned()) else {
+                tracing::debug!(%realm, "Invalid TURN realm");
+                continue;
+            };
+
+            if let Some(existing) = self.allocations.get_mut(id) {
+                existing.update_credentials(username, password, realm, now); // TODO: Pass new address here.
+                continue;
+            }
+
+            self.allocations.insert(
+                *id,
+                Allocation::new(*id, *server, username, password.clone(), realm, now),
+            );
+
+            tracing::info!(address = %server, "Added new TURN server");
+        }
+    }
+
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
@@ -884,35 +913,6 @@ where
                 self.bindings
                     .insert(*server, StunBinding::new(*server, now));
             }
-        }
-    }
-
-    pub fn upsert_turn_servers(
-        &mut self,
-        servers: &HashSet<(RId, SocketAddr, String, String, String)>,
-        now: Instant,
-    ) {
-        for (id, server, username, password, realm) in servers {
-            let Ok(username) = Username::new(username.to_owned()) else {
-                tracing::debug!(%username, "Invalid TURN username");
-                continue;
-            };
-            let Ok(realm) = Realm::new(realm.to_owned()) else {
-                tracing::debug!(%realm, "Invalid TURN realm");
-                continue;
-            };
-
-            if let Some(existing) = self.allocations.get_mut(id) {
-                existing.update_credentials(username, password, realm, now); // TODO: Pass new address here.
-                continue;
-            }
-
-            self.allocations.insert(
-                *id,
-                Allocation::new(*id, *server, username, password.clone(), realm, now),
-            );
-
-            tracing::info!(address = %server, "Added new TURN server");
         }
     }
 
