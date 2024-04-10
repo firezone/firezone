@@ -27,7 +27,7 @@ use crate::utils::earliest;
 use crate::{IpPacket, MutableIpPacket};
 use boringtun::noise::errors::WireGuardError;
 use std::borrow::Cow;
-use std::ops::{ControlFlow, Range, RangeInclusive};
+use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 use tracing::{field, info_span, Span};
 
@@ -89,9 +89,9 @@ pub struct Node<T, TId, RId> {
     next_rate_limiter_reset: Option<Instant>,
 
     bindings: HashMap<SocketAddr, StunBinding>,
-    allocations: HashMap<SocketAddr, Allocation<RId>>,
+    allocations: HashMap<RId, Allocation<RId>>,
 
-    connections: Connections<TId>,
+    connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
@@ -122,7 +122,7 @@ pub enum Error {
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     pub fn new(private_key: StaticSecret) -> Self {
         let public_key = &(&private_key).into();
@@ -330,7 +330,7 @@ where
                 payload: Cow::Borrowed(packet),
             })),
             PeerSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get_mut(&relay) else {
+                let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
@@ -347,7 +347,7 @@ where
 
                 Ok(Some(Transmit {
                     src: None,
-                    dst: relay,
+                    dst: allocation.server(),
                     payload: Cow::Borrowed(channel_data_packet),
                 }))
             }
@@ -457,7 +457,7 @@ where
         key: [u8; 32],
         intent_sent_at: Instant,
         now: Instant,
-    ) -> Connection {
+    ) -> Connection<RId> {
         agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
@@ -533,7 +533,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This functions is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`HashMap`]s are expensive at this point.
+    /// Even look-ups in [`HashMap`]s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
@@ -548,11 +548,12 @@ where
         local: SocketAddr,
         packet: &'p [u8],
         now: Instant,
-    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket<RId>>)> {
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
-                let Some(allocation) = self.allocations.get_mut(&from) else {
+                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
@@ -568,7 +569,8 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Some(allocation) = self.allocations.get_mut(&from) else {
+                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
@@ -629,7 +631,7 @@ where
         from: SocketAddr,
         local: SocketAddr,
         packet: &[u8],
-        relayed: Option<Socket>,
+        relayed: Option<Socket<RId>>,
         buffer: &'b mut [u8],
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
@@ -711,7 +713,7 @@ where
 impl<TId, RId> Node<Client, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     /// Create a new connection indexed by the given ID.
     ///
@@ -811,7 +813,7 @@ where
 impl<TId, RId> Node<Server, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     /// Accept a new connection indexed by the given ID.
     ///
@@ -875,7 +877,7 @@ where
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
         for server in servers {
@@ -903,13 +905,13 @@ where
                 continue;
             };
 
-            if let Some(existing) = self.allocations.get_mut(server) {
-                existing.update_credentials(username, password, realm, now);
+            if let Some(existing) = self.allocations.get_mut(id) {
+                existing.update_credentials(username, password, realm, now); // TODO: Pass new address here.
                 continue;
             }
 
             self.allocations.insert(
-                *server,
+                *id,
                 Allocation::new(*id, *server, username, password.clone(), realm, now),
             );
 
@@ -950,12 +952,12 @@ where
     }
 }
 
-struct Connections<TId> {
+struct Connections<TId, RId> {
     initial: HashMap<TId, InitialConnection>,
-    established: HashMap<TId, Connection>,
+    established: HashMap<TId, Connection<RId>>,
 }
 
-impl<TId> Default for Connections<TId> {
+impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
             initial: Default::default(),
@@ -964,7 +966,7 @@ impl<TId> Default for Connections<TId> {
     }
 }
 
-impl<TId> Connections<TId>
+impl<TId, RId> Connections<TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -1009,15 +1011,15 @@ where
         initial_agents.chain(negotiated_agents)
     }
 
-    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection> {
+    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
         self.established.get_mut(id)
     }
 
-    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection)> {
+    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
         self.established.iter().map(|(id, conn)| (*id, conn))
     }
 
-    fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
+    fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
@@ -1032,14 +1034,14 @@ where
 /// - We have an allocation on the relay
 /// - There is a channel bound to the provided peer
 fn encode_as_channel_data<RId>(
-    relay: SocketAddr,
+    relay: RId,
     dest: SocketAddr,
     contents: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
+    allocations: &mut HashMap<RId, Allocation<RId>>,
     now: Instant,
 ) -> Result<Transmit<'static>, EncodeError>
 where
-    RId: Copy,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
 {
     let allocation = allocations
         .get_mut(&relay)
@@ -1050,7 +1052,7 @@ where
 
     Ok(Transmit {
         src: None,
-        dst: relay,
+        dst: allocation.server(),
         payload: Cow::Owned(payload),
     })
 }
@@ -1061,9 +1063,9 @@ enum EncodeError {
     NoChannel,
 }
 
-fn add_local_candidate_to_all<TId>(
+fn add_local_candidate_to_all<TId, RId>(
     candidate: Candidate,
-    connections: &mut Connections<TId>,
+    connections: &mut Connections<TId, RId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
     TId: Copy + fmt::Display,
@@ -1194,7 +1196,7 @@ impl InitialConnection {
     }
 }
 
-struct Connection {
+struct Connection<RId> {
     agent: IceAgent,
 
     remote_pub_key: PublicKey,
@@ -1203,7 +1205,7 @@ struct Connection {
     next_timer_update: Instant,
 
     // When this is `Some`, we are connected.
-    peer_socket: Option<PeerSocket>,
+    peer_socket: Option<PeerSocket<RId>>,
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
@@ -1219,27 +1221,21 @@ struct Connection {
 
 /// The socket of the peer we are connected to.
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum PeerSocket {
+enum PeerSocket<RId> {
     Direct {
         source: SocketAddr,
         dest: SocketAddr,
     },
     Relay {
-        relay: SocketAddr,
+        relay: RId,
         dest: SocketAddr,
     },
 }
 
-impl PeerSocket {
-    fn our_socket(&self) -> SocketAddr {
-        match self {
-            PeerSocket::Direct { source, .. } => *source,
-            PeerSocket::Relay { relay, .. } => *relay,
-        }
-    }
-}
-
-impl Connection {
+impl<RId> Connection<RId>
+where
+    RId: PartialEq + Eq + Hash + fmt::Debug + Copy,
+{
     /// Checks if we want to accept a packet from a certain address.
     ///
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
@@ -1267,11 +1263,11 @@ impl Connection {
         &mut self,
         local: SocketAddr,
         dest: SocketAddr,
-        relay_socket: Option<Socket>,
-    ) -> PeerSocket {
+        relay_socket: Option<Socket<RId>>,
+    ) -> PeerSocket<RId> {
         let remote_socket = match relay_socket {
             Some(relay_socket) => PeerSocket::Relay {
-                relay: relay_socket.server(),
+                relay: relay_socket.id(),
                 dest,
             },
             None => PeerSocket::Direct {
@@ -1306,15 +1302,15 @@ impl Connection {
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
-    fn handle_timeout<TId, RId>(
+    fn handle_timeout<TId>(
         &mut self,
         id: TId,
         now: Instant,
-        allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
+        allocations: &mut HashMap<RId, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
         TId: fmt::Display + Copy,
-        RId: Copy,
+        RId: Copy + fmt::Display,
     {
         self.agent.handle_timeout(now);
 
@@ -1414,7 +1410,7 @@ impl Connection {
                         tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
                         self.peer_socket = Some(remote_socket);
 
-                        self.invalidate_candiates();
+                        self.invalidate_candiates(allocations);
                         self.force_handshake(allocations, transmits, now);
                     }
                 }
@@ -1455,7 +1451,7 @@ impl Connection {
 
             transmits.push_back(Transmit {
                 src: None,
-                dst: *relay,
+                dst: allocation.server(),
                 payload: Cow::Owned(channel_data),
             });
         }
@@ -1479,20 +1475,17 @@ impl Connection {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn decapsulate<'b, RId>(
+    fn decapsulate<'b>(
         &mut self,
         from: SocketAddr,
         local: SocketAddr,
         packet: &[u8],
-        relayed: Option<Socket>,
+        relayed: Option<Socket<RId>>,
         buffer: &'b mut [u8],
-        allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
+        allocations: &mut HashMap<RId, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>>
-    where
-        RId: Copy,
-    {
+    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
         match self.tunnel.decapsulate(None, packet, buffer) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
@@ -1540,9 +1533,9 @@ impl Connection {
         }
     }
 
-    fn force_handshake<RId>(
+    fn force_handshake(
         &mut self,
-        allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
+        allocations: &mut HashMap<RId, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) where
@@ -1573,12 +1566,17 @@ impl Connection {
     /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
     /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
     #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
-    fn invalidate_candiates(&mut self) {
-        let Some(socket) = self.peer_socket else {
-            return;
+    fn invalidate_candiates(&mut self, allocations: &HashMap<RId, Allocation<RId>>) {
+        let socket = match self.peer_socket {
+            Some(PeerSocket::Direct { source, .. }) => source,
+            Some(PeerSocket::Relay { relay, .. }) => match allocations.get(&relay) {
+                Some(alloc) => alloc.server(),
+                None => return,
+            },
+            None => return,
         };
 
-        let Some(nominated) = self.local_candidate(socket.our_socket()).cloned() else {
+        let Some(nominated) = self.local_candidate(socket).cloned() else {
             return;
         };
 
@@ -1607,13 +1605,13 @@ impl Connection {
 
 #[must_use]
 fn make_owned_transmit<RId>(
-    socket: PeerSocket,
+    socket: PeerSocket<RId>,
     message: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation<RId>>,
+    allocations: &mut HashMap<RId, Allocation<RId>>,
     now: Instant,
 ) -> Option<Transmit<'static>>
 where
-    RId: Copy,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
 {
     let transmit = match socket {
         PeerSocket::Direct {

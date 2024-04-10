@@ -79,6 +79,12 @@ impl fmt::Display for GatewayId {
     }
 }
 
+impl fmt::Display for RelayId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Represents a wireguard peer.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Peer {

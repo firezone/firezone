@@ -6,6 +6,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use core::fmt;
 use rand::random;
 use std::{
     collections::{HashMap, VecDeque},
@@ -72,16 +73,19 @@ pub struct Allocation<RId> {
 /// Note that any combination of IP versions is possible here.
 /// We might have allocated an IPv6 address on a TURN server that we are talking to IPv4 and vice versa.
 #[derive(Debug, Clone, Copy)]
-pub struct Socket {
-    /// The server this socket was allocated on.
-    server: SocketAddr,
+pub struct Socket<RId> {
+    /// The ID of the relay.
+    id: RId,
     /// The address of the socket that was allocated.
     address: SocketAddr,
 }
 
-impl Socket {
-    pub fn server(&self) -> SocketAddr {
-        self.server
+impl<RId> Socket<RId>
+where
+    RId: Copy,
+{
+    pub fn id(&self) -> RId {
+        self.id
     }
 
     pub fn address(&self) -> SocketAddr {
@@ -91,7 +95,7 @@ impl Socket {
 
 impl<RId> Allocation<RId>
 where
-    RId: Copy,
+    RId: Copy + fmt::Debug,
 {
     pub fn new(
         id: RId,
@@ -124,10 +128,6 @@ where
         allocation.authenticate_and_queue(make_allocate_request());
 
         allocation
-    }
-
-    pub fn id(&self) -> RId {
-        self.id
     }
 
     pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -403,7 +403,7 @@ where
         from: SocketAddr,
         packet: &'p [u8],
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
+    ) -> Option<(SocketAddr, &'p [u8], Socket<RId>)> {
         if from != self.server {
             return None;
         }
@@ -545,7 +545,7 @@ where
     }
 
     pub fn encode_to_slice(
-        &mut self,
+        &self,
         peer: SocketAddr,
         packet: &[u8],
         header: &mut [u8],
@@ -606,24 +606,28 @@ where
         is_ip4 || is_ip6
     }
 
-    pub fn ip4_socket(&self) -> Option<Socket> {
+    pub fn server(&self) -> SocketAddr {
+        self.server
+    }
+
+    pub fn ip4_socket(&self) -> Option<Socket<RId>> {
         let address = self.ip4_allocation.as_ref().map(|c| c.addr())?;
 
         debug_assert!(address.is_ipv4());
 
         Some(Socket {
-            server: self.server,
+            id: self.id,
             address,
         })
     }
 
-    pub fn ip6_socket(&self) -> Option<Socket> {
+    pub fn ip6_socket(&self) -> Option<Socket<RId>> {
         let address = self.ip6_allocation.as_ref().map(|c| c.addr())?;
 
         debug_assert!(address.is_ipv6());
 
         Some(Socket {
-            server: self.server,
+            id: self.id,
             address,
         })
     }
