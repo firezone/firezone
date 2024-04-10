@@ -19,10 +19,10 @@ export default function Post({
   return (
     <main className="py-14 lg:pb-24 border border-b-1 ">
       <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
-        <article className="mx-auto w-full max-w-2xl format format-lg text-neutral-900">
+        <article className="mx-auto w-full max-w-2xl format format-lg format-firezone">
           <header className="mb-4 lg:mb-6 not-format">
             <address className="flex items-center mb-6 not-italic">
-              <div className="inline-flex items-center mr-3 text-sm text-neutral-900 ">
+              <div className="inline-flex items-center mr-3 text-sm ">
                 <Image
                   width={64}
                   height={64}
@@ -31,21 +31,17 @@ export default function Post({
                   alt={authorName}
                 />
                 <div>
-                  <a
-                    href="#"
-                    rel="author"
-                    className="text-xl font-bold text-neutral-900"
-                  >
+                  <a href="#" rel="author" className="text-xl font-bold">
                     {authorName}
                   </a>
-                  <p className="text-base text-neutral-900 ">{authorTitle}</p>
-                  <p className="text-base text-neutral-900 ">
+                  <p className="text-base">{authorTitle}</p>
+                  <p className="text-base">
                     <time dateTime={date}>{date}</time>
                   </p>
                 </div>
               </div>
             </address>
-            <h1 className="mb-4 text-3xl font-bold leading-none tracking-tight text-neutral-900 lg:mb-6 lg:text-5xl ">
+            <h1 className="mb-4 text-3xl font-bold leading-none tracking-tight lg:mb-6 lg:text-5xl ">
               {title}
             </h1>
           </header>

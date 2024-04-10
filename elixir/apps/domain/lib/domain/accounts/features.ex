@@ -8,5 +8,6 @@ defmodule Domain.Accounts.Features do
     field :traffic_filters, :boolean
     field :self_hosted_relays, :boolean
     field :idp_sync, :boolean
+    field :rest_api, :boolean
   end
 end

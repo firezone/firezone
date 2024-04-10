@@ -466,7 +466,7 @@ impl ClientState {
             return Ok(Request::ReuseConnection(ReuseConnection {
                 resource_id,
                 gateway_id,
-                payload: domain.clone(),
+                payload: domain,
             }));
         };
 
@@ -968,7 +968,7 @@ impl ClientState {
                 .collect_vec(),
         );
 
-        self.set_dns_mapping(dns_mapping.clone());
+        self.set_dns_mapping(dns_mapping);
 
         true
     }
@@ -1086,7 +1086,6 @@ impl IpProvider {
                     .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))
             }),
             ipv6: Box::new({
-                let exclusions = exclusions.clone();
                 ipv6.subnets_with_prefix(128)
                     .map(|ip| ip.network_address())
                     .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))

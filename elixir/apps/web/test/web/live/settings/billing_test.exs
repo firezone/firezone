@@ -18,7 +18,8 @@ defmodule Web.Live.Settings.BillingTest do
           monthly_active_users_count: 100,
           service_accounts_count: 100,
           gateway_groups_count: 10,
-          account_admin_users_count: 2
+          account_admin_users_count: 2,
+          users_count: 200
         }
       )
 
@@ -75,6 +76,14 @@ defmodule Web.Live.Settings.BillingTest do
 
     assert rows["billing email"] =~ account.metadata.stripe.billing_email
     assert rows["current plan"] =~ account.metadata.stripe.product_name
+
+    rows =
+      lv
+      |> element("#billing-limits")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert rows["users"] =~ "1 used / 200 allowed"
     assert rows["seats"] =~ "0 used / 100 allowed"
     assert rows["sites"] =~ "0 used / 10 allowed"
     assert rows["admins"] =~ "1 used / 2 allowed"

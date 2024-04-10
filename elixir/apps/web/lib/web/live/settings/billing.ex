@@ -7,6 +7,7 @@ defmodule Web.Settings.Billing do
     if Billing.account_provisioned?(socket.assigns.account) do
       admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
       service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
+      users_count = Actors.count_users_for_account(socket.assigns.account)
       active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
       gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
 
@@ -15,6 +16,7 @@ defmodule Web.Settings.Billing do
           page_title: "Billing",
           error: nil,
           admins_count: admins_count,
+          users_count: users_count,
           active_users_count: active_users_count,
           service_accounts_count: service_accounts_count,
           gateway_groups_count: gateway_groups_count
@@ -82,6 +84,33 @@ defmodule Web.Settings.Billing do
               <%= @account.metadata.stripe.billing_email %>
             </:value>
           </.vertical_table_row>
+        </.vertical_table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>
+        Limits
+      </:title>
+      <:help>
+        Upgrade your plan to increase the limits below.
+      </:help>
+      <:content>
+        <.vertical_table id="billing-limits">
+          <.vertical_table_row :if={not is_nil(@account.limits.users_count)}>
+            <:label>
+              <p>Users</p>
+            </:label>
+            <:value>
+              <span class={[
+                not is_nil(@users_count) and
+                  @users_count > @account.limits.users_count && "text-red-500"
+              ]}>
+                <%= @users_count %> used
+              </span>
+              / <%= @account.limits.users_count %> allowed
+            </:value>
+          </.vertical_table_row>
 
           <.vertical_table_row :if={not is_nil(@account.limits.monthly_active_users_count)}>
             <:label>
@@ -111,7 +140,6 @@ defmodule Web.Settings.Billing do
                 <%= @service_accounts_count %> used
               </span>
               / <%= @account.limits.service_accounts_count %> allowed
-              <p class="text-xs">users with at least one device signed-in within last month</p>
             </:value>
           </.vertical_table_row>
 
@@ -150,32 +178,51 @@ defmodule Web.Settings.Billing do
 
     <.section>
       <:title>
-        Enabled Enterprise Features
+        Support
       </:title>
-      <:help>
-        For further details on enrolling in beta features, reach out to your account manager
-      </:help>
       <:content>
-        <.vertical_table id="features">
-          <.vertical_table_row :for={
-            {key, _value} <- Map.delete(Map.from_struct(@account.features), :limits)
-          }>
-            <:label><.feature_name feature={key} /></:label>
-            <:value>
-              <% value = apply(Domain.Accounts, :"#{key}_enabled?", [@account]) %>
-              <.icon
-                :if={value == true}
-                name="hero-check"
-                class="inline-block w-5 h-5 mr-1 text-green-500"
-              />
-              <.icon
-                :if={value == false}
-                name="hero-x-mark"
-                class="inline-block w-5 h-5 mr-1 text-red-500"
-              />
-            </:value>
-          </.vertical_table_row>
-        </.vertical_table>
+        <div class="ml-4 mb-4 text-neutral-600">
+          <span :if={@account.metadata.stripe.support_type == "email"}>
+            Please send
+            <.link
+              class={link_style()}
+              target="_blank"
+              href={
+                mailto_support(
+                  @account,
+                  @subject,
+                  "Support request: #{@account.name}"
+                )
+              }
+            >
+              an email
+            </.link>
+            and we will get back to you as soon as possible.
+          </span>
+
+          <span :if={@account.metadata.stripe.support_type == "email_and_slack"}>
+            Please send us a message in the shared Slack channel or <.link
+              class={link_style()}
+              target="_blank"
+              href={
+                mailto_support(
+                  @account,
+                  @subject,
+                  "Support request: #{@account.name}"
+                )
+              }
+            >an email</.link>.
+          </span>
+
+          <span :if={@account.metadata.stripe.support_type not in ["email", "email_and_slack"]}>
+            Ask questions, get help from other Firezone users on
+            <.link class={link_style()} href="https://discourse.firez.one/">
+              Discourse
+            </.link>
+            or <.link class={link_style()} href="https://firez.slack.com/">Slack</.link>.
+            Priority email and dedicated Slack support options are available on paid plans.
+          </span>
+        </div>
       </:content>
     </.section>
 
