@@ -266,6 +266,7 @@ struct TestRelay {
     span: Span,
 
     allocations: HashSet<(AddressFamily, AllocationPort)>,
+    buffer: Vec<u8>,
 }
 
 #[derive(Default)]
@@ -328,6 +329,7 @@ impl TestRelay {
             listen_addr: SocketAddr::from((local, 3478)),
             span,
             allocations: HashSet::default(),
+            buffer: vec![0u8; (1 << 16) - 1],
         }
     }
 
@@ -414,15 +416,14 @@ impl TestRelay {
         {
             assert_eq!(client.into_socket(), receiver.local); // We will relay to `receiver`, ensure that this is where the data should go.
 
-            let mut msg = vec![0u8; payload.len() + 4];
-            msg[4..].copy_from_slice(payload);
-            firezone_relay::ChannelData::encode_header_to_slice(
+            let full_length = firezone_relay::ChannelData::encode_header_to_slice(
                 channel,
                 payload.len() as u16,
-                &mut msg[..4],
+                &mut self.buffer[..4],
             );
+            self.buffer[4..full_length].copy_from_slice(payload);
 
-            receiver.receive(self.listen_addr, &msg, now);
+            receiver.receive(self.listen_addr, &self.buffer[..full_length], now);
         }
     }
 
