@@ -353,28 +353,27 @@ impl TestRelay {
 
     fn handle_peer_traffic(
         &mut self,
-        trans: Transmit<'_>,
+        payload: &[u8],
+        peer: PeerSocket,
+        port: AllocationPort,
         sender: &mut TestNode,
         receiver: &mut TestNode,
     ) {
-        if let Some((client, channel)) = self.span.in_scope(|| {
-            self.inner.handle_peer_traffic(
-                &trans.payload,
-                PeerSocket::new(sender.local),
-                AllocationPort::new(trans.dst.port()),
-            )
-        }) {
+        if let Some((client, channel)) = self
+            .span
+            .in_scope(|| self.inner.handle_peer_traffic(payload, peer, port))
+        {
             assert_eq!(
                 client.into_socket(),
                 sender.local,
                 "only relays to the other party"
             );
 
-            let mut msg = vec![0u8; trans.payload.len() + 4];
-            msg[4..].copy_from_slice(&trans.payload);
+            let mut msg = vec![0u8; payload.len() + 4];
+            msg[4..].copy_from_slice(payload);
             firezone_relay::ChannelData::encode_header_to_slice(
                 channel,
-                trans.payload.len() as u16,
+                payload.len() as u16,
                 &mut msg[..4],
             );
 
@@ -668,7 +667,13 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
 
         if let Some(relay) = r.as_mut() {
             if trans.dst.ip() == relay.listen_addr.ip() {
-                relay.handle_peer_traffic(trans, f, t);
+                relay.handle_peer_traffic(
+                    &trans.payload,
+                    PeerSocket::new(f.local),
+                    AllocationPort::new(trans.dst.port()),
+                    f,
+                    t,
+                );
 
                 return;
             }
