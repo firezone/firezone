@@ -171,7 +171,7 @@ jobs:
             platform: linux/arm/v7
             shortname: arm
         name:
-          - package: firezone-headless-client
+          - package: firezone-linux-client
             artifact: linux-client
             image_name: client
           - package: firezone-relay
@@ -216,24 +216,13 @@ jobs:
             PROFILE=""
           fi
 
-          # Hack to allow PR #4516 to pass CI
-          # Remove all this once it merges to main.
-          if [ "${{ matrix.name.package }}" = "firezone-headless-client" ] && [ -f "linux-client/Cargo.toml" ]
-          then
-            # We're building a Linux Client from before the PR, use the old name
-            PACKAGE=firezone-linux-client
-          else
-            # We're building another package, or it's after the PR, use the name as specified
-            PACKAGE=${{ matrix.name.package }}
-          fi
-
-          cross build $PROFILE -p $PACKAGE --target ${{ matrix.arch.target }}
+          cross build $PROFILE -p $${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/$PACKAGE $BINARY_DEST_PATH
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/$${{ matrix.name.package }} $BINARY_DEST_PATH
 
           # Used for Docker images
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/$PACKAGE $PACKAGE
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/$${{ matrix.name.package }} $${{ matrix.name.package }}
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
