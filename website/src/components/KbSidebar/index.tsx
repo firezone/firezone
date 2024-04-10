@@ -146,9 +146,12 @@ export default function KbSidebar() {
               </li>
               <li>
                 <Item
-                  href="/kb/user-guides/apple-client"
-                  label="macOS / iOS client"
+                  href="/kb/user-guides/macos-client"
+                  label="macOS client"
                 />
+              </li>
+              <li>
+                <Item href="/kb/user-guides/ios-client" label="iOS client" />
               </li>
               <li>
                 <Item
