@@ -256,7 +256,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "INT64",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"int64Value" => count}
           }
         ]
@@ -281,7 +281,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DISTRIBUTION",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{
               "distributionValue" => %{
                 "count" => count,
@@ -319,7 +319,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"doubleValue" => sum}
           }
         ]
@@ -343,7 +343,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DISTRIBUTION",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{
               "distributionValue" => %{
                 "count" => count,
@@ -373,7 +373,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"doubleValue" => min}
           }
         ]
@@ -389,7 +389,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"doubleValue" => max}
           }
         ]
@@ -413,12 +413,21 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"doubleValue" => last_value}
           }
         ]
       }
     ]
+  end
+
+  defp format_interval(at, at) do
+    now = DateTime.utc_now() |> DateTime.to_iso8601()
+    %{"startTime" => at, "endTime" => now}
+  end
+
+  defp format_interval(started_at, ended_at) do
+    %{"startTime" => started_at, "endTime" => ended_at}
   end
 
   ## Telemetry handlers
