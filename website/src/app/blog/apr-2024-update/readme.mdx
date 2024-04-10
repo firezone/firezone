@@ -145,7 +145,7 @@ Each Firezone Gateway is a tiny, self-contained binary that needs
 [only a single environment](/kb/deploy/gateways) variable to function. Throw it
 in VM, a container, on an IoT device -- it's lightweight enough to run
 everywhere. Its sole purpose is to shuttle encrypted packets between Clients and
-protected resources.
+Resources.
 
 After you [create a Site](/kb/deploy/sites), you can deploy as many Gateways
 into that Site as you'd like. If you do, all Gateways in the Site will work in
@@ -183,7 +183,7 @@ documentation.
 
 You know what's not fun? Configuring firewalls.
 
-More precisely, configuring your organizations' cloud or corporate firewals to
+More precisely, configuring your organization's cloud or corporate firewalls to
 allow incoming connections from the internet. Not only is it a pain to manage at
 scale, it also exposes your organization to all kinds of security risks.
 
@@ -199,7 +199,7 @@ field for years across all kinds of products -- Firezone is only the latest to
 benefit from them.
 
 What does this mean for you? It means you can deploy Firezone without touching a
-single firewall configuration still enjoy the same level of performance as if
+single firewall configuration and still enjoy the same level of performance as if
 you did. Attack surface is minimized and connections are direct. It's a win-win.
 
 For the curious readers, you can find our implementation of ICE, aptly named
@@ -209,9 +209,9 @@ For the curious readers, you can find our implementation of ICE, aptly named
 #### Directory sync
 
 The last feature we want to highlight in this announcement is directory sync.
-Firezone today supports directory sync with [Okta](https://www.okta.com/),
+Firezone currently supports directory sync for [Okta](https://www.okta.com/),
 [Entra ID](https://azure.microsoft.com/en-us/services/active-directory/), and
-[Google Workspace](https://workspace.google.com/) and more on on the way.
+[Google Workspace](https://workspace.google.com/), with more providers on the way.
 
 Anyone who's ever managed a large organization knows the pain of keeping user
 and group information in sync across multiple systems. It's a nightmare to
