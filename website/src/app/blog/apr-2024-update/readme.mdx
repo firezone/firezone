@@ -23,8 +23,10 @@ import Image from "next/image";
 ### Firezone 1.0 GA
 
 After months of beta testing with our early adopters, today we're announcing
-that Firezone 1.0 is now generally available, and we're thrilled for for you to
-try it. [Sign up](https://app.firezone.dev/sign_up) now to get started.
+that Firezone 1.0 is now generally available. We couldn't be more excited for
+you to try it.
+
+[Sign up now](https://app.firezone.dev/sign_up) to get started.
 
 #### The road to 1.0
 
@@ -148,19 +150,19 @@ everywhere. Its sole purpose is to shuttle encrypted packets between Clients and
 Resources.
 
 After you [create a Site](/kb/deploy/sites), you can deploy as many Gateways
-into that Site as you'd like. All Gateways in the Site will work in
-unison to provide load balancing and automatic failover for all connections to
-Resources in the Site.
+into that Site as you'd like. All Gateways in the Site will work in unison to
+provide load balancing and automatic failover for all connections to Resources
+in the Site.
 
 If a Gateway goes offline or becomes overloaded, any Clients connected to it
 will automatically migrate their connections to a healthy Gateway in the Site.
-This process is completely transparent to the user and happens in most cases within a few
-seconds.
+This process is completely transparent to the user and happens in most cases
+within a few seconds.
 
-Armed with this ability, admins can now enjoy a simple maintenance
-process: (1) take a Gateway down, (2) upgrade it, and (3) bring it back up.
-_That's it_. No more lengthy maintenance windows, backing up configurations, or
-worrying about extended downtime.
+Armed with this ability, admins can now enjoy a simple maintenance process: (1)
+take a Gateway down, (2) upgrade it, and (3) bring it back up. _That's it_. No
+more lengthy maintenance windows, backing up configurations, or worrying about
+extended downtime.
 
 A nice side effect of this architecture is that it provides near infinite
 horizontal scalability, which works as follows:
