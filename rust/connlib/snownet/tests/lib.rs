@@ -274,6 +274,7 @@ struct Firewall {
 }
 
 struct Clock {
+    start: Instant,
     now: Instant,
 
     tick_rate: Duration,
@@ -287,6 +288,7 @@ impl Clock {
         let one_hour = Duration::from_secs(60) * 60;
 
         Self {
+            start: now,
             now,
             tick_rate,
             max_time: now + one_hour,
@@ -295,6 +297,12 @@ impl Clock {
 
     fn tick(&mut self) {
         self.now += self.tick_rate;
+
+        let elapsed = self.now.duration_since(self.start);
+
+        if elapsed.as_millis() % 60_000 == 0 {
+            tracing::info!("Time since start: {elapsed:?}")
+        }
 
         if self.now >= self.max_time {
             panic!("Time exceeded")
