@@ -1,8 +1,8 @@
-mod auth;
 mod net_ext;
 mod server;
 mod sleep;
 
+pub mod auth;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 pub mod sockets;
@@ -17,7 +17,7 @@ pub use stun_codec::rfc8656::attributes::AddressFamily;
 
 use std::{
     fmt,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
 /// Describes the IP stack of a relay server.
@@ -42,6 +42,15 @@ impl IpStack {
             IpStack::Ip4(_) => None,
             IpStack::Ip6(ip6) => Some(ip6),
             IpStack::Dual { ip6, .. } => Some(ip6),
+        }
+    }
+}
+
+impl From<IpAddr> for IpStack {
+    fn from(value: IpAddr) -> Self {
+        match value {
+            IpAddr::V4(inner) => IpStack::Ip4(inner),
+            IpAddr::V6(inner) => IpStack::Ip6(inner),
         }
     }
 }
