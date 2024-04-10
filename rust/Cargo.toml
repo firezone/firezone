@@ -22,13 +22,13 @@ resolver = "2"
 [workspace.dependencies]
 boringtun = { version = "0.6", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-swift-bridge = "0.1.52"
+swift-bridge = "0.1.53"
 backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev="a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = ["tokio-runtime"] }
-str0m = { version = "0.4", default-features = false }
+str0m = { version = "0.5", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.9", features = ["serde"] }
 dns-lookup = "2.0"
@@ -55,11 +55,13 @@ clippy.print_stdout = "warn"
 clippy.print_stderr = "warn"
 clippy.unnecessary_wraps = "warn"
 clippy.unused_async = "warn"
+clippy.wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
+clippy.redundant_else = "warn"
+clippy.redundant_clone = "warn"
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
-tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.22" }
 
 [profile.release]
 strip = true

@@ -16,6 +16,14 @@
             overlays = [ (import rust-overlay) ];
           };
           naersk = pkgs.callPackage inputs.naersk { };
+          rust-nightly = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default);
+
+          # Wrap `cargo-udeps` to ensure it uses a nightly Rust version.
+          cargo-udeps = pkgs.writeShellScriptBin "cargo-udeps" ''
+            export RUSTC="${rust-nightly}/bin/rustc";
+            export CARGO="${rust-nightly}/bin/cargo";
+            exec "${pkgs.cargo-udeps}/bin/cargo-udeps" "$@"
+          '';
 
           libraries = with pkgs;[
             webkitgtk
@@ -41,20 +49,10 @@
             librsvg
             libappindicator-gtk3
           ];
-        in
 
-        {
-
-          packages.firezone-headless-client = naersk.buildPackage {
-            name = "foo";
-            src = ../../rust/headless-client;
-          };
-
-          devShell = pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables ];
-            buildInputs = [
-              (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
-            ] ++ packages;
+          mkShellWithRustVersion = rustVersion: pkgs.mkShell {
+            packages = [ pkgs.cargo-tauri pkgs.iptables cargo-udeps ];
+            buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
             shellHook =
@@ -63,7 +61,20 @@
                 export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
               '';
           };
-        }
+        in
+        {
+          packages.firezone-headless-client = naersk.buildPackage {
+            name = "foo";
+            src = ../../rust/headless-client;
+          };
 
+          devShells.default = mkShellWithRustVersion [
+            (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
+          ];
+
+          devShells.nightly = mkShellWithRustVersion [
+            (pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
+          ];
+        }
       );
 }

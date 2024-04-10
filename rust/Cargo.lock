@@ -1171,7 +1171,6 @@ dependencies = [
  "log",
  "mutants",
  "os_info",
- "parking_lot",
  "phoenix-channel",
  "rand 0.8.5",
  "rand_core 0.6.4",
@@ -1186,8 +1185,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "tokio-stream",
- "tokio-tungstenite",
  "tracing",
  "tracing-android",
  "url",
@@ -1973,6 +1970,7 @@ dependencies = [
  "futures",
  "hex",
  "http-health-check",
+ "mio",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -3645,6 +3643,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
 dependencies = [
  "libc",
+ "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.48.0",
 ]
@@ -4738,7 +4737,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#4822fd456a45f71b8b34fb7e89b5e895db98567e"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#88f48b0179f358cea0b76fc550e629007bfc957d"
 dependencies = [
  "bytes",
  "libc",
@@ -5257,9 +5256,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.1.7"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f64cef148d3295c730c3cb340b0b252a4d570b1c7d4bf0808f88540b0a888bc"
+checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
 dependencies = [
  "bytes",
  "crc",
@@ -5745,8 +5744,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.4.1"
-source = "git+https://github.com/firezone/str0m?branch=main#ffb4e4f54936c9745cb2a884be05ba4265af41dc"
+version = "0.5.0"
+source = "git+https://github.com/firezone/str0m?branch=main#aeb62dfe53270d29d2cc72b03930a462e55b2e88"
 dependencies = [
  "combine",
  "crc",
@@ -5823,9 +5822,9 @@ dependencies = [
 
 [[package]]
 name = "stun_codec"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1340dadfb0e4c522135c400c872dee4f638f9b098171bebfa3e44e48f735cd4b"
+checksum = "feed9dafe0bda84f2b6ca3ce726b0a1f1ac2e8b63c6ecfb89b08b32313247b5b"
 dependencies = [
  "bytecodec",
  "byteorder",
@@ -6693,7 +6692,8 @@ dependencies = [
 [[package]]
 name = "tracing-stackdriver"
 version = "0.10.0"
-source = "git+https://github.com/thomaseizinger/tracing-stackdriver?branch=deps/bump-otel-0.22#329d5c9fec0463f4f5db3b6e2a2e70b442dd8d64"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80048836e000e1f058562f01d69cc46f476955bf389c0dc2d2d7edb98ca63ac1"
 dependencies = [
  "Inflector",
  "opentelemetry",

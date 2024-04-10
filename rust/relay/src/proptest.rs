@@ -1,10 +1,10 @@
 use crate::Binding;
+use crate::ChannelData;
 use proptest::arbitrary::any;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
-use std::ops::Add;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use stun_codec::TransactionId;
 use uuid::Uuid;
@@ -26,7 +26,7 @@ pub fn allocation_lifetime() -> impl Strategy<Value = Lifetime> {
 }
 
 pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
-    (ChannelNumber::MIN..ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
+    (ChannelNumber::MIN..=ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
 }
 
 pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, u16)> {
@@ -41,19 +41,26 @@ pub fn channel_payload() -> impl Strategy<Value = (Vec<u8>, u16)> {
         })
 }
 
+pub fn channel_data() -> impl Strategy<Value = ChannelData<'static>> {
+    let buffer = any::<Vec<u8>>()
+        .prop_filter("buffer must be at least 4 bytes", |v| v.len() >= 4)
+        .prop_filter("payload does not fit into u16", |vec| {
+            vec.len() <= u16::MAX as usize
+        });
+
+    (buffer, channel_number()).prop_map(|(payload, number)| {
+        let payload = payload.leak(); // This is okay because we only do this for testing.
+
+        ChannelData::encode_header_to_slice(number, (payload.len() - 4) as u16, &mut payload[..4]);
+
+        ChannelData::parse(payload).unwrap()
+    })
+}
+
 pub fn username_salt() -> impl Strategy<Value = String> {
     string_regex("[a-zA-Z0-9]{10}").unwrap()
 }
 
 pub fn nonce() -> impl Strategy<Value = Uuid> {
     any::<u128>().prop_map(Uuid::from_u128)
-}
-
-/// We let "now" begin somewhere around 2000 up until 2100.
-pub fn now() -> impl Strategy<Value = SystemTime> {
-    const YEAR: u64 = 60 * 60 * 24 * 365;
-
-    (30 * YEAR..100 * YEAR)
-        .prop_map(Duration::from_secs)
-        .prop_map(|duration| SystemTime::UNIX_EPOCH.add(duration))
 }

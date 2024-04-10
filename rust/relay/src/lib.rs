@@ -1,22 +1,19 @@
-mod allocation;
 mod auth;
 mod net_ext;
 mod server;
 mod sleep;
-mod udp_socket;
 
 #[cfg(feature = "proptest")]
 pub mod proptest;
+pub mod sockets;
 
-pub use allocation::Allocation;
 pub use net_ext::IpAddrExt;
 pub use server::{
-    Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
-    CreatePermission, PeerToClient, Refresh, Server,
+    Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
+    CreatePermission, Refresh, Server,
 };
 pub use sleep::Sleep;
 pub use stun_codec::rfc8656::attributes::AddressFamily;
-pub use udp_socket::UdpSocket;
 
 use std::{
     fmt,

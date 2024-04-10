@@ -27,8 +27,7 @@ curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 
 echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
-if ! sudo systemctl start firezone-client
-then
+if ! sudo systemctl start firezone-client; then
     sudo systemctl status firezone-client
     exit 1
 fi

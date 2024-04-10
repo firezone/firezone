@@ -176,12 +176,9 @@ defmodule Domain.Billing.EventHandler do
      }} = Billing.fetch_product(product_id)
 
     attrs =
-      account_update_attrs(quantity, product_metadata, subscription_metadata)
-      |> Map.put(:metadata, %{
-        stripe: %{
-          subscription_id: subscription_id,
-          product_name: product_name
-        }
+      account_update_attrs(quantity, product_metadata, subscription_metadata, %{
+        "subscription_id" => subscription_id,
+        "product_name" => product_name
       })
       |> Map.put(:disabled_at, nil)
       |> Map.put(:disabled_reason, nil)
@@ -333,10 +330,16 @@ defmodule Domain.Billing.EventHandler do
     end
   end
 
-  defp account_update_attrs(quantity, product_metadata, subscription_metadata) do
+  defp account_update_attrs(
+         quantity,
+         product_metadata,
+         subscription_metadata,
+         stripe_metadata_overrides
+       ) do
     limit_fields = Accounts.Limits.__schema__(:fields) |> Enum.map(&to_string/1)
+    metadata_fields = ["support_type"]
 
-    features_and_limits =
+    params =
       Map.merge(product_metadata, subscription_metadata)
       |> Enum.flat_map(fn
         {feature, "true"} ->
@@ -346,24 +349,28 @@ defmodule Domain.Billing.EventHandler do
           [{feature, false}]
 
         {key, value} ->
-          if key in limit_fields do
-            [{key, cast_limit(value)}]
-          else
-            []
+          cond do
+            key in limit_fields ->
+              [{key, cast_limit(value)}]
+
+            key in metadata_fields ->
+              [{key, value}]
+
+            true ->
+              []
           end
       end)
       |> Enum.into(%{})
 
-    {monthly_active_users_count, features_and_limits} =
-      Map.pop(features_and_limits, "monthly_active_users_count", quantity)
-
-    {limits, features} = Map.split(features_and_limits, limit_fields)
-
-    limits = Map.merge(limits, %{"monthly_active_users_count" => monthly_active_users_count})
+    {users_count, params} = Map.pop(params, "users_count", quantity)
+    {metadata, params} = Map.split(params, metadata_fields)
+    {limits, features} = Map.split(params, limit_fields)
+    limits = Map.merge(limits, %{"users_count" => users_count})
 
     %{
       features: features,
-      limits: limits
+      limits: limits,
+      metadata: %{stripe: Map.merge(metadata, stripe_metadata_overrides)}
     }
   end
 

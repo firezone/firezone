@@ -1,9 +1,7 @@
-use futures::future::BoxFuture;
-use futures::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll, Waker};
-use std::time::SystemTime;
+use std::time::Instant;
 
 /// A future that sleeps until a given instant.
 ///
@@ -12,37 +10,42 @@ use std::time::SystemTime;
 #[derive(Default)]
 pub struct Sleep {
     /// The inner sleep future. Boxed for convenience to make [`Sleep`] implement [`Unpin`].
-    inner: Option<BoxFuture<'static, ()>>,
+    inner: Option<Pin<Box<tokio::time::Sleep>>>,
     waker: Option<Waker>,
 }
 
 impl Sleep {
-    pub fn reset(self: Pin<&mut Self>, deadline: SystemTime) {
+    pub fn reset(self: Pin<&mut Self>, deadline: Instant) {
         let this = self.get_mut();
+        let deadline = tokio::time::Instant::from_std(deadline);
 
-        let duration = deadline
-            .duration_since(SystemTime::now())
-            .unwrap_or_default();
+        match this.inner.as_mut() {
+            Some(sleep) if sleep.deadline() != deadline => sleep.as_mut().reset(deadline),
+            Some(_) => (),
+            None => {
+                this.inner = Some(Box::pin(tokio::time::sleep_until(deadline)));
 
-        this.inner = Some(tokio::time::sleep(duration).boxed());
-
-        if let Some(waker) = this.waker.take() {
-            waker.wake();
+                if let Some(waker) = this.waker.take() {
+                    waker.wake();
+                }
+            }
         }
     }
 }
 
 impl Future for Sleep {
-    type Output = ();
+    type Output = Instant;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
         if let Some(inner) = &mut this.inner {
+            let deadline = inner.deadline();
+
             ready!(Pin::new(inner).poll(cx));
 
             this.inner = None;
-            return Poll::Ready(());
+            return Poll::Ready(deadline.into());
         }
 
         this.waker = Some(cx.waker().clone());
@@ -54,6 +57,7 @@ impl Future for Sleep {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::FutureExt as _;
     use std::pin::pin;
     use std::time::Duration;
 
@@ -69,7 +73,7 @@ mod tests {
     #[tokio::test]
     async fn finished_sleep_returns_pending() {
         let mut sleep = Sleep::default();
-        Pin::new(&mut sleep).reset(SystemTime::now() + Duration::from_millis(100));
+        Pin::new(&mut sleep).reset(Instant::now() + Duration::from_millis(100));
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -85,7 +89,7 @@ mod tests {
     #[tokio::test]
     async fn does_not_crash_and_fires_immediately_when_reset_to_past() {
         let mut sleep = Sleep::default();
-        Pin::new(&mut sleep).reset(SystemTime::now() - Duration::from_millis(100));
+        Pin::new(&mut sleep).reset(Instant::now() - Duration::from_millis(100));
 
         sleep.await;
     }
