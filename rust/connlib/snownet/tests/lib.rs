@@ -289,44 +289,11 @@ impl TestRelay {
         }) {
             let payload = ChannelData::parse(&trans.payload)
                 .expect("valid ChannelData if we should relay it")
-                .data()
-                .to_vec();
+                .data();
 
             // Check if we need to relay to ourselves (from one allocation to another)
             if peer.into_socket().ip() == self.listen_addr.ip() {
-                if let Some((client, channel)) =
-                    self.inner.handle_peer_traffic(&payload, peer, port)
-                {
-                    assert_eq!(
-                        client.into_socket(),
-                        sender.local,
-                        "only relays to the other party"
-                    );
-
-                    let mut msg = vec![0u8; payload.len() + 4];
-                    msg[4..].copy_from_slice(&payload);
-                    firezone_relay::ChannelData::encode_header_to_slice(
-                        channel,
-                        payload.len() as u16,
-                        &mut msg[..4],
-                    );
-
-                    if let Some((_, packet)) = receiver
-                        .span
-                        .in_scope(|| {
-                            receiver.node.decapsulate(
-                                receiver.local,
-                                self.listen_addr,
-                                &msg,
-                                receiver.time,
-                                receiver.buffer.as_mut(),
-                            )
-                        })
-                        .unwrap()
-                    {
-                        receiver.received_packets.push(packet.to_owned());
-                    }
-                }
+                self.handle_peer_traffic(payload, peer, port, sender, receiver);
 
                 return;
             }
@@ -339,7 +306,7 @@ impl TestRelay {
                     receiver.node.decapsulate(
                         receiver.local,
                         SocketAddr::from((self.listen_addr.ip(), port.value())),
-                        &payload,
+                        payload,
                         receiver.time,
                         buffer,
                     )
