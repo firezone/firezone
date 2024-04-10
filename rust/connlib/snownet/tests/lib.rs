@@ -385,11 +385,7 @@ impl TestRelay {
             .span
             .in_scope(|| self.inner.handle_peer_traffic(payload, peer, port))
         {
-            assert_eq!(
-                client.into_socket(),
-                receiver.local,
-                "only relays to the other party"
-            );
+            assert_eq!(client.into_socket(), receiver.local); // We will relay to `receiver`, ensure that this is where the data should go.
 
             let mut msg = vec![0u8; payload.len() + 4];
             msg[4..].copy_from_slice(payload);
