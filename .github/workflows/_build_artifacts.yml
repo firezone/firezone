@@ -216,13 +216,13 @@ jobs:
             PROFILE=""
           fi
 
-          cross build $PROFILE -p $${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/$${{ matrix.name.package }} $BINARY_DEST_PATH
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
 
           # Used for Docker images
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/$${{ matrix.name.package }} $${{ matrix.name.package }}
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
