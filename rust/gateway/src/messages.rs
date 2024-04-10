@@ -1,8 +1,8 @@
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
-        ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, ResourceDescription,
-        ResourceId,
+        ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, RelayStatusUpdate,
+        ResourceDescription, ResourceId,
     },
     Dname,
 };
@@ -73,6 +73,7 @@ pub enum IngressMessages {
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     Init(InitGateway),
+    RelayStatusUpdate(RelayStatusUpdate),
 }
 
 /// A client's ice candidate message.
