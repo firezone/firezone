@@ -626,10 +626,9 @@ fn progress(
         let payload = &trans.payload;
         let Some(src) = trans.src else {
             // `src` not set? Must client-facing traffic for the relay.
+            assert_eq!(trans.dst.port(), 3478);
 
             if let Some(relay) = r {
-                assert_eq!(trans.dst.port(), 3478);
-
                 relay.handle_client_input(payload, ClientSocket::new(f.local), f, t);
             }
 
