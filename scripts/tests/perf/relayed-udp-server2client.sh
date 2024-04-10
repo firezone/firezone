@@ -14,4 +14,4 @@ docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
 
 assert_process_state "firezone-relay" "S"
 assert_process_state "firezone-gateway" "S"
-assert_process_state "firezone-linux-client" "S"
+assert_process_state "firezone-headless-client" "S"

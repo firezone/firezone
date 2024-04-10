@@ -171,7 +171,7 @@ jobs:
             platform: linux/arm/v7
             shortname: arm
         name:
-          - package: firezone-linux-client
+          - package: firezone-headless-client
             artifact: linux-client
             image_name: client
           - package: firezone-relay
