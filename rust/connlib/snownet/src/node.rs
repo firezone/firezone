@@ -449,12 +449,32 @@ where
         self.buffered_transmits.pop_front()
     }
 
-    pub fn upsert_turn_servers(
+    pub fn update_relays(
         &mut self,
-        servers: &HashSet<(RId, SocketAddr, String, String, String)>,
+        to_remove: HashSet<RId>,
+        to_add: &HashSet<(RId, SocketAddr, String, String, String)>,
         now: Instant,
     ) {
-        for (id, server, username, password, realm) in servers {
+        // First, invalidate all candidates from relays that we should stop using.
+        for id in to_remove {
+            let Some(allocation) = self.allocations.remove(&id) else {
+                continue;
+            };
+
+            for (id, agent) in self.connections.agents_mut() {
+                let _span = info_span!("connection", %id).entered();
+
+                for candidate in allocation
+                    .current_candidates()
+                    .filter(|c| c.kind() == CandidateKind::Relayed)
+                {
+                    agent.invalidate_candidate(&candidate);
+                }
+            }
+        }
+
+        // Second, upsert all new relays.
+        for (id, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
                 continue;
@@ -765,7 +785,7 @@ where
         };
 
         self.upsert_stun_servers(&stun_servers, now);
-        self.upsert_turn_servers(&turn_servers, now);
+        self.update_relays(HashSet::default(), &turn_servers, now);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
@@ -867,7 +887,7 @@ where
         };
 
         self.upsert_stun_servers(&stun_servers, now);
-        self.upsert_turn_servers(&turn_servers, now);
+        self.update_relays(HashSet::default(), &turn_servers, now);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(false);

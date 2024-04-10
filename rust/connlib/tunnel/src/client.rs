@@ -73,9 +73,10 @@ where
         Ok(())
     }
 
-    pub fn upsert_relays(&mut self, relays: Vec<Relay>) {
-        self.role_state.upsert_relays(
-            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+        self.role_state.update_relays(
+            to_remove,
+            turn(&to_add, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         )
     }
@@ -993,12 +994,13 @@ impl ClientState {
         true
     }
 
-    fn upsert_relays(
+    fn update_relays(
         &mut self,
-        relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_remove: HashSet<RelayId>,
+        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
         now: Instant,
     ) {
-        self.node.upsert_turn_servers(&relays, now);
+        self.node.update_relays(to_remove, &to_add, now);
     }
 }
 
