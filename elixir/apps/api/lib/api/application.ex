@@ -7,7 +7,6 @@ defmodule API.Application do
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     children = [
-      API.Telemetry,
       API.Endpoint
     ]
 

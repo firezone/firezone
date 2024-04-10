@@ -36,8 +36,12 @@ defmodule Domain.GoogleCloudPlatform do
   # are limited by the service account attached to it.
   def fetch_access_token do
     config = fetch_config!()
-    token_endpoint_url = Keyword.fetch!(config, :token_endpoint_url)
-    request = Finch.build(:get, token_endpoint_url, [{"Metadata-Flavor", "Google"}])
+    metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
+
+    request =
+      Finch.build(:get, metadata_endpoint_url <> "/instance/service-accounts/default/token", [
+        {"Metadata-Flavor", "Google"}
+      ])
 
     case Finch.request(request, __MODULE__.Finch) do
       {:ok, %Finch.Response{status: 200, body: response}} ->
@@ -51,6 +55,52 @@ defmodule Domain.GoogleCloudPlatform do
 
       {:error, reason} ->
         Logger.error("Can't fetch instance token", reason: inspect(reason))
+        {:error, reason}
+    end
+  end
+
+  def fetch_instance_id do
+    config = fetch_config!()
+    metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
+
+    request =
+      Finch.build(:get, metadata_endpoint_url <> "/instance/id", [
+        {"Metadata-Flavor", "Google"}
+      ])
+
+    case Finch.request(request, __MODULE__.Finch) do
+      {:ok, %Finch.Response{status: 200, body: instance_id}} ->
+        {:ok, instance_id}
+
+      {:ok, response} ->
+        Logger.error("Can't fetch instance ID", reason: inspect(response))
+        {:error, {response.status, response.body}}
+
+      {:error, reason} ->
+        Logger.error("Can't fetch instance ID", reason: inspect(reason))
+        {:error, reason}
+    end
+  end
+
+  def fetch_instance_zone do
+    config = fetch_config!()
+    metadata_endpoint_url = Keyword.fetch!(config, :metadata_endpoint_url)
+
+    request =
+      Finch.build(:get, metadata_endpoint_url <> "/instance/zone", [
+        {"Metadata-Flavor", "Google"}
+      ])
+
+    case Finch.request(request, __MODULE__.Finch) do
+      {:ok, %Finch.Response{status: 200, body: zone}} ->
+        {:ok, zone |> String.split("/") |> List.last()}
+
+      {:ok, response} ->
+        Logger.error("Can't fetch instance zone", reason: inspect(response))
+        {:error, {response.status, response.body}}
+
+      {:error, reason} ->
+        Logger.error("Can't fetch instance zone", reason: inspect(reason))
         {:error, reason}
     end
   end
@@ -129,6 +179,39 @@ defmodule Domain.GoogleCloudPlatform do
         filename,
         opts
       )
+    end
+  end
+
+  @doc """
+  Sends metrics to Google Cloud Monitoring API.
+  """
+  def send_metrics(project_id, time_series) do
+    cloud_metrics_endpoint_url =
+      fetch_config!()
+      |> Keyword.fetch!(:cloud_metrics_endpoint_url)
+      |> String.replace("${project_id}", project_id)
+
+    body = Jason.encode!(%{"timeSeries" => time_series})
+
+    with {:ok, access_token} <- fetch_and_cache_access_token(),
+         request =
+           Finch.build(
+             :post,
+             cloud_metrics_endpoint_url,
+             [
+               {"Content-Type", "application/json"},
+               {"Authorization", "Bearer #{access_token}"}
+             ],
+             body
+           ),
+         {:ok, %{status: 200}} <- Finch.request(request, __MODULE__.Finch) do
+      :ok
+    else
+      {:ok, %{status: status, body: body}} ->
+        {:error, {status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

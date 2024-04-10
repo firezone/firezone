@@ -167,7 +167,13 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
           node_name
         end)
 
-      Logger.debug("Found #{length(nodes)}", module: __MODULE__, nodes: Enum.join(nodes, ", "))
+      count = length(nodes)
+
+      :telemetry.execute([:domain, :cluster], %{
+        discovered_nodes_count: count
+      })
+
+      Logger.debug("Found #{count}", module: __MODULE__, nodes: Enum.join(nodes, ", "))
 
       {:ok, nodes}
     end

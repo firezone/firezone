@@ -9,8 +9,7 @@ defmodule Web.Application do
 
     children = [
       Web.Mailer,
-      Web.Endpoint,
-      Web.Telemetry
+      Web.Endpoint
     ]
 
     opts = [strategy: :one_for_one, name: Web.Supervisor]

@@ -173,6 +173,12 @@ if config_env() == :prod do
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
+  config :domain, Domain.Telemetry, metrics_reporter: compile_config!(:telemetry_metrics_reporter)
+
+  if telemetry_metrics_reporter = compile_config!(:telemetry_metrics_reporter) do
+    config :domain, telemetry_metrics_reporter, compile_config!(:telemetry_metrics_reporter_opts)
+  end
+
   config :domain,
     http_client_ssl_opts: compile_config!(:http_client_ssl_opts)
 

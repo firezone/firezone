@@ -5,8 +5,40 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     Domain.Config.put_env_override(:domain, Domain.GoogleCloudPlatform, config)
   end
 
+  def mock_instance_metadata_id_endpoint(bypass, id \\ Ecto.UUID.generate()) do
+    token_endpoint_path = "/instance/id"
+
+    test_pid = self()
+
+    Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      send(test_pid, {:bypass_request, conn})
+      Plug.Conn.send_resp(conn, 200, id)
+    end)
+
+    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
+
+    bypass
+  end
+
+  def mock_instance_metadata_zone_endpoint(bypass, zone \\ "projects/001001/zones/us-east-1") do
+    token_endpoint_path = "/instance/zone"
+
+    test_pid = self()
+
+    Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      send(test_pid, {:bypass_request, conn})
+      Plug.Conn.send_resp(conn, 200, zone)
+    end)
+
+    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
+
+    bypass
+  end
+
   def mock_instance_metadata_token_endpoint(bypass, resp \\ nil) do
-    token_endpoint_path = "computeMetadata/v1/instance/service-accounts/default/token"
+    token_endpoint_path = "/instance/service-accounts/default/token"
 
     resp =
       resp ||
@@ -24,10 +56,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url(
-      :token_endpoint_url,
-      "http://localhost:#{bypass.port}/#{token_endpoint_path}"
-    )
+    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
 
     bypass
   end
@@ -176,6 +205,27 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     override_endpoint_url(
       :aggregated_list_endpoint_url,
       "http://localhost:#{bypass.port}/#{aggregated_instances_endpoint_path}"
+    )
+
+    bypass
+  end
+
+  def mock_metrics_submit_endpoint(bypass) do
+    metrics_endpoint_path = "v3/projects/firezone-staging/timeSeries"
+
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", metrics_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      {:ok, binary, conn} = Plug.Conn.read_body(conn)
+      body = Jason.decode!(binary)
+      send(test_pid, {:bypass_request, conn, body})
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(%{}))
+    end)
+
+    override_endpoint_url(
+      :cloud_metrics_endpoint_url,
+      "http://localhost:#{bypass.port}/#{metrics_endpoint_path}"
     )
 
     bypass
