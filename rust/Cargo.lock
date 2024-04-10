@@ -2890,7 +2890,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.10",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.6",
  "tokio",
  "tower-service",
  "tracing",
@@ -5265,9 +5265,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.1.7"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f64cef148d3295c730c3cb340b0b252a4d570b1c7d4bf0808f88540b0a888bc"
+checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
 dependencies = [
  "bytes",
  "crc",
@@ -5753,8 +5753,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.4.1"
-source = "git+https://github.com/firezone/str0m?branch=main#ffb4e4f54936c9745cb2a884be05ba4265af41dc"
+version = "0.5.0"
+source = "git+https://github.com/firezone/str0m?branch=main#aeb62dfe53270d29d2cc72b03930a462e55b2e88"
 dependencies = [
  "combine",
  "crc",
