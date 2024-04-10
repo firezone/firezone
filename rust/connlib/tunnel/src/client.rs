@@ -74,8 +74,10 @@ where
     }
 
     pub fn upsert_relays(&mut self, relays: Vec<Relay>) {
-        self.role_state
-            .upsert_relays(turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)))
+        self.role_state.upsert_relays(
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            Instant::now(),
+        )
     }
 
     /// Adds a the given resource to the tunnel.
@@ -991,8 +993,12 @@ impl ClientState {
         true
     }
 
-    fn upsert_relays(&self, relays: HashSet<(RelayId, SocketAddr, String, String, String)>) {
-        self.node.upsert_relays(relays);
+    fn upsert_relays(
+        &mut self,
+        relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
+        self.node.upsert_turn_servers(&relays, now);
     }
 }
 

@@ -310,9 +310,10 @@ impl GatewayState {
     }
 
     pub(crate) fn upsert_relays(
-        &self,
+        &mut self,
         relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        now: Instant,
     ) {
-        self.node.upsert_relays(relays)
+        self.node.upsert_turn_servers(&relays, now);
     }
 }

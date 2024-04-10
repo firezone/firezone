@@ -172,9 +172,11 @@ where
         })
     }
 
-    pub fn upsert_relays(&self, relays: Vec<Relay>) {
-        self.role_state
-            .upsert_relays(turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)))
+    pub fn upsert_relays(&mut self, relays: Vec<Relay>) {
+        self.role_state.upsert_relays(
+            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            Instant::now(),
+        )
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {

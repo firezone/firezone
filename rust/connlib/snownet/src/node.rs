@@ -542,6 +542,7 @@ where
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
     #[must_use]
+    #[allow(clippy::type_complexity)]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
@@ -703,10 +704,6 @@ where
                 }
             }
         }
-    }
-
-    pub fn upsert_relays(&self, _: HashSet<(RId, SocketAddr, String, String, String)>) {
-        unimplemented!()
     }
 }
 
@@ -890,7 +887,7 @@ where
         }
     }
 
-    fn upsert_turn_servers(
+    pub fn upsert_turn_servers(
         &mut self,
         servers: &HashSet<(RId, SocketAddr, String, String, String)>,
         now: Instant,
