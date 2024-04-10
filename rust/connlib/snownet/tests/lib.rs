@@ -305,8 +305,6 @@ impl TestRelay {
                 return;
             }
 
-            let buffer = receiver.buffer.as_mut();
-
             if let Some((_, packet)) = receiver
                 .span
                 .in_scope(|| {
@@ -315,7 +313,7 @@ impl TestRelay {
                         SocketAddr::from((self.listen_addr.ip(), port.value())),
                         payload,
                         receiver.time,
-                        buffer,
+                        receiver.buffer.as_mut(),
                     )
                 })
                 .unwrap()
@@ -381,8 +379,6 @@ impl TestRelay {
                         panic!("Relay generated traffic for unknown client")
                     };
 
-                    let buffer = recipient.buffer.as_mut();
-
                     if let Some((_, packet)) = recipient
                         .span
                         .in_scope(|| {
@@ -391,7 +387,7 @@ impl TestRelay {
                                 self.listen_addr,
                                 &payload,
                                 recipient.time,
-                                buffer,
+                                recipient.buffer.as_mut(),
                             )
                         })
                         .unwrap()
