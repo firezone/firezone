@@ -276,18 +276,16 @@ impl TestRelay {
 
     fn handle_client_input(
         &mut self,
-        trans: Transmit<'_>,
+        payload: &[u8],
+        client: ClientSocket,
         sender: &mut TestNode,
         receiver: &mut TestNode,
     ) {
         if let Some((port, peer)) = self.span.in_scope(|| {
-            self.inner.handle_client_input(
-                &trans.payload,
-                ClientSocket::new(sender.local),
-                sender.time,
-            )
+            self.inner
+                .handle_client_input(&payload, client, sender.time)
         }) {
-            let payload = &trans.payload[4..];
+            let payload = &payload[4..];
 
             // Check if we need to relay to ourselves (from one allocation to another)
             if peer.into_socket().ip() == self.listen_addr.ip() {
@@ -621,16 +619,19 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
         .map(|t| t.into_owned())
     {
         let Some(src) = trans.src else {
-            if let Some(relay) = r.as_mut() {
+            // `src` not set? Must client-facing traffic for the relay.
+
+            if let Some(relay) = r {
                 assert_eq!(trans.dst.port(), 3478);
 
-                relay.handle_client_input(trans, f, t);
+                relay.handle_client_input(&trans.payload, ClientSocket::new(f.local), f, t);
             }
 
             return;
         };
 
-        if let Some(relay) = r.as_mut() {
+        // `src` is set, let's check if it is peer traffic for the relay.
+        if let Some(relay) = r {
             if trans.dst.ip() == relay.listen_addr.ip() {
                 relay.handle_peer_traffic(
                     &trans.payload,
@@ -644,12 +645,14 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
             }
         }
 
+        // Wasn't traffic for the relay, let's check our "firewall".
         if t.drop_traffic_from.contains(&src) {
             t.span
                 .in_scope(|| tracing::debug!(target: "test_harness", %src, "Dropping traffic"));
             return;
         }
 
+        // Firewall allowed traffic, let's dispatch it.
         if let Some((_, packet)) = t
             .span
             .in_scope(|| {
