@@ -608,11 +608,7 @@ impl TestNode {
         firewall: &Firewall,
         now: Instant,
     ) {
-        while let Some(trans) = self
-            .span
-            .in_scope(|| self.node.poll_transmit())
-            .map(|trans| trans.into_owned())
-        {
+        while let Some(trans) = self.span.in_scope(|| self.node.poll_transmit()) {
             let payload = &trans.payload;
             let dst = trans.dst;
 
