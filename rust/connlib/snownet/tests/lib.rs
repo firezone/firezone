@@ -710,6 +710,12 @@ fn progress(
         }
     }
 
+    if let Some(timeout) = t.node.poll_timeout() {
+        if clock.now >= timeout {
+            t.span.in_scope(|| t.node.handle_timeout(clock.now));
+        }
+    }
+
     if let Some(relay) = r {
         if let Some(timeout) = relay.inner.poll_timeout() {
             if clock.now >= timeout {
