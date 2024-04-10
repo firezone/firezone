@@ -38,7 +38,6 @@ phoenix-channel = { workspace = true }
 log = "0.4"
 
 [dev-dependencies]
-anyhow = "1.0"
 itertools = "0.12"
 tempfile = "3.10.1"
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing

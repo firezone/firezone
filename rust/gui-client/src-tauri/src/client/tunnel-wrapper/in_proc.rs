@@ -80,7 +80,7 @@ pub fn connect(
     // to the portal. Maybe we could bring up a sentinel resolver before
     // connecting to the portal, but right now the portal seems to need system DNS
     // for the first connection.
-    connlib_shared::windows::dns::deactivate()?;
+    connlib_shared::deactivate_dns_control()?;
 
     // All direct calls into connlib must be in the tunnel process
     let session = connlib_client_shared::Session::connect(
