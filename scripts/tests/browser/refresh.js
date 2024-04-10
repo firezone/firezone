@@ -16,7 +16,7 @@ let refreshPage = async () => {
   });
 
   const page = await activePage(browser);
-  const responseReload = await page.reload();
+  const responseReload = await page.reload({timeout: 2000});
   status = responseReload && responseReload.status(); 
 
   if(status !== 200){

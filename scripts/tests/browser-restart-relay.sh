@@ -16,7 +16,13 @@ load_page
 echo "# Restart relay"
 docker compose restart relay
 
+# Some timeout to get rid of later so that the connection expires
+sleep 30
+
 echo "# Reload page"
+refresh_page
+
+
 refresh_page
 
 run_test

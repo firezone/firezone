@@ -307,6 +307,8 @@ services:
     depends_on:
       api:
         condition: "service_healthy"
+    volumes:
+      - ./scripts/tests/browser:/browser
     networks:
       app:
         ipv4_address: 172.28.0.100

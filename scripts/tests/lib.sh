@@ -7,12 +7,12 @@ function client() {
 }
 
 function start_chromium() {
-    client chromium-browser --headless --no-sandbox --remote-debugging-port=9222&
     client npm i /browser
+    docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=9222
 }
 
 function load_page() {
-    client node /browser/load.js
+    client node /browser/launch.js
 }
 
 function refresh_page() {
