@@ -351,6 +351,51 @@ impl TestRelay {
         }
     }
 
+    fn handle_peer_traffic(
+        &mut self,
+        trans: Transmit<'_>,
+        sender: &mut TestNode,
+        receiver: &mut TestNode,
+    ) {
+        if let Some((client, channel)) = self.span.in_scope(|| {
+            self.inner.handle_peer_traffic(
+                &trans.payload,
+                PeerSocket::new(sender.local),
+                AllocationPort::new(trans.dst.port()),
+            )
+        }) {
+            assert_eq!(
+                client.into_socket(),
+                sender.local,
+                "only relays to the other party"
+            );
+
+            let mut msg = vec![0u8; trans.payload.len() + 4];
+            msg[4..].copy_from_slice(&trans.payload);
+            firezone_relay::ChannelData::encode_header_to_slice(
+                channel,
+                trans.payload.len() as u16,
+                &mut msg[..4],
+            );
+
+            if let Some((_, packet)) = receiver
+                .span
+                .in_scope(|| {
+                    receiver.node.decapsulate(
+                        receiver.local,
+                        self.listen_addr,
+                        &msg,
+                        receiver.time,
+                        receiver.buffer.as_mut(),
+                    )
+                })
+                .unwrap()
+            {
+                receiver.received_packets.push(packet.to_owned());
+            }
+        }
+    }
+
     fn drain_messages(&mut self, a1: &mut TestNode, a2: &mut TestNode) {
         while let Some(command) = self.inner.next_command() {
             match command {
@@ -606,12 +651,16 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
         };
     }
 
-    if let Some(trans) = f.span.in_scope(|| f.node.poll_transmit()) {
+    if let Some(trans) = f
+        .span
+        .in_scope(|| f.node.poll_transmit())
+        .map(|t| t.into_owned())
+    {
         let Some(src) = trans.src else {
             if let Some(relay) = r.as_mut() {
                 assert_eq!(trans.dst.port(), 3478);
 
-                relay.handle_client_input(trans.into_owned(), f, t);
+                relay.handle_client_input(trans, f, t);
             }
 
             return;
@@ -619,43 +668,7 @@ fn progress(a1: &mut TestNode, a2: &mut TestNode, mut r: Option<&mut TestRelay>)
 
         if let Some(relay) = r.as_mut() {
             if trans.dst.ip() == relay.listen_addr.ip() {
-                if let Some((client, channel)) = relay.span.in_scope(|| {
-                    relay.inner.handle_peer_traffic(
-                        &trans.payload,
-                        PeerSocket::new(f.local),
-                        AllocationPort::new(trans.dst.port()),
-                    )
-                }) {
-                    assert_eq!(
-                        client.into_socket(),
-                        f.local,
-                        "only relays to the other party"
-                    );
-
-                    let mut msg = vec![0u8; trans.payload.len() + 4];
-                    msg[4..].copy_from_slice(&trans.payload);
-                    firezone_relay::ChannelData::encode_header_to_slice(
-                        channel,
-                        trans.payload.len() as u16,
-                        &mut msg[..4],
-                    );
-
-                    if let Some((_, packet)) = t
-                        .span
-                        .in_scope(|| {
-                            t.node.decapsulate(
-                                t.local,
-                                relay.listen_addr,
-                                &msg,
-                                t.time,
-                                t.buffer.as_mut(),
-                            )
-                        })
-                        .unwrap()
-                    {
-                        t.received_packets.push(packet.to_owned());
-                    }
-                }
+                relay.handle_peer_traffic(trans, f, t);
 
                 return;
             }
