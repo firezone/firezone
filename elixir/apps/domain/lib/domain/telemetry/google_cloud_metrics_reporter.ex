@@ -219,45 +219,49 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   defp flush(project_id, resource, labels, {buffer_size, buffer}) do
-    time_series =
-      Enum.map(buffer, fn {{schema, name, tags, unit}, measurements} ->
-        labels = Map.merge(labels, tags)
-        format_time_series(schema, name, labels, resource, measurements, unit)
-      end)
+    buffer
+    |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
+      labels = Map.merge(labels, tags)
+      format_time_series(schema, name, labels, resource, measurements, unit)
+    end)
+    |> Enum.chunk_every(200)
+    |> Enum.each(fn time_series ->
+      case GoogleCloudPlatform.send_metrics(project_id, time_series) do
+        :ok ->
+          :ok
 
-    case GoogleCloudPlatform.send_metrics(project_id, time_series) do
-      :ok ->
-        {0, %{}}
+        {:error, reason} ->
+          Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
+            reason: inspect(reason),
+            count: buffer_size
+          )
+      end
+    end)
 
-      {:error, reason} ->
-        Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
-          reason: inspect(reason),
-          count: buffer_size
-        )
-
-        {0, %{}}
-    end
+    {0, %{}}
   end
 
   defp format_time_series(Metrics.Counter, name, labels, resource, measurements, unit) do
     {started_at, ended_at, count} = measurements
 
-    %{
-      metric: %{
-        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/count",
-        labels: labels
-      },
-      resource: resource,
-      unit: to_string(unit),
-      metricKind: "CUMULATIVE",
-      valueType: "INT64",
-      points: [
-        %{
-          interval: %{"startTime" => started_at, "endTime" => ended_at},
-          value: %{"int64Value" => count}
-        }
-      ]
-    }
+    [
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/count",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "INT64",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{"int64Value" => count}
+          }
+        ]
+      }
+    ]
   end
 
   # builds a histogram of selected measurement
@@ -265,117 +269,156 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
     {started_at, ended_at, {count, sum, _min, _max, squared_deviation_sum, buckets}} =
       measurements
 
-    %{
-      metric: %{
-        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/distribution",
-        labels: labels
-      },
-      resource: resource,
-      unit: to_string(unit),
-      metricKind: "CUMULATIVE",
-      valueType: "DISTRIBUTION",
-      points: [
-        %{
-          interval: %{"startTime" => started_at, "endTime" => ended_at},
-          value: %{
-            "distributionValue" => %{
-              "count" => count,
-              "mean" => sum / count,
-              "sumOfSquaredDeviation" => squared_deviation_sum,
-              "bucketOptions" => %{
-                "exponentialBuckets" => %{
-                  "numFiniteBuckets" => Enum.count(buckets),
-                  "growthFactor" => 2,
-                  "scale" => 1
-                }
-              },
-              "bucketCounts" => bucket_counts(buckets)
+    [
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/distribution",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "DISTRIBUTION",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{
+              "distributionValue" => %{
+                "count" => count,
+                "mean" => sum / count,
+                "sumOfSquaredDeviation" => squared_deviation_sum,
+                "bucketOptions" => %{
+                  "exponentialBuckets" => %{
+                    "numFiniteBuckets" => Enum.count(buckets),
+                    "growthFactor" => 2,
+                    "scale" => 1
+                  }
+                },
+                "bucketCounts" => bucket_counts(buckets)
+              }
             }
           }
-        }
-      ]
-    }
+        ]
+      }
+    ]
   end
 
   # keeps track of the sum of selected measurement
   defp format_time_series(Metrics.Sum, name, labels, resource, measurements, unit) do
     {started_at, ended_at, sum} = measurements
 
-    %{
-      metric: %{
-        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/sum",
-        labels: labels
-      },
-      resource: resource,
-      unit: to_string(unit),
-      metricKind: "CUMULATIVE",
-      valueType: "DOUBLE",
-      points: [
-        %{
-          interval: %{"startTime" => started_at, "endTime" => ended_at},
-          value: %{"doubleValue" => sum}
-        }
-      ]
-    }
+    [
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/sum",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "DOUBLE",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{"doubleValue" => sum}
+          }
+        ]
+      }
+    ]
   end
 
   # calculating statistics of the selected measurement, like maximum, mean, percentiles etc
   defp format_time_series(Metrics.Summary, name, labels, resource, measurements, unit) do
-    {started_at, ended_at, {count, sum, _min, _max, squared_deviation_sum, buckets}} =
-      measurements
+    {started_at, ended_at, {count, sum, min, max, squared_deviation_sum, buckets}} = measurements
 
-    %{
-      metric: %{
-        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/summary",
-        labels: labels
-      },
-      resource: resource,
-      unit: to_string(unit),
-      metricKind: "CUMULATIVE",
-      valueType: "DISTRIBUTION",
-      points: [
-        %{
-          interval: %{"startTime" => started_at, "endTime" => ended_at},
-          value: %{
-            "distributionValue" => %{
-              "count" => count,
-              "mean" => sum / count,
-              "sumOfSquaredDeviation" => squared_deviation_sum,
-              "bucketOptions" => %{
-                "exponentialBuckets" => %{
-                  "numFiniteBuckets" => Enum.count(buckets),
-                  "growthFactor" => 2,
-                  "scale" => 1
-                }
-              },
-              "bucketCounts" => bucket_counts(buckets)
+    [
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/summary",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "DISTRIBUTION",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{
+              "distributionValue" => %{
+                "count" => count,
+                "mean" => sum / count,
+                "sumOfSquaredDeviation" => squared_deviation_sum,
+                "bucketOptions" => %{
+                  "exponentialBuckets" => %{
+                    "numFiniteBuckets" => Enum.count(buckets),
+                    "growthFactor" => 2,
+                    "scale" => 1
+                  }
+                },
+                "bucketCounts" => bucket_counts(buckets)
+              }
             }
           }
-        }
-      ]
-    }
+        ]
+      },
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/min",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "DOUBLE",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{"doubleValue" => min}
+          }
+        ]
+      },
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/max",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "DOUBLE",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{"doubleValue" => max}
+          }
+        ]
+      }
+    ]
   end
 
   # holding the value of the selected measurement from the most recent event
   defp format_time_series(Metrics.LastValue, name, labels, resource, measurements, unit) do
     {started_at, ended_at, last_value} = measurements
 
-    %{
-      metric: %{
-        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/last_value",
-        labels: labels
-      },
-      resource: resource,
-      unit: to_string(unit),
-      metricKind: "CUMULATIVE",
-      valueType: "DOUBLE",
-      points: [
-        %{
-          interval: %{"startTime" => started_at, "endTime" => ended_at},
-          value: %{"doubleValue" => last_value}
-        }
-      ]
-    }
+    [
+      %{
+        metric: %{
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/last_value",
+          labels: labels
+        },
+        resource: resource,
+        unit: to_string(unit),
+        metricKind: "CUMULATIVE",
+        valueType: "DOUBLE",
+        points: [
+          %{
+            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            value: %{"doubleValue" => last_value}
+          }
+        ]
+      }
+    ]
   end
 
   ## Telemetry handlers

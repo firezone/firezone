@@ -343,6 +343,44 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                        }
                      }
                    ]
+                 },
+                 %{
+                   "metric" => %{
+                     "labels" => %{"app" => "myapp", "foo" => "bar"},
+                     "type" => "custom.googleapis.com/elixir/foo/min"
+                   },
+                   "metricKind" => "CUMULATIVE",
+                   "points" => [
+                     %{
+                       "interval" => %{
+                         "endTime" => DateTime.to_iso8601(one_minute_ago),
+                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
+                       },
+                       "value" => %{"doubleValue" => 5.5}
+                     }
+                   ],
+                   "resource" => %{"type" => "test"},
+                   "unit" => "request",
+                   "valueType" => "DOUBLE"
+                 },
+                 %{
+                   "metric" => %{
+                     "labels" => %{"app" => "myapp", "foo" => "bar"},
+                     "type" => "custom.googleapis.com/elixir/foo/max"
+                   },
+                   "metricKind" => "CUMULATIVE",
+                   "points" => [
+                     %{
+                       "interval" => %{
+                         "endTime" => DateTime.to_iso8601(one_minute_ago),
+                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
+                       },
+                       "value" => %{"doubleValue" => 11.3}
+                     }
+                   ],
+                   "resource" => %{"type" => "test"},
+                   "unit" => "request",
+                   "valueType" => "DOUBLE"
                  }
                ]
              }
