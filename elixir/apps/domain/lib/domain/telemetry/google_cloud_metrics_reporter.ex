@@ -6,11 +6,12 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   """
   use GenServer
   alias Telemetry.Metrics
+  alias Domain.GoogleCloudPlatform
   require Logger
 
   # Maximum number of metrics a buffer can hold,
-  # after this count they will be delivered or flushed right away
-  @buffer_size 1000
+  # after this count they will be delivered or flushed right away.
+  @buffer_size 100
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
@@ -38,12 +39,17 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
       System.get_env("RELEASE_VERSION") ||
         to_string(Application.spec(:domain, :vsn))
 
+    labels = %{node_name: node_name, application_version: application_version}
+
+    {:ok, instance_id} = GoogleCloudPlatform.fetch_instance_id()
+    {:ok, zone} = GoogleCloudPlatform.fetch_instance_zone()
+
     resource = %{
-      "type" => "generic_node",
+      "type" => "gce_instance",
       "labels" => %{
         "project_id" => project_id,
-        "node_id" => node_name,
-        "application_version" => application_version
+        "instance_id" => instance_id,
+        "zone" => zone
       }
     }
 
@@ -56,11 +62,11 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
     Process.send_after(self(), :flush, @flush_interval)
 
-    {:ok, {events, project_id, resource, {0, %{}}}}
+    {:ok, {events, project_id, {resource, labels}, {0, %{}}}}
   end
 
   @impl true
-  def terminate(_, {events, _project_id, _resource, {0, %{}}}) do
+  def terminate(_, {events, _project_id, _resource_and_labels, {_buffer_size, _buffer}}) do
     for event <- events do
       :telemetry.detach({__MODULE__, event, self()})
     end
@@ -73,7 +79,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   @impl true
   def handle_info(
         {:compressed_metrics, compressed},
-        {events, project_id, resource, {buffer_size, buffer}}
+        {events, project_id, {resource, labels}, {buffer_size, buffer}}
       ) do
     {buffer_size, buffer} =
       Enum.reduce(
@@ -91,18 +97,18 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
     {buffer_size, buffer} =
       if buffer_size >= @buffer_size do
-        flush(project_id, resource, {buffer_size, buffer})
+        flush(project_id, resource, labels, {buffer_size, buffer})
       else
         {buffer_size, buffer}
       end
 
-    {:noreply, {events, project_id, resource, {buffer_size, buffer}}}
+    {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
   end
 
-  def handle_info(:flush, {events, project_id, resource, {buffer_size, buffer}}) do
-    {buffer_size, buffer} = flush(project_id, resource, {buffer_size, buffer})
+  def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_size, buffer}}) do
+    {buffer_size, buffer} = flush(project_id, resource, labels, {buffer_size, buffer})
     Process.send_after(self(), :flush, @flush_interval)
-    {:noreply, {events, project_id, resource, {buffer_size, buffer}}}
+    {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
   end
 
   # counts the total number of emitted events
@@ -116,12 +122,13 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # builds a histogram of selected measurement
   defp buffer(Metrics.Distribution, nil, at, measurement) do
-    {1, {at, at, {1, measurement, measurement, measurement, 0}}}
+    buckets = init_buckets() |> update_buckets(measurement)
+    {1, {at, at, {1, measurement, measurement, measurement, 0, buckets}}}
   end
 
   defp buffer(
          Metrics.Distribution,
-         {started_at, _ended_at, {count, sum, min, max, squared_deviation_sum}},
+         {started_at, _ended_at, {count, sum, min, max, squared_deviation_sum, buckets}},
          ended_at,
          measurement
        ) do
@@ -132,8 +139,9 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
     mean = sum / count
     deviation = measurement - mean
     squared_deviation_sum = squared_deviation_sum + :math.pow(deviation, 2)
+    buckets = update_buckets(buckets, measurement)
 
-    {0, {started_at, ended_at, {count, sum, min, max, squared_deviation_sum}}}
+    {0, {started_at, ended_at, {count, sum, min, max, squared_deviation_sum, buckets}}}
   end
 
   # keeps track of the sum of selected measurement
@@ -146,12 +154,28 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   # calculating statistics of the selected measurement, like maximum, mean, percentiles etc
+  # since google does not support more than one metric point per 5 seconds we must aggregate them
   defp buffer(Metrics.Summary, nil, at, measurement) do
-    {1, [{at, measurement}]}
+    buckets = init_buckets() |> update_buckets(measurement)
+    {1, {at, at, {1, measurement, measurement, measurement, 0, buckets}}}
   end
 
-  defp buffer(Metrics.Summary, measurements, at, measurement) do
-    {1, [{at, measurement} | measurements]}
+  defp buffer(
+         Metrics.Summary,
+         {started_at, _ended_at, {count, sum, min, max, squared_deviation_sum, buckets}},
+         ended_at,
+         measurement
+       ) do
+    count = count + 1
+    sum = sum + measurement
+    min = min(min, measurement)
+    max = max(max, measurement)
+    mean = sum / count
+    deviation = measurement - mean
+    squared_deviation_sum = squared_deviation_sum + :math.pow(deviation, 2)
+    buckets = update_buckets(buckets, measurement)
+
+    {0, {started_at, ended_at, {count, sum, min, max, squared_deviation_sum, buckets}}}
   end
 
   # holding the value of the selected measurement from the most recent event
@@ -163,19 +187,51 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
     {0, {started_at, ended_at, measurement}}
   end
 
-  defp flush(project_id, resource, {buffer_size, buffer}) do
-    time_series =
-      Enum.map(buffer, fn {{schema, name, tags, unit}, measurements} ->
-        format_time_series(schema, name, tags, resource, measurements, unit)
+  defp init_buckets do
+    # add an underflow bucket
+    %{0 => 0}
+  end
+
+  # We use exponential bucketing for histograms and distributions
+  defp update_buckets(buckets, measurement) do
+    # Determine the nearest power of 2 for the measurement
+    power_of_2 =
+      if measurement <= 0 do
+        0
+      else
+        :math.pow(2, :math.ceil(:math.log2(measurement)))
+      end
+
+    # put measurement into this bucket
+    Map.update(buckets, trunc(power_of_2), 1, &(&1 + 1))
+  end
+
+  defp bucket_counts(buckets) do
+    value_buckets =
+      buckets
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.map(fn {_bucket, count} ->
+        count
       end)
 
-    case Domain.GoogleCloudPlatform.send_metrics(project_id, time_series) do
+    # append an overflow bucket which will be empty
+    value_buckets ++ [0]
+  end
+
+  defp flush(project_id, resource, labels, {buffer_size, buffer}) do
+    time_series =
+      Enum.map(buffer, fn {{schema, name, tags, unit}, measurements} ->
+        labels = Map.merge(labels, tags)
+        format_time_series(schema, name, labels, resource, measurements, unit)
+      end)
+
+    case GoogleCloudPlatform.send_metrics(project_id, time_series) do
       :ok ->
         {0, %{}}
 
       {:error, reason} ->
         Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
-          reason: reason,
+          reason: inspect(reason),
           count: buffer_size
         )
 
@@ -183,13 +239,13 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
     end
   end
 
-  defp format_time_series(Metrics.Counter, name, tags, resource, measurements, unit) do
+  defp format_time_series(Metrics.Counter, name, labels, resource, measurements, unit) do
     {started_at, ended_at, count} = measurements
 
     %{
       metric: %{
         type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/count",
-        labels: tags
+        labels: labels
       },
       resource: resource,
       unit: to_string(unit),
@@ -205,13 +261,14 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   # builds a histogram of selected measurement
-  defp format_time_series(Metrics.Distribution, name, tags, resource, measurements, unit) do
-    {started_at, ended_at, {count, sum, min, max, squared_deviation_sum}} = measurements
+  defp format_time_series(Metrics.Distribution, name, labels, resource, measurements, unit) do
+    {started_at, ended_at, {count, sum, _min, _max, squared_deviation_sum, buckets}} =
+      measurements
 
     %{
       metric: %{
         type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/distribution",
-        labels: tags
+        labels: labels
       },
       resource: resource,
       unit: to_string(unit),
@@ -225,7 +282,14 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
               "count" => count,
               "mean" => sum / count,
               "sumOfSquaredDeviation" => squared_deviation_sum,
-              "range" => %{"min" => min, "max" => max}
+              "bucketOptions" => %{
+                "exponentialBuckets" => %{
+                  "numFiniteBuckets" => Enum.count(buckets),
+                  "growthFactor" => 2,
+                  "scale" => 1
+                }
+              },
+              "bucketCounts" => bucket_counts(buckets)
             }
           }
         }
@@ -234,13 +298,13 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   # keeps track of the sum of selected measurement
-  defp format_time_series(Metrics.Sum, name, tags, resource, measurements, unit) do
+  defp format_time_series(Metrics.Sum, name, labels, resource, measurements, unit) do
     {started_at, ended_at, sum} = measurements
 
     %{
       metric: %{
         type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/sum",
-        labels: tags
+        labels: labels
       },
       resource: resource,
       unit: to_string(unit),
@@ -256,38 +320,50 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   # calculating statistics of the selected measurement, like maximum, mean, percentiles etc
-  defp format_time_series(Metrics.Summary, name, tags, resource, measurements, unit) do
-    points =
+  defp format_time_series(Metrics.Summary, name, labels, resource, measurements, unit) do
+    {started_at, ended_at, {count, sum, _min, _max, squared_deviation_sum, buckets}} =
       measurements
-      |> Enum.reverse()
-      |> Enum.map(fn {at, measurement} ->
-        %{
-          interval: %{"endTime" => at},
-          value: %{"doubleValue" => measurement}
-        }
-      end)
 
     %{
       metric: %{
-        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/values",
-        labels: tags
+        type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/summary",
+        labels: labels
       },
       resource: resource,
       unit: to_string(unit),
-      metricKind: "GAUGE",
-      valueType: "DOUBLE",
-      points: points
+      metricKind: "CUMULATIVE",
+      valueType: "DISTRIBUTION",
+      points: [
+        %{
+          interval: %{"startTime" => started_at, "endTime" => ended_at},
+          value: %{
+            "distributionValue" => %{
+              "count" => count,
+              "mean" => sum / count,
+              "sumOfSquaredDeviation" => squared_deviation_sum,
+              "bucketOptions" => %{
+                "exponentialBuckets" => %{
+                  "numFiniteBuckets" => Enum.count(buckets),
+                  "growthFactor" => 2,
+                  "scale" => 1
+                }
+              },
+              "bucketCounts" => bucket_counts(buckets)
+            }
+          }
+        }
+      ]
     }
   end
 
   # holding the value of the selected measurement from the most recent event
-  defp format_time_series(Metrics.LastValue, name, tags, resource, measurements, unit) do
+  defp format_time_series(Metrics.LastValue, name, labels, resource, measurements, unit) do
     {started_at, ended_at, last_value} = measurements
 
     %{
       metric: %{
         type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/last_value",
-        labels: tags
+        labels: labels
       },
       resource: resource,
       unit: to_string(unit),

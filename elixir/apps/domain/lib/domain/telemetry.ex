@@ -34,7 +34,6 @@ defmodule Domain.Telemetry do
     [
       # Database Metrics
       distribution("domain.repo.query.total_time", unit: {:native, :millisecond}),
-      summary("domain.repo.query.total_time", unit: {:native, :millisecond}),
       summary("domain.repo.query.decode_time", unit: {:native, :millisecond}),
       summary("domain.repo.query.query_time", tags: [:query], unit: {:native, :millisecond}),
       summary("domain.repo.query.queue_time", unit: {:native, :millisecond}),

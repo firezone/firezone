@@ -98,7 +98,7 @@ defmodule Domain.GoogleCloudPlatformTest do
              }) == {:error, %Mint.TransportError{reason: :econnrefused}}
 
       GoogleCloudPlatform.override_endpoint_url(
-        :token_endpoint_url,
+        :metadata_endpoint_url,
         "http://localhost:#{bypass.port}/"
       )
 
@@ -222,7 +222,7 @@ defmodule Domain.GoogleCloudPlatformTest do
              }) == {:error, %Mint.TransportError{reason: :econnrefused}}
 
       GoogleCloudPlatform.override_endpoint_url(
-        :token_endpoint_url,
+        :metadata_endpoint_url,
         "http://localhost:#{bypass.port}/"
       )
 

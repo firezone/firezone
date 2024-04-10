@@ -62,8 +62,7 @@ config :domain, Domain.Billing,
 config :domain, platform_adapter: nil
 
 config :domain, Domain.GoogleCloudPlatform,
-  token_endpoint_url:
-    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+  metadata_endpoint_url: "http://metadata.google.internal/computeMetadata/v1",
   aggregated_list_endpoint_url:
     "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances",
   cloud_metrics_endpoint_url:
