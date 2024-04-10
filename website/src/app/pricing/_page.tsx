@@ -16,9 +16,13 @@ export default function _Page() {
       <section className="bg-neutral-100">
         <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
           <div className="mx-auto max-w-screen-md sm:text-center">
-            <h1 className="justify-center mb-4 text-2xl font-extrabold text-center leading-none tracking-tight text-neutral-900 sm:text-6xl">
+            <h1 className="justify-center mb-4 text-2xl font-extrabold leading-none tracking-tight text-neutral-900 sm:text-6xl">
               Plans & Pricing
             </h1>
+            <h2 className="justify-center mb-8 tracking-tight text-neutral-900 md:mb-12 text-xl">
+              Pick a plan that best suits your needs. No credit card required to
+              sign up.
+            </h2>
           </div>
         </div>
       </section>
@@ -371,8 +375,8 @@ export default function _Page() {
             <p>When will I be billed?</p>
           </blockquote>
           <p className="mb-8">
-            When you start service, or at the beginning of each billing cycle.
-            Enterprise plans are billed quarterly or annually.
+            The Team plan is billed monthly on the same day you start service
+            until canceled. Enterprise plans are billed annually.
           </p>
 
           <a id="payment-methods" className="pt-8"></a>
@@ -381,9 +385,9 @@ export default function _Page() {
           </blockquote>
           <p className="mb-8">
             The Starter plan is free and does not require a credit card to get
-            started. Enterprise plans can be paid via credit card, ACH, or wire
-            transfer and will have a 100% discount applied for the duration of
-            the beta.
+            started. Team and Enterprise plans can be paid via credit card, ACH,
+            or wire transfer and will have a 100% discount applied for the
+            duration of the beta.
           </p>
 
           <a id="special-pricing" className="pt-8"></a>

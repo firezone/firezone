@@ -213,6 +213,7 @@ impl Allocation {
                     "Invalid credentials, refusing to re-authenticate {}",
                     original_request.method()
                 );
+                self.invalidate_allocation();
 
                 return true;
             }
@@ -854,7 +855,7 @@ fn decode(packet: &[u8]) -> bytecodec::Result<DecodedMessage<Attribute>> {
 
 fn encode(message: Message<Attribute>) -> Vec<u8> {
     MessageEncoder::default()
-        .encode_into_bytes(message.clone())
+        .encode_into_bytes(message)
         .expect("encoding always works")
 }
 
@@ -1869,6 +1870,36 @@ mod tests {
 
         assert!(allocation.poll_timeout().is_none());
         assert!(allocation.next_message().is_none());
+        assert_eq!(
+            iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
+            vec![
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+            ]
+        )
+    }
+
+    #[test]
+    fn invalid_credentials_invalidates_existing_allocation() {
+        let now = Instant::now();
+        let mut allocation =
+            Allocation::for_test(now).with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6]);
+        let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+        allocation.nonce = Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
+
+        let now = now + Duration::from_secs(1);
+        allocation.refresh(now);
+
+        // If the relay is restarted, our current credentials will be invalid. Simulate with an "unauthorized" response".
+        let now = now + Duration::from_secs(1);
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input(&unauthorized_response(&refresh, "nonce2"), now);
+
+        assert!(
+            allocation.next_message().is_none(),
+            "no more messages to be generated"
+        );
+        assert!(allocation.poll_timeout().is_none(), "nothing to wait for");
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![

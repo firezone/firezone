@@ -76,6 +76,13 @@ defmodule Web.Live.Settings.BillingTest do
 
     assert rows["billing email"] =~ account.metadata.stripe.billing_email
     assert rows["current plan"] =~ account.metadata.stripe.product_name
+
+    rows =
+      lv
+      |> element("#billing-limits")
+      |> render()
+      |> vertical_table_to_map()
+
     assert rows["users"] =~ "1 used / 200 allowed"
     assert rows["seats"] =~ "0 used / 100 allowed"
     assert rows["sites"] =~ "0 used / 10 allowed"

@@ -88,16 +88,18 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     :ok = Domain.Gateways.connect_gateway(gateway)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
-    [row] =
-      lv
-      |> element("#gateways")
-      |> render()
-      |> table_to_map()
+    wait_for(fn ->
+      [row] =
+        lv
+        |> element("#gateways")
+        |> render()
+        |> table_to_map()
 
-    assert row == %{
-             "instance" => gateway.name,
-             "remote ip" => to_string(gateway.last_seen_remote_ip),
-             "status" => "Online"
-           }
+      assert row == %{
+               "instance" => gateway.name,
+               "remote ip" => to_string(gateway.last_seen_remote_ip),
+               "status" => "Online"
+             }
+    end)
   end
 end
