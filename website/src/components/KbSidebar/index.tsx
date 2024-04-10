@@ -114,7 +114,10 @@ export default function KbSidebar() {
               label="Administer"
             >
               <li>
-                <Item href="/kb/administer/upgrading" label="Upgrading" />
+                <Item
+                  href="/kb/administer/upgrading"
+                  label="Upgrading Gateways"
+                />
               </li>
               <li>
                 <Item
