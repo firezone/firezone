@@ -1364,6 +1364,7 @@ mod testutils {
         )
     }
 
+    #[allow(clippy::redundant_clone)] // False positive.
     pub fn hashset<T: std::hash::Hash + Eq, B: ToOwned<Owned = T>>(
         val: impl IntoIterator<Item = B>,
     ) -> HashSet<T> {
@@ -1528,7 +1529,7 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources().iter()),
             hashset(&[
-                ResourceDescription::Dns(dns_resource2.clone()),
+                ResourceDescription::Dns(dns_resource2),
                 ResourceDescription::Cidr(cidr_resource2.clone()),
             ])
         );
