@@ -1,26 +1,21 @@
-use std::{collections::HashSet, net::IpAddr};
-
-use serde::{Deserialize, Serialize};
-
 use connlib_shared::messages::{
     GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
     ResourceId, ReuseConnection,
 };
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, net::IpAddr};
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitClient {
     pub interface: Interface,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[serde(default)]
     pub resources: Vec<ResourceDescription>,
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct ConfigUpdate {
     pub interface: Interface,
 }
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct RemoveResource(pub ResourceId);
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
@@ -30,7 +25,7 @@ pub struct ConnectionDetails {
     pub gateway_remote_ip: IpAddr,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Connect {
     pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
@@ -38,25 +33,16 @@ pub struct Connect {
     pub persistent_keepalive: u64,
 }
 
-// Just because RTCSessionDescription doesn't implement partialeq
-impl PartialEq for Connect {
-    fn eq(&self, other: &Self) -> bool {
-        self.resource_id == other.resource_id && self.gateway_public_key == other.gateway_public_key
-    }
-}
-
-impl Eq for Connect {}
-
 // These messages are the messages that can be received
 // by a client.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     Init(InitClient),
 
     // Resources: arrive in an orderly fashion
     ResourceCreatedOrUpdated(ResourceDescription),
-    ResourceDeleted(RemoveResource),
+    ResourceDeleted(ResourceId),
 
     IceCandidates(GatewayIceCandidates),
 
@@ -64,7 +50,7 @@ pub enum IngressMessages {
 }
 
 /// A gateway's ice candidate message.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct BroadcastGatewayIceCandidates {
     /// Gateway's id the ice candidates are meant for
     pub gateway_ids: Vec<GatewayId>,
@@ -73,7 +59,7 @@ pub struct BroadcastGatewayIceCandidates {
 }
 
 /// A gateway's ice candidate message.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
@@ -82,7 +68,7 @@ pub struct GatewayIceCandidates {
 }
 
 /// The replies that can arrive from the channel by a client
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {
@@ -90,46 +76,8 @@ pub enum ReplyMessages {
     Connect(Connect),
 }
 
-/// The totality of all messages (might have a macro in the future to derive the other types)
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
-pub enum Messages {
-    Init(InitClient),
-    ConnectionDetails(ConnectionDetails),
-    Connect(Connect),
-
-    // Resources: arrive in an orderly fashion
-    ResourceCreatedOrUpdated(ResourceDescription),
-    ResourceDeleted(RemoveResource),
-
-    IceCandidates(GatewayIceCandidates),
-
-    ConfigChanged(ConfigUpdate),
-}
-
-impl From<IngressMessages> for Messages {
-    fn from(value: IngressMessages) -> Self {
-        match value {
-            IngressMessages::Init(m) => Self::Init(m),
-            IngressMessages::ResourceCreatedOrUpdated(m) => Self::ResourceCreatedOrUpdated(m),
-            IngressMessages::ResourceDeleted(m) => Self::ResourceDeleted(m),
-            IngressMessages::IceCandidates(m) => Self::IceCandidates(m),
-            IngressMessages::ConfigChanged(m) => Self::ConfigChanged(m),
-        }
-    }
-}
-
-impl From<ReplyMessages> for Messages {
-    fn from(value: ReplyMessages) -> Self {
-        match value {
-            ReplyMessages::ConnectionDetails(m) => Self::ConnectionDetails(m),
-            ReplyMessages::Connect(m) => Self::Connect(m),
-        }
-    }
-}
-
 // These messages can be sent from a client to a control pane
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {
@@ -144,19 +92,14 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
+    use super::*;
+    use chrono::DateTime;
     use connlib_shared::messages::{
         DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
         ResourceDescriptionDns, Stun, Turn,
     };
     use phoenix_channel::PhoenixMessage;
-
-    use chrono::DateTime;
-
-    use crate::messages::{ConnectionDetails, EgressMessages, ReplyMessages};
-
-    use super::{ConfigUpdate, IngressMessages, InitClient};
+    use std::collections::HashSet;
 
     // TODO: request_connection tests
 

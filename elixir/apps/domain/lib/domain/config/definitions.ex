@@ -120,7 +120,9 @@ defmodule Domain.Config.Definitions do
       {"Instrumentation",
        [
          :instrumentation_client_logs_enabled,
-         :instrumentation_client_logs_bucket
+         :instrumentation_client_logs_bucket,
+         :telemetry_metrics_reporter,
+         :telemetry_metrics_reporter_opts
        ]}
     ]
   end
@@ -453,6 +455,29 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
 
+  @doc """
+  Reporter to use for sending metrics to the telemetry backend.
+  """
+  defconfig(
+    :telemetry_metrics_reporter,
+    {:parameterized, Ecto.Enum,
+     Ecto.Enum.init(
+       values: [
+         Telemetry.Metrics.ConsoleReporter,
+         Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
+       ]
+     )},
+    default: nil
+  )
+
+  @doc """
+  Configuration for the telemetry metrics reporter.
+  """
+  defconfig(:telemetry_metrics_reporter_opts, :map,
+    default: %{},
+    dump: &Dumper.keyword/1
+  )
+
   ##############################################
   ## Gateways
   ##############################################
@@ -598,4 +623,9 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn Multi-Site resources functionality on/off for all accounts.
   """
   defconfig(:feature_multi_site_resources_enabled, :boolean, default: false)
+
+  @doc """
+  Boolean flag to turn API Client UI functionality on/off for all accounts.
+  """
+  defconfig(:feature_rest_api_enabled, :boolean, default: false)
 end

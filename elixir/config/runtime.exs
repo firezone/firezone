@@ -59,7 +59,8 @@ if config_env() == :prod do
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
-    multi_site_resources: compile_config!(:feature_multi_site_resources_enabled)
+    multi_site_resources: compile_config!(:feature_multi_site_resources_enabled),
+    rest_api: compile_config!(:feature_rest_api_enabled)
 
   config :domain, sign_up_whitelisted_domains: compile_config!(:sign_up_whitelisted_domains)
 
@@ -170,6 +171,12 @@ if config_env() == :prod do
       otlp_protocol: :http_protobuf,
       otlp_traces_protocol: :http_protobuf,
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
+  end
+
+  config :domain, Domain.Telemetry, metrics_reporter: compile_config!(:telemetry_metrics_reporter)
+
+  if telemetry_metrics_reporter = compile_config!(:telemetry_metrics_reporter) do
+    config :domain, telemetry_metrics_reporter, compile_config!(:telemetry_metrics_reporter_opts)
   end
 
   config :domain,

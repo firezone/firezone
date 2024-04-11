@@ -32,8 +32,6 @@ impl ResourceId {
 }
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
-pub struct ActorId(Uuid);
 
 impl FromStr for ResourceId {
     type Err = uuid::Error;
@@ -115,7 +113,7 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
     pub domain: Option<Dname>,
@@ -188,30 +186,30 @@ pub struct DomainResponse {
     pub address: Vec<IpAddr>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Answer {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Offer {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ConnectionAccepted {
     pub ice_parameters: Answer,
     pub domain_response: Option<DomainResponse>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ResourceAccepted {
     pub domain_response: DomainResponse,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
     ResourceAccepted(ResourceAccepted),
@@ -426,23 +424,17 @@ mod tests {
         ];
 
         let expected = vec![
-            // Numbers first
-            // Numbers are sorted byte-wise, if they don't use leading zeroes
-            // they won't be in numeric order
-            ten.clone(),
-            nine.clone(),
-            // Then uppercase, in alphabetical order
-            cloudflare.clone(),
-            example.clone(),
-            fast.clone(),
-            // UUIDs tie-break if the names are identical
-            metabase_1.clone(),
-            metabase_2.clone(),
-            // Lowercase comes after all uppercase are done
-            ifconfig.clone(),
+            ten,        // Numbers first
+            nine,       // Numbers first
+            cloudflare, // Then uppercase, in alphabetical order
+            example,    // Then uppercase, in alphabetical order
+            fast,       // Then uppercase, in alphabetical order
+            metabase_1, // UUIDs tie-break if the names are identical
+            metabase_2, // UUIDs tie-break if the names are identical
+            ifconfig,   // Lowercase comes after all uppercase are done
             // Emojis start with a leading '1' bit, so they come after all
             // [Basic Latin](https://en.wikipedia.org/wiki/Basic_Latin_\(Unicode_block\)) chars
-            emoji.clone(),
+            emoji,
         ];
 
         assert_eq!(

@@ -24,9 +24,9 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
-            title="March 2024 Product Update"
-            date="March 1, 2024"
-            href="/blog/mar-2024-product-update"
+            title="April 2024 Update: GA"
+            date="April 1, 2024"
+            href="/blog/apr-2024-update"
             authorName="Jamil Bou Kheir"
             authorAvatarSrc={gravatar("jamil@firezone.dev")}
             type="Announcement"
@@ -34,7 +34,42 @@ export default function Page() {
             <p className="mb-2">
               Firezone{" "}
               <Link
-                href="/blog/mar-2024-product-update"
+                href="/blog/apr-2024-update"
+                className="text-accent-500 underline hover:no-underline"
+              >
+                1.0 GA is now available
+              </Link>
+              ! Also in this update:
+            </p>
+            <ul className="list-inside list-disc ml-4">
+              <li>
+                Firezone 1.0 signups are{" "}
+                <Link
+                  href="https://app.firezone.dev/sign_up"
+                  className="text-accent-500 underline hover:no-underline"
+                >
+                  now open
+                </Link>
+              </li>
+              <li>New Team plan with self-serve billing</li>
+              <li>
+                Clients available for Windows, macOS, iOS, Android, and Linux
+              </li>
+              <li>Network roaming support</li>
+            </ul>
+          </SummaryCard>
+          <SummaryCard
+            title="March 2024 Update"
+            date="March 1, 2024"
+            href="/blog/mar-2024-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <p className="mb-2">
+              Firezone{" "}
+              <Link
+                href="/blog/mar-2024-update"
                 className="text-accent-500 underline hover:no-underline"
               >
                 1.0.0-pre.9 is released
@@ -48,9 +83,9 @@ export default function Page() {
             </ul>
           </SummaryCard>
           <SummaryCard
-            title="Jaunary 2024 Product Update"
+            title="Jaunary 2024 Update"
             date="January 1, 2024"
-            href="/blog/jan-2024-product-update"
+            href="/blog/jan-2024-update"
             authorName="Jamil Bou Kheir"
             authorAvatarSrc={gravatar("jamil@firezone.dev")}
             type="Announcement"

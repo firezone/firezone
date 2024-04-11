@@ -16,10 +16,9 @@ function run_test() {
 
 install_iptables_drop_rules
 
-docker compose restart relay
-
 run_test
 
-docker compose restart relay
+# Restart relay with new IP
+PUBLIC_IP4_ADDR="172.28.0.102" docker compose up -d relay
 
 run_test

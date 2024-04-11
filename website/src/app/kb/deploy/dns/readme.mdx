@@ -18,11 +18,6 @@ Read more below to understand how it works and how to configure it.
 Each Firezone Client embeds a lightweight DNS proxy used to route queries to an
 appropriate Gateway for resolution.
 
-The proxy "listens on" IP addresses in the following ranges:
-
-- IPv4: `100.100.111.0/24`
-- IPv6: `fd00:2021:1111:8000::100:100:111:0/120`
-
 When a user signs in, the Client configures the host operating system to use
 this proxy as the default resolver for all queries on the system.
 
@@ -30,23 +25,30 @@ This is why you'll commonly see `100.100.111.1` or
 `fd00:2021:1111:8000::100:100:111:0` as the DNS server responding to DNS queries
 when the Firezone Client is signed in.
 
-### Routing DNS queries
+### How queries are resolved
 
-When the proxy sees a query, it checks to see if it matches a Resource the user
-has access to. If it does, the proxy then finds an appropriate Gateway
-associated with the Resource, forwards the query to be resolved on the Gateway,
-then returns the result back to the Client to be returned to the application
-making the query.
+When the proxy sees a DNS query for a Resource, it asks the portal for a healthy
+Gateway to handle the query. The Gateway resolves the query using its system
+resolver and sends the result back to the proxy, which generates a mapped IP to
+the Resource's actual IP address. The final mapped IP is then returned to the
+application making the query.
 
-<Alert color="info">
-  DNS queries forwarded to Gateways benefit from the same NAT holepunching
-  mechanism as any other traffic. No firewall configuration is required to
-  achieve Split DNS with Firezone.
-</Alert>
+For example, if `github.com` was added as a Resource, an `nslookup` might return
+`100.96.0.1` as its IPv4 address:
+
+```
+> nslookup github.com
+Server:  100.100.111.1
+Address: 100.100.111.1#53
+
+Non-authoritative answer:
+Name:	github.com
+Address: 100.96.0.1
+```
 
 If the query doesn't match a Resource, the proxy forwards the query to one of
-the [upstream resolvers](#configuring-client-dns-upstream-resolvers) explained
-further below.
+the [upstream resolvers](#configuring-client-dns-upstream-resolvers) if
+configured.
 
 ## Configuring Client DNS upstream resolvers
 

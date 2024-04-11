@@ -226,7 +226,7 @@ defmodule Web.CoreComponents do
           </div>
         </div>
       </div>
-      <p :for={help <- @help} class="font-light pt-3 text-neutral-500">
+      <p :for={help <- @help} class="pt-3 text-neutral-400">
         <%= render_slot(help) %>
       </p>
     </div>
@@ -1108,25 +1108,31 @@ defmodule Web.CoreComponents do
 
   def feature_name(%{feature: :flow_activities} = assigns) do
     ~H"""
-    See detailed flow activities <span>(beta)</span>
+    See detailed Resource access logs
     """
   end
 
   def feature_name(%{feature: :multi_site_resources} = assigns) do
     ~H"""
-    Define globally-distributed resources <span>(beta)</span>
+    Define globally-distributed resources
     """
   end
 
   def feature_name(%{feature: :traffic_filters} = assigns) do
     ~H"""
-    Filter traffic using protocol and port rules <span>(beta)</span>
+    Restrict access based on port and protocol rules
     """
   end
 
   def feature_name(%{feature: :self_hosted_relays} = assigns) do
     ~H"""
-    Host your own relays <span>(beta)</span>
+    Host your own relays
+    """
+  end
+
+  def feature_name(%{feature: :rest_api} = assigns) do
+    ~H"""
+    REST API
     """
   end
 

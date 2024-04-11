@@ -54,7 +54,10 @@ async fn try_main() -> Result<()> {
 
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
-    tokio::spawn(http_health_check::serve(cli.health_check.health_check_addr));
+    tokio::spawn(http_health_check::serve(
+        cli.health_check.health_check_addr,
+        || true,
+    ));
 
     match future::try_select(task, ctrl_c)
         .await

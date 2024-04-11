@@ -135,13 +135,15 @@ defmodule Web.Live.Clients.ShowTest do
     assert Domain.Clients.connect_client(client) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
 
-    table =
-      lv
-      |> element("#client")
-      |> render()
-      |> vertical_table_to_map()
+    wait_for(fn ->
+      table =
+        lv
+        |> element("#client")
+        |> render()
+        |> vertical_table_to_map()
 
-    assert table["status"] =~ "Online"
+      assert table["status"] =~ "Online"
+    end)
   end
 
   test "renders client owner", %{

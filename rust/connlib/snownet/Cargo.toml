@@ -20,7 +20,8 @@ backoff = "0.4.0"
 hex = "0.4.0"
 
 [dev-dependencies]
-tracing-subscriber = "0.3"
+tracing-subscriber = {version = "0.3", features = ["env-filter"]}
+firezone-relay = { workspace = true }
 
 [lints]
 workspace = true

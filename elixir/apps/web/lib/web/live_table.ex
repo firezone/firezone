@@ -76,7 +76,7 @@ defmodule Web.LiveTable do
         </div>
       </div>
     </div>
-    <.paginator id={@id} metadata={@metadata} />
+    <.paginator id={@id} metadata={@metadata} rows_count={Enum.count(@rows)} />
     """
   end
 
@@ -402,8 +402,7 @@ defmodule Web.LiveTable do
       aria-label="Table navigation"
     >
       <span class="text-sm text-neutral-500">
-        Showing
-        <span class="font-medium text-neutral-900"><%= min(@metadata.limit, @metadata.count) %></span>
+        Showing <span class="font-medium text-neutral-900"><%= @rows_count %></span>
         of <span class="font-medium text-neutral-900"><%= @metadata.count %></span>
       </span>
       <ul class="inline-flex items-stretch -space-x-px">

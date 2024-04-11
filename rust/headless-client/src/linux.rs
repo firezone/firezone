@@ -1,3 +1,4 @@
+use super::{read_ipc_msg, write_ipc_msg, Cli};
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
@@ -8,15 +9,32 @@ use connlib_shared::{
 };
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
-use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
-use tokio::signal::unix::SignalKind;
+use std::{
+    future,
+    net::IpAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    task::Poll,
+};
+use tokio::{
+    net::{UnixListener, UnixStream},
+    signal::unix::SignalKind,
+};
 
 pub async fn run() -> Result<()> {
-    let cli = super::Cli::parse();
-    let max_partition_time = cli.max_partition_time.map(|d| d.into());
-
+    let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
+
+    if cli.act_as_tunnel {
+        run_tunnel(cli).await
+    } else {
+        run_standalone(cli).await
+    }
+}
+
+async fn run_standalone(cli: Cli) -> Result<()> {
+    let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     let callbacks = CallbackHandler;
 
@@ -155,9 +173,111 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
+async fn run_tunnel(_cli: Cli) -> Result<()> {
+    let sock_path = dirs::runtime_dir()
+        .context("Failed to get `runtime_dir`")?
+        .join("dev.firezone.client_ipc");
+    ipc_listen(&sock_path).await
+}
+
+async fn ipc_listen(sock_path: &Path) -> Result<()> {
+    // Remove the socket if a previous run left it there
+    tokio::fs::remove_file(sock_path).await.ok();
+    let listener = UnixListener::bind(sock_path).unwrap();
+
+    loop {
+        tracing::info!("Listening for GUI to connect over IPC...");
+        let (stream, _) = listener.accept().await.unwrap();
+        let cred = stream.peer_cred().unwrap();
+        tracing::info!(
+            uid = cred.uid(),
+            gid = cred.gid(),
+            pid = cred.pid(),
+            "Got an IPC connection"
+        );
+        // TODO: Check that the user is in the `firezone` group
+        // For now, to make it work well in CI where that group isn't created,
+        // just check if it matches our own UID.
+        let actual_peer_uid = cred.uid();
+        let expected_peer_uid = nix::unistd::Uid::current().as_raw();
+        if actual_peer_uid != expected_peer_uid {
+            tracing::warn!("Connection from un-authorized user, ignoring");
+            continue;
+        }
+
+        if let Err(error) = handle_ipc_client(stream).await {
+            tracing::error!(?error, "Error while handling IPC client");
+        }
+    }
+}
+
+async fn handle_ipc_client(mut stream: UnixStream) -> Result<()> {
+    tracing::info!("Waiting for an IPC message from the GUI...");
+    let v = read_ipc_msg(&mut stream).await?;
+    let s = String::from_utf8(v)?;
+    let decoded: String = serde_json::from_str(&s)?;
+
+    tracing::debug!(?decoded, "Received message");
+    write_ipc_msg(&mut stream, &"OK".to_string()).await?;
+    tracing::info!("Replied. Connection will close");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::{read_ipc_msg, write_ipc_msg};
     use std::net::IpAddr;
+    use tokio::net::{UnixListener, UnixStream};
+
+    const MESSAGE_ONE: &str = "message one";
+    const MESSAGE_TWO: &str = "message two";
+
+    #[tokio::test]
+    async fn ipc() {
+        let sock_path = dirs::runtime_dir()
+            .unwrap()
+            .join("dev.firezone.client_ipc_test");
+
+        // Remove the socket if a previous run left it there
+        tokio::fs::remove_file(&sock_path).await.ok();
+        let listener = UnixListener::bind(&sock_path).unwrap();
+
+        let ipc_server_task = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let cred = stream.peer_cred().unwrap();
+            // TODO: Check that the user is in the `firezone` group
+            // For now, to make it work well in CI where that group isn't created,
+            // just check if it matches our own UID.
+            let actual_peer_uid = cred.uid();
+            let expected_peer_uid = nix::unistd::Uid::current().as_raw();
+            assert_eq!(actual_peer_uid, expected_peer_uid);
+
+            let v = read_ipc_msg(&mut stream).await.unwrap();
+            let s = String::from_utf8(v).unwrap();
+            let decoded: String = serde_json::from_str(&s).unwrap();
+            assert_eq!(MESSAGE_ONE, decoded);
+
+            let v = read_ipc_msg(&mut stream).await.unwrap();
+            let s = String::from_utf8(v).unwrap();
+            let decoded: String = serde_json::from_str(&s).unwrap();
+            assert_eq!(MESSAGE_TWO, decoded);
+        });
+
+        tracing::info!(pid = std::process::id(), "Connecting to IPC server");
+        let mut stream = UnixStream::connect(&sock_path).await.unwrap();
+        write_ipc_msg(&mut stream, &MESSAGE_ONE.to_string())
+            .await
+            .unwrap();
+
+        write_ipc_msg(&mut stream, &MESSAGE_TWO.to_string())
+            .await
+            .unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_millis(2_000), ipc_server_task)
+            .await
+            .unwrap()
+            .unwrap();
+    }
 
     #[test]
     fn parse_resolvectl_output() {

@@ -7,7 +7,7 @@ use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{ErrorCode, Nonce, Realm, Username, XorMappedAddress};
 use stun_codec::rfc5389::errors::Unauthorized;
 use stun_codec::rfc5389::methods::BINDING;
@@ -30,7 +30,7 @@ fn can_answer_stun_request_from_ip4_address(
     let transaction_id = request.transaction_id();
 
     server.assert_commands(
-        from_client(source, request, SystemTime::now()),
+        from_client(source, request, Instant::now()),
         [send_message(
             source,
             binding_response(transaction_id, source),
@@ -45,9 +45,10 @@ fn deallocate_once_time_expired(
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let now = Instant::now();
+
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret();
 
@@ -57,7 +58,7 @@ fn deallocate_once_time_expired(
             Allocate::new_authenticated_udp_implicit_ip4(
                 transaction_id,
                 Some(lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 secret,
                 nonce,
             ),
@@ -90,8 +91,9 @@ fn unauthenticated_allocate_triggers_authentication(
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
 ) {
+    let now = Instant::now();
+
     // Nonces are generated randomly and we control the randomness in the test, thus this is deterministic.
     let first_nonce = Uuid::from_u128(0x0);
 
@@ -116,7 +118,7 @@ fn unauthenticated_allocate_triggers_authentication(
             Allocate::new_authenticated_udp_implicit_ip4(
                 transaction_id,
                 Some(lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 first_nonce,
             ),
@@ -146,9 +148,10 @@ fn when_refreshed_in_time_allocation_does_not_expire(
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let now = Instant::now();
+
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
@@ -159,7 +162,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
             Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(allocate_lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -192,7 +195,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
             Refresh::new(
                 refresh_transaction_id,
                 Some(refresh_lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -222,9 +225,10 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
     #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let now = Instant::now();
+
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
@@ -235,7 +239,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
             Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(allocate_lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -267,7 +271,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
             Refresh::new(
                 refresh_transaction_id,
                 Some(Lifetime::new(Duration::ZERO).unwrap()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -303,11 +307,12 @@ fn ping_pong_relay(
     source: SocketAddrV4,
     peer: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
     #[strategy(firezone_relay::proptest::channel_data())] client_to_peer_ping: ChannelData<'static>,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let now = Instant::now();
+
     let _ = env_logger::try_init();
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
@@ -320,7 +325,7 @@ fn ping_pong_relay(
             Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -355,7 +360,7 @@ fn ping_pong_relay(
                 channel_bind_transaction_id,
                 client_to_peer_ping.channel(),
                 XorPeerAddress::new(peer.into()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -413,9 +418,10 @@ fn allows_rebind_channel_after_expiry(
     peer: SocketAddrV4,
     peer2: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let now = Instant::now();
+
     let _ = env_logger::try_init();
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
@@ -428,7 +434,7 @@ fn allows_rebind_channel_after_expiry(
             Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -463,7 +469,7 @@ fn allows_rebind_channel_after_expiry(
                 channel_bind_transaction_id,
                 channel,
                 XorPeerAddress::new(peer.into()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -498,7 +504,7 @@ fn allows_rebind_channel_after_expiry(
                 channel_bind_2_transaction_id,
                 channel,
                 XorPeerAddress::new(peer2.into()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -527,11 +533,12 @@ fn ping_pong_ip6_relay(
     peer: SocketAddrV6,
     public_relay_ip4_addr: Ipv4Addr,
     public_relay_ip6_addr: Ipv6Addr,
-    #[strategy(firezone_relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
     mut client_to_peer_ping: [u8; 36],
     #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
 ) {
+    let now = Instant::now();
+
     let _ = env_logger::try_init();
 
     let mut server =
@@ -545,7 +552,7 @@ fn ping_pong_ip6_relay(
             Allocate::new_authenticated_udp_ip6(
                 allocate_transaction_id,
                 Some(lifetime.clone()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -580,7 +587,7 @@ fn ping_pong_ip6_relay(
                 channel_bind_transaction_id,
                 channel,
                 XorPeerAddress::new(peer.into()),
-                valid_username(now, &username_salt),
+                valid_username(&username_salt),
                 &secret,
                 nonce,
             ),
@@ -719,8 +726,8 @@ impl TestServer {
     }
 }
 
-fn valid_username(now: SystemTime, salt: &str) -> Username {
-    let now_unix = now
+fn valid_username(salt: &str) -> Username {
+    let now_unix = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_secs();
@@ -793,19 +800,19 @@ fn parse_message(message: &[u8]) -> Message<Attribute> {
 }
 
 enum Input<'a> {
-    Client(ClientSocket, ClientMessage<'a>, SystemTime),
-    Time(SystemTime),
+    Client(ClientSocket, ClientMessage<'a>, Instant),
+    Time(Instant),
 }
 
 fn from_client<'a>(
     from: impl Into<SocketAddr>,
     message: impl Into<ClientMessage<'a>>,
-    now: SystemTime,
+    now: Instant,
 ) -> Input<'a> {
     Input::Client(ClientSocket::new(from.into()), message.into(), now)
 }
 
-fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
+fn forward_time_to<'a>(when: Instant) -> Input<'a> {
     Input::Time(when)
 }
 
