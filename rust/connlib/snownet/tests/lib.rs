@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
     vec,
 };
-use str0m::{net::Protocol, Candidate};
+use str0m::{net::Protocol, Candidate, CandidateKind};
 use tracing::{debug_span, info_span, Span};
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -101,6 +101,38 @@ fn reconnect_discovers_new_interface() {
         .any(|(_, c, _)| c.addr().to_string() == "10.0.0.1:80"));
     assert_eq!(alice.failed_connections().count(), 0);
     assert_eq!(bob.failed_connections().count(), 0);
+}
+
+#[test]
+fn does_not_emit_relay_candidates_if_direct_succeeds() {
+    let _guard = setup_tracing();
+
+    let (alice, bob) = alice_and_bob();
+
+    let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
+    let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
+    let firewall = Firewall::default();
+    let mut clock = Clock::new();
+
+    let mut relays = [relay];
+
+    handshake(&mut alice, &mut bob, &relays, &clock);
+
+    loop {
+        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
+            break;
+        }
+
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    }
+
+    assert!(alice
+        .signalled_candidates()
+        .all(|(_, c, _)| c.kind() != CandidateKind::Relayed));
+    assert!(bob
+        .signalled_candidates()
+        .all(|(_, c, _)| c.kind() != CandidateKind::Relayed));
 }
 
 #[test]
