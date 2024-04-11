@@ -243,7 +243,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
-                   "metricKind" => "CUMULATIVE",
+                   "metricKind" => "GAUGE",
                    "valueType" => "DOUBLE",
                    "points" => [
                      %{
@@ -349,7 +349,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                      "labels" => %{"app" => "myapp", "foo" => "bar"},
                      "type" => "custom.googleapis.com/elixir/foo/min"
                    },
-                   "metricKind" => "CUMULATIVE",
+                   "metricKind" => "GAUGE",
                    "points" => [
                      %{
                        "interval" => %{
@@ -368,7 +368,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                      "labels" => %{"app" => "myapp", "foo" => "bar"},
                      "type" => "custom.googleapis.com/elixir/foo/max"
                    },
-                   "metricKind" => "CUMULATIVE",
+                   "metricKind" => "GAUGE",
                    "points" => [
                      %{
                        "interval" => %{
@@ -444,7 +444,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
-                   "metricKind" => "CUMULATIVE",
+                   "metricKind" => "GAUGE",
                    "valueType" => "DOUBLE",
                    "points" => [
                      %{

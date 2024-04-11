@@ -315,7 +315,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
@@ -369,7 +369,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
@@ -385,7 +385,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
@@ -409,7 +409,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
