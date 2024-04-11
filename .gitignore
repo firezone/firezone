@@ -27,4 +27,8 @@ gha-creds-*.json
 # Ignore local `direnv` cache
 .direnv
 
+# Ignore node_modules
 node_modules/
+
+# Ignore dist directory for typescript
+dist/
