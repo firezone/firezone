@@ -11,13 +11,15 @@ use std::{
 };
 use str0m::{net::Protocol, Candidate};
 use tracing::{debug_span, info_span, Span};
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[test]
 fn smoke_direct() {
-    let _ = tracing_subscriber::fmt()
+    let _guard = tracing_subscriber::fmt()
         .with_test_writer()
         .with_env_filter("debug")
-        .try_init();
+        .finish()
+        .set_default();
 
     let (alice, bob) = alice_and_bob();
 
@@ -40,10 +42,11 @@ fn smoke_direct() {
 
 #[test]
 fn smoke_relayed() {
-    let _ = tracing_subscriber::fmt()
+    let _guard = tracing_subscriber::fmt()
         .with_test_writer()
         .with_env_filter("debug")
-        .try_init();
+        .finish()
+        .set_default();
 
     let (alice, bob) = alice_and_bob();
 
