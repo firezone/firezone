@@ -23,5 +23,7 @@ test -z "$OPEN_SOCKETS"
 # Act: Send 2nd SIGTERM
 sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
 
+sleep 1 # Wait for process to exit
+
 # Assert: Process is no longer there
 pgrep firezone-relay && exit 1
