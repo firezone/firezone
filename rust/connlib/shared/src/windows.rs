@@ -33,7 +33,7 @@ pub mod dns {
     //! <https://superuser.com/a/1752670>
 
     use anyhow::Result;
-    use std::{os::windows::process::CommandExt, process::Command};
+    use std::{net::IpAddr, os::windows::process::CommandExt, process::Command};
 
     /// Hides Powershell's console on Windows
     ///
@@ -49,7 +49,25 @@ pub mod dns {
     ///
     /// Parameters:
     /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
-    pub fn activate(dns_config_string: &str) -> Result<()> {
+    pub fn activate(dns_config: &[IpAddr], iface_idx: u32) -> Result<()> {
+        let dns_config_string = dns_config
+            .iter()
+            .map(|ip| format!("\"{ip}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        // Set our DNS IP as the DNS server for our interface
+        // TODO: Known issue where web browsers will keep a connection open to a site,
+        // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
+        // again unless you let that connection time out:
+        // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
+        // TODO: If we have a Windows gateway, it shouldn't configure DNS, right?
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("-Command")
+            .arg(format!("Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({dns_config_string})"))
+            .status()?;
+
         tracing::info!("Activating DNS control");
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
@@ -61,7 +79,7 @@ pub mod dns {
                 "-Comment",
                 FZ_MAGIC,
                 "-NameServers",
-                dns_config_string,
+                &dns_config_string,
             ])
             .status()?;
         Ok(())
@@ -75,9 +93,9 @@ pub mod dns {
     ///
     /// Parameters:
     /// - `dns_config_string` - Passed verbatim to [`activate`]
-    pub fn change(dns_config_string: &str) -> Result<()> {
+    pub fn change(dns_config: &[IpAddr], iface_idx: u32) -> Result<()> {
         deactivate()?;
-        activate(dns_config_string)?;
+        activate(dns_config, iface_idx)?;
         Ok(())
     }
 
@@ -85,23 +103,11 @@ pub mod dns {
         tracing::info!("Deactivating DNS control");
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
-            .args([
-                "-Command",
-                "Get-DnsClientNrptRule",
-                "|",
-                "where",
-                "Comment",
-                "-eq",
-                FZ_MAGIC,
-                "|",
-                "foreach",
-                "{",
-                "Remove-DnsClientNrptRule",
-                "-Name",
-                "$_.Name",
-                "-Force",
-                "}",
-            ])
+            .args(["-Command", "Get-DnsClientNrptRule", "|"])
+            .args(["where", "Comment", "-eq", FZ_MAGIC, "|"])
+            .args(["foreach", "{"])
+            .args(["Remove-DnsClientNrptRule", "-Name", "$_.Name", "-Force"])
+            .args(["}"])
             .status()?;
         Ok(())
     }

@@ -140,25 +140,7 @@ impl Tun {
 
         let iface_idx = self.adapter.get_adapter_index()?;
 
-        let dns_config_string = dns_config
-            .iter()
-            .map(|ip| format!("\"{ip}\""))
-            .collect::<Vec<_>>()
-            .join(",");
-
-        // Set our DNS IP as the DNS server for our interface
-        // TODO: Known issue where web browsers will keep a connection open to a site,
-        // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
-        // again unless you let that connection time out:
-        // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
-        // TODO: If we have a Windows gateway, it shouldn't configure DNS, right?
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("-Command")
-            .arg(format!("Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({dns_config_string})"))
-            .status()?;
-
-        connlib_shared::windows::dns::change(&dns_config_string)
+        connlib_shared::windows::dns::change(dns_config, iface_idx)
             .expect("Should be able to control DNS");
 
         Ok(())
