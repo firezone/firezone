@@ -25,6 +25,10 @@ impl ResourceId {
     pub fn random() -> ResourceId {
         ResourceId(Uuid::new_v4())
     }
+
+    pub(crate) fn from_u128(v: u128) -> Self {
+        Self(Uuid::from_u128(v))
+    }
 }
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);

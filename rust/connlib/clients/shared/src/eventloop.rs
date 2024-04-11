@@ -58,7 +58,7 @@ where
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
-                    if let Err(e) = self.tunnel.set_dns(dns) {
+                    if let Err(e) = self.tunnel.set_new_dns(dns) {
                         tracing::warn!("Failed to update DNS: {e}");
                     }
                 }
@@ -158,7 +158,10 @@ where
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
             IngressMessages::ConfigChanged(config) => {
-                if let Err(e) = self.tunnel.set_interface(config.interface.clone()) {
+                if let Err(e) = self
+                    .tunnel
+                    .set_new_interface_config(config.interface.clone())
+                {
                     tracing::warn!(?config, "Failed to update configuration: {e:?}");
                 }
             }
@@ -174,7 +177,7 @@ where
                 interface,
                 resources,
             }) => {
-                if let Err(e) = self.tunnel.set_interface(interface) {
+                if let Err(e) = self.tunnel.set_new_interface_config(interface) {
                     tracing::warn!("Failed to set interface on tunnel: {e}");
                     return;
                 }

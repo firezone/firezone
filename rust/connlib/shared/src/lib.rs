@@ -19,6 +19,9 @@ pub mod linux;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+#[cfg(feature = "proptest")]
+pub mod proptest;
+
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
 pub use callbacks::{Callbacks, Cidrv4, Cidrv6};

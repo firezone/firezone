@@ -64,8 +64,11 @@ where
     ) -> connlib_shared::Result<()> {
         self.role_state.set_resources(resources);
 
-        self.update_routes()?;
-        self.update_resource_list();
+        self.io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
 
         Ok(())
     }
@@ -77,8 +80,11 @@ where
     ) -> connlib_shared::Result<()> {
         self.role_state.add_resources(resources);
 
-        self.update_routes()?;
-        self.update_resource_list();
+        self.io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
 
         Ok(())
     }
@@ -86,57 +92,66 @@ where
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        if let Err(err) = self.update_routes() {
+        if let Err(err) = self
+            .io
+            .device_mut()
+            .set_routes(self.role_state.routes().collect(), &self.callbacks)
+        {
             tracing::error!(?ids, "Failed to update routes: {err:?}");
         }
 
-        self.update_resource_list();
-    }
-
-    fn update_resource_list(&self) {
         self.callbacks
-            .on_update_resources(self.role_state.resources());
+            .on_update_resources(self.role_state.resources())
     }
 
     /// Updates the system's dns
-    pub fn set_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
+    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
         // We store the sentinel dns both in the config and in the system's resolvers
         // but when we calculate the dns mapping, those are ignored.
-        self.role_state.update_system_resolvers(new_dns);
+        let dns_changed = self.role_state.update_system_resolvers(new_dns);
 
-        let dns_changed = self.update_dns_mapping();
         if !dns_changed {
             return Ok(());
         }
 
-        self.update_interface()?;
+        self.io
+            .set_upstream_dns_servers(self.role_state.dns_mapping());
+
+        if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
+            self.update_device(config, self.role_state.dns_mapping())?;
+        };
 
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: InterfaceConfig) -> connlib_shared::Result<()> {
-        self.role_state.interface_config = Some(config);
-        self.update_dns_mapping();
-        self.update_interface()
+    pub fn set_new_interface_config(
+        &mut self,
+        config: InterfaceConfig,
+    ) -> connlib_shared::Result<()> {
+        let dns_changed = self.role_state.update_interface_config(config.clone());
+
+        if dns_changed {
+            self.io
+                .set_upstream_dns_servers(self.role_state.dns_mapping());
+        }
+
+        self.update_device(config, self.role_state.dns_mapping())?;
+
+        Ok(())
     }
 
-    pub(crate) fn update_interface(&mut self) -> connlib_shared::Result<()> {
-        let Some(config) = self.role_state.interface_config.as_ref().cloned() else {
-            return Ok(());
-        };
-
+    pub(crate) fn update_device(
+        &mut self,
+        config: InterfaceConfig,
+        dns_mapping: BiMap<IpAddr, DnsServer>,
+    ) -> connlib_shared::Result<()> {
         let callbacks = self.callbacks.clone();
 
         self.io.device_mut().set_config(
             &config,
             // We can just sort in here because sentinel ips are created in order
-            self.role_state
-                .dns_mapping
-                .left_values()
-                .copied()
-                .sorted()
-                .collect(),
+            dns_mapping.left_values().copied().sorted().collect(),
             &callbacks,
         )?;
 
@@ -152,15 +167,6 @@ where
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
         self.role_state.on_connection_failed(id);
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn update_routes(&mut self) -> connlib_shared::Result<()> {
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-
-        Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -206,18 +212,6 @@ where
             .received_domain_parameters(resource_id, domain_response)?;
 
         Ok(())
-    }
-
-    fn update_dns_mapping(&mut self) -> bool {
-        if !self.role_state.update_dns_mapping() {
-            return false;
-        }
-
-        self.io
-            .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-        tracing::info!("Setting new DNS resolvers");
-        true
     }
 }
 
@@ -767,8 +761,18 @@ impl ClientState {
             .map(|(_, res)| res.id)
     }
 
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
+    #[must_use]
+    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         self.system_resolvers = new_dns;
+
+        self.update_dns_mapping()
+    }
+
+    #[must_use]
+    fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
+        self.interface_config = Some(config);
+
+        self.update_dns_mapping()
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
@@ -851,6 +855,15 @@ impl ClientState {
         self.node.poll_transmit()
     }
 
+    /// Sets a new set of resources.
+    ///
+    /// This function does **not** perform a blanket "clear all and set new resources".
+    /// Instead, it diffs which resources to remove and which ones to add.
+    ///
+    /// This is important because we don't want to lose state like resolved DNS names for resources that didn't change.
+    ///
+    /// TODO: Add a test that asserts the above.
+    ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resources`] and check that it did in fact not get deleted.
     fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
         self.remove_resources(
             &HashSet::from_iter(self.resource_ids.keys().copied())
@@ -1111,9 +1124,8 @@ impl IpProvider {
 
 #[cfg(test)]
 mod tests {
-    use rand_core::OsRng;
-
     use super::*;
+    use rand_core::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1130,8 +1142,9 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        assert!(client_state.update_dns_mapping());
+        let dns_changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+
+        assert!(dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.1.1.1:53")]);
     }
 
@@ -1140,11 +1153,10 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        client_state.update_dns_mapping();
+        let _ = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let dns_changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        assert!(!client_state.update_dns_mapping());
+        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.1.1.1:53")]);
     }
 
@@ -1153,11 +1165,10 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        client_state.update_dns_mapping();
+        let _ = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let dns_changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
-        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
-        assert!(client_state.update_dns_mapping());
+        assert!(dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.0.0.1:53")]);
     }
 
@@ -1166,28 +1177,28 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        client_state.update_dns_mapping();
-
-        client_state.update_system_resolvers(vec![
+        let _ = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        let dns_changed = client_state.update_system_resolvers(vec![
             ip("1.1.1.1"),
             ip("100.100.111.1"),
             ip("fd00:2021:1111:8000:100:100:111:0"),
         ]);
-        assert!(!client_state.update_dns_mapping());
+
+        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.1.1.1:53")]);
     }
 
     #[test]
     fn upstream_dns_wins_over_system() {
         let mut client_state = ClientState::for_test();
-
         client_state.interface_config = Some(interface_config_with_dns());
 
-        assert!(client_state.update_dns_mapping());
+        let dns_changed = client_state.update_dns_mapping();
+        assert!(dns_changed);
 
-        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
-        assert!(!client_state.update_dns_mapping());
+        let dns_changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
+        assert!(!dns_changed);
+
         dns_mapping_is_exactly(client_state.dns_mapping(), dns_list());
     }
 
@@ -1195,62 +1206,62 @@ mod tests {
     fn upstream_dns_change_updates() {
         let mut client_state = ClientState::for_test();
 
-        client_state.interface_config = Some(interface_config_with_dns());
+        let dns_changed = client_state.update_interface_config(interface_config_with_dns());
 
-        assert!(client_state.update_dns_mapping());
+        assert!(dns_changed);
 
-        let mut new_config = interface_config_without_dns();
-        new_config.upstream_dns = vec![dns("8.8.8.8:53")];
-        client_state.interface_config = Some(new_config);
+        let dns_changed = client_state.update_interface_config(InterfaceConfig {
+            upstream_dns: vec![dns("8.8.8.8:53")],
+            ..interface_config_without_dns()
+        });
 
-        assert!(client_state.update_dns_mapping());
+        assert!(dns_changed);
+
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("8.8.8.8:53")]);
     }
 
     #[test]
     fn upstream_dns_no_change_is_a_no_op() {
         let mut client_state = ClientState::for_test();
-
         client_state.interface_config = Some(interface_config_with_dns());
-        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
-        assert!(client_state.update_dns_mapping());
+        let dns_changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
-        client_state.interface_config = Some(interface_config_with_dns());
-        assert!(!client_state.update_dns_mapping());
+        assert!(dns_changed);
+
+        let dns_changed = client_state.update_interface_config(interface_config_with_dns());
+
+        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), dns_list());
     }
 
     #[test]
     fn upstream_dns_sentinels_are_ignored() {
         let mut client_state = ClientState::for_test();
-
         let mut config = interface_config_with_dns();
-        client_state.interface_config = Some(config.clone());
 
-        client_state.update_dns_mapping();
+        let _ = client_state.update_interface_config(config.clone());
 
         config.upstream_dns.push(dns("100.100.111.1:53"));
         config
             .upstream_dns
             .push(dns("[fd00:2021:1111:8000:100:100:111:0]:53"));
-        client_state.interface_config = Some(config);
-        assert!(!client_state.update_dns_mapping());
+
+        let dns_changed = client_state.update_interface_config(config);
+
+        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), dns_list())
     }
 
     #[test]
     fn system_dns_takes_over_when_upstream_are_unset() {
         let mut client_state = ClientState::for_test();
+        let _ = client_state.update_interface_config(interface_config_with_dns());
 
-        client_state.interface_config = Some(interface_config_with_dns());
-        client_state.update_dns_mapping();
+        let _ = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
+        let dns_changed = client_state.update_interface_config(interface_config_without_dns());
 
-        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
-        client_state.update_dns_mapping();
-
-        client_state.interface_config = Some(interface_config_without_dns());
-        assert!(client_state.update_dns_mapping());
+        assert!(dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.0.0.1:53")]);
     }
 
@@ -1285,205 +1296,8 @@ mod tests {
         )
     }
 
-    #[test]
-    fn add_resources_works() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.add_resources(&[
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(
-                [
-                    cidr_foo_resource("10.0.0.0/24"),
-                    dns_bar_resource("baz.com")
-                ]
-                .iter()
-            )
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
-        );
-
-        client_state.add_resources(&[cidr_baz_resource("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(
-                [
-                    cidr_foo_resource("10.0.0.0/24"),
-                    dns_bar_resource("baz.com"),
-                    cidr_baz_resource("11.0.0.0/24")
-                ]
-                .iter()
-            )
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![
-                IpNetwork::from_str("10.0.0.0/24").unwrap(),
-                IpNetwork::from_str("11.0.0.0/24").unwrap()
-            ])
-        );
-    }
-
-    #[test]
-    fn add_resources_update_works_cidr() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.add_resources(&[
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.add_resources(&[cidr_foo_resource("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(
-                [
-                    cidr_foo_resource("11.0.0.0/24"),
-                    dns_bar_resource("baz.com")
-                ]
-                .iter()
-            )
-        );
-        assert_eq!(
-            HashSet::<IpNetwork>::from_iter(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
-        );
-    }
-
-    #[test]
-    fn add_resources_update_works_to_dns() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.add_resources(&[
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.add_resources(&[cidr_bar_id("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([cidr_bar_id("11.0.0.0/24"), cidr_foo_resource("10.0.0.0/24")].iter())
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![
-                IpNetwork::from_str("10.0.0.0/24").unwrap(),
-                IpNetwork::from_str("11.0.0.0/24").unwrap()
-            ])
-        );
-    }
-
-    #[test]
-    fn remove_resources_works() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.add_resources(&[
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.remove_resources(&[cidr_foo_id()]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([dns_bar_resource("baz.com")].iter())
-        );
-        assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
-    }
-
-    #[test]
-    fn set_resource_works() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.set_resources(vec![
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(
-                [
-                    cidr_foo_resource("10.0.0.0/24"),
-                    dns_bar_resource("baz.com")
-                ]
-                .iter()
-            )
-        );
-        assert_eq!(
-            HashSet::<IpNetwork>::from_iter(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
-        );
-    }
-
-    #[test]
-    fn set_resource_replaces_old_resources() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.set_resources(vec![
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.set_resources(vec![cidr_baz_resource("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([cidr_baz_resource("11.0.0.0/24")].iter())
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
-        );
-    }
-
-    #[test]
-    fn set_resource_updates_old_resource_with_same_id() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.set_resources(vec![
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.set_resources(vec![cidr_foo_resource("11.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([cidr_foo_resource("11.0.0.0/24")].iter())
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("11.0.0.0/24").unwrap()])
-        );
-    }
-
-    #[test]
-    fn set_resource_keeps_resource_if_unchanged() {
-        let mut client_state = ClientState::for_test();
-
-        client_state.set_resources(vec![
-            cidr_foo_resource("10.0.0.0/24"),
-            dns_bar_resource("baz.com"),
-        ]);
-        client_state.set_resources(vec![cidr_foo_resource("10.0.0.0/24")]);
-
-        assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset([cidr_foo_resource("10.0.0.0/24")].iter())
-        );
-        assert_eq!(
-            hashset(client_state.routes()),
-            expected_routes(vec![IpNetwork::from_str("10.0.0.0/24").unwrap()])
-        );
-    }
-
     impl ClientState {
-        fn for_test() -> ClientState {
+        pub fn for_test() -> ClientState {
             ClientState::new(StaticSecret::random_from_rng(OsRng))
         }
     }
@@ -1532,59 +1346,16 @@ mod tests {
         })
     }
 
-    fn cidr_foo_resource(addr: &str) -> ResourceDescription {
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: cidr_foo_id(),
-            address: addr.parse().unwrap(),
-            name: "foo".to_string(),
-        })
-    }
-
-    fn cidr_bar_id(addr: &str) -> ResourceDescription {
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: dns_bar_id(),
-            address: addr.parse().unwrap(),
-            name: "foo".to_string(),
-        })
-    }
-
-    fn dns_bar_resource(addr: &str) -> ResourceDescription {
-        ResourceDescription::Dns(ResourceDescriptionDns {
-            id: dns_bar_id(),
-            address: addr.to_string(),
-            name: "bar".to_string(),
-        })
-    }
-
-    fn cidr_baz_resource(addr: &str) -> ResourceDescription {
-        ResourceDescription::Cidr(ResourceDescriptionCidr {
-            id: cidr_baz_id(),
-            address: addr.parse().unwrap(),
-            name: "baz".to_string(),
-        })
-    }
-
-    fn cidr_foo_id() -> ResourceId {
-        resource_id("fb51081a-2e06-4b59-b5a8-33592de9ebb1")
-    }
-
-    fn cidr_baz_id() -> ResourceId {
-        resource_id("4e0bf4ea-4175-4cdb-a7c2-cbeffa8ccc5d")
-    }
-
-    fn dns_bar_id() -> ResourceId {
-        resource_id("868483b6-431e-484d-bdd6-dad60ed26418")
-    }
-
     fn ip(addr: &str) -> IpAddr {
         addr.parse().unwrap()
     }
+}
 
-    fn resource_id(id: &str) -> ResourceId {
-        id.parse().unwrap()
-    }
+#[cfg(test)]
+mod testutils {
+    use super::*;
 
-    fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
+    pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
         HashSet::from_iter(
             resource_routes
                 .into_iter()
@@ -1593,7 +1364,178 @@ mod tests {
         )
     }
 
-    fn hashset<T: std::hash::Hash + Eq>(val: impl Iterator<Item = T>) -> HashSet<T> {
-        HashSet::from_iter(val)
+    #[allow(clippy::redundant_clone)] // False positive.
+    pub fn hashset<T: std::hash::Hash + Eq, B: ToOwned<Owned = T>>(
+        val: impl IntoIterator<Item = B>,
+    ) -> HashSet<T> {
+        HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
+    }
+}
+
+#[cfg(all(test, feature = "proptest"))]
+mod proptests {
+    use super::*;
+    use connlib_shared::proptest::*;
+    use testutils::*;
+
+    #[test_strategy::proptest]
+    fn cidr_resources_are_turned_into_routes(
+        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+
+        client_state.add_resources(&[
+            ResourceDescription::Cidr(resource1.clone()),
+            ResourceDescription::Cidr(resource2.clone()),
+        ]);
+
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![resource1.address, resource2.address])
+        );
+    }
+
+    #[test_strategy::proptest]
+    fn added_resources_show_up_as_resoucres(
+        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
+        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+
+        client_state.add_resources(&[
+            ResourceDescription::Cidr(resource1.clone()),
+            ResourceDescription::Dns(resource2.clone()),
+        ]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[
+                ResourceDescription::Cidr(resource1.clone()),
+                ResourceDescription::Dns(resource2.clone())
+            ])
+        );
+
+        client_state.add_resources(&[ResourceDescription::Cidr(resource3.clone())]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[
+                ResourceDescription::Cidr(resource1),
+                ResourceDescription::Dns(resource2),
+                ResourceDescription::Cidr(resource3)
+            ])
+        );
+    }
+
+    #[test_strategy::proptest]
+    fn adding_same_resource_with_different_address_updates_the_address(
+        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
+        #[strategy(ip_network())] new_address: IpNetwork,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
+
+        let updated_resource = ResourceDescriptionCidr {
+            address: new_address,
+            ..resource
+        };
+
+        client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[ResourceDescription::Cidr(updated_resource),])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![new_address])
+        );
+    }
+
+    #[test_strategy::proptest]
+    fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
+        #[strategy(dns_resource())] resource: ResourceDescriptionDns,
+        #[strategy(ip_network())] address: IpNetwork,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
+
+        let dns_as_cidr_resource = ResourceDescriptionCidr {
+            address,
+            id: resource.id,
+            name: resource.name,
+        };
+
+        client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[ResourceDescription::Cidr(dns_as_cidr_resource),])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![address])
+        );
+    }
+
+    #[test_strategy::proptest]
+    fn resources_can_be_removed(
+        #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
+        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[
+            ResourceDescription::Dns(dns_resource.clone()),
+            ResourceDescription::Cidr(cidr_resource.clone()),
+        ]);
+
+        client_state.remove_resources(&[dns_resource.id]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[ResourceDescription::Cidr(cidr_resource.clone())])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![cidr_resource.address])
+        );
+
+        client_state.remove_resources(&[cidr_resource.id]);
+
+        assert_eq!(hashset(client_state.resources().iter()), hashset(&[]));
+        assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
+    }
+
+    #[test_strategy::proptest]
+    fn resources_can_be_replaced(
+        #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
+        #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
+        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&[
+            ResourceDescription::Dns(dns_resource1),
+            ResourceDescription::Cidr(cidr_resource1),
+        ]);
+
+        client_state.set_resources(vec![
+            ResourceDescription::Dns(dns_resource2.clone()),
+            ResourceDescription::Cidr(cidr_resource2.clone()),
+        ]);
+
+        assert_eq!(
+            hashset(client_state.resources().iter()),
+            hashset(&[
+                ResourceDescription::Dns(dns_resource2),
+                ResourceDescription::Cidr(cidr_resource2.clone()),
+            ])
+        );
+        assert_eq!(
+            hashset(client_state.routes()),
+            expected_routes(vec![cidr_resource2.address])
+        );
     }
 }
