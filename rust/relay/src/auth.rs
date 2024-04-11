@@ -13,7 +13,7 @@ use uuid::Uuid;
 // TODO: Upstream a const constructor to `stun-codec`.
 pub static FIREZONE: Lazy<Realm> = Lazy::new(|| Realm::new("firezone".to_owned()).unwrap());
 
-pub trait MessageIntegrityExt {
+pub(crate) trait MessageIntegrityExt {
     fn verify(
         &self,
         relay_secret: &SecretString,
@@ -58,7 +58,7 @@ impl MessageIntegrityExt for MessageIntegrity {
 /// For simplicity reasons, we use a count-based strategy.
 /// Each nonce can be used for a certain number of requests before it is invalid.
 #[derive(Default)]
-pub struct Nonces {
+pub(crate) struct Nonces {
     inner: HashMap<Uuid, u64>,
 }
 
@@ -66,12 +66,12 @@ impl Nonces {
     /// How many requests a client can perform with the same nonce.
     const NUM_REQUESTS: u64 = 100;
 
-    pub fn add_new(&mut self, nonce: Uuid) {
+    pub(crate) fn add_new(&mut self, nonce: Uuid) {
         self.inner.insert(nonce, Self::NUM_REQUESTS);
     }
 
     /// Record the usage of a nonce in a request.
-    pub fn handle_nonce_used(&mut self, nonce: Uuid) -> Result<(), Error> {
+    pub(crate) fn handle_nonce_used(&mut self, nonce: Uuid) -> Result<(), Error> {
         let mut entry = match self.inner.entry(nonce) {
             Entry::Vacant(_) => return Err(Error::InvalidNonce),
             Entry::Occupied(entry) => entry,
@@ -92,7 +92,7 @@ impl Nonces {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Error {
+pub(crate) enum Error {
     Expired,
     InvalidPassword,
     InvalidUsername,
@@ -111,7 +111,7 @@ pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
     Ok((expiry_unix_timestamp, username_salt))
 }
 
-pub(crate) fn generate_password(
+pub fn generate_password(
     relay_secret: &SecretString,
     expiry: SystemTime,
     username_salt: &str,

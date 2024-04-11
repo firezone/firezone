@@ -16,6 +16,14 @@ defmodule Domain.Relays do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  def send_metrics do
+    count = global_groups_presence_topic() |> Presence.list() |> Enum.count()
+
+    :telemetry.execute([:domain, :relays], %{
+      online_relays_count: count
+    })
+  end
+
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()),
          true <- Repo.valid_uuid?(id) do

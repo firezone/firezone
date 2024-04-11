@@ -98,7 +98,7 @@ defmodule Domain.GoogleCloudPlatformTest do
              }) == {:error, %Mint.TransportError{reason: :econnrefused}}
 
       GoogleCloudPlatform.override_endpoint_url(
-        :token_endpoint_url,
+        :metadata_endpoint_url,
         "http://localhost:#{bypass.port}/"
       )
 
@@ -162,6 +162,73 @@ defmodule Domain.GoogleCloudPlatformTest do
 
       assert {"authorization", "Bearer GCP_ACCESS_TOKEN"} in conn.req_headers
       assert conn.method == "POST"
+    end
+  end
+
+  describe "send_metrics/3" do
+    test "returns list of nodes in all regions when access token is not set", %{bypass: bypass} do
+      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+      GoogleCloudPlatform.mock_metrics_submit_endpoint(bypass)
+
+      time_series = [
+        %{
+          "metric" => %{
+            "type" => "custom.googleapis.com/my_metric",
+            "labels" => %{
+              "my_label" => "my_value"
+            }
+          },
+          "resource" => %{
+            "type" => "gce_instance",
+            "labels" => %{
+              "project_id" => "firezone-staging",
+              "instance_id" => "1234567890123456789",
+              "zone" => "us-central1-f"
+            }
+          },
+          "points" => [
+            %{
+              "interval" => %{
+                "endTime" => "2024-04-05T10:00:00-04:00"
+              },
+              "value" => %{
+                "doubleValue" => 123.45
+              }
+            }
+          ]
+        }
+      ]
+
+      assert send_metrics("firezone-staging", time_series) == :ok
+
+      assert_receive {:bypass_request, conn, body}
+
+      assert conn.request_path == "/v3/projects/firezone-staging/timeSeries"
+      assert body == %{"timeSeries" => time_series}
+    end
+
+    test "returns error when compute endpoint is down", %{bypass: bypass} do
+      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
+
+      Bypass.down(bypass)
+
+      GoogleCloudPlatform.override_endpoint_url(
+        :cloud_metrics_endpoint_url,
+        "http://localhost:#{bypass.port}/"
+      )
+
+      assert send_metrics("firezone-staging", %{
+               "cluster_name" => "firezone"
+             }) == {:error, %Mint.TransportError{reason: :econnrefused}}
+
+      GoogleCloudPlatform.override_endpoint_url(
+        :metadata_endpoint_url,
+        "http://localhost:#{bypass.port}/"
+      )
+
+      assert send_metrics("firezone-staging", %{
+               "cluster_name" => "firezone"
+             }) == {:error, %Mint.TransportError{reason: :econnrefused}}
     end
   end
 end

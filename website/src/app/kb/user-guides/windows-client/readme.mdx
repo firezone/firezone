@@ -17,10 +17,23 @@ links:
 
 ## Usage
 
-The Windows Client must be run as an administrator to function correctly.
+The Windows Client must be run as an administrator to function correctly. **Be
+sure to click "Allow" when prompted by the User Account Control dialog.**
 
-**Be sure to click "Allow" when prompted by the User Account Control dialog.**
-
-If that dialog does not appear, you may need to manually run Firezone as an
+If that dialog does not appear, you may need to explicitly run Firezone as an
 administrator. To do so, right-click the Firezone icon and select "Run as
 administrator."
+
+## Upgrading
+
+The Windows Client will automatically check for updates on launch and prompt you
+to upgrade when a new version is available. Simply download the latest MSI
+installer package above and install it over the existing version.
+
+## Known issues
+
+Web browsers that enable DNS-over-HTTPS by default may interfere with DNS
+resolution. See
+[this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing) to
+disable DNS-over-HTTPS if you're experiencing issues connecting to DNS Resources
+within your browser.
