@@ -20,8 +20,9 @@ fn smoke_direct() {
     let (alice, bob) = alice_and_bob();
 
     let mut alice =
-        TestNode::new(info_span!("Alice"), alice, "1.1.1.1:80").with_local_host_candidate();
-    let mut bob = TestNode::new(info_span!("Bob"), bob, "1.1.1.2:80").with_local_host_candidate();
+        TestNode::new(info_span!("Alice"), alice, "1.1.1.1:80").with_primary_as_host_candidate();
+    let mut bob =
+        TestNode::new(info_span!("Bob"), bob, "1.1.1.2:80").with_primary_as_host_candidate();
     let firewall = Firewall::default();
     let mut clock = Clock::new();
 
@@ -258,7 +259,10 @@ struct TestNode {
     node: EitherNode,
     span: Span,
     received_packets: Vec<MutableIpPacket<'static>>,
-    local: SocketAddr,
+    /// The primary interface we use to send packets (e.g. to relays).
+    primary: SocketAddr,
+    /// All local interfaces.
+    local: Vec<SocketAddr>,
     events: Vec<(Event<u64>, Instant)>,
 
     buffer: Box<[u8; 10_000]>,
@@ -402,7 +406,7 @@ impl TestRelay {
                 return;
             }
 
-            receiver.receive(src, payload, now);
+            receiver.receive(dst, src, payload, now);
         }
     }
 
@@ -418,8 +422,6 @@ impl TestRelay {
             .span
             .in_scope(|| self.inner.handle_peer_traffic(payload, peer, port))
         {
-            assert_eq!(client.into_socket(), receiver.local); // We will relay to `receiver`, ensure that this is where the data should go.
-
             let full_length = firezone_relay::ChannelData::encode_header_to_slice(
                 channel,
                 payload.len() as u16,
@@ -427,7 +429,12 @@ impl TestRelay {
             );
             self.buffer[4..full_length].copy_from_slice(payload);
 
-            receiver.receive(self.listen_addr, &self.buffer[..full_length], now);
+            receiver.receive(
+                client.into_socket(),
+                self.listen_addr,
+                &self.buffer[..full_length],
+                now,
+            );
         }
     }
 
@@ -435,13 +442,14 @@ impl TestRelay {
         while let Some(command) = self.inner.next_command() {
             match command {
                 firezone_relay::Command::SendMessage { payload, recipient } => {
-                    if recipient.into_socket() == a1.local {
-                        a1.receive(self.listen_addr, &payload, now);
+                    let recipient = recipient.into_socket();
+                    if a1.local.contains(&recipient) {
+                        a1.receive(recipient, self.listen_addr, &payload, now);
                         continue;
                     }
 
-                    if recipient.into_socket() == a2.local {
-                        a2.receive(self.listen_addr, &payload, now);
+                    if a2.local.contains(&recipient) {
+                        a2.receive(recipient, self.listen_addr, &payload, now);
                         continue;
                     }
 
@@ -576,13 +584,16 @@ impl EitherNode {
 }
 
 impl TestNode {
-    pub fn new(span: Span, node: impl Into<EitherNode>, local: &str) -> Self {
+    pub fn new(span: Span, node: impl Into<EitherNode>, primary: &str) -> Self {
+        let primary = primary.parse().unwrap();
+
         TestNode {
             node: node.into(),
             span,
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
-            local: local.parse().unwrap(),
+            primary,
+            local: vec![primary],
             events: Default::default(),
         }
     }
@@ -606,12 +617,12 @@ impl TestNode {
         })
     }
 
-    fn receive(&mut self, from: SocketAddr, packet: &[u8], now: Instant) {
+    fn receive(&mut self, local: SocketAddr, from: SocketAddr, packet: &[u8], now: Instant) {
         if let Some((_, packet)) = self
             .span
             .in_scope(|| {
                 self.node
-                    .decapsulate(self.local, from, packet, now, self.buffer.as_mut())
+                    .decapsulate(local, from, packet, now, self.buffer.as_mut())
             })
             .unwrap()
         {
@@ -646,7 +657,7 @@ impl TestNode {
             let dst = trans.dst;
 
             if let Some(relay) = relays.iter_mut().find(|r| r.wants(trans.dst)) {
-                relay.handle_packet(payload, self.local, dst, other, now);
+                relay.handle_packet(payload, self.primary, dst, other, now);
                 continue;
             }
 
@@ -661,13 +672,13 @@ impl TestNode {
             }
 
             // Firewall allowed traffic, let's dispatch it.
-            other.receive(src, payload, now);
+            other.receive(dst, src, payload, now);
         }
     }
 
-    fn with_local_host_candidate(mut self) -> Self {
+    fn with_primary_as_host_candidate(mut self) -> Self {
         self.span
-            .in_scope(|| self.node.add_local_host_candidate(self.local));
+            .in_scope(|| self.node.add_local_host_candidate(self.primary));
 
         self
     }
