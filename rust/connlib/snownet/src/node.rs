@@ -684,8 +684,8 @@ where
         for event in binding_events.chain(allocation_events) {
             match event {
                 CandidateEvent::New(candidate) => {
-                    for (id, conn) in self.connections.established.iter_mut() {
-                        conn.add_local_candidate(*id, candidate.clone(), &mut self.pending_events)
+                    for conn in self.connections.established.values_mut() {
+                        conn.add_local_candidate(candidate.clone())
                     }
                 }
                 CandidateEvent::Invalid(candidate) => {
@@ -1229,22 +1229,8 @@ impl Connection {
         }
     }
 
-    fn add_local_candidate<TId>(
-        &mut self,
-        id: TId,
-        candidate: Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
-    ) where
-        TId: fmt::Display,
-    {
-        let _span = info_span!("connection", %id).entered();
-
-        if self.agent.add_local_candidate(candidate.clone()) {
-            pending_events.push_back(Event::SignalIceCandidate {
-                connection: id,
-                candidate: candidate.to_sdp_string(),
-            })
-        }
+    fn add_local_candidate(&mut self, candidate: Candidate) {
+        self.fallback_relay_candidates.push(candidate)
     }
 
     fn set_remote_from_wg_activity(
@@ -1319,12 +1305,18 @@ impl Connection {
         {
             tracing::info!("Hole-punch did not succeed after {duration_since_created:?}, sending relay candidates");
 
-            pending_events.extend(self.fallback_relay_candidates.drain(..).map(|c| {
-                Event::SignalIceCandidate {
-                    connection: id,
-                    candidate: c.to_sdp_string(),
+            let _span = info_span!("connection", %id).entered();
+
+            for candidate in self.fallback_relay_candidates.drain(..) {
+                let is_new = self.agent.add_local_candidate(candidate.clone());
+
+                if is_new {
+                    pending_events.push_back(Event::SignalIceCandidate {
+                        connection: id,
+                        candidate: candidate.to_sdp_string(),
+                    });
                 }
-            }));
+            }
         }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
