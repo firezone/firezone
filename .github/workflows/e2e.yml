@@ -151,10 +151,10 @@ jobs:
           sccache_enabled: false
           targets: x86_64-unknown-linux-gnu
       - run: |
-          cargo build --package firezone-linux-client
+          cargo build --package firezone-headless-client
 
           # TODO Run tests
-          # ./target/debug/firezone-linux-client
+          # ./target/debug/firezone-headless-client
 
   android:
     needs: setup
