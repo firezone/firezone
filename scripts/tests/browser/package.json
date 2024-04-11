@@ -4,11 +4,18 @@
   "description": "",
   "main": "refresh.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "load": "tsc && node dist/load.js",
+    "refresh": "tsc && node dist/refresh.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "puppeteer": "^22.6.3"
+    "puppeteer": "^22.6.3",
+    "ts-command-line-args": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^7.6.0"
   }
 }

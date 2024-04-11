@@ -8,15 +8,15 @@ function client() {
 
 function start_chromium() {
     client npm i /browser
-    docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=9222
+    docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=$CHROMIUM_PORT
 }
 
 function load_page() {
-    client node /browser/launch.js
+    client npm run --prefix /browser/ load -- --debugPort $CHROMIUM_PORT --url "$@" 
 }
 
 function refresh_page() {
-    client node /browser/refresh.js
+    client npm run --prefix /browser/ refresh -- --debugPort $CHROMIUM_PORT --url "$@"
 }
 
 function gateway() {

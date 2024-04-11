@@ -3,6 +3,7 @@
 set -euo pipefail
 
 source "./scripts/tests/lib.sh"
+HTTPBIN=http://dns.httpbin
 
 install_iptables_drop_rules
 
@@ -11,7 +12,7 @@ start_chromium
 docker compose restart relay
 
 echo "# Make sure webpage is loaded once"
-load_page
+load_page $HTTPBIN
 
 echo "# Restart relay"
 docker compose restart relay
@@ -20,9 +21,4 @@ docker compose restart relay
 sleep 30
 
 echo "# Reload page"
-refresh_page
-
-
-refresh_page
-
-run_test
+refresh_page $HTTPBIN
