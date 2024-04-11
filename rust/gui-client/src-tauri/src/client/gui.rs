@@ -339,7 +339,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 fn cleanup() {
     // Do this redundant deactivation because `Tun` will not automatically Drop before
     // the proces exits
-    connlib_shared::windows::dns::deactivate().ok();
+    connlib_shared::deactivate_dns_control().ok();
 }
 
 /// Runs a smoke test and then asks Controller to exit gracefully
