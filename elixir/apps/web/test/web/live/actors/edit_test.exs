@@ -81,20 +81,7 @@ defmodule Web.Live.Actors.EditTest do
                "actor[type]"
              ]
 
-      Fixtures.Actors.create_group(account: account)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(identity)
-        |> live(~p"/#{account}/actors/#{actor}/edit")
-
-      form = form(lv, "form")
-
-      assert find_inputs(form) == [
-               "actor[memberships][]",
-               "actor[name]",
-               "actor[type]"
-             ]
+      # Verify synced actor edit form does not allow editing the "name" field
 
       Fixtures.Actors.update(actor, last_synced_at: DateTime.utc_now())
 
@@ -106,7 +93,6 @@ defmodule Web.Live.Actors.EditTest do
       form = form(lv, "form")
 
       assert find_inputs(form) == [
-               "actor[memberships][]",
                "actor[type]"
              ]
     end
@@ -184,31 +170,8 @@ defmodule Web.Live.Actors.EditTest do
       actor: actor,
       conn: conn
     } do
-      managed_group = Fixtures.Actors.create_managed_group(account: account)
-
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_google_workspace_provider(account: account)
-
-      synced_group = Fixtures.Actors.create_group(account: account)
-
-      synced_group
-      |> Ecto.Changeset.change(
-        created_by: :provider,
-        provider_id: provider.id,
-        provider_identifier: Ecto.UUID.generate()
-      )
-      |> Repo.update!()
-
-      Fixtures.Actors.create_membership(actor: actor, group: synced_group)
-
-      group1 = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(actor: actor, group: group1)
-
-      group2 = Fixtures.Actors.create_group(account: account)
-
       attrs = %{
-        name: Fixtures.Actors.actor_attrs().name,
-        memberships: [group2.id]
+        name: Fixtures.Actors.actor_attrs().name
       }
 
       {:ok, lv, _html} =
@@ -222,15 +185,9 @@ defmodule Web.Live.Actors.EditTest do
 
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
-      expected_group_ids = [managed_group.id, synced_group.id, group2.id]
-
-      assert actor = Repo.get_by(Domain.Actors.Actor, id: actor.id) |> Repo.preload(:memberships)
-      assert actor.name == attrs.name
-      assert length(actor.memberships) == length(expected_group_ids)
-
-      Enum.each(actor.memberships, fn membership ->
-        assert membership.group_id in expected_group_ids
-      end)
+      assert updated_actor = Repo.get_by(Domain.Actors.Actor, id: actor.id)
+      assert updated_actor.name == attrs.name
+      assert updated_actor.name != actor.name
     end
   end
 
@@ -268,7 +225,7 @@ defmodule Web.Live.Actors.EditTest do
                  }}}
     end
 
-    test "renders not found error when gateway is deleted", %{
+    test "renders not found error when actor is deleted", %{
       account: account,
       actor: actor,
       identity: identity,
@@ -315,20 +272,6 @@ defmodule Web.Live.Actors.EditTest do
       form = form(lv, "form")
 
       assert find_inputs(form) == [
-               "actor[name]"
-             ]
-
-      Fixtures.Actors.create_group(account: account)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(identity)
-        |> live(~p"/#{account}/actors/#{actor}/edit")
-
-      form = form(lv, "form")
-
-      assert find_inputs(form) == [
-               "actor[memberships][]",
                "actor[name]"
              ]
     end
@@ -387,14 +330,8 @@ defmodule Web.Live.Actors.EditTest do
       actor: actor,
       conn: conn
     } do
-      group1 = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(actor: actor, group: group1)
-
-      group2 = Fixtures.Actors.create_group(account: account)
-
       attrs = %{
-        name: Fixtures.Actors.actor_attrs().name,
-        memberships: [group2.id]
+        name: Fixtures.Actors.actor_attrs().name
       }
 
       {:ok, lv, _html} =
@@ -408,10 +345,11 @@ defmodule Web.Live.Actors.EditTest do
 
       assert_redirected(lv, ~p"/#{account}/actors/#{actor}")
 
-      assert actor = Repo.get_by(Domain.Actors.Actor, id: actor.id) |> Repo.preload(:memberships)
-      assert actor.name == attrs.name
-      assert [%{group_id: group_id}] = actor.memberships
-      assert group_id == group2.id
+      assert updated_actor =
+               Repo.get_by(Domain.Actors.Actor, id: actor.id) |> Repo.preload(:memberships)
+
+      assert updated_actor.name == attrs.name
+      assert updated_actor.name != actor.name
     end
   end
 end

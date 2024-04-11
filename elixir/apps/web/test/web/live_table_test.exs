@@ -329,7 +329,8 @@ defmodule Web.LiveTableTest do
 
       assert render_component(&live_table/1, %{
                assigns
-               | metadata: %{assigns.metadata | count: 10, limit: 100}
+               | metadata: %{assigns.metadata | count: 10, limit: 100},
+                 rows: Enum.map(1..10, fn _i -> ["foo"] end)
              })
              |> Floki.find("nav > span")
              |> Floki.text()
@@ -337,11 +338,12 @@ defmodule Web.LiveTableTest do
 
       assert render_component(&live_table/1, %{
                assigns
-               | metadata: %{assigns.metadata | count: 100, limit: 10}
+               | metadata: %{assigns.metadata | count: 100, limit: 10},
+                 rows: Enum.map(1..100, fn _i -> ["foo"] end)
              })
              |> Floki.find("nav > span")
              |> Floki.text()
-             |> String.replace(~r/[\s]+/, " ") =~ "Showing 10 of 100"
+             |> String.replace(~r/[\s]+/, " ") =~ "Showing 100 of 100"
     end
 
     test "renders pagination buttons", %{assigns: assigns} do

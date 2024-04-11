@@ -1171,7 +1171,6 @@ dependencies = [
  "log",
  "mutants",
  "os_info",
- "parking_lot",
  "phoenix-channel",
  "rand 0.8.5",
  "rand_core 0.6.4",
@@ -1186,8 +1185,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "tokio-stream",
- "tokio-tungstenite",
  "tracing",
  "tracing-android",
  "url",
@@ -3366,7 +3363,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.4",
 ]
 
 [[package]]
@@ -4749,7 +4746,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#a2a214b968fbcbc9aa66aba4393851b3d6ab5b49"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#cc0d2e95631475601f215b58b90a8105519162cb"
 dependencies = [
  "bytes",
  "libc",
@@ -4996,9 +4993,9 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
 name = "reqwest"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e333b1eb9fe677f6893a9efcb0d277a2d3edd83f358a236b657c32301dc6e5f6"
+checksum = "2d66674f2b6fb864665eea7a3c1ac4e3dfacd2fda83cf6f935a612e01b0e3338"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -5268,9 +5265,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.1.7"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f64cef148d3295c730c3cb340b0b252a4d570b1c7d4bf0808f88540b0a888bc"
+checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
 dependencies = [
  "bytes",
  "crc",
@@ -5756,8 +5753,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.4.1"
-source = "git+https://github.com/firezone/str0m?branch=main#ffb4e4f54936c9745cb2a884be05ba4265af41dc"
+version = "0.5.0"
+source = "git+https://github.com/firezone/str0m?branch=main#aeb62dfe53270d29d2cc72b03930a462e55b2e88"
 dependencies = [
  "combine",
  "crc",
@@ -5834,9 +5831,9 @@ dependencies = [
 
 [[package]]
 name = "stun_codec"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1340dadfb0e4c522135c400c872dee4f638f9b098171bebfa3e44e48f735cd4b"
+checksum = "feed9dafe0bda84f2b6ca3ce726b0a1f1ac2e8b63c6ecfb89b08b32313247b5b"
 dependencies = [
  "bytecodec",
  "byteorder",
@@ -5855,9 +5852,9 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "swift-bridge"
-version = "0.1.52"
+version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f72aa49fc376893673e6b7ace589802877d2dad554da1fde5aa1445498e1929c"
+checksum = "72088d7882bd9c900d194cbc6008222c876450f68ce97212ac764775307bfd74"
 dependencies = [
  "swift-bridge-build",
  "swift-bridge-macro",
@@ -5865,9 +5862,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-build"
-version = "0.1.52"
+version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba4282dc94afa1b7d8f2445532a7c0b7508d470cee261132e26ec001b3185c3b"
+checksum = "a0216c84c63a11fb704946f9c4843c9fad28aaf2431cbbd674a37d86d71f2100"
 dependencies = [
  "proc-macro2",
  "swift-bridge-ir",
@@ -5877,9 +5874,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-ir"
-version = "0.1.52"
+version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2096a82fb42280699d9b5dde6674cb4f802931eca8623f1edc4587c50dc58da"
+checksum = "183036306714fcb1a53192dd80b89694eef24389b034f3392109b3447006550f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5888,9 +5885,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-macro"
-version = "0.1.52"
+version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c2f4d5b41976c351ecb735eb9336bdd3cbaaebc9990300023ea2b6874a2d68c"
+checksum = "89560c6f6a3b65ec983c6fca5eb9d5e4c839ff41d8162c24339e258a20bf04a6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6704,7 +6701,8 @@ dependencies = [
 [[package]]
 name = "tracing-stackdriver"
 version = "0.10.0"
-source = "git+https://github.com/thomaseizinger/tracing-stackdriver?branch=deps/bump-otel-0.22#329d5c9fec0463f4f5db3b6e2a2e70b442dd8d64"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80048836e000e1f058562f01d69cc46f476955bf389c0dc2d2d7edb98ca63ac1"
 dependencies = [
  "Inflector",
  "opentelemetry",

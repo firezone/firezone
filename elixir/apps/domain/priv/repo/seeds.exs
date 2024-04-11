@@ -41,10 +41,12 @@ account =
         customer_id: "cus_PZKIfcHB6SSBA4",
         subscription_id: "sub_1OkGm2ADeNU9NGxvbrCCw6m3",
         product_name: "Enterprise",
-        billing_email: "fin@firez.one"
+        billing_email: "fin@firez.one",
+        support_type: "email"
       }
     },
     limits: %{
+      users_count: 15,
       monthly_active_users_count: 10,
       service_accounts_count: 10,
       gateway_groups_count: 3,
