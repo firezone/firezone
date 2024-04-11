@@ -1,64 +1,47 @@
 import { HiCheck } from "react-icons/hi2";
+import Link from "next/link";
 import { TabsItem, TabsGroup } from "@/components/DocsTabs";
 import Image from "next/image";
+import Alert from "@/components/DocsAlert";
+import SupportOptions from "@/components/SupportOptions";
 
-# Upgrading Firezone
+# Upgrading Gateways
 
-Upgrading Firezone consists of upgrading the Clients and Gateways. Read more
-below to understand how our versioning system works, how you can auto-update
-these components, and suggestions for an upgrade strategy in high-availability
-deployments.
+Firezone Gateways are designed to be easily upgraded with little or no planned
+downtime for your organization. This guide will walk you through the steps to
+upgrade your Gateway for both Docker and systemd deployments.
 
-## How versioning works in Firezone
+<Alert color="info">
+  This guide covers Gateway upgrades only. For details on upgrading Clients,
+  refer to the appropriate [user guide](/kb/user-guides) for your platform.
+</Alert>
 
-Firezone uses a semantic version scheme in the following format:
-
-`MAJOR`.`MINOR`.`PATCH`
-
-Firezone is changing rapidly, so we currently recommend staying as up-to-date as
-possible to make sure you have the latest bug fixes and performance improvements
-in place.
-
-All components currently have a major version of `1` -- this is not expected to
-change for some time.
-
-## Client application auto-updates
-
-In general we recommend keeping Clients and Gateways as up-to-date as possible.
-See below for auto-update details for each platform.
-
-<TabsGroup>
-  <TabsItem title="macOS" active>
-    Enable auto-updates in Settings.app.
-  </TabsItem>
-  <TabsItem title="iOS">Enable auto-updates in Settings.app.</TabsItem>
-  <TabsItem title="Android">Enable app auto-updates in Settings.</TabsItem>
-  <TabsItem title="ChromeOS">Enable app auto-updates in Settings.</TabsItem>
-  <TabsItem title="Windows">
-    A UI alert is shown upon launch if the Windows Client has an update
-    available.
-  </TabsItem>
-  <TabsItem title="Linux">
-    Auto-updates depend on your package manager configuration and deployment
-    method.
-  </TabsItem>
-</TabsGroup>
-
-## Upgrading Gateways
+## Upgrade process
 
 Upgrading a Gateway generally consists of simply replacing the binary or Docker
-image and then restarting. See below for specific steps depending on how you've
-deployed your Gateway:
+image with the newer version and then restarting. See below for specific steps
+depending on how you've deployed your Gateway:
 
 <TabsGroup>
 <TabsItem title="Docker" active>
 
-Run the following upgrade script which pulls the latest image, stops the running
-Gateway, and then restarts it using the newer image with the same configuration.
+Copy-paste the following command to upgrade your Docker-based Gateway:
 
-```bash
-curl -s https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-docker-upgrade.sh | bash
 ```
+curl -fsSL \
+  https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-docker-upgrade.sh \
+  | bash
+```
+
+{(<div className="flex justify-end">
+
+  <Link
+    className="text-sm"
+    href="https://github.com/firezone/firezone/blob/main/scripts/gateway-docker-upgrade.sh"
+  >
+    View script source
+  </Link>
+</div>)}
 
 ### Verification
 
@@ -74,7 +57,7 @@ version by ensuring the sha256 hash of the pulled image matches the latest
   alt="Gateway upgrade verification"
 />
 
-```bash
+```
 # Get the sha256 hash of the gateway image running on your system
 > docker inspect ghcr.io/firezone/gateway:1.0 --format='{{index .RepoDigests 0}}'
 
@@ -89,7 +72,7 @@ If you deployed via the portal, your unit file should already contain logic
 necessary to upgrade the Gateway on service start. Simply move the old binary
 and restart the service to trigger the upgrade:
 
-```bash
+```
 sudo mv /usr/local/bin/firezone-gateway /usr/local/bin/firezone-gateway.bak
 sudo systemctl restart firezone-gateway
 ```
@@ -101,10 +84,12 @@ sudo systemctl restart firezone-gateway
 
 Gateways deployed within the same Site will automatically
 [failover](/kb/deploy/gateways#failover) for each other. By upgrading Gateways
-one-by-one, Clients connected to the Gateway being upgraded will automatically
-reconnect to an available Gateway.
+one-by-one in a rolling update strategy, Clients connected to the Gateway being
+upgraded will automatically reconnect to an available Gateway.
 
-Upgrades should be performed during a scheduled maintenance window to ensure
-minimal disruption. Other than a possible short-term connection interruption to
-in-use Resources, users won't otherwise be impacted by upgrading Gateways within
-the same Site.
+Users may notice very brief interruptions to Resources for a few seconds as
+their Client reconnects to a healthy Gateway.
+
+---
+
+<SupportOptions />

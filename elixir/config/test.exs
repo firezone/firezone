@@ -24,9 +24,9 @@ config :domain, Domain.ConnectivityChecks, enabled: false
 
 config :domain, platform_adapter: Domain.GoogleCloudPlatform
 
-config :domain, Domain.GoogleCloudPlatform,
-  project_id: "fz-test",
-  service_account_email: "foo@iam.example.com"
+config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
+
+config :domain, Domain.Telemetry.GoogleCloudMetricsReporter, project_id: "fz-test"
 
 ###############################
 ##### Web #####################

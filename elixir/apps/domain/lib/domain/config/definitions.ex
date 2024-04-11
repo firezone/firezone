@@ -120,7 +120,9 @@ defmodule Domain.Config.Definitions do
       {"Instrumentation",
        [
          :instrumentation_client_logs_enabled,
-         :instrumentation_client_logs_bucket
+         :instrumentation_client_logs_bucket,
+         :telemetry_metrics_reporter,
+         :telemetry_metrics_reporter_opts
        ]}
     ]
   end
@@ -452,6 +454,29 @@ defmodule Domain.Config.Definitions do
   Name of the bucket to store client-, relay- and gateway-submitted instrumentation logs in.
   """
   defconfig(:instrumentation_client_logs_bucket, :string, default: "logs")
+
+  @doc """
+  Reporter to use for sending metrics to the telemetry backend.
+  """
+  defconfig(
+    :telemetry_metrics_reporter,
+    {:parameterized, Ecto.Enum,
+     Ecto.Enum.init(
+       values: [
+         Telemetry.Metrics.ConsoleReporter,
+         Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
+       ]
+     )},
+    default: nil
+  )
+
+  @doc """
+  Configuration for the telemetry metrics reporter.
+  """
+  defconfig(:telemetry_metrics_reporter_opts, :map,
+    default: %{},
+    dump: &Dumper.keyword/1
+  )
 
   ##############################################
   ## Gateways
