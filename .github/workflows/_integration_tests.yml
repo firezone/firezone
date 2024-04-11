@@ -106,7 +106,7 @@ jobs:
           direct-download-roaming-network,
           dns-failsafe, # Uses the default DNS control method
           dns-nm,
-          relay-sigterm,
+          relay-graceful-shutdown,
           relayed-curl-api-down,
           relayed-curl-api-restart,
           relayed-curl-relay-restart,
