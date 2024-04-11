@@ -25,7 +25,7 @@ export default function Item({
         (active(href) ? "bg-neutral-200 " : "") +
         "pb-0.5 flex " +
         ((!topLevel && "border-l") || "") +
-        " border-0.5 border-neutral-500 items-center text-left text-base font-normal text-neutral-900 hover:bg-neutral-100"
+        " border-0.5 border-neutral-500 items-center text-left text-base font-normal hover:bg-neutral-100"
       }
     >
       {!topLevel && <HiMinus className="w-2 h-2" />}

@@ -21,7 +21,11 @@ export default function SupportOptions() {
             <a href="https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w">
               Public Slack group
             </a>
-            : join discussions, meet other users, and meet the contributors
+            : Join discussions, meet other users, and meet the contributors
+          </li>
+          <li>
+            <a href="mailto:support@firezone.dev">Email us</a>: We read every
+            message.
           </li>
         </ul>
         <div className="flex">

@@ -12,7 +12,7 @@ import PlanBadge from "@/components/PlanBadge";
 Resources define subnets, IP addresses, or DNS names you wish to manage access
 for.
 
-To create a Resource, go to `Sites` -> `<Site>` -> `Add a Resource`.
+To create a Resource, go to `Sites -> <site name> -> Add a Resource`.
 
 <Alert color="info">
   Remember, Resources **must** be reachable by all Gateways in the same Site.
@@ -27,7 +27,7 @@ From there, you can select the type of Resource you want to create:
     `sub1.sub2.example.com`.
   - To non-recursively match all subdomains, use a question mark, such as
     `?.example.com`. This will match `example.com`, `sub1.example.com`, and
-    `sub2.example.com` _but not_ `sub1.sub2.example.com`.
+    `sub2.example.com` **but not** `sub1.sub2.example.com`.
 - **IP**: A single IPv4 or IPv6 address
 - **CIDR**: A range of IPv4 or IPv6 addresses in CIDR notation, such as
   `10.1.2.0/24` or `2001:db8::/48`
