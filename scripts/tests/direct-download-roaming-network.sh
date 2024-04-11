@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
-
 source "./scripts/tests/lib.sh"
 
 # Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 12 seconds (allows for 2s of restablishing)

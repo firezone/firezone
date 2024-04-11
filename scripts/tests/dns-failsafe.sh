@@ -3,8 +3,6 @@
 # If we set the DNS control to `systemd-resolved` but that's not available,
 # we should still boot up and allow IP / CIDR resources to work
 
-set -euo pipefail
-
 source "./scripts/tests/lib.sh"
 
 # Re-up the gateway since a local dev setup may run this back-to-back

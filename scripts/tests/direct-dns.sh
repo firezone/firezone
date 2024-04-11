@@ -3,8 +3,6 @@
 # The integration tests call this to test Linux DNS control, using the `/etc/resolv.conf`
 # method which only works well inside Alpine Docker containers.
 
-set -euo pipefail
-
 source "./scripts/tests/lib.sh"
 
 HTTPBIN=dns.httpbin

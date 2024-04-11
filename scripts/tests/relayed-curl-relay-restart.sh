@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -e
-
 source "./scripts/tests/lib.sh"
 
 install_iptables_drop_rules
