@@ -66,7 +66,7 @@ defmodule Domain.MixProject do
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
-      {:logger_json, "~> 5.1"},
+      {:logger_json, github: "nebo15/logger_json"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},
