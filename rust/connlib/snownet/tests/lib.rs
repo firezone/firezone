@@ -65,6 +65,43 @@ fn smoke_relayed() {
 }
 
 #[test]
+fn reconnect_discovers_new_interface() {
+    let _guard = setup_tracing();
+
+    let (alice, bob) = alice_and_bob();
+
+    let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
+    let firewall = Firewall::default();
+    let mut clock = Clock::new();
+
+    let mut relays = [relay];
+
+    handshake(&mut alice, &mut bob, &relays, &clock);
+
+    loop {
+        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
+            break;
+        }
+
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    }
+
+    alice.switch_network("10.0.0.1:80");
+    alice.node.reconnect(clock.now);
+
+    // Make some progress.
+    for _ in 0..10 {
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    }
+
+    assert!(alice
+        .signalled_candidates()
+        .any(|(_, c, _)| c.addr().to_string() == "10.0.0.1:80"))
+}
+
+#[test]
 fn connection_times_out_after_20_seconds() {
     let (mut alice, _) = alice_and_bob();
 
@@ -581,6 +618,13 @@ impl EitherNode {
             EitherNode::Server(n) => n.handle_timeout(now),
         }
     }
+
+    fn reconnect(&mut self, now: Instant) {
+        match self {
+            EitherNode::Client(n) => n.reconnect(now),
+            EitherNode::Server(n) => n.reconnect(now),
+        }
+    }
 }
 
 impl TestNode {
@@ -596,6 +640,11 @@ impl TestNode {
             local: vec![primary],
             events: Default::default(),
         }
+    }
+
+    fn switch_network(&mut self, new_primary: &str) {
+        self.primary = new_primary.parse().unwrap();
+        self.local.push(self.primary);
     }
 
     fn is_connected_to(&self, other: &TestNode) -> bool {
