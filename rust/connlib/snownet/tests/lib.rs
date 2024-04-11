@@ -15,11 +15,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 #[test]
 fn smoke_direct() {
-    let _guard = tracing_subscriber::fmt()
-        .with_test_writer()
-        .with_env_filter("debug")
-        .finish()
-        .set_default();
+    let _guard = setup_tracing();
 
     let (alice, bob) = alice_and_bob();
 
@@ -42,11 +38,7 @@ fn smoke_direct() {
 
 #[test]
 fn smoke_relayed() {
-    let _guard = tracing_subscriber::fmt()
-        .with_test_writer()
-        .with_env_filter("debug")
-        .finish()
-        .set_default();
+    let _guard = setup_tracing();
 
     let (alice, bob) = alice_and_bob();
 
@@ -210,6 +202,14 @@ fn second_connection_with_same_relay_reuses_allocation() {
     );
 
     assert!(alice.poll_transmit().is_none());
+}
+
+fn setup_tracing() -> tracing::subscriber::DefaultGuard {
+    tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter("debug")
+        .finish()
+        .set_default()
 }
 
 fn alice_and_bob() -> (ClientNode<u64>, ServerNode<u64>) {
