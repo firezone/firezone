@@ -17,28 +17,28 @@ some of the troubleshooting commands below to diagnose the issue.
 
 Check that the container is running:
 
-```bash
+```
 docker ps --filter "name=firezone-gateway"
 ```
 
 Check the container logs:
 
-```bash
+```
 docker logs firezone-gateway
 ```
 
 </TabsItem>
-<TabsItem title="Systemd">
+<TabsItem title="systemd">
 
 Check the status of the service:
 
-```bash
+```
 sudo systemctl status firezone-gateway
 ```
 
 Check the logs:
 
-```bash
+```
 sudo journalctl -u firezone-gateway.service
 ```
 
