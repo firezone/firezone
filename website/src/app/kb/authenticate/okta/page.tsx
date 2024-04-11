@@ -1,5 +1,6 @@
 import _Page from "./_page";
 import { Metadata } from "next";
+import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "Okta Authentication • Firezone Docs",
@@ -7,5 +8,10 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <_Page />;
+  return (
+    <>
+      <_Page />
+      <LastUpdated dirname={__dirname} />
+    </>
+  );
 }
