@@ -251,7 +251,7 @@ defmodule Web.AuthTest do
       assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
     end
 
-    test "redirects regular users to the sign in success page for client contexts", %{
+    test "redirects non-admin users to the sign in success page for client contexts", %{
       conn: conn,
       context: context,
       account: account,
@@ -264,21 +264,18 @@ defmodule Web.AuthTest do
 
       redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
 
-      redirected_to =
+      response =
         %{conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> put_private(:phoenix_endpoint, @endpoint)
+        |> Web.Plugs.SecureHeaders.call([])
         |> fetch_flash()
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
-        |> redirected_to()
+        |> Phoenix.ConnTest.response(200)
 
-      assert redirected_to =~ "#{account.slug}/sign_in/success"
-      assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
-      assert redirected_to =~ "state=STATE"
-
-      assert redirected_to =~
-               "identity_provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
+      assert response =~ "Sign in successful"
     end
 
-    test "redirects admin users to the deep link for client contexts", %{
+    test "redirects admin users to the sign in success page for client contexts", %{
       conn: conn,
       context: context,
       account: account,
@@ -291,18 +288,15 @@ defmodule Web.AuthTest do
 
       redirect_params = %{"as" => "client", "state" => "STATE", "nonce" => nonce}
 
-      redirected_to =
+      response =
         %{conn | path_params: %{"account_id_or_slug" => account.slug}}
+        |> put_private(:phoenix_endpoint, @endpoint)
+        |> Web.Plugs.SecureHeaders.call([])
         |> fetch_flash()
         |> signed_in(provider, identity, context, encoded_fragment, redirect_params)
-        |> redirected_to()
+        |> Phoenix.ConnTest.response(200)
 
-      assert redirected_to =~ "#{account.slug}/sign_in/success"
-      assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
-      assert redirected_to =~ "state=STATE"
-
-      assert redirected_to =~
-               "identity_provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
+      assert response =~ "Sign in successful"
     end
 
     test "redirects admin user to the post-login path for browser contexts", %{
@@ -748,7 +742,7 @@ defmodule Web.AuthTest do
       assert redirected_to(conn) == ~p"/#{account}/sites"
     end
 
-    test "redirects if client is authenticated to the deep link", %{
+    test "redirects to sign in success page if client is authenticated", %{
       conn: conn,
       account: account,
       nonce: nonce,
@@ -769,19 +763,16 @@ defmodule Web.AuthTest do
           | path_params: %{"account_id_or_slug" => account.slug},
             params: redirect_params
         }
+        |> put_private(:phoenix_endpoint, @endpoint)
+        |> Web.Plugs.SecureHeaders.call([])
         |> put_session(:sessions, [{context.type, account.id, encoded_fragment}])
         |> assign(:subject, client_subject)
         |> redirect_if_user_is_authenticated([])
 
       assert conn.halted
 
-      assert redirected_to = redirected_to(conn)
-      assert redirected_to =~ "#{account.slug}/sign_in/success"
-      assert redirected_to =~ "fragment=#{URI.encode_www_form(encoded_fragment)}"
-      assert redirected_to =~ "state=STATE"
-
-      assert redirected_to =~
-               "identity_provider_identifier=#{URI.encode_www_form(admin_identity.provider_identifier)}"
+      assert response = response(conn, 200)
+      assert response =~ "Sign in successful"
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do

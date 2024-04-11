@@ -32,6 +32,10 @@ defmodule Web.Router do
     plug :ensure_authenticated_actor_type, :account_admin_user
   end
 
+  pipeline :client_auth do
+    plug :put_client_auth_state_from_cookie
+  end
+
   scope "/browser", Web do
     pipe_through :public
 
@@ -87,11 +91,13 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :account]
+    pipe_through [:browser, :account, :client_auth]
 
-    live_session :client_redirect, on_mount: [Web.Sandbox, {Web.Auth, :mount_account}] do
-      live "/sign_in/success", SignIn.Success
-    end
+    get "/sign_in/deep_link", SignInController, :deeplink
+  end
+
+  scope "/:account_id_or_slug", Web do
+    pipe_through [:browser, :account]
 
     scope "/sign_in/providers/:provider_id" do
       # UserPass

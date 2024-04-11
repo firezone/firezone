@@ -2,6 +2,16 @@ defmodule Web.Auth do
   use Web, :verified_routes
   alias Domain.{Auth, Accounts, Tokens}
 
+  # This cookie is used for client login.
+  @client_auth_cookie_name "fz_client_auth"
+  @client_auth_cookie_options [
+    sign: true,
+    max_age: 2 * 60,
+    same_site: "Strict",
+    secure: true,
+    http_only: true
+  ]
+
   # This is the cookie which will store recent account ids
   # that the user has signed in to.
   @recent_accounts_cookie_name "fz_recent_account_ids"
@@ -113,17 +123,24 @@ defmodule Web.Auth do
          "nonce" => _nonce,
          "state" => state
        }) do
-    query =
-      %{
-        fragment: encoded_fragment,
-        state: state,
+    client_auth_data =
+      [
         actor_name: identity.actor.name,
-        identity_provider_identifier: identity.provider_identifier
-      }
+        fragment: encoded_fragment,
+        identity_provider_identifier: identity.provider_identifier,
+        state: state
+      ]
       |> Enum.reject(&is_nil(elem(&1, 1)))
 
-    Phoenix.Controller.redirect(conn,
-      to: ~p"/#{conn.assigns.account.slug}/sign_in/success?#{query}"
+    redirect_url = ~p"/#{conn.assigns.account.slug}/sign_in/deep_link"
+
+    conn
+    |> put_client_auth_cookie(client_auth_data)
+    |> Phoenix.Controller.put_root_layout(false)
+    |> Phoenix.Controller.put_view(Web.SignInHTML)
+    |> Phoenix.Controller.render("deep_link_redirect.html",
+      redirect_url: redirect_url,
+      layout: false
     )
   end
 
@@ -490,6 +507,21 @@ defmodule Web.Auth do
     %{}
   end
 
+  def put_client_auth_state_from_cookie(%Plug.Conn{} = conn, _) do
+    conn = Plug.Conn.fetch_cookies(conn, signed: [@client_auth_cookie_name])
+
+    case cookie = conn.cookies[@client_auth_cookie_name] do
+      [actor_name: _, fragment: _, identity_provider_identifier: _, state: _] ->
+        Plug.Conn.assign(conn, :client_auth_data, cookie)
+
+      _ ->
+        conn
+        |> Phoenix.Controller.put_flash(:error, "Client authentication failed. Please try again.")
+        |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
+        |> Plug.Conn.halt()
+    end
+  end
+
   ###########################
   ## LiveView
   ###########################
@@ -639,5 +671,9 @@ defmodule Web.Auth do
       end
 
     real_ip || peer_data.address
+  end
+
+  defp put_client_auth_cookie(conn, state) do
+    Plug.Conn.put_resp_cookie(conn, @client_auth_cookie_name, state, @client_auth_cookie_options)
   end
 end
