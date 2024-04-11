@@ -243,7 +243,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
-                   "metricKind" => "GAUGE",
+                   "metricKind" => "CUMULATIVE",
                    "valueType" => "DOUBLE",
                    "points" => [
                      %{
@@ -353,8 +353,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                    "points" => [
                      %{
                        "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
+                         "endTime" => DateTime.to_iso8601(one_minute_ago)
                        },
                        "value" => %{"doubleValue" => 5.5}
                      }
@@ -372,8 +371,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                    "points" => [
                      %{
                        "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
+                         "endTime" => DateTime.to_iso8601(one_minute_ago)
                        },
                        "value" => %{"doubleValue" => 11.3}
                      }
@@ -449,8 +447,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                    "points" => [
                      %{
                        "interval" => %{
-                         "endTime" => DateTime.to_iso8601(one_minute_ago),
-                         "startTime" => DateTime.to_iso8601(two_minutes_ago)
+                         "endTime" => DateTime.to_iso8601(one_minute_ago)
                        },
                        "value" => %{"doubleValue" => -1}
                      }
