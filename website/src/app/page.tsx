@@ -2,6 +2,7 @@ import CodeBlock from "@/components/CodeBlock";
 import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
+import { Metadata } from "next";
 import CustomerLogos from "@/components/CustomerLogos";
 import {
   HiFingerPrint,
@@ -13,6 +14,12 @@ import {
   HiWrenchScrewdriver,
   HiGlobeAlt,
 } from "react-icons/hi2";
+
+export const metadata: Metadata = {
+  title: "Firezone: Zero trust access that scales",
+  description:
+    "Firezone is a fast, flexible VPN replacement built on WireGuard® that eliminates tedious configuration and integrates with your identity provider.",
+};
 
 function ActionButtons() {
   return (

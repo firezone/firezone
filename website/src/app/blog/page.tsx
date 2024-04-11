@@ -7,7 +7,7 @@ import SummaryCard from "@/components/Blog/SummaryCard";
 
 export const metadata: Metadata = {
   title: "Blog • Firezone",
-  description: "Announcements, tutorials, and more from the Firezone team.",
+  description: "Announcements, insights, and more from the Firezone team.",
 };
 
 export default function Page() {
