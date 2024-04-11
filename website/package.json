@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "bash ./timestamps.sh",
     "build": "next build",
     "postbuild": "next-sitemap",
     "start": "next start",
