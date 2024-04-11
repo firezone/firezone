@@ -76,10 +76,10 @@ CMD $PACKAGE
 # used for local development
 FROM runtime as test
 
-RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium
 COPY docker-browser-tests .
-RUN curl -fsSL https://get.pnpm.io/install.sh | sh - && pnpm i
+RUN set -xe \
+  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium \
+  && npm i -g pnpm && pnpm i
 
 # used for local development
 FROM test AS dev
