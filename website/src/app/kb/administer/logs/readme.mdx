@@ -1,3 +1,5 @@
+import { TabsGroup, TabsItem } from "@/components/DocsTabs";
+
 # Viewing logs
 
 Firezone maintains diagnostic log files in various locations depending on the
@@ -19,12 +21,45 @@ by advanced users and admins.
 | Windows Client          | `%APPDATA%\Local\dev.firezone.client\data\logs`                                                                                 |
 | Gateway                 | Logs are written to STDOUT by default and viewable either by `docker logs firezone-gateway` or `journalctl -u firezone-gateway` |
 
-## Exporting logs
+## Exporting Client logs
 
 Log files can be conveniently exported from the macOS, iOS, Android/ChromeOS,
 and Windows Clients from the "Diagnostic Logs" tab of the Settings screen. This
 will bundle the logs from the log directory listed above into an archive file
 that can be easily shared.
+
+## Exporting Gateway logs
+
+<TabsGroup>
+<TabsItem title="Docker" active>
+
+To export logs from the Gateway Docker container, use the `docker logs` command
+and redirect the output to a file:
+
+```
+docker logs firezone-gateway > firezone-gateway.log
+```
+
+See the
+[Docker documentation](https://docs.docker.com/reference/cli/docker/container/logs/)
+for a full list of log drivers and options available.
+
+</TabsItem>
+<TabsItem title="systemd">
+
+To export logs from the Gateway systemd service, use the `journalctl` command
+and redirect the output to a file:
+
+```
+journalctl -u firezone-gateway > firezone-gateway.log
+```
+
+See the
+[journalctl manpage](https://man7.org/linux/man-pages/man1/journalctl.1.html)
+for a full list of options available.
+
+</TabsItem>
+</TabsGroup>
 
 ## Clearing logs
 
