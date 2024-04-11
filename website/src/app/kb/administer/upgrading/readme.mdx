@@ -26,7 +26,7 @@ depending on how you've deployed your Gateway:
 
 Copy-paste the following command to upgrade your Docker-based Gateway:
 
-```bash
+```
 curl -fsSL \
   https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-docker-upgrade.sh \
   | bash
@@ -56,7 +56,7 @@ version by ensuring the sha256 hash of the pulled image matches the latest
   alt="Gateway upgrade verification"
 />
 
-```bash
+```
 # Get the sha256 hash of the gateway image running on your system
 > docker inspect ghcr.io/firezone/gateway:1.0 --format='{{index .RepoDigests 0}}'
 
@@ -71,7 +71,7 @@ If you deployed via the portal, your unit file should already contain logic
 necessary to upgrade the Gateway on service start. Simply move the old binary
 and restart the service to trigger the upgrade:
 
-```bash
+```
 sudo mv /usr/local/bin/firezone-gateway /usr/local/bin/firezone-gateway.bak
 sudo systemctl restart firezone-gateway
 ```

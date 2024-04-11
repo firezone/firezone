@@ -78,7 +78,7 @@ defmodule Web.Sites.NewToken do
           <.tabs :if={@env} id="deployment-instructions">
             <:tab
               id="systemd-instructions"
-              label="Systemd"
+              label="systemd"
               phx_click="tab_selected"
               selected={@selected_tab == "systemd-instructions"}
             >

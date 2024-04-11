@@ -34,13 +34,13 @@ If you don't already have a token generated, follow the instructions in the
 Once you have a token, you can start the Linux Client using the following
 command:
 
-```bash
+```
 sudo ./linux-client-x64 <TOKEN>
 ```
 
 Set some environment variables to configure it:
 
-```bash
+```
 FIREZONE_NAME="Development Webserver"
 FIREZONE_ID="some unique identifier"
 DNS_CONTROL="systemd-resolved" # or "etc-resolv-conf"
@@ -53,7 +53,7 @@ variables.
 
 A sample output of the help command is shown below:
 
-```text
+```
 > sudo ./linux-client-x64 -h
 
 Usage: linux-client-x64 [OPTIONS] --firezone-id <FIREZONE_ID> <TOKEN> [MAX_PARTITION_TIME]
@@ -88,7 +88,7 @@ On most modern Linux distributions, DNS resolution is handled by
 `systemd-resolved`. If you're not sure, you can check by running the following
 command:
 
-```bash
+```
 systemctl status systemd-resolved
 ```
 
@@ -99,7 +99,7 @@ using `systemd-resolved`, and you should set `FIREZONE_DNS_CONTROL` to
 `systemd-resolved`. You'll need to ensure that `/etc/resolv.conf` is a symlink
 to `/run/systemd/resolve/stub-resolv.conf`:
 
-```bash
+```
 # Check if /etc/resolv.conf is already a symlink to /run/systemd/resolve/stub-resolv.conf
 stat /etc/resolv.conf
 
@@ -121,7 +121,7 @@ When the Linux Client process exits, it will revert the `/etc/resolv.conf` file
 back to its original state. If for some reason this isn't the case, you can
 easily restore it by running the following command:
 
-```bash
+```
 sudo mv /etc/resolv.conf.before-firezone /etc/resolv.conf
 ```
 
