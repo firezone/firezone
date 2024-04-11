@@ -11,13 +11,11 @@ use std::{
 };
 use str0m::{net::Protocol, Candidate};
 use tracing::{debug_span, info_span, Span};
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[test]
 fn smoke_direct() {
-    let _ = tracing_subscriber::fmt()
-        .with_test_writer()
-        .with_env_filter("debug")
-        .try_init();
+    let _guard = setup_tracing();
 
     let (alice, bob) = alice_and_bob();
 
@@ -40,15 +38,12 @@ fn smoke_direct() {
 
 #[test]
 fn smoke_relayed() {
-    let _ = tracing_subscriber::fmt()
-        .with_test_writer()
-        .with_env_filter("debug")
-        .try_init();
+    let _guard = setup_tracing();
 
     let (alice, bob) = alice_and_bob();
 
     let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
-    let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
     let firewall = Firewall::default()
         .with_block_rule("1.1.1.1:80", "2.2.2.2:80")
@@ -209,6 +204,14 @@ fn second_connection_with_same_relay_reuses_allocation() {
     assert!(alice.poll_transmit().is_none());
 }
 
+fn setup_tracing() -> tracing::subscriber::DefaultGuard {
+    tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter("debug")
+        .finish()
+        .set_default()
+}
+
 fn alice_and_bob() -> (ClientNode<u64>, ServerNode<u64>) {
     let alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
     let bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
@@ -256,6 +259,7 @@ struct TestNode {
     span: Span,
     received_packets: Vec<MutableIpPacket<'static>>,
     local: SocketAddr,
+    events: Vec<(Event<u64>, Instant)>,
 
     buffer: Box<[u8; 10_000]>,
 }
@@ -579,11 +583,27 @@ impl TestNode {
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
             local: local.parse().unwrap(),
+            events: Default::default(),
         }
     }
 
     fn is_connected_to(&self, other: &TestNode) -> bool {
         self.node.is_connected_to(other.node.public_key())
+    }
+
+    #[allow(unused)]
+    fn signalled_candidates(&self) -> impl Iterator<Item = (u64, Candidate, Instant)> + '_ {
+        self.events.iter().filter_map(|(e, instant)| match e {
+            Event::SignalIceCandidate {
+                connection,
+                candidate,
+            } => Some((
+                *connection,
+                Candidate::from_sdp_string(candidate).unwrap(),
+                *instant,
+            )),
+            Event::ConnectionEstablished(_) | Event::ConnectionFailed(_) => None,
+        })
     }
 
     fn receive(&mut self, from: SocketAddr, packet: &[u8], now: Instant) {
@@ -601,6 +621,8 @@ impl TestNode {
 
     fn drain_events(&mut self, other: &mut TestNode, now: Instant) {
         while let Some(v) = self.span.in_scope(|| self.node.poll_event()) {
+            self.events.push((v.clone(), now));
+
             match v {
                 Event::SignalIceCandidate {
                     connection,
