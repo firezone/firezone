@@ -256,6 +256,7 @@ struct TestNode {
     span: Span,
     received_packets: Vec<MutableIpPacket<'static>>,
     local: SocketAddr,
+    events: Vec<(Event<u64>, Instant)>,
 
     buffer: Box<[u8; 10_000]>,
 }
@@ -579,6 +580,7 @@ impl TestNode {
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
             local: local.parse().unwrap(),
+            events: Default::default(),
         }
     }
 
@@ -601,6 +603,8 @@ impl TestNode {
 
     fn drain_events(&mut self, other: &mut TestNode, now: Instant) {
         while let Some(v) = self.span.in_scope(|| self.node.poll_event()) {
+            self.events.push((v.clone(), now));
+
             match v {
                 Event::SignalIceCandidate {
                     connection,
