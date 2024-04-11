@@ -11,11 +11,11 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # Maximum number of metrics a buffer can hold,
   # after this count they will be delivered or flushed right away.
-  @buffer_size 100
+  @buffer_size 1000
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  @flush_interval :timer.seconds(10)
+  @flush_interval :timer.seconds(15)
 
   def start_link(opts) do
     project_id =
