@@ -11,12 +11,14 @@ client_curl_resource "172.20.0.100/get"
 # Act: Send SIGTERM
 sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
 
-# Assert: Process is still there and dataplane still works
-pgrep firezone-relay
+sleep 2 # Closing websocket isn't instant.
+
+# Assert: Dataplane still works
 client_curl_resource "172.20.0.100/get"
 
-OPEN_SOCKETS=$(relay ss --tcp --numeric state established dport 8081 | tail --lines=+2) # Portal listens on port 8081, list all open connections
-test -z "$OPEN_SOCKETS" # Assert that there are none
+# Assert: Websocket connection is cut
+OPEN_SOCKETS=$(relay ss --tcp --numeric state established dport 8081 | tail --lines=+2) # Portal listens on port 8081
+test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
 sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
