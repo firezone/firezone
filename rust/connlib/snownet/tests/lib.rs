@@ -602,7 +602,7 @@ impl TestNode {
                 Candidate::from_sdp_string(candidate).unwrap(),
                 *instant,
             )),
-            _ => None,
+            Event::ConnectionEstablished(_) | Event::ConnectionFailed(_) => None,
         })
     }
 
