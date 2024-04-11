@@ -5,14 +5,6 @@ defmodule Domain.Application do
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
-    _ =
-      :telemetry.attach(
-        "repo-log-handler",
-        [:domain, :repo, :query],
-        &LoggerJSON.Ecto.telemetry_logging_handler/4,
-        :debug
-      )
-
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
     _ = OpentelemetryFinch.setup()
