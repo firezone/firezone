@@ -338,7 +338,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 /// Best-effort cleanup of things like DNS control before graceful exit
 fn cleanup() {
     // Do this redundant deactivation because `Tun` will not automatically Drop before
-    // the proces exits
+    // the process exits
     connlib_shared::deactivate_dns_control().ok();
 }
 
