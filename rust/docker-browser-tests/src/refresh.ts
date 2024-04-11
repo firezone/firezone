@@ -1,32 +1,29 @@
-import { Browser, Page, HTTPResponse } from 'puppeteer';
+import { Browser, Page } from 'puppeteer';
 import { connectBrowser, args, exitOnLoadFailure } from './shared.js';
 
-async function activePage(browser: Browser): Promise<Page | undefined> {
-  const allPages = await browser.pages();
-  for (let page of allPages) {
-    const state = await page.evaluate(() => document.visibilityState);
-    const pageUrl = new URL(page.url());
-    const expectedUrl = new URL(args.url);
-    if (state === 'visible' && pageUrl.origin === expectedUrl.origin) {
-      return page;
-    }
+async function activePage(browser: Browser): Promise<Page> {
+  const pages = await browser.pages();
+  if (pages.length !== 1) {
+    throw new Error('Either no page found or more pages than expected found');
   }
+  const page = pages[0];
+
+  const pageUrl = new URL(page.url());
+  const expectedUrl = new URL(args.url);
+  if (pageUrl.origin !== expectedUrl.origin) {
+    throw new Error('Expected page not found');
+  }
+
+  return page;
 }
 
-const refreshPage = async (): Promise<void> => {
+(async (): Promise<void> => {
   const browser = await connectBrowser();
   const page = await activePage(browser);
 
-  if (!page) {
-    console.error('No active page found');
-    process.exit(1);
-  }
-
-  const responseReload: HTTPResponse | null = await page.reload({ timeout: 2000 });
+  const responseReload = await page.reload({ timeout: 2000 });
   await exitOnLoadFailure(responseReload)
 
   await browser.disconnect();
   process.exit()
-};
-
-refreshPage();
+})();

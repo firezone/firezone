@@ -6,10 +6,7 @@ source "./scripts/tests/lib.sh"
 HTTPBIN=http://dns.httpbin
 
 install_iptables_drop_rules
-
 start_chromium
-
-docker compose restart relay
 
 echo "# Make sure webpage is loaded once"
 load_page $HTTPBIN

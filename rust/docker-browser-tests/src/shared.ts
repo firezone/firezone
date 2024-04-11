@@ -21,8 +21,7 @@ export async function exitOnLoadFailure(response: HTTPResponse | null): Promise<
   const status: number | undefined = response?.status();
 
   if (status !== 200) {
-    console.error(`Page load failed with status ${status}`);
-    process.exit(1);
+    throw new Error(`Page load failed with status ${status}`)
   } else {
     console.log('Success loading page');
   }
