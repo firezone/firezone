@@ -78,6 +78,8 @@ FROM runtime as test
 
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium
+COPY docker-browser-tests .
+RUN npm i
 
 # used for local development
 FROM test AS dev

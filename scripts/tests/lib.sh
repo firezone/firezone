@@ -7,16 +7,15 @@ function client() {
 }
 
 function start_chromium() {
-    client npm i /browser
     docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=$CHROMIUM_PORT
 }
 
 function load_page() {
-    client npm run --prefix /browser/ load -- --debugPort $CHROMIUM_PORT --url "$@" 
+    client npm run load -- --debugPort $CHROMIUM_PORT --url "$@" 
 }
 
 function refresh_page() {
-    client npm run --prefix /browser/ refresh -- --debugPort $CHROMIUM_PORT --url "$@"
+    client npm run refresh -- --debugPort $CHROMIUM_PORT --url "$@"
 }
 
 function gateway() {
