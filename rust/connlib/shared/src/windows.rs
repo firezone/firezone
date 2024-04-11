@@ -82,7 +82,6 @@ pub mod dns {
     }
 
     pub fn deactivate() -> Result<()> {
-        tracing::info!("Deactivating DNS control");
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .args([
@@ -103,6 +102,7 @@ pub mod dns {
                 "}",
             ])
             .status()?;
+        tracing::info!("Deactivated DNS control");
         Ok(())
     }
 
