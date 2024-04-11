@@ -1081,7 +1081,7 @@ pub struct Credentials {
     pub password: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId> {
     /// Signal the ICE candidate to the remote via the signalling channel.
     ///
