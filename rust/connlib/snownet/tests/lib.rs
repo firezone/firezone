@@ -98,7 +98,9 @@ fn reconnect_discovers_new_interface() {
 
     assert!(alice
         .signalled_candidates()
-        .any(|(_, c, _)| c.addr().to_string() == "10.0.0.1:80"))
+        .any(|(_, c, _)| c.addr().to_string() == "10.0.0.1:80"));
+    assert_eq!(alice.failed_connections().count(), 0);
+    assert_eq!(bob.failed_connections().count(), 0);
 }
 
 #[test]
@@ -662,6 +664,14 @@ impl TestNode {
                 *instant,
             )),
             Event::ConnectionEstablished(_) | Event::ConnectionFailed(_) => None,
+        })
+    }
+
+    fn failed_connections(&self) -> impl Iterator<Item = (u64, Instant)> + '_ {
+        self.events.iter().filter_map(|(e, instant)| match e {
+            Event::ConnectionFailed(id) => Some((*id, *instant)),
+            Event::SignalIceCandidate { .. } => None,
+            Event::ConnectionEstablished(_) => None,
         })
     }
 
