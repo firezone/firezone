@@ -315,7 +315,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "GAUGE",
+        metricKind: "CUMULATIVE",
         valueType: "DOUBLE",
         points: [
           %{
@@ -373,7 +373,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: format_interval(started_at, ended_at),
+            interval: %{"endTime" => DateTime.to_iso8601(ended_at)},
             value: %{"doubleValue" => min}
           }
         ]
@@ -389,7 +389,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: format_interval(started_at, ended_at),
+            interval: %{"endTime" => DateTime.to_iso8601(ended_at)},
             value: %{"doubleValue" => max}
           }
         ]
@@ -399,7 +399,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # holding the value of the selected measurement from the most recent event
   defp format_time_series(Metrics.LastValue, name, labels, resource, measurements, unit) do
-    {started_at, ended_at, last_value} = measurements
+    {_started_at, ended_at, last_value} = measurements
 
     [
       %{
@@ -413,7 +413,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: format_interval(started_at, ended_at),
+            interval: %{"endTime" => DateTime.to_iso8601(ended_at)},
             value: %{"doubleValue" => last_value}
           }
         ]
