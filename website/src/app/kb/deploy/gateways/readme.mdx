@@ -15,20 +15,21 @@ responsible for securely routing traffic between Clients and Resources.
 
 ## Prerequisites
 
-- `iptables` and/or `ip6tables`
 - Any Linux distribution with kernel 3.10 or later
-- Docker Engine (for docker-based installs)
-- Systemd (for systemd-based installs)
+- `x86_64`, `aarch64`, or `armv7l` CPU architecture
+- `iptables` and `ip6tables` commands available on your system
+- [Docker Engine](https://docs.docker.com/engine/) or
+  [systemd](https://systemd.io/) installed for your distribution
 
-### Firewall considerations
+### Firewall ports
 
 Gateways implement the industry-standard
 [STUN](https://datatracker.ietf.org/doc/html/rfc8489) and
-[TURN](https://www.rfc-editor.org/rfc/rfc8155.html) protocols to securely
-perform NAT holepunching. No ingress firewall ports are required for Gateways to
-function.
+[TURN](https://www.rfc-editor.org/rfc/rfc8155.html) protocols to perform secure
+NAT holepunching. **No inbound firewall ports need to be opened for Gateways to
+function**.
 
-If the network in which your Gateway is deployed performs egress filtering,
+If the network in which your Gateway is deployed applies egress filtering,
 you'll need to make sure the following outbound traffic is allowed:
 
 | Host             | (IP Address)         | Port(s)         | Protocol(s)     | Purpose                    |
@@ -42,16 +43,15 @@ you'll need to make sure the following outbound traffic is allowed:
 ### Where to deploy Gateways
 
 Ideally, Gateways should be deployed as close to the Resources they're serving
--- in some cases, even on the same physical host. This ensures the lowest
-possible latency and highest possible throughput for Client connections, and
-allows you to more easily deploy additional Gateways for a particular Resource
-that needs to handle more Client connections.
+-- in some cases, even on the same host. This ensures the lowest possible
+latency and highest possible throughput for Client connections, and allows you
+to more easily deploy additional Gateways for other Resources that need to
+handle more Client connections.
 
 The downside of deploying Gateways close to Resources is that it increases the
-number of overall Gateways you need to deploy, possibly making it more difficult
-to manage and monitor them. Firezone's control plane is designed to make this as
-easy as possible, but it's still something to keep in mind when planning your
-deployment.
+overall number of Gateways and Sites you need to manage. Firezone's control
+plane is designed to make this as easy as possible, but it's still something to
+keep in mind when planning your deployment.
 
 <Alert color="warning">
   When deploying Gateways, remember that all Gateways and Resources in a Site
@@ -85,54 +85,54 @@ deployment.
 {/* Firezone's [automatic load balancing](#load-balancing) to distribute Client */}
 {/* connections across them. */}
 
-## Deploy a single Gateway
+### Deploy a single Gateway
 
 Deploying a single Gateway can be accomplished in the admin portal.
 
 Go to `Sites` -> `<name of Site>` -> `Deploy a Gateway` and follow the prompts
 to deploy for your preferred environment. This will deploy a single Gateway.
 
-See the [upgrading guide](/kb/administer/upgrading) for information on keeping
-your Gateway up-to-date.
-
-## Deploy multiple Gateways
+### Deploy multiple Gateways
 
 To achieve [high availability](#high-availability), deploy more Gateways within
-the same site.
+the same Site.
 
-You can deploy multiple Gateways from the admin portal, or automate the process
-by reusing the `FIREZONE_TOKEN` environment variable shown when deploying a
-Gateway from the admin portal.
+You can deploy multiple Gateways within a Site manually from the admin portal,
+or automate the process by reusing the `FIREZONE_TOKEN` environment variable
+shown when deploying a Gateway from the admin portal.
 
 When deploying a Gateway from the admin portal, a `FIREZONE_TOKEN` environment
-variable is shown. This variable can be reused to deploy multiple Gateways
-within the same Site.
-
-This means you can automate deployment of the Gateway using your automation
-method of choice, adding as many Gateways as necessary for failover and load
-balancing.
+variable is shown. This is a multi-owner token that can be reused to deploy
+multiple Gateways within the same Site.
 
 <Alert color="warning">
   **Note:** Be sure to set a unique `FIREZONE_ID` for each Gateway you deploy.
-  This can be any non-empty string and is used to identify the Gateway in the
-  portal for audit trail and logging purposes.
+  This can be any non-empty string and is used to identify Gateways in the
+  portal. This is generated automatically for you when deploying Gateways from
+  the portal.
 </Alert>
 
 ### Deploy using Terraform
 
 See our
 [Terraform examples](https://github.com/firezone/firezone/tree/main/terraform/examples)
-for deploying and scaling Gateways on Google Cloud Platform.
+for deploying and scaling Gateways using Terraform on various cloud providers.
+
+### Keeping Gateways up to date
+
+It's a good idea to keep your Gateways up to date with the latest version
+available. See [upgrading Gateways](/kb/administer/upgrading) for ways to
+automate this.
 
 ## High availability
 
 Firezone was designed from the ground up to support high availability
 requirements. This is achieved through a combination of **automatic failover**
-and **load balancing**, both of which are automatically enabled on all plans.
+and **load balancing**, both of which are available on all plans.
 
 ### Automatic failover
 
-Two or more Gateways can be deployed within a Site to achieve automatic failover
+Deploy two or more Gateways within the same Site to achieve automatic failover
 for Client connections to Resources in that Site.
 
 Here's how it works:
@@ -144,7 +144,7 @@ Here's how it works:
 - Clients identify unhealthy gateways using keepalive timers. If the timer
   expires, the Client will disconnect from the unhealthy Gateway and request a
   new, healthy one from the portal.
-- The Client keepalive timer expires after **20 seconds**. This is the maximum
+- The Client keepalive timer expires after **10 seconds**. This is the maximum
   time it takes for existing Client connections to be rerouted to a healthy
   Gateway in the event of a Gateway failure.
 
