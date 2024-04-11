@@ -136,6 +136,63 @@ fn does_not_emit_relay_candidates_if_direct_succeeds() {
 }
 
 #[test]
+fn relay_candidates_are_emitted_with_a_delay() {
+    const HOLEPUNCH_TIMEOUT: Duration = Duration::from_secs(2);
+
+    let _guard = setup_tracing();
+
+    let (alice, bob) = alice_and_bob();
+
+    let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
+    let mut alice: TestNode = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
+    let firewall = Firewall::default()
+        .with_block_rule("1.1.1.1:80", "2.2.2.2:80")
+        .with_block_rule("2.2.2.2:80", "1.1.1.1:80");
+    let mut clock = Clock::new();
+
+    let mut relays = [relay];
+
+    handshake(&mut alice, &mut bob, &relays, &clock);
+
+    loop {
+        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
+            break;
+        }
+
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    }
+
+    // Assert Alice honors hole-punch timeout
+    {
+        let (relay_candidates, other_candidates) = alice
+            .signalled_candidates()
+            .partition::<Vec<_>, _>(|(_, c, _)| c.kind() == CandidateKind::Relayed);
+
+        for (_, _, other) in other_candidates {
+            assert!(relay_candidates
+                .iter()
+                .map(|(_, _, time)| time)
+                .all(|relay| relay.duration_since(other) >= HOLEPUNCH_TIMEOUT))
+        }
+    }
+
+    // Assert Bob honors hole-punch timeout
+    {
+        let (relay_candidates, other_candidates) = alice
+            .signalled_candidates()
+            .partition::<Vec<_>, _>(|(_, c, _)| c.kind() == CandidateKind::Relayed);
+
+        for (_, _, other) in other_candidates {
+            assert!(relay_candidates
+                .iter()
+                .map(|(_, _, time)| time)
+                .all(|relay| relay.duration_since(other) >= HOLEPUNCH_TIMEOUT))
+        }
+    }
+}
+
+#[test]
 fn connection_times_out_after_20_seconds() {
     let (mut alice, _) = alice_and_bob();
 
