@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-22.04
     concurrency:
       group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
-      cancel-in-progress: true
+      cancel-in-progress: inputs.profile == 'release' && inputs.stage == 'release'
     steps:
       - uses: release-drafter/release-drafter@v6
         id: update-release-draft
