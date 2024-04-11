@@ -373,7 +373,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"endTime" => DateTime.to_iso8601(ended_at)},
+            interval: %{"endTime" => ended_at},
             value: %{"doubleValue" => min}
           }
         ]
@@ -389,7 +389,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"endTime" => DateTime.to_iso8601(ended_at)},
+            interval: %{"endTime" => ended_at},
             value: %{"doubleValue" => max}
           }
         ]
@@ -413,7 +413,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"endTime" => DateTime.to_iso8601(ended_at)},
+            interval: %{"endTime" => ended_at},
             value: %{"doubleValue" => last_value}
           }
         ]
