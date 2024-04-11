@@ -11,7 +11,7 @@ function start_chromium() {
 }
 
 function load_page() {
-    client npm run load -- --debugPort $CHROMIUM_PORT --url "$@" 
+    client npm run load -- --debugPort $CHROMIUM_PORT --url "$@"
 }
 
 function refresh_page() {
