@@ -651,7 +651,6 @@ impl TestNode {
         self.node.is_connected_to(other.node.public_key())
     }
 
-    #[allow(unused)]
     fn signalled_candidates(&self) -> impl Iterator<Item = (u64, Candidate, Instant)> + '_ {
         self.events.iter().filter_map(|(e, instant)| match e {
             Event::SignalIceCandidate {
