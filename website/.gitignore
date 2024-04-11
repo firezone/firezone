@@ -39,3 +39,6 @@ public/sitemap-*.xml
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated timestamps
+timestamps.json
