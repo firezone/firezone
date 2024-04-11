@@ -591,6 +591,21 @@ impl TestNode {
         self.node.is_connected_to(other.node.public_key())
     }
 
+    #[allow(unused)]
+    fn signalled_candidates(&self) -> impl Iterator<Item = (u64, Candidate, Instant)> + '_ {
+        self.events.iter().filter_map(|(e, instant)| match e {
+            Event::SignalIceCandidate {
+                connection,
+                candidate,
+            } => Some((
+                *connection,
+                Candidate::from_sdp_string(candidate).unwrap(),
+                *instant,
+            )),
+            _ => None,
+        })
+    }
+
     fn receive(&mut self, from: SocketAddr, packet: &[u8], now: Instant) {
         if let Some((_, packet)) = self
             .span
