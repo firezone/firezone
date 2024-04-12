@@ -58,6 +58,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           version: ${{ env.VERSION }}
+          commitish: ${{ github.base_ref }}
       - name: Delete stale artifacts
         # Build artifacts are only uploaded to the drafted release on `main` release builds, so only clear them in those cases too to prevent PRs from removing drafted release assets.
         if: inputs.profile == 'release' && inputs.stage == 'release'
