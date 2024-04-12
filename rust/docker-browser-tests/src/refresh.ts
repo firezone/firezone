@@ -1,7 +1,7 @@
 import { Browser, Page } from 'puppeteer';
-import { connectBrowser, args, exitOnLoadFailure } from './shared.js';
+import { connectBrowser, get_args, IArgs, retryOrFail } from './shared.js';
 
-async function activePage(browser: Browser): Promise<Page> {
+async function activePage(browser: Browser, args: IArgs): Promise<Page> {
   const pages = await browser.pages();
   if (pages.length !== 1) {
     throw new Error('Either no page found or more pages than expected found');
@@ -18,11 +18,11 @@ async function activePage(browser: Browser): Promise<Page> {
 }
 
 (async (): Promise<void> => {
-  const browser = await connectBrowser();
-  const page = await activePage(browser);
+  const args = get_args();
+  const browser = await connectBrowser(args);
+  const page = await activePage(browser, args);
 
-  const responseReload = await page.reload({ timeout: 2000 });
-  await exitOnLoadFailure(responseReload)
+  await retryOrFail(async () => await page.reload({ timeout: 2000 }), args.retries);
 
   await browser.disconnect();
   process.exit()

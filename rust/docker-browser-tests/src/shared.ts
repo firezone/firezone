@@ -1,28 +1,41 @@
 import { parse } from 'ts-command-line-args';
 import puppeteer, { Browser, HTTPResponse } from 'puppeteer';
 
-interface IArgs {
+export interface IArgs {
   debugPort: number;
   url: string;
+  retries: number,
 }
 
-export const args = parse<IArgs>({
-  debugPort: Number,
-  url: String
-});
+export function get_args(): IArgs {
+  return parse<IArgs>({
+    debugPort: Number,
+    url: String,
+    retries: Number
+  });
+}
 
-export async function connectBrowser(): Promise<Browser> {
+export async function connectBrowser(args: IArgs): Promise<Browser> {
   return await puppeteer.connect({
     browserURL: `http://127.0.0.1:${args.debugPort}`,
   });
 }
 
-export async function exitOnLoadFailure(response: HTTPResponse | null): Promise<void> {
-  const status: number | undefined = response?.status();
+export async function retryOrFail(get_page: (() => Promise<HTTPResponse | null>), retries: number) {
+  while (true) {
+    try {
+      const status: number | undefined = (await get_page())?.status();
+      if (status !== 200) {
+        throw Error(`Failed to load page with status ${status}`)
+      }
 
-  if (status !== 200) {
-    throw new Error(`Page load failed with status ${status}`)
-  } else {
-    console.log('Success loading page');
+      break;
+    } catch (e) {
+      if (retries === 0) {
+        throw e;
+      }
+      retries--;
+    }
   }
 }
+

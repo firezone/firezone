@@ -7,10 +7,10 @@ install_iptables_drop_rules
 start_chromium
 
 echo "# Make sure webpage is loaded once"
-load_page $HTTPBIN
+load_page $HTTPBIN 1
 
 echo "# Restart relay"
 docker compose restart relay
 
 echo "# Reload page"
-timeout 60 sh -c "until refresh_page $HTTPBIN &>/dev/null; do sleep 10; done"
+refresh_page $HTTPBIN 10

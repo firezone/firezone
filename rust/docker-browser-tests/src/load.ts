@@ -1,12 +1,12 @@
-import { args, connectBrowser, exitOnLoadFailure } from './shared.js';
+import { get_args, connectBrowser, retryOrFail } from './shared.js';
 
 
 (async (): Promise<void> => {
-  const browser = await connectBrowser();
+  const args = get_args();
+  const browser = await connectBrowser(args);
   const page = await browser.newPage();
 
-  const response = await page.goto(args.url);
-  await exitOnLoadFailure(response);
+  await retryOrFail(async () => await page.goto(args.url), args.retries);
 
   await browser.disconnect();
   process.exit();
