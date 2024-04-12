@@ -48,6 +48,16 @@ locals {
       })
     },
     {
+      name  = "LOGGER_FORMATTER"
+      value = "Elixir.LoggerJSON.Formatters.GoogleCloud"
+    },
+    {
+      name = "LOGGER_FORMATTER_OPTS"
+      value = jsonencode({
+        project_id = var.project_id
+      })
+    },
+    {
       name  = "PLATFORM_ADAPTER"
       value = "Elixir.Domain.GoogleCloudPlatform"
     },
