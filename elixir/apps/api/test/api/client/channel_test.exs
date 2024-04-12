@@ -308,34 +308,6 @@ defmodule API.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 for relays presence" do
-    test "sends left relay id and new relays" do
-      # relay = Fixtures.Relays.create_relay(account: account)
-
-      # spawn(fn ->
-      #   stamp_secret = Ecto.UUID.generate()
-      #   :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-      # end)
-
-      # assert_push "init", %{relays: relays}
-
-      # assert length(relays) == 1
-      # assert List.first(relays).id == relay.id
-
-      # relay2 = Fixtures.Relays.create_relay(account: account)
-
-      # spawn(fn ->
-      #   stamp_secret = Ecto.UUID.generate()
-      #   :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
-      # end)
-
-      # assert_push "relays_presence", %{left: [relay.id], relays: relays}
-
-      # assert length(relays) == 1
-      # assert List.first(relays).id == relay2.id
-    end
-  end
-
   describe "handle_info/2 :config_changed" do
     test "sends updated configuration", %{
       account: account,
