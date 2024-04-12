@@ -1,7 +1,7 @@
 defmodule Domain.Relays do
   use Supervisor
   alias Domain.{Repo, Auth, Geo, PubSub}
-  alias Domain.{Accounts, Resources, Tokens}
+  alias Domain.{Accounts, Tokens}
   alias Domain.Relays.{Authorizer, Relay, Group, Presence}
 
   def start_link(opts) do
@@ -230,32 +230,27 @@ defmodule Domain.Relays do
     end)
   end
 
-  def all_connected_relays_for_resource(%Resources.Resource{} = _resource, :managed) do
-    connected_relays =
+  def all_connected_relays_for_account(%Accounts.Account{} = account) do
+    all_connected_relays_for_account(account.id)
+  end
+
+  def all_connected_relays_for_account(account_id) do
+    connected_global_relays =
       global_groups_presence_topic()
       |> Presence.list()
 
-    filter = &Relay.Query.public(&1)
-    list_relays_for_resource(connected_relays, filter)
-  end
-
-  def all_connected_relays_for_resource(%Resources.Resource{} = resource, :self_hosted) do
-    connected_relays =
-      resource.account_id
-      |> account_presence_topic()
+    connected_account_relays =
+      account_presence_topic(account_id)
       |> Presence.list()
 
-    filter = &Relay.Query.by_account_id(&1, resource.account_id)
-    list_relays_for_resource(connected_relays, filter)
-  end
-
-  defp list_relays_for_resource(connected_relays, filter) do
+    connected_relays = Map.merge(connected_global_relays, connected_account_relays)
     connected_relay_ids = Map.keys(connected_relays)
 
     relays =
       Relay.Query.not_deleted()
       |> Relay.Query.by_ids(connected_relay_ids)
-      |> filter.()
+      |> Relay.Query.global_or_by_account_id(account_id)
+      |> Relay.Query.prefer_global()
       |> Repo.all()
       |> Enum.map(fn relay ->
         %{metas: metas} = Map.get(connected_relays, relay.id)
@@ -345,10 +340,11 @@ defmodule Domain.Relays do
     with {:ok, _} <-
            Presence.track(self(), group_presence_topic(relay.group_id), relay.id, %{}),
          {:ok, _} <-
-           Presence.track(self(), presence_topic(relay), relay.id, %{
+           Presence.track(self(), account_or_global_presence_topic(relay), relay.id, %{
              online_at: System.system_time(:second),
              secret: secret
-           }) do
+           }),
+         {:ok, _} <- Presence.track(self(), presence_topic(relay), relay.id, %{}) do
       :ok = PubSub.subscribe(relay_topic(relay))
       :ok = PubSub.subscribe(group_topic(relay.group_id))
       :ok = PubSub.subscribe(account_topic(relay.account_id))
@@ -358,10 +354,13 @@ defmodule Domain.Relays do
 
   ### Presence
 
-  defp presence_topic(%Relay{account_id: nil}),
+  defp presence_topic(relay_or_id),
+    do: "presences:#{relay_topic(relay_or_id)}"
+
+  defp account_or_global_presence_topic(%Relay{account_id: nil}),
     do: global_groups_presence_topic()
 
-  defp presence_topic(%Relay{account_id: account_id}),
+  defp account_or_global_presence_topic(%Relay{account_id: account_id}),
     do: account_presence_topic(account_id)
 
   def global_groups_presence_topic,
@@ -385,6 +384,10 @@ defmodule Domain.Relays do
 
   defp group_topic(%Group{} = group), do: group_topic(group.id)
   defp group_topic(group_id), do: "group_relays:#{group_id}"
+
+  def subscribe_to_relay_presence(relay_or_id) do
+    PubSub.subscribe(presence_topic(relay_or_id))
+  end
 
   def subscribe_to_relays_presence_in_account(%Accounts.Account{} = account) do
     PubSub.subscribe(global_groups_presence_topic())

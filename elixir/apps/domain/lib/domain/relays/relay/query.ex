@@ -38,7 +38,7 @@ defmodule Domain.Relays.Relay.Query do
     )
   end
 
-  def public_or_by_account_id(queryable, account_id) do
+  def global_or_by_account_id(queryable, account_id) do
     where(
       queryable,
       [relays: relays],
@@ -46,12 +46,8 @@ defmodule Domain.Relays.Relay.Query do
     )
   end
 
-  def global_or_by_account_id(queryable, account_id) do
-    where(
-      queryable,
-      [relays: relays],
-      relays.account_id == ^account_id or is_nil(relays.account_id)
-    )
+  def prefer_global(queryable) do
+    order_by(queryable, [relays: relays], asc_nulls_first: relays.account_id)
   end
 
   def returning_not_deleted(queryable) do

@@ -1,7 +1,7 @@
 defmodule API.Client.Views.Relay do
   alias Domain.Relays
 
-  def render_many(relays, expires_at, stun_or_turn) do
+  def render_many(relays, expires_at, stun_or_turn \\ :turn) do
     Enum.flat_map(relays, &render(&1, expires_at, stun_or_turn))
   end
 
@@ -23,6 +23,7 @@ defmodule API.Client.Views.Relay do
   defp maybe_render(%Relays.Relay{} = relay, _expires_at, address, :stun) do
     [
       %{
+        id: relay.id,
         type: :stun,
         addr: "#{format_address(address)}:#{relay.port}"
       }
@@ -38,6 +39,7 @@ defmodule API.Client.Views.Relay do
 
     [
       %{
+        id: relay.id,
         type: :turn,
         addr: "#{format_address(address)}:#{relay.port}",
         username: username,

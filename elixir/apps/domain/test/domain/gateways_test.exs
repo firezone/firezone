@@ -151,9 +151,8 @@ defmodule Domain.GatewaysTest do
   end
 
   describe "create_group/2" do
-    test "returns error on empty attrs", %{subject: subject} do
-      assert {:error, changeset} = create_group(%{}, subject)
-      assert errors_on(changeset) == %{routing: ["can't be blank"]}
+    test "creates a group on empty attrs", %{subject: subject} do
+      assert {:ok, _group} = create_group(%{}, subject)
     end
 
     test "returns error on invalid attrs", %{account: account, subject: subject} do
@@ -164,27 +163,13 @@ defmodule Domain.GatewaysTest do
       assert {:error, changeset} = create_group(attrs, subject)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 64 character(s)"],
-               routing: ["can't be blank"]
+               name: ["should be at most 64 character(s)"]
              }
 
       Fixtures.Gateways.create_group(account: account, name: "foo")
-      attrs = %{name: "foo", routing: "managed"}
+      attrs = %{name: "foo"}
       assert {:error, changeset} = create_group(attrs, subject)
       assert "has already been taken" in errors_on(changeset).name
-    end
-
-    test "returns error on invalid routing value", %{subject: subject} do
-      attrs = %{
-        name_prefix: "foo",
-        routing: "foo"
-      }
-
-      assert {:error, changeset} = create_group(attrs, subject)
-
-      assert errors_on(changeset) == %{
-               routing: ["is invalid"]
-             }
     end
 
     test "returns error when billing limit is reached", %{account: account, subject: subject} do
@@ -200,8 +185,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name: "foo",
-        routing: "managed"
+        name: "foo"
       }
 
       assert create_group(attrs, subject) == {:error, :gateway_groups_limit_reached}
@@ -209,8 +193,7 @@ defmodule Domain.GatewaysTest do
 
     test "creates a group", %{subject: subject} do
       attrs = %{
-        name: "foo",
-        routing: "managed"
+        name: "foo"
       }
 
       assert {:ok, group} = create_group(attrs, subject)
@@ -219,8 +202,6 @@ defmodule Domain.GatewaysTest do
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
-
-      assert group.routing == :managed
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -267,15 +248,13 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name: String.duplicate("A", 65),
-        routing: "foo"
+        name: String.duplicate("A", 65)
       }
 
       assert {:error, changeset} = update_group(group, attrs, subject)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 64 character(s)"],
-               routing: ["is invalid"]
+               name: ["should be at most 64 character(s)"]
              }
 
       Fixtures.Gateways.create_group(account: account, name: "foo")
@@ -288,27 +267,11 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       attrs = %{
-        name: "foo",
-        routing: "stun_only"
+        name: "foo"
       }
 
       assert {:ok, group} = update_group(group, attrs, subject)
       assert group.name == "foo"
-      assert group.routing == :stun_only
-    end
-
-    test "broadcasts disconnect message to all gateway sockets", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      :ok = Gateways.connect_gateway(gateway)
-
-      assert {:ok, _group} = update_group(group, %{routing: "stun_only"}, subject)
-
-      assert_receive "disconnect"
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -1220,37 +1183,6 @@ defmodule Domain.GatewaysTest do
                connected_gateway1,
                connected_gateway2
              ]
-    end
-  end
-
-  describe "relay_strategy/1" do
-    test "managed strategy" do
-      group = Fixtures.Gateways.create_group(routing: :managed)
-      assert {:managed, :turn} == relay_strategy([group])
-    end
-
-    test "self-hosted strategy" do
-      group = Fixtures.Gateways.create_group(routing: :self_hosted)
-      assert {:self_hosted, :turn} == relay_strategy([group])
-    end
-
-    test "stun_only strategy" do
-      group = Fixtures.Gateways.create_group(routing: :stun_only)
-      assert {:managed, :stun} == relay_strategy([group])
-    end
-
-    test "strictest strategy is returned" do
-      managed_group = Fixtures.Gateways.create_group(routing: :managed)
-      self_hosted_group = Fixtures.Gateways.create_group(routing: :self_hosted)
-      stun_only_group = Fixtures.Gateways.create_group(routing: :stun_only)
-
-      assert {:managed, :stun} ==
-               relay_strategy([managed_group, self_hosted_group, stun_only_group])
-
-      assert {:self_hosted, :turn} == relay_strategy([managed_group, self_hosted_group])
-      assert {:managed, :stun} == relay_strategy([managed_group, stun_only_group])
-      assert {:managed, :stun} == relay_strategy([self_hosted_group, stun_only_group])
-      assert {:managed, :turn} == relay_strategy([managed_group])
     end
   end
 

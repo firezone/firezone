@@ -82,8 +82,7 @@ defmodule Domain.Gateways do
           group
           |> Repo.preload(:account)
           |> Group.Changeset.update(attrs, subject)
-        end,
-        after_commit: &disconnect_gateways_in_group/1
+        end
       )
     end
   end
@@ -365,29 +364,6 @@ defmodule Domain.Gateways do
     |> case do
       [] -> load_balance_gateways({lat, lon}, gateways)
       preferred_gateways -> load_balance_gateways({lat, lon}, preferred_gateways)
-    end
-  end
-
-  # Finds the most strict routing strategy for a given list of gateway groups.
-  def relay_strategy(gateway_groups) when is_list(gateway_groups) do
-    strictness = [
-      stun_only: 3,
-      self_hosted: 2,
-      managed: 1
-    ]
-
-    gateway_groups
-    |> Enum.max_by(fn %{routing: routing} ->
-      Keyword.fetch!(strictness, routing)
-    end)
-    |> relay_strategy_mapping()
-  end
-
-  defp relay_strategy_mapping(%Group{} = group) do
-    case group.routing do
-      :stun_only -> {:managed, :stun}
-      :self_hosted -> {:self_hosted, :turn}
-      :managed -> {:managed, :turn}
     end
   end
 

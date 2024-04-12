@@ -168,8 +168,14 @@ defmodule API.Client.ChannelTest do
       cidr_resource: cidr_resource,
       ip_resource: ip_resource
     } do
-      assert_push "init", %{resources: resources, interface: interface}
+      assert_push "init", %{
+        resources: resources,
+        interface: interface,
+        relays: relays
+      }
+
       assert length(resources) == 3
+      assert length(relays) == 0
 
       assert %{
                id: dns_resource.id,
@@ -180,8 +186,7 @@ defmodule API.Client.ChannelTest do
                gateway_groups: [
                  %{
                    id: gateway_group.id,
-                   name: gateway_group.name,
-                   routing: gateway_group.routing
+                   name: gateway_group.name
                  }
                ]
              } in resources
@@ -195,8 +200,7 @@ defmodule API.Client.ChannelTest do
                gateway_groups: [
                  %{
                    id: gateway_group.id,
-                   name: gateway_group.name,
-                   routing: gateway_group.routing
+                   name: gateway_group.name
                  }
                ]
              } in resources
@@ -210,8 +214,7 @@ defmodule API.Client.ChannelTest do
                gateway_groups: [
                  %{
                    id: gateway_group.id,
-                   name: gateway_group.name,
-                   routing: gateway_group.routing
+                   name: gateway_group.name
                  }
                ]
              } in resources
@@ -242,6 +245,46 @@ defmodule API.Client.ChannelTest do
       assert_push "init", %{}
       {:ok, _resource} = Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
       assert_push "resource_created_or_updated", %{}
+    end
+
+    test "subscribes for relays presence", %{client: client, subject: subject} do
+      relay_group = Fixtures.Relays.create_global_group()
+      relay = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
+      assert relay_view1.id == relay.id
+      assert relay_view2.id == relay.id
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view1
+
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+
+      assert_push "relay_offline", %{
+        offline_relay_ids: [relay_id],
+        online_relays: [relay_view1, relay_view2]
+      }
+
+      assert relay_view1.id == relay.id
+      assert relay_view2.id == relay.id
+      assert relay_id == relay.id
     end
 
     test "subscribes for membership/policy access events", %{
@@ -352,7 +395,7 @@ defmodule API.Client.ChannelTest do
                address: resource.address,
                address_description: resource.address_description,
                gateway_groups: [
-                 %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
+                 %{id: gateway_group.id, name: gateway_group.name}
                ]
              }
     end
@@ -430,7 +473,7 @@ defmodule API.Client.ChannelTest do
                address: resource.address,
                address_description: resource.address_description,
                gateway_groups: [
-                 %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
+                 %{id: gateway_group.id, name: gateway_group.name}
                ]
              }
     end
@@ -496,7 +539,7 @@ defmodule API.Client.ChannelTest do
                address: resource.address,
                address_description: resource.address_description,
                gateway_groups: [
-                 %{id: gateway_group.id, name: gateway_group.name, routing: gateway_group.routing}
+                 %{id: gateway_group.id, name: gateway_group.name}
                ]
              }
     end
@@ -595,13 +638,11 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :offline}
     end
 
-    test "returns online gateway and relays connected to the resource", %{
-      account: account,
+    test "returns online gateway and global relays connected to the resource", %{
       dns_resource: resource,
       gateway: gateway,
       socket: socket
     } do
-      # Online Relay
       global_relay_group = Fixtures.Relays.create_global_group()
 
       global_relay =
@@ -611,15 +652,9 @@ defmodule API.Client.ChannelTest do
           last_seen_remote_ip_location_lon: -120
         )
 
-      # Creating this Relay to verify it doesn't get returned when :managed routing option is selected
-      relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
 
-      stamp_secret_global = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret_global)
-
-      # Online Gateway
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
@@ -640,6 +675,7 @@ defmodule API.Client.ChannelTest do
 
       assert [
                %{
+                 id: _,
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password1,
@@ -647,6 +683,7 @@ defmodule API.Client.ChannelTest do
                  addr: ^ipv4_turn_uri
                },
                %{
+                 id: _,
                  type: :turn,
                  expires_at: expires_at_unix,
                  password: password2,
@@ -672,7 +709,7 @@ defmodule API.Client.ChannelTest do
       actor_group: actor_group
     } do
       # Gateway setup
-      gateway_group = Fixtures.Gateways.create_group(account: account, routing: :self_hosted)
+      gateway_group = Fixtures.Gateways.create_group(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
       :ok = Domain.Gateways.connect_gateway(gateway)
 
@@ -689,20 +726,6 @@ defmodule API.Client.ChannelTest do
         resource: resource
       )
 
-      # Global Relay setup
-      global_relay_group = Fixtures.Relays.create_global_group()
-
-      global_relay =
-        Fixtures.Relays.create_relay(
-          group: global_relay_group,
-          last_seen_remote_ip_location_lat: 37,
-          last_seen_remote_ip_location_lon: -120
-        )
-
-      stamp_secret_global = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret_global)
-
-      # Self-hosted Relay setup
       relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -751,77 +774,6 @@ defmodule API.Client.ChannelTest do
       assert expires_at == socket_expires_at
 
       assert is_binary(salt)
-    end
-
-    test "returns online gateway and stun-only relay URLs connected to the resource", %{
-      account: account,
-      socket: socket,
-      actor_group: actor_group
-    } do
-      # Gateway setup
-      gateway_group = Fixtures.Gateways.create_group(account: account, routing: :stun_only)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
-      :ok = Domain.Gateways.connect_gateway(gateway)
-
-      # Resource setup
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-
-      # Global Relay setup
-      global_relay_group = Fixtures.Relays.create_global_group()
-
-      global_relay =
-        Fixtures.Relays.create_relay(
-          group: global_relay_group,
-          last_seen_remote_ip_location_lat: 37,
-          last_seen_remote_ip_location_lon: -120
-        )
-
-      stamp_secret_global = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret_global)
-
-      # Self-hosted Relay setup
-      relay = Fixtures.Relays.create_relay(account: account)
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-
-      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
-      resource_id = resource.id
-
-      assert_reply ref, :ok, %{
-        relays: relays,
-        gateway_id: gateway_id,
-        gateway_remote_ip: gateway_last_seen_remote_ip,
-        resource_id: ^resource_id
-      }
-
-      assert length(relays) == 2
-
-      assert gateway_id == gateway.id
-      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
-
-      ipv4_turn_uri = "#{global_relay.ipv4}:#{global_relay.port}"
-      ipv6_turn_uri = "[#{global_relay.ipv6}]:#{global_relay.port}"
-
-      assert [
-               %{
-                 type: :stun,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :stun,
-                 addr: ^ipv6_turn_uri
-               }
-             ] = relays
     end
 
     test "works with service accounts", %{

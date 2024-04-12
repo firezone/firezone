@@ -4,8 +4,7 @@ defmodule Domain.Fixtures.Gateways do
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "group-#{unique_integer()}",
-      routing: "managed"
+      name: "group-#{unique_integer()}"
     })
   end
 

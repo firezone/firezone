@@ -695,29 +695,19 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "all_connected_relays_for_resource/2" do
-    test "returns empty list when there are no managed relays online", %{account: account} do
-      resource = Fixtures.Resources.create_resource(account: account)
-      group = Fixtures.Relays.create_global_group()
+  describe "all_connected_relays_for_account/1" do
+    test "returns empty list when there are no relays online", %{account: account} do
+      # managed
+      global_group = Fixtures.Relays.create_global_group()
+      Fixtures.Relays.create_relay(account: account, group: global_group)
 
-      Fixtures.Relays.create_relay(account: account, group: group)
-
-      assert all_connected_relays_for_resource(resource, :managed) == {:ok, []}
-    end
-
-    test "returns empty list when there are no self-hosted relays online", %{account: account} do
-      resource = Fixtures.Resources.create_resource(account: account)
-
+      # self hosted
       Fixtures.Relays.create_relay(account: account)
 
-      Fixtures.Relays.create_relay(account: account)
-      |> Fixtures.Relays.delete_relay()
-
-      assert all_connected_relays_for_resource(resource, :self_hosted) == {:ok, []}
+      assert all_connected_relays_for_account(account) == {:ok, []}
     end
 
     test "returns list of connected account relays", %{account: account} do
-      resource = Fixtures.Resources.create_resource(account: account)
       relay1 = Fixtures.Relays.create_relay(account: account)
       relay2 = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
@@ -725,21 +715,20 @@ defmodule Domain.RelaysTest do
       assert connect_relay(relay1, stamp_secret) == :ok
       assert connect_relay(relay2, stamp_secret) == :ok
 
-      assert {:ok, connected_relays} = all_connected_relays_for_resource(resource, :self_hosted)
+      assert {:ok, connected_relays} = all_connected_relays_for_account(account)
 
       assert Enum.all?(connected_relays, &(&1.stamp_secret == stamp_secret))
       assert Enum.sort(Enum.map(connected_relays, & &1.id)) == Enum.sort([relay1.id, relay2.id])
     end
 
     test "returns list of connected global relays", %{account: account} do
-      resource = Fixtures.Resources.create_resource(account: account)
       group = Fixtures.Relays.create_global_group()
       relay = Fixtures.Relays.create_relay(account: account, group: group)
       stamp_secret = Ecto.UUID.generate()
 
       assert connect_relay(relay, stamp_secret) == :ok
 
-      assert {:ok, [connected_relay]} = all_connected_relays_for_resource(resource, :managed)
+      assert {:ok, [connected_relay]} = all_connected_relays_for_account(account)
 
       assert connected_relay.id == relay.id
       assert connected_relay.stamp_secret == stamp_secret
@@ -1196,6 +1185,16 @@ defmodule Domain.RelaysTest do
       assert disconnect_relays_in_account(account) == :ok
 
       assert_receive "disconnect"
+    end
+
+    test "subscribes to relay presence", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+      :ok = subscribe_to_relay_presence(relay)
+
+      assert connect_relay(relay, "foo") == :ok
+
+      relay_id = relay.id
+      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:relays:" <> ^relay_id}
     end
   end
 end
