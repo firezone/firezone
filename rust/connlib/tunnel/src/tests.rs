@@ -38,22 +38,23 @@ proptest_state_machine::prop_state_machine! {
 }
 
 /// The actual system-under-test.
+///
+/// [`proptest`] manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
 struct TunnelTest {
     now: Instant,
 
     client: ClientState,
     gateway: GatewayState,
 
+    actual_client_events: Vec<(Instant, ClientEvent)>,
+
     #[allow(dead_code)]
     logger: DefaultGuard,
-
-    actual_client_events: Vec<(Instant, ClientEvent)>,
 }
 
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
-/// i.e. We compare the actual state of the tunnel with what we have in here.
 #[derive(Clone, Debug)]
 struct ReferenceState {
     now: Instant,
@@ -101,7 +102,7 @@ impl StateMachineTest for TunnelTest {
                 state.client.add_resources(&[ResourceDescription::Cidr(r)]);
             }
             Transition::SendICMPPacket { src, dst } => {
-                state
+                let _maybe_transmit = state
                     .client
                     .encapsulate(icmp_request_packet(src, dst), state.now);
 
@@ -114,14 +115,14 @@ impl StateMachineTest for TunnelTest {
             }
         };
 
-        // TODO: Assert our routes here.
-
         // Assert that we generate the expected events.
         state.actual_client_events.extend(iter::from_fn(|| {
             let event = state.client.poll_event()?;
 
             Some((state.now, event))
         }));
+
+        // TODO: Drain `poll_transmit` and execute it.
 
         assert_eq!(state.actual_client_events, ref_state.client_expected_events);
 
