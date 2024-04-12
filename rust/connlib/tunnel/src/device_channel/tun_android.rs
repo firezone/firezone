@@ -56,21 +56,10 @@ impl Tun {
         routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks,
     ) -> Result<()> {
-        let fd = callbacks.on_update_routes(
+        callbacks.on_update_routes(
             routes.iter().copied().filter_map(ipv4).collect(),
             routes.iter().copied().filter_map(ipv6).collect(),
         );
-
-        Ok(())
-    }
-
-    // SAFETY: must be called with a valid file descriptor
-    unsafe fn replace_fd(&mut self, fd: RawFd) -> Result<()> {
-        if self.fd.as_raw_fd() != fd {
-            unsafe { libc::close(self.fd.as_raw_fd()) };
-            self.fd = AsyncFd::new(fd)?;
-            self.name = interface_name(fd)?;
-        }
 
         Ok(())
     }
