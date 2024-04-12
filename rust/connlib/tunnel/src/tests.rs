@@ -50,9 +50,28 @@ struct TunnelTest {
     actual_client_events: Vec<(Instant, ClientEvent)>,
 }
 
+/// The reference state machine of the tunnel.
+///
+/// This is the "expected" part of our test.
+/// i.e. We compare the actual state of the tunnel with what we have in here.
+#[derive(Clone, Debug)]
+struct ReferenceState {
+    now: Instant,
+    client_priv_key: [u8; 32],
+    gateway_priv_key: [u8; 32],
+
+    /// Which resources the clients is aware of.
+    client_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// Cache for resource IPs.
+    resource_ips: Vec<IpAddr>,
+
+    /// All events that we expect to be emitted, together with their timestamp.
+    client_expected_events: Vec<(Instant, ClientEvent)>,
+}
+
 impl StateMachineTest for TunnelTest {
     type SystemUnderTest = Self;
-    type Reference = RefState;
+    type Reference = ReferenceState;
 
     // Initialize the system under test from our reference state.
     fn init_test(
@@ -110,27 +129,8 @@ impl StateMachineTest for TunnelTest {
     }
 }
 
-/// The reference state machine of the tunnel.
-///
-/// This is the "expected" part of our test.
-/// i.e. We compare the actual state of the tunnel with what we have in here.
-#[derive(Clone, Debug)]
-struct RefState {
-    now: Instant,
-    client_priv_key: [u8; 32],
-    gateway_priv_key: [u8; 32],
-
-    /// Which resources the clients is aware of.
-    client_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    /// Cache for resource IPs.
-    resource_ips: Vec<IpAddr>,
-
-    /// All events that we expect to be emitted, together with their timestamp.
-    client_expected_events: Vec<(Instant, ClientEvent)>,
-}
-
 /// Several helper functions to make the reference state more readable.
-impl RefState {
+impl ReferenceState {
     fn will_send_new_connection_intent(&self, candidate: &ResourceId) -> bool {
         let Some(last_intent) = self.last_connection_intent_to(candidate) else {
             return true;
@@ -166,7 +166,7 @@ impl RefState {
 /// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
-impl ReferenceStateMachine for RefState {
+impl ReferenceStateMachine for ReferenceState {
     type State = Self;
     type Transition = Transition;
 
