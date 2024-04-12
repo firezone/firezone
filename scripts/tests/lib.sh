@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euox pipefail
 
 function client() {
     docker compose exec -it client "$@"
