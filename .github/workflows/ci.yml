@@ -128,7 +128,7 @@ jobs:
   perf-tests:
     # Only the debug images have perf tooling
     if: ${{ github.event_name == 'pull_request' }}
-    name: perf-tests-${{ matrix.test_name }}
+    name: perf-tests-${{ matrix.version.prefix }}-${{ matrix.test_name }}
     needs:
       - build-base-perf-artifacts
       - build-head-perf-artifacts
@@ -139,23 +139,25 @@ jobs:
       pull-requests: write
     env:
       API_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
-      API_TAG: ${{ matrix.sha }}
+      API_TAG: ${{ matrix.version.sha }}
       WEB_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
-      WEB_TAG: ${{ matrix.sha }}
+      WEB_TAG: ${{ matrix.version.sha }}
       ELIXIR_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
-      ELIXIR_TAG: ${{ matrix.sha }}
+      ELIXIR_TAG: ${{ matrix.version.sha }}
       GATEWAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/gateway'
-      GATEWAY_TAG: ${{ matrix.sha }}
+      GATEWAY_TAG: ${{ matrix.version.sha }}
       CLIENT_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/client'
-      CLIENT_TAG: ${{ matrix.sha }}
+      CLIENT_TAG: ${{ matrix.version.sha }}
       RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/relay'
-      RELAY_TAG: ${{ matrix.sha }}
+      RELAY_TAG: ${{ matrix.version.sha }}
     strategy:
       fail-fast: false
       matrix:
-        sha:
-          - ${{ github.sha }}
-          - ${{ github.event.pull_request.base.sha }}
+        version:
+          - sha: ${{ github.sha }}
+            prefix: head
+          - sha: ${{ github.event.pull_request.base.sha }}
+            prefix: base
         test_name:
           - direct-tcp-client2server
           - direct-tcp-server2client
@@ -168,7 +170,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.sha }}
+          ref: ${{ matrix.version.sha }}
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -198,7 +200,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ matrix.test_name }}-${{ matrix.sha }}-iperf3results
+          name: ${{ matrix.test_name }}-${{ matrix.version.sha }}-iperf3results
           path: ./${{ matrix.test_name }}.json
       - name: Show Client logs
         if: "!cancelled()"
