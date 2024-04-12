@@ -42,6 +42,17 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     #[inline]
+    pub(crate) fn owned(data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+        let packet = match data[0] >> 4 {
+            4 => MutableIpv4Packet::owned(data)?.into(),
+            6 => MutableIpv6Packet::owned(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
+    #[inline]
     pub(crate) fn source(&self) -> IpAddr {
         match self {
             MutableIpPacket::MutableIpv4Packet(i) => i.get_source().into(),
