@@ -47,11 +47,10 @@ permissions:
 
 jobs:
   update-release-draft:
-    if: inputs.profile == 'release' && inputs.stage == 'release'
     runs-on: ubuntu-22.04
     concurrency:
       group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
-      cancel-in-progress: true
+      cancel-in-progress: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
     steps:
       - uses: release-drafter/release-drafter@v6
         id: update-release-draft
@@ -60,6 +59,8 @@ jobs:
         with:
           version: ${{ env.VERSION }}
       - name: Delete stale artifacts
+        # Build artifacts are only uploaded to the drafted release on `main` release builds, so only clear them in those cases too to prevent PRs from removing drafted release assets.
+        if: inputs.profile == 'release' && inputs.stage == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
