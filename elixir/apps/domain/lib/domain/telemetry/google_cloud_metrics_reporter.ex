@@ -11,11 +11,11 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # Maximum number of metrics a buffer can hold,
   # after this count they will be delivered or flushed right away.
-  @buffer_size 100
+  @buffer_size 1000
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  @flush_interval :timer.seconds(10)
+  @flush_interval :timer.seconds(15)
 
   def start_link(opts) do
     project_id =
@@ -256,7 +256,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "INT64",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"int64Value" => count}
           }
         ]
@@ -281,7 +281,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DISTRIBUTION",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{
               "distributionValue" => %{
                 "count" => count,
@@ -319,7 +319,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{"doubleValue" => sum}
           }
         ]
@@ -343,7 +343,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         valueType: "DISTRIBUTION",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: format_interval(started_at, ended_at),
             value: %{
               "distributionValue" => %{
                 "count" => count,
@@ -369,11 +369,11 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: %{"endTime" => ended_at},
             value: %{"doubleValue" => min}
           }
         ]
@@ -385,11 +385,11 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: %{"endTime" => ended_at},
             value: %{"doubleValue" => max}
           }
         ]
@@ -399,7 +399,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # holding the value of the selected measurement from the most recent event
   defp format_time_series(Metrics.LastValue, name, labels, resource, measurements, unit) do
-    {started_at, ended_at, last_value} = measurements
+    {_started_at, ended_at, last_value} = measurements
 
     [
       %{
@@ -409,16 +409,25 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         },
         resource: resource,
         unit: to_string(unit),
-        metricKind: "CUMULATIVE",
+        metricKind: "GAUGE",
         valueType: "DOUBLE",
         points: [
           %{
-            interval: %{"startTime" => started_at, "endTime" => ended_at},
+            interval: %{"endTime" => ended_at},
             value: %{"doubleValue" => last_value}
           }
         ]
       }
     ]
+  end
+
+  defp format_interval(at, at) do
+    now = DateTime.utc_now() |> DateTime.to_iso8601()
+    %{"startTime" => at, "endTime" => now}
+  end
+
+  defp format_interval(started_at, ended_at) do
+    %{"startTime" => started_at, "endTime" => ended_at}
   end
 
   ## Telemetry handlers
