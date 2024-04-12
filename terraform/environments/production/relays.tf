@@ -156,7 +156,7 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
 }
 
 # Trigger an alert when more than 20% of relays are down
-resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
+resource "google_monitoring_alert_policy" "connected_relays_count" {
   project = module.google-cloud-project.project.project_id
 
   display_name = "Relays are down"
@@ -172,8 +172,8 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
       comparison = "COMPARISON_GT"
 
       # at least one relay per region must be always online
-      threshold_value = module.relays[0].instances
-      duration        = "5s"
+      threshold_value = length(module.relays[0].instances)
+      duration        = "0s"
 
       trigger {
         count = 1

@@ -318,6 +318,7 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
       resource.type="gce_instance"
       severity>=ERROR
       -"invalid ssh key entry - expired key"
+      -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
       EOT
     }
   }
