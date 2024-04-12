@@ -22,7 +22,6 @@ use std::{
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-// Setup the state machine test using the `prop_state_machine!` macro
 proptest_state_machine::prop_state_machine! {
     #![proptest_config(Config {
         // Enable verbose mode to make the state machine test print the
@@ -38,6 +37,7 @@ proptest_state_machine::prop_state_machine! {
     fn run_tunnel_test(sequential 1..20 => TunnelTest);
 }
 
+/// The actual system-under-test.
 struct TunnelTest {
     now: Instant,
 
@@ -54,6 +54,7 @@ impl StateMachineTest for TunnelTest {
     type SystemUnderTest = Self;
     type Reference = RefState;
 
+    // Initialize the system under test from our reference state.
     fn init_test(
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) -> Self::SystemUnderTest {
@@ -70,6 +71,7 @@ impl StateMachineTest for TunnelTest {
         }
     }
 
+    // Apply a generated state transition to our system under test and assert against the reference state machine.
     fn apply(
         mut state: Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
@@ -95,6 +97,7 @@ impl StateMachineTest for TunnelTest {
 
         // TODO: Assert our routes here.
 
+        // Assert that we generate the expected events.
         state.actual_client_events.extend(iter::from_fn(|| {
             let event = state.client.poll_event()?;
 
@@ -117,13 +120,16 @@ struct RefState {
     client_priv_key: [u8; 32],
     gateway_priv_key: [u8; 32],
 
+    /// Which resources the clients is aware of.
     client_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// Cache for resource IPs.
     resource_ips: Vec<IpAddr>,
 
+    /// All events that we expect to be emitted, together with their timestamp.
     client_expected_events: Vec<(Instant, ClientEvent)>,
 }
 
+/// Several helper functions to make the reference state more readable.
 impl RefState {
     fn will_send_new_connection_intent(&self, candidate: &ResourceId) -> bool {
         let Some(last_intent) = self.last_connection_intent_to(candidate) else {
@@ -155,6 +161,11 @@ impl RefState {
     }
 }
 
+/// Implementation of our reference state machine.
+///
+/// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
+/// Care has to be taken that we don't implement things in a buggy way here.
+/// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceStateMachine for RefState {
     type State = Self;
     type Transition = Transition;
@@ -176,16 +187,14 @@ impl ReferenceStateMachine for RefState {
             .boxed()
     }
 
+    /// Generate a set of transitions from the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
+        // TODO: Figure out a way to not duplicate this. Unfortuantely, `select` panics when given an empty list.
         if state.resource_ips.is_empty() {
-            // TODO: src and dst should not be the same.
             return prop_oneof![
                 connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource),
                 // Random packet
-                (any::<IpAddr>(), any::<IpAddr>())
-                    .prop_filter("src and dst must be same IP version", |(src, dst)| {
-                        src.is_ipv4() == dst.is_ipv4()
-                    })
+                src_and_dst(any::<IpAddr>())
                     .prop_map(|(src, dst)| Transition::SendICMPPacket { src, dst }),
                 ((0..=1000u64).prop_map(|millis| Transition::Tick { millis }))
             ]
@@ -197,22 +206,19 @@ impl ReferenceStateMachine for RefState {
         prop_oneof![
             connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource),
             // Random packet
-            (any::<IpAddr>(), any::<IpAddr>())
-                .prop_filter("src and dst must be same IP version", |(src, dst)| {
-                    src.is_ipv4() == dst.is_ipv4()
-                })
+            src_and_dst(any::<IpAddr>())
                 .prop_map(|(src, dst)| Transition::SendICMPPacket { src, dst }),
             // Packet to a resource
-            (any::<IpAddr>(), resource_dst)
-                .prop_filter("src and dst must be same IP version", |(src, dst)| {
-                    src.is_ipv4() == dst.is_ipv4()
-                })
+            src_and_dst(resource_dst)
                 .prop_map(|(src, dst)| Transition::SendICMPPacket { src, dst }),
             ((0..=1000u64).prop_map(|millis| Transition::Tick { millis }))
         ]
         .boxed()
     }
 
+    /// Apply the transition to our reference state.
+    ///
+    /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
         match transition {
             Transition::AddCidrResource(r) => {
@@ -226,6 +232,7 @@ impl ReferenceStateMachine for RefState {
                     return state;
                 };
 
+                // Only expect a new connection intent if the last one was older than 2s
                 if state.will_send_new_connection_intent(&resource.id) {
                     state.client_expected_events.push((
                         state.now,
@@ -247,11 +254,27 @@ impl ReferenceStateMachine for RefState {
     }
 }
 
+/// A strategy for generating a `src` and `dst` IP for a packet.
+///
+/// `src` and `dst` must be of the same IP version and not be the same IP.
+pub fn src_and_dst(dst: impl Strategy<Value = IpAddr>) -> impl Strategy<Value = (IpAddr, IpAddr)> {
+    (any::<IpAddr>(), dst)
+        .prop_filter("src and dst must be same IP version", |(src, dst)| {
+            src.is_ipv4() == dst.is_ipv4()
+        })
+        .prop_filter("src and dst should not be the same", |(src, dst)| {
+            src != dst
+        })
+}
+
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
 enum Transition {
+    /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
+    /// Send an ICMP packet through the tunnel.
     SendICMPPacket { src: IpAddr, dst: IpAddr },
+    /// Advance time by this many milliseconds.
     Tick { millis: u64 },
 }
 
