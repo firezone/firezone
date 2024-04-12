@@ -95,8 +95,7 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        DnsServer, IpDnsServer, ResourceDescriptionCidr,
-        ResourceDescriptionDns, Stun, Turn,
+        DnsServer, IpDnsServer, ResourceDescriptionCidr, ResourceDescriptionDns, Stun, Turn,
     };
     use phoenix_channel::PhoenixMessage;
 
