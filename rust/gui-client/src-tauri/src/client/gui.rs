@@ -642,7 +642,7 @@ impl Controller {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
 
-                if ! was_already_ready {
+                if !was_already_ready {
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
