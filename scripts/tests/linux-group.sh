@@ -13,7 +13,8 @@ FZ_GROUP="firezone"
 # TODO: Remove, just for debugging
 groups
 
-sudo gpasswd "$USER" --add "$FZ_GROUP"
+sudo groupadd "$FZ_GROUP"
+sudo gpasswd --add "$USER" "$FZ_GROUP"
 
 # Start a new login shell to update our groups, and check again
 sudo su --login "$USER" groups | grep "$FZ_GROUP"
