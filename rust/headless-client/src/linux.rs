@@ -8,13 +8,12 @@ use connlib_shared::{
     LoginUrl,
 };
 use firezone_cli_utils::setup_global_subscriber;
-use futures::{Sink, Stream};
+use futures::{SinkExt, StreamExt};
 use secrecy::SecretString;
 use std::{
-    future::{self, poll_fn},
+    future,
     net::IpAddr,
     path::{Path, PathBuf},
-    pin::pin,
     str::FromStr,
     task::Poll,
 };
@@ -219,8 +218,9 @@ type IpcStream = tokio_util::codec::Framed<UnixStream, LengthDelimitedCodec>;
 
 async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
     tracing::info!("Waiting for an IPC message from the GUI...");
-    let mut stream = pin!(stream);
-    let v = poll_fn(|cx| stream.as_mut().poll_next(cx))
+
+    let v = stream
+        .next()
         .await
         .context("Error while reading IPC message")?
         .context("IPC stream empty")?;
@@ -228,8 +228,7 @@ async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
     let decoded: String = serde_json::from_str(&s)?;
 
     tracing::debug!(?decoded, "Received message");
-    poll_fn(|cx| stream.as_mut().poll_ready(cx)).await?;
-    stream.as_mut().start_send("OK".to_string().into())?;
+    stream.send("OK".to_string().into()).await?;
     tracing::info!("Replied. Connection will close");
     Ok(())
 }
@@ -237,8 +236,8 @@ async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::IpcStream;
-    use futures::{Sink, Stream};
-    use std::{future::poll_fn, net::IpAddr, pin::pin};
+    use futures::{SinkExt, StreamExt};
+    use std::net::IpAddr;
     use tokio::net::{UnixListener, UnixStream};
     use tokio_util::codec::LengthDelimitedCodec;
 
@@ -265,10 +264,10 @@ mod tests {
             let expected_peer_uid = nix::unistd::Uid::current().as_raw();
             assert_eq!(actual_peer_uid, expected_peer_uid);
 
-            let stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-            let mut stream = pin!(stream);
+            let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
-            let v = poll_fn(|cx| stream.as_mut().poll_next(cx))
+            let v = stream
+                .next()
                 .await
                 .expect("Error while reading IPC message")
                 .expect("IPC stream empty");
@@ -276,7 +275,8 @@ mod tests {
             let decoded: String = serde_json::from_str(&s).unwrap();
             assert_eq!(MESSAGE_ONE, decoded);
 
-            let v = poll_fn(|cx| stream.as_mut().poll_next(cx))
+            let v = stream
+                .next()
                 .await
                 .expect("Error while reading IPC message")
                 .expect("IPC stream empty");
@@ -287,23 +287,16 @@ mod tests {
 
         tracing::info!(pid = std::process::id(), "Connecting to IPC server");
         let stream = UnixStream::connect(&sock_path).await.unwrap();
-        let stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-        let mut stream = pin!(stream);
+        let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
-        poll_fn(|cx| stream.as_mut().poll_ready(cx)).await.unwrap();
         stream
-            .as_mut()
-            .start_send(serde_json::to_string(MESSAGE_ONE).unwrap().into())
+            .send(serde_json::to_string(MESSAGE_ONE).unwrap().into())
+            .await
             .unwrap();
-
-        poll_fn(|cx| stream.as_mut().poll_ready(cx)).await.unwrap();
         stream
-            .as_mut()
-            .start_send(serde_json::to_string(MESSAGE_TWO).unwrap().into())
+            .send(serde_json::to_string(MESSAGE_TWO).unwrap().into())
+            .await
             .unwrap();
-
-        // Seems like we need to explicitly flush the IPC stream when using this style
-        poll_fn(|cx| stream.as_mut().poll_flush(cx)).await.unwrap();
 
         tokio::time::timeout(std::time::Duration::from_millis(2_000), ipc_server_task)
             .await
