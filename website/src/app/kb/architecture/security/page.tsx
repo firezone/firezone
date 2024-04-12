@@ -3,8 +3,8 @@ import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
-  title: "FAQ • Firezone Docs",
-  description: "Firezone Documentation",
+  title: "Architecture: Security • Firezone Docs",
+  description: "Key elements of Firezone's security architecture.",
 };
 
 export default function Page() {

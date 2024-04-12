@@ -173,14 +173,47 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
-          <Collapse expanded={p.startsWith("/kb/reference")} label="Reference">
-            <li>
-              <Item href="/kb/reference/faq" label="FAQ" />
-            </li>
-            <li>
-              <Item href="/kb/reference/glossary" label="Glossary" />
-            </li>
-          </Collapse>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/architecture")}
+              label="Architecture"
+            >
+              <li>
+                <Item href="/kb/architecture" label="Overview" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/core-concepts"
+                  label="Core concepts"
+                />
+              </li>
+              <li>
+                <Item href="/kb/architecture/tech-stack" label="Tech stack" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/critical-sequences"
+                  label="Critical sequences"
+                />
+              </li>
+              <li>
+                <Item href="/kb/architecture/security" label="Security" />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/reference")}
+              label="Reference"
+            >
+              <li>
+                <Item href="/kb/reference/faq" label="FAQ" />
+              </li>
+              <li>
+                <Item href="/kb/reference/glossary" label="Glossary" />
+              </li>
+            </Collapse>
+          </li>
         </ul>
       </div>
     </aside>

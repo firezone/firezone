@@ -28,7 +28,7 @@ export default function NotFound() {
             </Link>
             , the{" "}
             <Link
-              href="/docs"
+              href="/kb"
               className="inline-flex text-accent-500 underline hover:no-underline"
             >
               docs home
