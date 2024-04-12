@@ -18,7 +18,6 @@ pub use linux::run;
 
 #[cfg(target_os = "windows")]
 mod windows {
-    use anyhow::Result;
     use clap::Parser;
 
     pub async fn run() -> anyhow::Result<()> {
