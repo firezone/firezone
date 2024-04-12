@@ -26,7 +26,7 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    client curl --fail "$1"
+    client curl --fail "$1" > /dev/null
 }
 
 function client_ping_resource() {
