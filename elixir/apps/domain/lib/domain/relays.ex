@@ -231,12 +231,16 @@ defmodule Domain.Relays do
   end
 
   def all_connected_relays_for_account(%Accounts.Account{} = account) do
+    all_connected_relays_for_account(account.id)
+  end
+
+  def all_connected_relays_for_account(account_id) do
     connected_global_relays =
       global_groups_presence_topic()
       |> Presence.list()
 
     connected_account_relays =
-      account_presence_topic(account.id)
+      account_presence_topic(account_id)
       |> Presence.list()
 
     connected_relays = Map.merge(connected_global_relays, connected_account_relays)
@@ -245,7 +249,7 @@ defmodule Domain.Relays do
     relays =
       Relay.Query.not_deleted()
       |> Relay.Query.by_ids(connected_relay_ids)
-      |> Relay.Query.global_or_by_account_id(account.id)
+      |> Relay.Query.global_or_by_account_id(account_id)
       |> Relay.Query.prefer_global()
       |> Repo.all()
       |> Enum.map(fn relay ->

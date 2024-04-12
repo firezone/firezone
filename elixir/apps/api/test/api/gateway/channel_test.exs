@@ -19,7 +19,6 @@ defmodule API.Gateway.ChannelTest do
     {:ok, _, socket} =
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
-        subject: subject,
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),

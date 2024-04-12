@@ -201,7 +201,16 @@ defmodule API.Gateway.Channel do
       resource = Resources.fetch_resource_by_id!(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.subject.account)
+      {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id)
+
+      location = {
+        socket.assigns.gateway.last_seen_remote_ip_location_lat,
+        socket.assigns.gateway.last_seen_remote_ip_location_lon
+      }
+
+      OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
+
+      relays = Relays.load_balance_relays(location, relays)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
       ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
