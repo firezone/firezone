@@ -1,7 +1,11 @@
 use crate::{ClientState, GatewayState};
-use connlib_shared::StaticSecret;
-use proptest::{arbitrary::any, strategy::Strategy, test_runner::Config};
+use connlib_shared::{
+    messages::{ResourceDescription, ResourceDescriptionCidr, ResourceId},
+    StaticSecret,
+};
+use proptest::{arbitrary::any, prop_oneof, strategy::Strategy, test_runner::Config};
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
+use std::collections::HashMap;
 
 // Setup the state machine test using the `prop_state_machine!` macro
 proptest_state_machine::prop_state_machine! {
@@ -35,18 +39,32 @@ impl StateMachineTest for TunnelTest {
     }
 
     fn apply(
-        state: Self::SystemUnderTest,
+        mut state: Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
+        match transition {
+            Transition::AddCidrResource(r) => {
+                state.client.add_resources(&[ResourceDescription::Cidr(r)]);
+            }
+        };
+
+        // TODO: Assert our routes here.
+
         state
     }
 }
 
+/// The reference state machine of the tunnel.
+///
+/// This is the "expected" part of our test.
+/// i.e. We compare the actual state of the tunnel with what we have in here.
 #[derive(Clone, Debug)]
 struct RefState {
     client_priv_key: [u8; 32],
     gateway_priv_key: [u8; 32],
+
+    resources: HashMap<ResourceId, ResourceDescriptionCidr>,
 }
 
 impl ReferenceStateMachine for RefState {
@@ -61,19 +79,31 @@ impl ReferenceStateMachine for RefState {
             .prop_map(|(client_priv_key, gateway_priv_key)| Self {
                 client_priv_key,
                 gateway_priv_key,
+                resources: HashMap::default(),
             })
             .boxed()
     }
 
-    fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        todo!()
+    fn transitions(_: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
+        prop_oneof![connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource)]
+            .boxed()
     }
 
-    fn apply(state: Self::State, transition: &Self::Transition) -> Self::State {
+    fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+        match transition {
+            Transition::AddCidrResource(r) => state.resources.insert(r.id, r.clone()),
+        };
+
         state
+    }
+
+    fn preconditions(_: &Self::State, _: &Self::Transition) -> bool {
+        true
     }
 }
 
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
-enum Transition {}
+enum Transition {
+    AddCidrResource(ResourceDescriptionCidr),
+}

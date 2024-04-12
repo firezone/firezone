@@ -884,7 +884,7 @@ impl ClientState {
         );
     }
 
-    fn add_resources(&mut self, resources: &[ResourceDescription]) {
+    pub(crate) fn add_resources(&mut self, resources: &[ResourceDescription]) {
         for resource_description in resources {
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
                 if resource.has_different_address(resource_description) {
