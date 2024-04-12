@@ -77,9 +77,14 @@ defmodule API.Client.Channel do
       :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
       :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
 
+      # Return all connected relays for the account
+      {:ok, relays} = select_relays(socket)
+      :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
       :ok =
         push(socket, "init", %{
           resources: Views.Resource.render_many(resources),
+          relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
           interface:
             Views.Interface.render(%{
               socket.assigns.client
@@ -274,6 +279,37 @@ defmodule API.Client.Channel do
     end
   end
 
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          event: "presence_diff",
+          topic: "presences:relays:" <> relay_id,
+          payload: %{leaves: leaves}
+        },
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    if Map.has_key?(leaves, relay_id) do
+      OpenTelemetry.Tracer.with_span "client.relay_offline",
+        attributes: %{
+          relay_id: relay_id
+        } do
+        {:ok, relays} = select_relays(socket)
+        :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
+        push(socket, "relay_offline", %{
+          offline_relay_ids: [relay_id],
+          online_relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
+        })
+
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   # This message sent by the client to create a GSC signed url for uploading logs and debug artifacts
   # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
   @impl true
@@ -316,32 +352,21 @@ defmodule API.Client.Channel do
              Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
                preload: :group
              ),
-           gateway_groups = Enum.map(gateways, & &1.group),
-           {relay_hosting_type, relay_connection_type} = Gateways.relay_strategy(gateway_groups),
-           {:ok, [_ | _] = relays} <-
-             Relays.all_connected_relays_for_resource(resource, relay_hosting_type) do
+           {:ok, [_ | _] = relays} <- select_relays(socket) do
+        :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
         location = {
           socket.assigns.client.last_seen_remote_ip_location_lat,
           socket.assigns.client.last_seen_remote_ip_location_lon
         }
 
-        OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
         OpenTelemetry.Tracer.set_attribute(:gateways_length, length(gateways))
-        OpenTelemetry.Tracer.set_attribute(:relay_hosting_type, relay_hosting_type)
-        OpenTelemetry.Tracer.set_attribute(:relay_connection_type, relay_connection_type)
-
-        relays = Relays.load_balance_relays(location, relays)
         gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
 
         reply =
           {:ok,
            %{
-             relays:
-               Views.Relay.render_many(
-                 relays,
-                 socket.assigns.subject.expires_at,
-                 relay_connection_type
-               ),
+             relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
              resource_id: resource_id,
              gateway_group_id: gateway.group_id,
              gateway_id: gateway.id,
@@ -494,5 +519,20 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     end
+  end
+
+  defp select_relays(socket) do
+    {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.subject.account)
+
+    location = {
+      socket.assigns.client.last_seen_remote_ip_location_lat,
+      socket.assigns.client.last_seen_remote_ip_location_lon
+    }
+
+    OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
+
+    relays = Relays.load_balance_relays(location, relays)
+
+    {:ok, relays}
   end
 end
