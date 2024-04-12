@@ -44,7 +44,7 @@ sudo setcap 'cap_net_admin+eip' /path/to/firezone-headless-client
 Assuming you have Rust installed, you can build the headless Client with:
 
 ```
-cargo build --release -p headless-client
+cargo build --release -p firezone-headless-client
 ```
 
 The binary will be in `target/release/firezone-headless-client`

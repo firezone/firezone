@@ -5632,6 +5632,7 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
+ "firezone-relay",
  "hex",
  "once_cell",
  "pnet_packet",
