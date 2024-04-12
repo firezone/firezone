@@ -154,3 +154,40 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   source_ranges = local.iap_ipv4_ranges
   target_tags   = module.relays[0].target_tags
 }
+
+# Trigger an alert when more than 20% of relays are down
+resource "google_monitoring_alert_policy" "connected_relays_count" {
+  project = module.google-cloud-project.project.project_id
+
+  display_name = "Relays are down"
+  combiner     = "OR"
+
+  notification_channels = module.ops.notification_channels
+
+  conditions {
+    display_name = "Relay Instances"
+
+    condition_threshold {
+      filter     = "resource.type = \"gce_instance\" AND metric.type = \"custom.googleapis.com/elixir/domain/relays/online_relays_count/last_value\""
+      comparison = "COMPARISON_GT"
+
+      # at least one relay per region must be always online
+      threshold_value = length(module.relays[0].instances)
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+
+      aggregations {
+        alignment_period     = "60s"
+        cross_series_reducer = "REDUCE_NONE"
+        per_series_aligner   = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "172800s"
+  }
+}

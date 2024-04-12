@@ -44,16 +44,11 @@ config :phoenix, :filter_parameters, [
 # Notice: SASL reports turned off because of their verbosity.
 # Notice: Log level can be overridden on production with LOG_LEVEL environment variable.
 config :logger,
-  backends: [LoggerJSON],
-  utc_log: true,
-  level: :info,
   handle_sasl_reports: false,
   handle_otp_reports: true
 
-config :logger_json, :backend,
-  json_encoder: Jason,
-  formatter: LoggerJSON.Formatters.GoogleCloudLogger,
-  metadata: {:all_except, [:socket, :conn]}
+config :logger, :default_handler,
+  formatter: {LoggerJSON.Formatters.GoogleCloud, metadata: {:all_except, [:socket, :conn]}}
 
 config :logger, level: :info
 

@@ -3,7 +3,7 @@
 # Read it before running on a dev system.
 # This script must run from an elevated shell so that Firezone won't try to elevate.
 
-set -euo pipefail
+source "./scripts/tests/lib.sh"
 
 # This prevents a `shellcheck` lint warning about using an unset CamelCase var
 if [[ -z "$ProgramData" ]]; then
