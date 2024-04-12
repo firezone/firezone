@@ -18,7 +18,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::{Duration, Instant};
-use tracing::{level_filters::LevelFilter, Instrument, Subscriber};
+use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
@@ -123,14 +123,27 @@ async fn main() -> Result<()> {
     ));
 
     let channel = if let Some(token) = args.token.as_ref() {
-        let base_url = args.api_url.clone();
-        let stamp_secret = server.auth_secret();
+        use secrecy::ExposeSecret;
 
-        let span = tracing::debug_span!("connect_to_portal", config_url = %base_url);
+        let login = LoginUrl::relay(
+            args.api_url.clone(),
+            token,
+            args.name.clone(),
+            args.public_ip4_addr,
+            args.public_ip6_addr,
+        )?;
 
-        connect_to_portal(&args, token, base_url, stamp_secret)
-            .instrument(span)
-            .await?
+        Some(PhoenixChannel::connect(
+            Secret::new(login),
+            format!("relay/{}", env!("CARGO_PKG_VERSION")),
+            "relay",
+            JoinMessage {
+                stamp_secret: server.auth_secret().expose_secret().to_string(),
+            },
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+                .build(),
+        ))
     } else {
         tracing::warn!(target: "relay", "No portal token supplied, starting standalone mode");
 
@@ -247,38 +260,6 @@ fn env_filter() -> EnvFilter {
     EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy()
-}
-
-async fn connect_to_portal(
-    args: &Args,
-    token: &SecretString,
-    url: Url,
-    stamp_secret: &SecretString,
-) -> Result<Option<PhoenixChannel<JoinMessage, (), ()>>> {
-    use secrecy::ExposeSecret;
-
-    let login = LoginUrl::relay(
-        url,
-        token,
-        args.name.clone(),
-        args.public_ip4_addr,
-        args.public_ip6_addr,
-    )?;
-
-    let (channel, Init {}) = phoenix_channel::init::<_, Init, _, _>(
-        Secret::new(login),
-        format!("relay/{}", env!("CARGO_PKG_VERSION")),
-        "relay",
-        JoinMessage {
-            stamp_secret: stamp_secret.expose_secret().to_string(),
-        },
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
-            .build(),
-    )
-    .await??;
-
-    Ok(Some(channel))
 }
 
 #[derive(serde::Deserialize, Debug)]
