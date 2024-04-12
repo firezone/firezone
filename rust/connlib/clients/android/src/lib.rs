@@ -34,7 +34,7 @@ pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
     handle: file_logger::Handle,
-    session: Option<Session>, // Circular dependency here because `CallbackHandler` also sits within `Session`. Should go away once we've eliminated the callbacks from `firezone-tunnel`.
+    new_tun_sender: tokio::sync::mpsc::Sender<Tun>,
 }
 
 impl Clone for CallbackHandler {
@@ -48,7 +48,7 @@ impl Clone for CallbackHandler {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
             handle: self.handle.clone(),
-            session: self.session.clone(),
+            new_tun_sender: self.new_tun_sender.clone(),
         }
     }
 }
@@ -76,11 +76,9 @@ pub enum CallbackError {
 impl CallbackHandler {
     fn set_new_tun(&self, new_fd: RawFd) {
         match Tun::with_fd(new_fd) {
-            Ok(tun) => self
-                .session
-                .as_ref()
-                .expect("session must be set once callbacks get called")
-                .set_tun(tun),
+            Ok(tun) => {
+                let _ = self.new_tun_sender.blocking_send(tun); // If this fails, connlib is shutting down so we don't care.
+            }
             Err(e) => {
                 tracing::error!("Failed to make new `Tun`: {e}");
             }
@@ -361,11 +359,13 @@ fn connect(
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
 
-    let mut callback_handler = CallbackHandler {
+    let (new_tun_sender, mut new_tun_receiver) = tokio::sync::mpsc::channel(1);
+
+    let callback_handler = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
         handle,
-        session: None,
+        new_tun_sender,
     };
 
     let (private_key, public_key) = keypair();
@@ -397,12 +397,24 @@ fn connect(
         sockets,
         private_key,
         Some(os_version),
-        callback_handler.clone(),
+        callback_handler,
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
     );
 
-    callback_handler.session = Some(session.clone());
+    // This is annoyingly redundant because `Session` already has a `Sender` inside.
+    // It would be nice to just directly send into that channel.
+    // We cannot do that because we only construct the channel within `Session::connect` which already requires us to pass the `CallbackHandler`: Circular dependency!
+    // This will be resolve itself once we no longer have callbacks.
+    runtime.spawn({
+        let session = session.clone();
+
+        async move {
+            while let Some(tun) = new_tun_receiver.recv().await {
+                session.set_tun(tun)
+            }
+        }
+    });
 
     Ok(SessionWrapper {
         inner: session,
