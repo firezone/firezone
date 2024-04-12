@@ -13,4 +13,4 @@ echo "# Restart relay"
 docker compose restart relay
 
 echo "# Reload page"
-timeout 60 until refresh_page $HTTPBIN &>/dev/null; do sleep 10; done
+timeout 60 sh -c "until refresh_page $HTTPBIN &>/dev/null; do sleep 10; done"
