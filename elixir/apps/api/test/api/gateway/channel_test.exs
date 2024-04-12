@@ -19,6 +19,7 @@ defmodule API.Gateway.ChannelTest do
     {:ok, _, socket} =
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
+        subject: subject,
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -393,10 +394,11 @@ defmodule API.Gateway.ChannelTest do
 
     test "pushes request_connection message with self-hosted relays", %{
       account: account,
+      subject: subject,
       client: client,
       relay: relay
     } do
-      gateway_group = Fixtures.Gateways.create_group(%{account: account, routing: "self_hosted"})
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
       gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
 
       resource =
@@ -408,6 +410,7 @@ defmodule API.Gateway.ChannelTest do
       {:ok, _, socket} =
         API.Gateway.Socket
         |> socket("gateway:#{gateway.id}", %{
+          subject: subject,
           gateway: gateway,
           gateway_group: gateway_group,
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -472,102 +475,6 @@ defmodule API.Gateway.ChannelTest do
       assert username_expires_at_unix == to_string(DateTime.to_unix(expires_at, :second))
       assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
       assert is_binary(username_salt)
-
-      assert payload.resource == %{
-               address: resource.address,
-               id: resource.id,
-               name: resource.name,
-               type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
-               ]
-             }
-
-      assert payload.client == %{
-               id: client.id,
-               peer: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
-                 persistent_keepalive: 25,
-                 preshared_key: preshared_key,
-                 public_key: client.public_key
-               },
-               payload: client_payload
-             }
-
-      assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
-    end
-
-    test "pushes request_connection message with stun-only relay URLs", %{
-      account: account,
-      client: client,
-      global_relay: relay
-    } do
-      gateway_group = Fixtures.Gateways.create_group(%{account: account, routing: "stun_only"})
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      {:ok, _, socket} =
-        API.Gateway.Socket
-        |> socket("gateway:#{gateway.id}", %{
-          gateway: gateway,
-          gateway_group: gateway_group,
-          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-        })
-        |> subscribe_and_join(API.Gateway.Channel, "gateway")
-
-      channel_pid = self()
-      socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      preshared_key = "PSK"
-      client_payload = "RTC_SD"
-      flow_id = Ecto.UUID.generate()
-
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-
-      send(
-        socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
-         %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
-           authorization_expires_at: expires_at,
-           client_payload: client_payload,
-           client_preshared_key: preshared_key
-         }, otel_ctx}
-      )
-
-      assert_push "request_connection", payload
-
-      assert is_binary(payload.ref)
-      assert payload.flow_id == flow_id
-      assert payload.actor == %{id: client.actor_id}
-
-      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
-
-      assert [
-               %{
-                 type: :stun,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :stun,
-                 addr: ^ipv6_turn_uri
-               }
-             ] = payload.relays
 
       assert payload.resource == %{
                address: resource.address,

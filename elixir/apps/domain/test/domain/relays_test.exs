@@ -1197,5 +1197,15 @@ defmodule Domain.RelaysTest do
 
       assert_receive "disconnect"
     end
+
+    test "subscribes to relay presence", %{account: account} do
+      relay = Fixtures.Relays.create_relay(account: account)
+      :ok = subscribe_to_relay_presence(relay)
+
+      assert connect_relay(relay, "foo") == :ok
+
+      relay_id = relay.id
+      assert_receive %Phoenix.Socket.Broadcast{topic: "presences:relays:" <> ^relay_id}
+    end
   end
 end
