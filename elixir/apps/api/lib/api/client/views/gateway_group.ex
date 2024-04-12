@@ -8,8 +8,7 @@ defmodule API.Client.Views.GatewayGroup do
   def render(%Gateways.Group{} = gateway_group) do
     %{
       id: gateway_group.id,
-      name: gateway_group.name,
-      routing: gateway_group.routing
+      name: gateway_group.name
     }
   end
 end

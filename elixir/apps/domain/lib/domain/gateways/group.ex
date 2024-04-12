@@ -3,7 +3,6 @@ defmodule Domain.Gateways.Group do
 
   schema "gateway_groups" do
     field :name, :string
-    field :routing, Ecto.Enum, values: ~w[managed self_hosted stun_only]a
 
     belongs_to :account, Domain.Accounts.Account
     has_many :gateways, Domain.Gateways.Gateway, foreign_key: :group_id, where: [deleted_at: nil]
