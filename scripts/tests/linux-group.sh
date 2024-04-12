@@ -10,9 +10,6 @@ FZ_GROUP="firezone"
 # Make sure we don't belong to the group yet
 (groups | grep "$FZ_GROUP") && exit 1
 
-# TODO: Remove, just for debugging
-groups
-
 sudo groupadd "$FZ_GROUP"
 sudo gpasswd --add "$USER" "$FZ_GROUP"
 
@@ -20,8 +17,5 @@ sudo gpasswd --add "$USER" "$FZ_GROUP"
 sudo su --login "$USER" --command groups | grep "$FZ_GROUP"
 
 # TODO: Remove, just for debugging
-sudo su --login "$USER" --command groups
-
-# TODO: Remove, just for debugging
 # Try it without sudo and see if that works at all
-su --login "$USER" --commands groups
+su --login "$USER" --command groups
