@@ -297,6 +297,7 @@ services:
       args:
         # TODO: Fix after #4516 lands
         PACKAGE: firezone-linux-client
+    command: ["firezone-linux-client", "standalone"]
     image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/client}:${CLIENT_TAG:-main}
     cap_add:
       - NET_ADMIN

@@ -35,11 +35,8 @@ pub use windows::run;
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Don't act as a CLI Client, act as a tunnel for a GUI Client
-    ///
-    /// This is not supported and will change in the near future.
-    #[arg(long, hide = true, default_value = "false")]
-    pub act_as_tunnel: bool,
+    #[command(subcommand)]
+    command: Cmd,
 
     #[arg(
         short = 'u',
@@ -73,6 +70,14 @@ struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
+}
+
+#[derive(clap::Subcommand)]
+enum Cmd {
+    /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
+    Daemon,
+    /// Act as a CLI-only Client, don't listen for IPC connections
+    Standalone,
 }
 
 // Copied from <https://github.com/firezone/subzone>
