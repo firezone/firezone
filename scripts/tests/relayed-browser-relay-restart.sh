@@ -12,8 +12,5 @@ load_page $HTTPBIN
 echo "# Restart relay"
 docker compose restart relay
 
-# Some timeout to get rid of later so that the connection expires
-sleep 30
-
 echo "# Reload page"
-refresh_page $HTTPBIN
+timeout 60 until refresh_page $HTTPBIN &>/dev/null; do sleep 10; done
