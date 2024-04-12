@@ -39,6 +39,7 @@ log = "0.4"
 [dev-dependencies]
 serde_json = "1.0"
 test-strategy = "0.3.1"
+proptest-state-machine = "0.3"
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
