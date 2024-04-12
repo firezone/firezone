@@ -412,7 +412,7 @@ services:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
+      test: ["CMD-SHELL", "curl --fail localhost:8080/healthz"]
       start_period: 10s
       interval: 30s
       retries: 5
