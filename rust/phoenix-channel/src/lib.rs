@@ -23,6 +23,7 @@ use tokio_tungstenite::{
 };
 
 pub use login_url::{LoginUrl, LoginUrlError};
+use std::mem;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
@@ -54,6 +55,8 @@ enum State {
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
     ),
+    Closing(WebSocketStream<MaybeTlsStream<TcpStream>>),
+    Closed,
 }
 
 /// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
@@ -194,6 +197,10 @@ impl fmt::Display for OutboundRequestId {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Cannot close websocket while we are connecting")]
+pub struct Connecting;
+
 impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
 where
     TInitReq: Serialize + Clone,
@@ -281,6 +288,21 @@ where
         }
     }
 
+    /// Initiate a graceful close of the connection.
+    pub fn close(&mut self) -> Result<(), Connecting> {
+        tracing::info!("Closing connection to portal");
+
+        match mem::replace(&mut self.state, State::Closed) {
+            State::Connecting(_) => return Err(Connecting),
+            State::Closing(stream) | State::Connected(stream) => {
+                self.state = State::Closing(stream);
+            }
+            State::Closed => {}
+        }
+
+        Ok(())
+    }
+
     pub fn poll(
         &mut self,
         cx: &mut Context,
@@ -288,6 +310,22 @@ where
         loop {
             // First, check if we are connected.
             let stream = match &mut self.state {
+                State::Closed => return Poll::Ready(Ok(Event::Closed)),
+                State::Closing(stream) => match stream.poll_close_unpin(cx) {
+                    Poll::Ready(Ok(())) => {
+                        tracing::info!("Closed websocket connection to portal");
+
+                        self.state = State::Closed;
+
+                        return Poll::Ready(Ok(Event::Closed));
+                    }
+                    Poll::Ready(Err(e)) => {
+                        tracing::warn!("Error while closing websocket: {e}");
+
+                        return Poll::Ready(Ok(Event::Closed));
+                    }
+                    Poll::Pending => return Poll::Pending,
+                },
                 State::Connected(stream) => stream,
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
@@ -566,6 +604,8 @@ pub enum Event<TInboundMsg, TOutboundRes> {
         topic: String,
         msg: TInboundMsg,
     },
+    /// The connection was closed successfully.
+    Closed,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]

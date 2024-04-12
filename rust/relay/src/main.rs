@@ -18,6 +18,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::{Duration, Instant};
+use tokio::signal::unix;
 use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -158,6 +159,8 @@ async fn main() -> Result<()> {
         .await
         .context("event loop failed")?;
 
+    tracing::info!("Goodbye!");
+
     Ok(())
 }
 
@@ -289,6 +292,9 @@ struct Eventloop<R> {
     channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
     sleep: Sleep,
 
+    sigterm: unix::Signal,
+    shutting_down: bool,
+
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
 
@@ -333,11 +339,17 @@ where
             sockets,
             buffer: [0u8; MAX_UDP_SIZE],
             last_heartbeat_sent,
+            sigterm: unix::signal(unix::SignalKind::terminate())?,
+            shutting_down: false,
         })
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
+            if self.shutting_down && self.channel.is_none() && self.server.num_allocations() == 0 {
+                return Poll::Ready(Ok(()));
+            }
+
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
@@ -479,6 +491,32 @@ where
                 Some(Poll::Pending) | None => {}
             }
 
+            match self.sigterm.poll_recv(cx) {
+                Poll::Ready(Some(())) => {
+                    if self.shutting_down {
+                        // Received a repeated SIGTERM whilst shutting down
+
+                        return Poll::Ready(Err(anyhow!("Forcing shutdown on repeated SIGTERM")));
+                    }
+
+                    tracing::info!(active_allocations = %self.server.num_allocations(), "Received SIGTERM, initiating graceful shutdown");
+
+                    self.shutting_down = true;
+
+                    if let Some(portal) = self.channel.as_mut() {
+                        match portal.close() {
+                            Ok(()) => {}
+                            Err(phoenix_channel::Connecting) => {
+                                self.channel = None; // If we are still connecting, just discard the websocket connection.
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+                Poll::Ready(None) | Poll::Pending => {}
+            }
+
             if self.stats_log_interval.poll_tick(cx).is_ready() {
                 let num_allocations = self.server.num_allocations();
                 let num_channels = self.server.num_channels();
@@ -512,6 +550,9 @@ where
                 *self.last_heartbeat_sent.lock().unwrap() = Some(Instant::now());
             }
             Event::InboundMessage { msg: (), .. } => {}
+            Event::Closed => {
+                self.channel = None;
+            }
         }
     }
 }

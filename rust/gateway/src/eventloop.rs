@@ -159,6 +159,9 @@ impl Eventloop {
             phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
                 tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
             }
+            phoenix_channel::Event::Closed => {
+                unimplemented!("Gateway never actively closes the portal connection")
+            }
             phoenix_channel::Event::SuccessResponse { res: (), .. }
             | phoenix_channel::Event::HeartbeatSent
             | phoenix_channel::Event::JoinedRoom { .. } => {}
