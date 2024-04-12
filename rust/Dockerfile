@@ -73,7 +73,7 @@ ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
-FROM node:20-slim AS node-utils
+FROM node:20-alpine AS node-utils
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
