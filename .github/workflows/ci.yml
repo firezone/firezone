@@ -128,7 +128,7 @@ jobs:
   perf-tests:
     # Only the debug images have perf tooling
     if: ${{ github.event_name == 'pull_request' }}
-    name: perf-tests-${{ matrix.test_name }}
+    name: perf-tests-${{ matrix.prefix }}-${{ matrix.test_name }}
     needs:
       - build-base-perf-artifacts
       - build-head-perf-artifacts
@@ -153,9 +153,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sha:
-          - ${{ github.sha }}
-          - ${{ github.event.pull_request.base.sha }}
+        include:
+          - sha: ${{ github.sha }}
+            prefix: new
+          - sha: ${{ github.event.pull_request.base.sha }}
+            prefix: old
         test_name:
           - direct-tcp-client2server
           - direct-tcp-server2client
