@@ -24,4 +24,7 @@ sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
 sleep 1 # Wait for process to exit
 
 # Assert: Process is no longer there
-pgrep firezone-relay && exit 1
+if pgrep firezone-relay >/dev/null; then
+    echo "Process is still running."
+    exit 1
+fi
