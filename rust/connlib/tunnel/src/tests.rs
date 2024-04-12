@@ -190,7 +190,7 @@ impl ReferenceStateMachine for ReferenceState {
 
     /// Generate a set of transitions from the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        // TODO: Figure out a way to not duplicate this. Unfortuantely, `select` panics when given an empty list.
+        // TODO: Figure out a way to not duplicate this. Unfortunately, `select` panics when given an empty list.
         if state.resource_ips.is_empty() {
             return prop_oneof![
                 connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource),
