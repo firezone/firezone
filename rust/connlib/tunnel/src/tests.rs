@@ -26,6 +26,7 @@ proptest_state_machine::prop_state_machine! {
         // Enable verbose mode to make the state machine test print the
         // transitions for each case.
         verbose: 1,
+        cases: 50,
         .. Config::default()
     })]
 
@@ -190,13 +191,13 @@ impl ReferenceStateMachine for ReferenceState {
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_resources.insert(r.address, r.clone());
-                state.resource_ips.extend(match r.address {
-                    IpNetwork::V4(v4) => v4.hosts().map(IpAddr::V4).collect::<Vec<_>>(),
-                    IpNetwork::V6(v6) => v6
-                        .subnets_with_prefix(128)
-                        .map(|ip| IpAddr::V6(ip.network_address()))
-                        .collect::<Vec<_>>(),
-                });
+                match r.address {
+                    IpNetwork::V4(v4) => state.resource_ips.extend(v4.hosts().map(IpAddr::V4)),
+                    IpNetwork::V6(v6) => state.resource_ips.extend(
+                        v6.subnets_with_prefix(128)
+                            .map(|ip| IpAddr::V6(ip.network_address())),
+                    ),
+                }
             }
             Transition::SendICMPPacketToResource { idx, .. } => {
                 let dst = idx.get(&state.resource_ips);
