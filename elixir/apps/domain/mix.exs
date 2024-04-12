@@ -48,7 +48,7 @@ defmodule Domain.MixProject do
       {:ecto_sql, "~> 3.7"},
 
       # PubSub and Presence
-      {:phoenix, "~> 1.7", runtime: false},
+      {:phoenix, "~> 1.7"},
       {:phoenix_pubsub, "~> 2.0"},
 
       # Auth-related deps
@@ -66,7 +66,7 @@ defmodule Domain.MixProject do
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
-      {:logger_json, "~> 5.1"},
+      {:logger_json, github: "nebo15/logger_json"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},

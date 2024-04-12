@@ -201,10 +201,16 @@ defmodule API.Gateway.Channel do
       resource = Resources.fetch_resource_by_id!(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      {relay_hosting_type, relay_connection_type} =
-        Gateways.relay_strategy([socket.assigns.gateway_group])
+      {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id)
 
-      {:ok, relays} = Relays.all_connected_relays_for_resource(resource, relay_hosting_type)
+      location = {
+        socket.assigns.gateway.last_seen_remote_ip_location_lat,
+        socket.assigns.gateway.last_seen_remote_ip_location_lon
+      }
+
+      OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
+
+      relays = Relays.load_balance_relays(location, relays)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
       ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
@@ -213,7 +219,7 @@ defmodule API.Gateway.Channel do
         ref: ref,
         flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
-        relays: Views.Relay.render_many(relays, authorization_expires_at, relay_connection_type),
+        relays: Views.Relay.render_many(relays, authorization_expires_at),
         resource: Views.Resource.render(resource),
         client: Views.Client.render(client, payload, preshared_key),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)

@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 
+set -euox pipefail
+
 function client() {
     docker compose exec -it client "$@"
 }
 
 function gateway() {
     docker compose exec -it gateway "$@"
+}
+
+function relay() {
+    docker compose exec -it relay "$@"
 }
 
 function install_iptables_drop_rules() {
@@ -20,7 +26,7 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    client curl --fail "$1"
+    client curl --fail "$1" > /dev/null
 }
 
 function client_ping_resource() {

@@ -193,8 +193,9 @@ config :opentelemetry,
   span_processor: :batch,
   traces_exporter: :none
 
-config :logger, :console,
-  level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
+config :logger, level: String.to_atom(System.get_env("LOG_LEVEL", "info"))
+
+config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: :all
 
