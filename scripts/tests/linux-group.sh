@@ -17,11 +17,11 @@ sudo groupadd "$FZ_GROUP"
 sudo gpasswd --add "$USER" "$FZ_GROUP"
 
 # Start a new login shell to update our groups, and check again
-sudo su --login "$USER" groups | grep "$FZ_GROUP"
+sudo su --login "$USER" --command groups | grep "$FZ_GROUP"
 
 # TODO: Remove, just for debugging
-sudo su --login "$USER" groups
+sudo su --login "$USER" --command groups
 
 # TODO: Remove, just for debugging
 # Try it without sudo and see if that works at all
-su --login "$USER" groups
+su --login "$USER" --commands groups
