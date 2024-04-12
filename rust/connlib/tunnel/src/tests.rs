@@ -14,8 +14,7 @@ use proptest::{
 };
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use std::{
-    collections::HashSet,
-    iter,
+    collections::{HashMap, HashSet},
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -27,14 +26,11 @@ proptest_state_machine::prop_state_machine! {
         // Enable verbose mode to make the state machine test print the
         // transitions for each case.
         verbose: 1,
-        // Only run 10 cases by default to avoid running out of system resources
-        // and taking too long to finish.
-        cases: 10,
         .. Config::default()
     })]
 
     #[test]
-    fn run_tunnel_test(sequential 1..20 => TunnelTest);
+    fn run_tunnel_test(sequential 1..10 => TunnelTest);
 }
 
 /// The actual system-under-test.
@@ -45,8 +41,6 @@ struct TunnelTest {
 
     client: ClientState,
     gateway: GatewayState,
-
-    actual_client_events: Vec<(Instant, ClientEvent)>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -66,8 +60,10 @@ struct ReferenceState {
     /// Cache for resource IPs.
     resource_ips: Vec<IpAddr>,
 
-    /// All events that we expect to be emitted, together with their timestamp.
-    client_expected_events: Vec<(Instant, ClientEvent)>,
+    last_connection_intents: HashMap<ResourceId, Instant>,
+
+    /// New events that we expect to be emitted.
+    client_new_events: Vec<(Instant, ClientEvent)>,
 }
 
 impl StateMachineTest for TunnelTest {
@@ -87,7 +83,6 @@ impl StateMachineTest for TunnelTest {
                 .with_env_filter("debug")
                 .finish()
                 .set_default(),
-            actual_client_events: Vec::default(),
         }
     }
 
@@ -101,10 +96,12 @@ impl StateMachineTest for TunnelTest {
             Transition::AddCidrResource(r) => {
                 state.client.add_resources(&[ResourceDescription::Cidr(r)]);
             }
-            Transition::SendICMPPacket { src, dst } => {
+            Transition::SendICMPPacketToResource { src, idx } => {
+                let dst = idx.get(&ref_state.resource_ips);
+
                 let _maybe_transmit = state
                     .client
-                    .encapsulate(icmp_request_packet(src, dst), state.now);
+                    .encapsulate(icmp_request_packet(src, *dst), state.now);
 
                 // TODO: Handle transmit (send to relay / gateway)
             }
@@ -115,16 +112,12 @@ impl StateMachineTest for TunnelTest {
             }
         };
 
-        // Assert that we generate the expected events.
-        state.actual_client_events.extend(iter::from_fn(|| {
-            let event = state.client.poll_event()?;
-
-            Some((state.now, event))
-        }));
+        for (time, expected_event) in &ref_state.client_new_events {
+            assert_eq!(time, &state.now);
+            assert_eq!(expected_event, &state.client.poll_event().unwrap());
+        }
 
         // TODO: Drain `poll_transmit` and execute it.
-
-        assert_eq!(state.actual_client_events, ref_state.client_expected_events);
 
         state
     }
@@ -132,33 +125,12 @@ impl StateMachineTest for TunnelTest {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn will_send_new_connection_intent(&self, candidate: &ResourceId) -> bool {
-        let Some(last_intent) = self.last_connection_intent_to(candidate) else {
+    fn will_send_new_connection_intent(&self, resource: &ResourceId) -> bool {
+        let Some(last_intent) = self.last_connection_intents.get(resource) else {
             return true;
         };
 
-        self.now.duration_since(last_intent) >= Duration::from_secs(2)
-    }
-
-    fn last_connection_intent_to(&self, candidate: &ResourceId) -> Option<Instant> {
-        self.client_expected_events.iter().filter_map(|(time, event)| {
-            matches!(event, ClientEvent::ConnectionIntent { resource, .. } if resource == candidate).then_some(*time)
-        }).max()
-    }
-
-    fn recompute_resource_ips(&mut self) {
-        self.resource_ips = self
-            .client_resources
-            .iter()
-            .map(|(_, r)| r)
-            .flat_map(|r| match r.address {
-                IpNetwork::V4(v4) => v4.hosts().map(IpAddr::V4).collect::<Vec<_>>(),
-                IpNetwork::V6(v6) => v6
-                    .subnets_with_prefix(128)
-                    .map(|ip| IpAddr::V6(ip.network_address()))
-                    .collect::<Vec<_>>(),
-            })
-            .collect::<Vec<_>>();
+        self.now.duration_since(*last_intent) >= Duration::from_secs(2)
     }
 }
 
@@ -182,36 +154,28 @@ impl ReferenceStateMachine for ReferenceState {
                 client_priv_key,
                 gateway_priv_key,
                 client_resources: IpNetworkTable::new(),
-                client_expected_events: Default::default(),
+                client_new_events: Default::default(),
                 resource_ips: Default::default(),
+                last_connection_intents: Default::default(),
             })
             .boxed()
     }
 
     /// Generate a set of transitions from the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        // TODO: Figure out a way to not duplicate this. Unfortunately, `select` panics when given an empty list.
         if state.resource_ips.is_empty() {
             return prop_oneof![
                 connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource),
-                // Random packet
-                src_and_dst(any::<IpAddr>())
-                    .prop_map(|(src, dst)| Transition::SendICMPPacket { src, dst }),
                 ((0..=1000u64).prop_map(|millis| Transition::Tick { millis }))
             ]
             .boxed();
         }
 
-        let resource_dst = sample::select(state.resource_ips.clone());
-
         prop_oneof![
             connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource),
-            // Random packet
-            src_and_dst(any::<IpAddr>())
-                .prop_map(|(src, dst)| Transition::SendICMPPacket { src, dst }),
             // Packet to a resource
-            src_and_dst(resource_dst)
-                .prop_map(|(src, dst)| Transition::SendICMPPacket { src, dst }),
+            (any::<IpAddr>(), any::<sample::Index>())
+                .prop_map(|(src, idx)| Transition::SendICMPPacketToResource { src, idx }),
             ((0..=1000u64).prop_map(|millis| Transition::Tick { millis }))
         ]
         .boxed()
@@ -221,12 +185,22 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+        state.client_new_events.clear();
+
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_resources.insert(r.address, r.clone());
-                state.recompute_resource_ips();
+                state.resource_ips.extend(match r.address {
+                    IpNetwork::V4(v4) => v4.hosts().map(IpAddr::V4).collect::<Vec<_>>(),
+                    IpNetwork::V6(v6) => v6
+                        .subnets_with_prefix(128)
+                        .map(|ip| IpAddr::V6(ip.network_address()))
+                        .collect::<Vec<_>>(),
+                });
             }
-            Transition::SendICMPPacket { dst, .. } => {
+            Transition::SendICMPPacketToResource { idx, .. } => {
+                let dst = idx.get(&state.resource_ips);
+
                 // Packets to non-resources are ignored.
                 // In case resources have over-lapping networks, the longest match is used.
                 let Some((_, resource)) = state.client_resources.longest_match(*dst) else {
@@ -235,7 +209,8 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // Only expect a new connection intent if the last one was older than 2s
                 if state.will_send_new_connection_intent(&resource.id) {
-                    state.client_expected_events.push((
+                    state.last_connection_intents.insert(resource.id, state.now);
+                    state.client_new_events.push((
                         state.now,
                         ClientEvent::ConnectionIntent {
                             resource: resource.id,
@@ -250,22 +225,17 @@ impl ReferenceStateMachine for ReferenceState {
         state
     }
 
-    fn preconditions(_: &Self::State, _: &Self::Transition) -> bool {
-        true
-    }
-}
+    fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
+        match transition {
+            Transition::AddCidrResource(_) => true,
+            Transition::Tick { .. } => true,
+            Transition::SendICMPPacketToResource { src, idx } => {
+                let dst = idx.get(&state.resource_ips);
 
-/// A strategy for generating a `src` and `dst` IP for a packet.
-///
-/// `src` and `dst` must be of the same IP version and not be the same IP.
-pub fn src_and_dst(dst: impl Strategy<Value = IpAddr>) -> impl Strategy<Value = (IpAddr, IpAddr)> {
-    (any::<IpAddr>(), dst)
-        .prop_filter("src and dst must be same IP version", |(src, dst)| {
-            src.is_ipv4() == dst.is_ipv4()
-        })
-        .prop_filter("src and dst should not be the same", |(src, dst)| {
-            src != dst
-        })
+                src.is_ipv4() == dst.is_ipv4() && src != dst
+            }
+        }
+    }
 }
 
 /// The possible transitions of the state machine.
@@ -273,8 +243,8 @@ pub fn src_and_dst(dst: impl Strategy<Value = IpAddr>) -> impl Strategy<Value = 
 enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
-    /// Send an ICMP packet through the tunnel.
-    SendICMPPacket { src: IpAddr, dst: IpAddr },
+    /// Send a ICMP packet to resource.
+    SendICMPPacketToResource { src: IpAddr, idx: sample::Index },
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
 }
