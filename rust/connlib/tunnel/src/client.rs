@@ -1124,6 +1124,17 @@ impl IpProvider {
 
 #[cfg(test)]
 mod tests {
+    use domain::{
+        base::Question,
+        dep::octseq::{EmptyBuilder, OctetsInto},
+    };
+    use pnet_packet::{
+        ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
+        ipv4::{self, Ipv4, MutableIpv4Packet},
+        udp::{self, MutableUdpPacket, Udp},
+        Packet, PacketSize,
+    };
+
     use super::*;
     use rand_core::OsRng;
 
@@ -1294,6 +1305,108 @@ mod tests {
             HashSet::<&IpAddr>::from_iter(sentinel_dns_old.left_values())
                 .is_disjoint(&HashSet::from_iter(sentinel_dns_new.left_values()))
         )
+    }
+
+    // TODO: replace for proptest once merged
+    #[test]
+    fn dns_packet_triggers_intent() {
+        let mut client_state = ClientState::for_test();
+        let _ = client_state.update_interface_config(InterfaceConfig {
+            ipv4: "100.72.112.111".parse().unwrap(),
+            ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
+            upstream_dns: vec![dns("1.1.1.1:53")],
+        });
+        client_state.set_resources(vec![ResourceDescription::Dns(ResourceDescriptionDns {
+            id: ResourceId::from_u128(0),
+            address: "baz.com".to_string(),
+            name: "baz".to_string(),
+        })]);
+
+        let IpAddr::V4(dest) = *client_state
+            .dns_mapping()
+            .get_by_right(&dns("1.1.1.1:53"))
+            .unwrap()
+        else {
+            panic!("TODO: remove this whole thingy")
+        };
+
+        client_state.encapsulate(
+            wrap_dns_payload(
+                dns_packet("baz.com"),
+                1234,
+                53,
+                "100.72.112.111".parse().unwrap(),
+                dest,
+            ),
+            Instant::now(),
+        );
+
+        let ev = client_state.poll_event().unwrap();
+        assert_eq!(
+            ev,
+            ClientEvent::ConnectionIntent {
+                resource: ResourceId::from_u128(0),
+                connected_gateway_ids: HashSet::new()
+            }
+        );
+    }
+
+    fn wrap_dns_payload(
+        payload: Vec<u8>,
+        // TODO: We can merge these parameters as a SocketAddr
+        source_port: u16,
+        destination_port: u16,
+        source: Ipv4Addr,
+        destination: Ipv4Addr,
+    ) -> MutableIpPacket<'static> {
+        let udp = Udp {
+            source: source_port,           // Any works
+            destination: destination_port, // Server's port
+            length: 8 + payload.len() as u16,
+            checksum: 0x0,
+            payload,
+        };
+
+        let mut udp_packet = MutableUdpPacket::owned(vec![0; udp.length as usize]).unwrap();
+        udp_packet.populate(&udp);
+        let checksum = udp::ipv4_checksum(&udp_packet.to_immutable(), &source, &destination);
+        udp_packet.set_checksum(checksum);
+        let ip = Ipv4 {
+            version: 0x4,
+            header_length: 0x5,
+            dscp: 0x0,
+            ecn: 0x0,
+            total_length: 20 + udp_packet.get_length() as u16,
+            identification: 0x0, // <-- Any value
+            flags: 0b0000_0000,  // last 2 bits represent [DF][MF]
+            fragment_offset: 0x0,
+            ttl: 0x0, // <-- Any value
+            next_level_protocol: IpNextHeaderProtocols::Udp,
+            checksum: 0x0,
+            source,
+            destination,
+            options: vec![],
+            payload: udp_packet.packet().into(),
+        };
+
+        let mut ip_packet = MutableIpv4Packet::owned(vec![0; ip.total_length as usize]).unwrap();
+        ip_packet.populate(&ip);
+        let checksum = ipv4::checksum(&ip_packet.to_immutable());
+        ip_packet.set_checksum(checksum);
+
+        ip_packet.into()
+    }
+
+    fn dns_packet(address: &str) -> Vec<u8> {
+        let dns_packet = domain::base::MessageBuilder::new_vec();
+        let mut question_builder = dns_packet.question();
+        question_builder
+            .push(Question::new_in(
+                Dname::from_str(address).unwrap(),
+                Rtype::A,
+            ))
+            .unwrap();
+        question_builder.finish()
     }
 
     impl ClientState {

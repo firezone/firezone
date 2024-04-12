@@ -26,7 +26,8 @@ impl ResourceId {
         ResourceId(Uuid::new_v4())
     }
 
-    pub(crate) fn from_u128(v: u128) -> Self {
+    // TODO: revert visibility
+    pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
 }
