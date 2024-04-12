@@ -224,8 +224,10 @@ jobs:
             --clobber \
             --repo ${{ github.repository }}
       - name: Set up QEMU
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         uses: docker/setup-buildx-action@v3
         with:
           # We are overriding the default buildkit version being used by Buildx. We need buildkit >= 12.0 and currently BuildX
@@ -234,10 +236,12 @@ jobs:
           driver-opts: |
             image=moby/buildkit:v0.12.0
       - uses: ./.github/actions/gcp-docker-login
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         id: login
         with:
           project: firezone-staging
       - name: Build Version Tags
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         run: |
           set -xe
 
@@ -248,6 +252,7 @@ jobs:
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         with:
           images:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
@@ -259,6 +264,7 @@ jobs:
             type=raw,value=${{ env.MAJOR_VERSION }}
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Sanitize github.ref_name
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         run: |
           # `ref_name` contains `/` which is not a valid docker image tag
           REF="${{ github.ref_name }}"
@@ -282,11 +288,13 @@ jobs:
           outputs:
             type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
@@ -295,6 +303,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Output image name
+        if: ${{ inputs.stage == 'release' || contains(matrix.arch.shortname, 'arm') }}
         id: image-name
         run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
 
