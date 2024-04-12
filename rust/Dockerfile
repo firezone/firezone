@@ -73,13 +73,20 @@ ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
+FROM node:20-slim AS node-utils
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+COPY docker-browser-tests /docker-browser-tests
+WORKDIR /docker-browser-tests
+RUN pnpm install
+
 # used for local development
 FROM runtime as test
 
-COPY docker-browser-tests .
 RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium \
-  && npm i -g pnpm && pnpm i
+  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium
+COPY --from=node-utils /docker-browser-tests .
 
 # used for local development
 FROM test AS dev
