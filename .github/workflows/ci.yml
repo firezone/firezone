@@ -164,7 +164,7 @@ jobs:
   perf-tests:
     # Only the debug images have perf tooling
     if: ${{ github.event_name == 'pull_request' }}
-    name: perf-tests-${{ matrix.version.prefix }}-${{ matrix.test_name }}
+    name: "perf-tests / ${{ matrix.version.prefix }} / ${{ matrix.test_name }}"
     needs:
       - build-base-perf-artifacts
       - build-head-perf-artifacts
