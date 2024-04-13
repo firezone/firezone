@@ -3,6 +3,10 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      tag_name:
+        description: "The tag name of the release"
+        required: true
+        type: string
       image_prefix:
         description: |
           The prefix to prepend to the image name to prevent SHA conflicts.
@@ -46,37 +50,6 @@ permissions:
   id-token: write
 
 jobs:
-  update-release-draft:
-    runs-on: ubuntu-22.04
-    concurrency:
-      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}-${{ github.job }}"
-      cancel-in-progress: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
-    steps:
-      - uses: release-drafter/release-drafter@v6
-        id: update-release-draft
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          version: ${{ env.VERSION }}
-          commitish: ${{ github.base_ref }}
-      - name: Delete stale artifacts
-        # Build artifacts are only uploaded to the drafted release on `main` release builds, so only clear them in those cases too to prevent PRs from removing drafted release assets.
-        if: inputs.profile == 'release' && inputs.stage == 'release'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -xe
-
-          gh release view ${{ steps.update-release-draft.outputs.tag_name }} \
-            --repo ${{ github.repository }} \
-            --json assets \
-            --jq '.assets[] | .name' \
-            | xargs -I{} gh release delete-asset ${{ steps.update-release-draft.outputs.tag_name }} {} --repo ${{ github.repository }} --yes
-    outputs:
-      name: ${{ steps.update-release-draft.outputs.name }}
-      tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
-      upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
-
   control-plane:
     name: ${{ matrix.image_name }}
     runs-on: ubuntu-22.04
@@ -151,9 +124,6 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
   data-plane:
-    # Runs the job after update-release-draft, regardless of the outcome
-    if: ${{ always() }}
-    needs: update-release-draft
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
     defaults:
@@ -233,7 +203,7 @@ jobs:
           set -xe
 
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
+          gh release upload ${{ inputs.tag_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             --clobber \
