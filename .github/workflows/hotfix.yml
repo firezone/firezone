@@ -27,7 +27,7 @@ jobs:
       relay_image: 'us-east1-docker.pkg.dev/firezone-staging/firezone/relay'
       gateway_image: "ghcr.io/firezone/gateway"
       gateway_tag: "latest"
-      client_image: "ghcr.io/firezone/gateway"
+      client_image: "ghcr.io/firezone/client"
       client_tag: "latest"
 
   deploy-production:
