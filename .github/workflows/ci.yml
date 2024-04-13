@@ -13,6 +13,10 @@ on:
         required: true
         type: string
 
+env:
+  # mark:automatic-version
+  VERSION: "1.0.0"
+
 # Cancel old workflow runs if new code is pushed
 concurrency:
   group: "ci-${{ github.workflow }}-${{ github.ref }}"
@@ -42,7 +46,34 @@ jobs:
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
+  update-release-draft:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        id: update-release-draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          version: ${{ env.VERSION }}
+          commitish: ${{ github.base_ref }}
+      - name: Delete stale artifacts
+        # Build artifacts are only uploaded to the drafted release on `main` release builds, so only clear them in those cases too to prevent PRs from removing drafted release assets.
+        if: inputs.profile == 'release' && inputs.stage == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
+
+          gh release view ${{ steps.update-release-draft.outputs.tag_name }} \
+            --repo ${{ github.repository }} \
+            --json assets \
+            --jq '.assets[] | .name' \
+            | xargs -I{} gh release delete-asset ${{ steps.update-release-draft.outputs.tag_name }} {} --repo ${{ github.repository }} --yes
+    outputs:
+      tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
+
   build-artifacts:
+    needs: update-release-draft
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
@@ -50,8 +81,10 @@ jobs:
       image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
+      tag_name: ${{ needs.update-release-draft.outputs.tag_name }}
 
   build-base-perf-artifacts:
+    needs: update-release-draft
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
@@ -60,8 +93,10 @@ jobs:
       image_prefix: 'perf'
       profile: 'release'
       stage: 'debug'
+      tag_name: ${{ needs.update-release-draft.outputs.tag_name }}
 
   build-head-perf-artifacts:
+    needs: update-release-draft
     if: ${{ github.event_name == 'pull_request' }}
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
@@ -70,6 +105,7 @@ jobs:
       image_prefix: 'perf'
       profile: 'release'
       stage: 'debug'
+      tag_name: ${{ needs.update-release-draft.outputs.tag_name }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
