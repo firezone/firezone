@@ -35,15 +35,15 @@ Unlike traditional VPNs, however, Firezone has the following key differences:
 - **Open source**: All source code is available for anyone to audit on
   [GitHub](https://www.github.com/firezone/firezone).
 - **Scalable**: Firezone was designed to be horizontally scalable from the
-  start. Simply deploy more [Gateways](/kb/architecture/core-concepts#gateways)
-  to handle more traffic.
+  start. Simply deploy more
+  [Gateways](/kb/architecture/core-components#gateways) to handle more traffic.
 - **Secure**: Firezone is built on [WireGuard](https://www.wireguard.com)®, a
   fast, provably-secure VPN protocol. Firezone further builds on this security
   with ephemeral encryption keys and firewall hole-punching to limit your
   exposed attack surface.
 - **Easy to manage**: No firewall configuration or complex ACLs are required.
-  Firezone's [Policy Engine](/kb/architecture/core-concepts#policies) makes
-  access easy to manage and audit at scale.
+  Firezone's [Policy Engine](/kb/architecture/core-components#policy-engine)
+  makes access easy to manage and audit at scale.
 
 ### Key design principles
 
@@ -81,8 +81,8 @@ principles:
 
 ## What to read next
 
-- [Core concepts](/kb/architecture/core-concepts): A high-level overview of the
-  key concepts that power Firezone's access model.
+- [Core components](/kb/architecture/core-components): A high-level overview of
+  the key concepts that power Firezone's access model.
 - [Tech stack](/kb/architecture/tech-stack): Why we chose the tech we did, and
   how it all fits together.
 - [Critical sequences](/kb/architecture/critical-sequences): Sequence diagrams
@@ -90,5 +90,10 @@ principles:
 - [Security](/kb/architecture/security): Cryptographic primitives, operational
   security practices, and more.
 
-<NextStep href="/kb/architecture/core-concepts">Next: Core concepts</NextStep>
+{(<NextStep href="/kb/architecture/core-components">
+
+Next: Core components
+
+</NextStep>)}
+
 <SupportOptions />

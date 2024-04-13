@@ -1,11 +1,33 @@
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
+import Image from "next/image";
+import Link from "next/link";
 
 # Architecture: Tech Stack
 
-{(<NextStep href="/kb/architecture/critical-sequences">
+## Control plane
 
-Next: Critical sequences
+## Data plane
 
-</NextStep>)}
+### Client architecture diagram
+
+<Link
+  target="_blank"
+  href="/images/kb/architecture/tech-stack/client-architecture.png"
+>
+  <Image
+    src="/images/kb/architecture/tech-stack/client-architecture.png"
+    alt="Firezone client architecture diagram"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+## Infrastructure
+
+## Ops
+
+{(<NextStep href="/kb/architecture/critical-sequences">Next: Critical
+sequences</NextStep>)}
+
 <SupportOptions />

@@ -3,8 +3,8 @@ import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
-  title: "Architecture: Core Concepts • Firezone Docs",
-  description: "Core concepts of Firezone's architecture.",
+  title: "Architecture: Core Components • Firezone Docs",
+  description: "Core componens of Firezone's architecture.",
 };
 
 export default function Page() {

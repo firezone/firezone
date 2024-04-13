@@ -183,8 +183,8 @@ export default function KbSidebar() {
               </li>
               <li>
                 <Item
-                  href="/kb/architecture/core-concepts"
-                  label="Core concepts"
+                  href="/kb/architecture/core-components"
+                  label="Core components"
                 />
               </li>
               <li>
