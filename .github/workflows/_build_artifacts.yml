@@ -49,7 +49,7 @@ jobs:
   update-release-draft:
     runs-on: ubuntu-22.04
     concurrency:
-      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
+      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}-${{ github.job }}"
       cancel-in-progress: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
     steps:
       - uses: release-drafter/release-drafter@v6
