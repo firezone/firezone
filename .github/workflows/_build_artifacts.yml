@@ -132,6 +132,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Exclude debug builds for non-amd64 targets since they won't be used,
+        # and trying to nodejs inside cross-platform containers has issues.
+        # See https://github.com/nodejs/docker-node/issues/1946
+        # Syntax is weird because https://github.com/actions/runner/issues/1512
+        exclude:
+          - {stage: debug, arch: {platform: linux/arm/v7}}
+          - {stage: debug, arch: {platform: linux/arm64}}
+
+        stage:
+          - ${{ inputs.stage }}
         arch:
           - target: x86_64-unknown-linux-musl
             shortname: x64
@@ -196,7 +206,7 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -249,7 +259,7 @@ jobs:
           REF="${{ github.ref_name }}"
           CACHE_TAG="${REF//\//-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      - name: Build and push Docker images by digest
+      - name: Build Docker images
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -263,7 +273,7 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
           cache-to: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
-          target: ${{ inputs.stage }}
+          target: ${{ matrix.stage }}
           outputs:
             type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
