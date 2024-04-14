@@ -107,13 +107,13 @@ jobs:
           dns-failsafe, # Uses the default DNS control method
           dns-nm,
           relay-graceful-shutdown,
+          relayed-browser-relay-restart,
           relayed-curl-api-down,
           relayed-curl-api-restart,
           relayed-curl-relay-restart,
           relayed-dns-api-down,
           relayed-dns-relay-restart,
           relayed-dns,
-          relayed-browser-relay-restart,
           systemd/dns-systemd-resolved,
         ]
     steps:

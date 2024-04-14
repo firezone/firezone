@@ -73,32 +73,28 @@ ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
-FROM node:20-alpine AS node-utils
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
-COPY docker-browser-tests /docker-browser-tests
-WORKDIR /docker-browser-tests
-RUN pnpm install
-
-# used for local development
+# used as a base for dev and test
 FROM runtime as test
 
 RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq nodejs npm chromium
-COPY --from=node-utils /docker-browser-tests .
+  && apk add --no-cache iperf3 bind-tools iproute2 jq
 
 # used for local development
 FROM test AS dev
 ARG TARGET
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 
-# Build an image for GitHub Actions which includes debug asserts and test utilities
+# Build an image for GitHub Actions which includes debug asserts and more test utilities
 FROM test AS debug
 
 ARG TARGET
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/release/${PACKAGE} .`
 COPY ${PACKAGE} .
+
+RUN set -xe \
+  && apk add --no-cache nodejs npm chromium
+COPY --from=browser-tests . .
+RUN npm install
 
 # Build a production image from including a binary compiled on the host
 FROM runtime AS release

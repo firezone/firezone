@@ -1,5 +1,4 @@
-import { get_args, connectBrowser, retryOrFail } from './shared.js';
-
+import { get_args, connectBrowser, retryOrFail } from "./shared.ts";
 
 (async (): Promise<void> => {
   const args = get_args();

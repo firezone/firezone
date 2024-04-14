@@ -2,6 +2,8 @@
 
 set -euox pipefail
 
+CHROMIUM_PORT=9222
+
 function client() {
     docker compose exec -it client "$@"
 }
@@ -38,7 +40,7 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    client curl --fail "$1" > /dev/null
+    client curl --fail "$1" >/dev/null
 }
 
 function client_ping_resource() {
