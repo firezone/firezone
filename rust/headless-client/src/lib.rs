@@ -9,9 +9,9 @@
 //! Otherwise we would just make it a normal binary crate.
 
 use anyhow::Result;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::Serialize;
 use std::path::PathBuf;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 #[cfg(target_os = "linux")]
 mod linux;

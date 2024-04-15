@@ -1,4 +1,4 @@
-use super::{read_ipc_msg, write_ipc_msg, Cli, Cmd};
+use super::{Cli, Cmd};
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
@@ -8,6 +8,7 @@ use connlib_shared::{
     LoginUrl,
 };
 use firezone_cli_utils::setup_global_subscriber;
+use futures::{SinkExt, StreamExt};
 use secrecy::SecretString;
 use std::{
     future,
@@ -20,6 +21,7 @@ use tokio::{
     net::{UnixListener, UnixStream},
     signal::unix::SignalKind,
 };
+use tokio_util::codec::LengthDelimitedCodec;
 
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -204,29 +206,38 @@ async fn ipc_listen(sock_path: &Path) -> Result<()> {
             continue;
         }
 
+        let stream = IpcStream::new(stream, LengthDelimitedCodec::new());
         if let Err(error) = handle_ipc_client(stream).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
     }
 }
 
-async fn handle_ipc_client(mut stream: UnixStream) -> Result<()> {
+type IpcStream = tokio_util::codec::Framed<UnixStream, LengthDelimitedCodec>;
+
+async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
     tracing::info!("Waiting for an IPC message from the GUI...");
-    let v = read_ipc_msg(&mut stream).await?;
-    let s = String::from_utf8(v)?;
-    let decoded: String = serde_json::from_str(&s)?;
+
+    let v = stream
+        .next()
+        .await
+        .context("Error while reading IPC message")?
+        .context("IPC stream empty")?;
+    let decoded: String = serde_json::from_slice(&v)?;
 
     tracing::debug!(?decoded, "Received message");
-    write_ipc_msg(&mut stream, &"OK".to_string()).await?;
+    stream.send("OK".to_string().into()).await?;
     tracing::info!("Replied. Connection will close");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{read_ipc_msg, write_ipc_msg};
+    use super::IpcStream;
+    use futures::{SinkExt, StreamExt};
     use std::net::IpAddr;
     use tokio::net::{UnixListener, UnixStream};
+    use tokio_util::codec::LengthDelimitedCodec;
 
     const MESSAGE_ONE: &str = "message one";
     const MESSAGE_TWO: &str = "message two";
@@ -242,7 +253,7 @@ mod tests {
         let listener = UnixListener::bind(&sock_path).unwrap();
 
         let ipc_server_task = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
             let cred = stream.peer_cred().unwrap();
             // TODO: Check that the user is in the `firezone` group
             // For now, to make it work well in CI where that group isn't created,
@@ -251,24 +262,35 @@ mod tests {
             let expected_peer_uid = nix::unistd::Uid::current().as_raw();
             assert_eq!(actual_peer_uid, expected_peer_uid);
 
-            let v = read_ipc_msg(&mut stream).await.unwrap();
-            let s = String::from_utf8(v).unwrap();
-            let decoded: String = serde_json::from_str(&s).unwrap();
+            let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
+
+            let v = stream
+                .next()
+                .await
+                .expect("Error while reading IPC message")
+                .expect("IPC stream empty");
+            let decoded: String = serde_json::from_slice(&v).unwrap();
             assert_eq!(MESSAGE_ONE, decoded);
 
-            let v = read_ipc_msg(&mut stream).await.unwrap();
-            let s = String::from_utf8(v).unwrap();
-            let decoded: String = serde_json::from_str(&s).unwrap();
+            let v = stream
+                .next()
+                .await
+                .expect("Error while reading IPC message")
+                .expect("IPC stream empty");
+            let decoded: String = serde_json::from_slice(&v).unwrap();
             assert_eq!(MESSAGE_TWO, decoded);
         });
 
         tracing::info!(pid = std::process::id(), "Connecting to IPC server");
-        let mut stream = UnixStream::connect(&sock_path).await.unwrap();
-        write_ipc_msg(&mut stream, &MESSAGE_ONE.to_string())
+        let stream = UnixStream::connect(&sock_path).await.unwrap();
+        let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
+
+        stream
+            .send(serde_json::to_string(MESSAGE_ONE).unwrap().into())
             .await
             .unwrap();
-
-        write_ipc_msg(&mut stream, &MESSAGE_TWO.to_string())
+        stream
+            .send(serde_json::to_string(MESSAGE_TWO).unwrap().into())
             .await
             .unwrap();
 
