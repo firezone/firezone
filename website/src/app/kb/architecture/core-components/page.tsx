@@ -4,7 +4,7 @@ import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "Architecture: Core Components • Firezone Docs",
-  description: "Core componens of Firezone's architecture.",
+  description: "Core components of Firezone's architecture.",
 };
 
 export default function Page() {
