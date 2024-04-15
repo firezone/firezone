@@ -8,9 +8,6 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
-use anyhow::Result;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use serde::Serialize;
 use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
@@ -86,61 +83,4 @@ enum Cmd {
     Daemon,
     /// Act as a CLI-only Client, don't listen for IPC connections
     Standalone,
-}
-
-// Copied from <https://github.com/firezone/subzone>
-
-/// Reads a message from an async reader, with a 32-bit LE length prefix
-// Dead on Windows temporarily
-#[allow(dead_code)]
-async fn read_ipc_msg<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>> {
-    let mut len_buf = [0u8; 4];
-    reader.read_exact(&mut len_buf).await?;
-    let len = u32::from_le_bytes(len_buf);
-    let len = usize::try_from(len)?;
-    let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf).await?;
-    Ok(buf)
-}
-
-/// Encodes a message as JSON and writes it to an async writer, with a 32-bit LE length prefix
-///
-/// TODO: Why does this one take `T` and `read_ipc_msg` doesn't?
-// Dead on Windows temporarily
-#[allow(dead_code)]
-async fn write_ipc_msg<W: AsyncWrite + Unpin, T: Serialize>(writer: &mut W, msg: &T) -> Result<()> {
-    let buf = serde_json::to_string(msg)?;
-    let len = u32::try_from(buf.len())?.to_le_bytes();
-    writer.write_all(&len).await?;
-    writer.write_all(buf.as_bytes()).await?;
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(target_os = "windows")]
-    mod windows {
-        use crate::{read_ipc_msg, write_ipc_msg};
-
-        const MESSAGE_ONE: &str = "message one";
-
-        #[tokio::test]
-        async fn ipc_windows() {
-            // Round-trip a message to avoid dead code warnings
-            let mut buffer = vec![];
-
-            write_ipc_msg(&mut buffer, &MESSAGE_ONE.to_string())
-                .await
-                .unwrap();
-
-            let mut cursor = std::io::Cursor::new(buffer);
-            let v = read_ipc_msg(&mut cursor).await.unwrap();
-            let s = String::from_utf8(v).unwrap();
-            let decoded: String = serde_json::from_str(&s).unwrap();
-            assert_eq!(decoded, MESSAGE_ONE);
-
-            // TODO: Windows process splitting
-            // <https://github.com/firezone/firezone/issues/3712>
-        }
-    }
 }
