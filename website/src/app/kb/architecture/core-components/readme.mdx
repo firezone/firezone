@@ -1,6 +1,7 @@
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
 import Image from "next/image";
+import Link from "next/link";
 import Alert from "@/components/DocsAlert";
 
 # Architecture: Core Components
@@ -19,12 +20,18 @@ Components in Firezone can be divided into two categories:
 1. **Firezone-managed**: Components that we host and operate for you.
 1. **User-managed**: Components you host and/or operate yourself.
 
-<Image
-  src="/images/kb/architecture/core-components/component-diagram.png"
-  alt="Firezone core component diagram"
-  width={1200}
-  height={1200}
-/>
+<Link
+  target="_blank"
+  href="/images/kb/architecture/core-components/component-diagram.svg"
+>
+  <Image
+    src="/images/kb/architecture/core-components/component-diagram.svg"
+    alt="Firezone core component diagram"
+    width={1200}
+    height={1200}
+    className="p-16"
+  />
+</Link>
 
 Each component is described in more detail below.
 
