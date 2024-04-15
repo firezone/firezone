@@ -224,8 +224,7 @@ async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
         .await
         .context("Error while reading IPC message")?
         .context("IPC stream empty")?;
-    let s = String::from_utf8(v.to_vec())?;
-    let decoded: String = serde_json::from_str(&s)?;
+    let decoded: String = serde_json::from_slice(&v)?;
 
     tracing::debug!(?decoded, "Received message");
     stream.send("OK".to_string().into()).await?;
@@ -271,8 +270,7 @@ mod tests {
                 .await
                 .expect("Error while reading IPC message")
                 .expect("IPC stream empty");
-            let s = String::from_utf8(v.to_vec()).unwrap();
-            let decoded: String = serde_json::from_str(&s).unwrap();
+            let decoded: String = serde_json::from_slice(&v).unwrap();
             assert_eq!(MESSAGE_ONE, decoded);
 
             let v = stream
@@ -280,8 +278,7 @@ mod tests {
                 .await
                 .expect("Error while reading IPC message")
                 .expect("IPC stream empty");
-            let s = String::from_utf8(v.to_vec()).unwrap();
-            let decoded: String = serde_json::from_str(&s).unwrap();
+            let decoded: String = serde_json::from_slice(&v).unwrap();
             assert_eq!(MESSAGE_TWO, decoded);
         });
 
