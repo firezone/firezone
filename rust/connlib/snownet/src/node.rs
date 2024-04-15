@@ -313,7 +313,7 @@ where
             .ok_or(Error::NotConnected)?;
 
         // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
-        let socket = conn.peer_socket.ok_or(Error::NotConnected)?;
+        let socket = conn.socket().ok_or(Error::NotConnected)?;
 
         let (header, payload) = self.buffer.as_mut().split_at_mut(4);
 
@@ -506,14 +506,14 @@ where
                 Some(self.rate_limiter.clone()),
             ),
             next_timer_update: now,
-            peer_socket: None,
-            possible_sockets: Default::default(),
             stats: Default::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
             intent_sent_at,
-            is_failed: false,
             signalling_completed_at: now,
             remote_pub_key: remote,
+            state: ConnectionState::Connecting {
+                possible_sockets: HashSet::default(),
+            },
         }
     }
 
@@ -669,7 +669,7 @@ where
         for (id, conn) in self.connections.iter_established_mut() {
             let _span = info_span!("connection", %id).entered();
 
-            if !conn.accepts(from) {
+            if !conn.accepts(&from) {
                 continue;
             }
 
@@ -967,6 +967,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
 impl<TId, RId> Connections<TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: PartialEq + Eq + Hash + fmt::Debug + Copy,
 {
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>) {
         self.initial.retain(|id, conn| {
@@ -979,7 +980,7 @@ where
         });
 
         self.established.retain(|id, conn| {
-            if conn.is_failed {
+            if conn.is_failed() {
                 events.push_back(Event::ConnectionFailed(*id));
                 return false;
             }
@@ -1197,24 +1198,48 @@ impl InitialConnection {
 struct Connection<RId> {
     agent: IceAgent,
 
-    remote_pub_key: PublicKey,
-
     tunnel: Tunn,
+    remote_pub_key: PublicKey,
     next_timer_update: Instant,
 
-    // When this is `Some`, we are connected.
-    peer_socket: Option<PeerSocket<RId>>,
-    // Socket addresses from which we might receive data (even before we are connected).
-    possible_sockets: HashSet<SocketAddr>,
+    state: ConnectionState<RId>,
 
     stats: ConnectionStats,
+    intent_sent_at: Instant,
+    signalling_completed_at: Instant,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
-    intent_sent_at: Instant,
+}
 
-    is_failed: bool,
+enum ConnectionState<RId> {
+    /// We are still running ICE to figure out, which socket to use to send data.
+    Connecting {
+        // Socket addresses from which we might receive data (even before we are connected).
+        possible_sockets: HashSet<SocketAddr>,
+    },
+    /// A socket has been nominated.
+    Connected {
+        /// Our nominated socket.
+        peer_socket: PeerSocket<RId>,
+        /// Other addresses that we might see traffic from (e.g. STUN messages during roaming).
+        possible_sockets: HashSet<SocketAddr>,
+    },
+    /// The connection failed in an unrecoverable way and will be GC'd.
+    Failed,
+}
 
-    signalling_completed_at: Instant,
+impl<RId> ConnectionState<RId> {
+    fn add_possible_socket(&mut self, socket: SocketAddr) {
+        let possible_sockets = match self {
+            ConnectionState::Connecting { possible_sockets } => possible_sockets,
+            ConnectionState::Connected {
+                possible_sockets, ..
+            } => possible_sockets,
+            ConnectionState::Failed => return,
+        };
+
+        possible_sockets.insert(socket);
+    }
 }
 
 /// The socket of the peer we are connected to.
@@ -1239,14 +1264,22 @@ where
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
     /// We already want to accept that traffic and not throw it away.
     #[must_use]
-    fn accepts(&self, addr: SocketAddr) -> bool {
-        let from_connected_remote = self.peer_socket.is_some_and(|r| match r {
-            PeerSocket::Direct { dest, .. } => dest == addr,
-            PeerSocket::Relay { dest, .. } => dest == addr,
-        });
-        let from_possible_remote = self.possible_sockets.contains(&addr);
+    fn accepts(&self, addr: &SocketAddr) -> bool {
+        match &self.state {
+            ConnectionState::Connecting { possible_sockets } => possible_sockets.contains(addr),
+            ConnectionState::Connected {
+                peer_socket,
+                possible_sockets,
+            } => {
+                let from_nominated = match peer_socket {
+                    PeerSocket::Direct { dest, .. } => dest == addr,
+                    PeerSocket::Relay { dest, .. } => dest == addr,
+                };
 
-        from_connected_remote || from_possible_remote
+                from_nominated || possible_sockets.contains(addr)
+            }
+            ConnectionState::Failed => false,
+        }
     }
 
     fn wg_handshake_complete(&self) -> bool {
@@ -1274,9 +1307,25 @@ where
             },
         };
 
-        if self.peer_socket != Some(remote_socket) {
-            tracing::debug!(old = ?self.peer_socket, new = ?remote_socket, "Updating remote socket from WG activity");
-            self.peer_socket = Some(remote_socket);
+        match &self.state {
+            ConnectionState::Connecting { possible_sockets } => {
+                tracing::debug!(old = ?Option::<()>::None, new = ?remote_socket, "Updating remote socket from WG activity");
+                self.state = ConnectionState::Connected {
+                    peer_socket: remote_socket,
+                    possible_sockets: possible_sockets.clone(),
+                }
+            }
+            ConnectionState::Connected {
+                peer_socket,
+                possible_sockets,
+            } if peer_socket != &remote_socket => {
+                tracing::debug!(old = ?peer_socket, new = ?remote_socket, "Updating remote socket from WG activity");
+                self.state = ConnectionState::Connected {
+                    peer_socket: remote_socket,
+                    possible_sockets: possible_sockets.clone(),
+                }
+            }
+            ConnectionState::Connected { .. } | ConnectionState::Failed => {}
         }
 
         remote_socket
@@ -1317,7 +1366,7 @@ where
             .is_some_and(|timeout| now >= timeout)
         {
             tracing::info!("Connection failed (no candidates received)");
-            self.is_failed = true;
+            self.state = ConnectionState::Failed;
             return;
         }
 
@@ -1327,7 +1376,7 @@ where
             self.next_timer_update = now + Duration::from_secs(1);
 
             // Don't update wireguard timers until we are connected.
-            let Some(peer_socket) = self.peer_socket else {
+            let Some(peer_socket) = self.socket() else {
                 return;
             };
 
@@ -1342,7 +1391,7 @@ where
                 TunnResult::Done => {}
                 TunnResult::Err(WireGuardError::ConnectionExpired) => {
                     tracing::info!("Connection failed (wireguard tunnel expired)");
-                    self.is_failed = true;
+                    self.state = ConnectionState::Failed;
                 }
                 TunnResult::Err(e) => {
                     tracing::warn!(?e);
@@ -1359,11 +1408,11 @@ where
         while let Some(event) = self.agent.poll_event() {
             match event {
                 IceAgentEvent::DiscoveredRecv { source, .. } => {
-                    self.possible_sockets.insert(source);
+                    self.state.add_possible_socket(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
                     tracing::info!("Connection failed (ICE timeout)");
-                    self.is_failed = true;
+                    self.state = ConnectionState::Failed;
                 }
                 IceAgentEvent::NominatedSend {
                     destination,
@@ -1404,12 +1453,36 @@ where
                         }
                     };
 
-                    if self.peer_socket != Some(remote_socket) {
-                        tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
-                        self.peer_socket = Some(remote_socket);
+                    match &self.state {
+                        ConnectionState::Connecting { possible_sockets } => {
+                            tracing::info!(old = ?Option::<()>::None, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
+                            self.state = ConnectionState::Connected {
+                                peer_socket: remote_socket,
+                                possible_sockets: possible_sockets.clone(),
+                            };
 
-                        self.invalidate_candiates(allocations);
-                        self.force_handshake(allocations, transmits, now);
+                            self.invalidate_candiates(allocations);
+                            self.force_handshake(allocations, transmits, now);
+                        }
+                        ConnectionState::Connected {
+                            peer_socket,
+                            possible_sockets,
+                        } => {
+                            debug_assert_ne!(
+                                peer_socket, &remote_socket,
+                                "nominated to be for a different socket than what we already have"
+                            ); // TODO: This is not true for as long as we promote from WG messages but we want to remove that.
+
+                            tracing::info!(old = ?peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
+                            self.state = ConnectionState::Connected {
+                                peer_socket: remote_socket,
+                                possible_sockets: possible_sockets.clone(),
+                            };
+
+                            self.invalidate_candiates(allocations);
+                            self.force_handshake(allocations, transmits, now);
+                        }
+                        ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     }
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1553,8 +1626,8 @@ where
         };
 
         let socket = self
-            .peer_socket
-            .expect("cannot force handshake without socket");
+            .socket()
+            .expect("cannot force handshake while not connected");
 
         transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
     }
@@ -1565,13 +1638,16 @@ where
     /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
     #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
     fn invalidate_candiates(&mut self, allocations: &HashMap<RId, Allocation<RId>>) {
-        let socket = match self.peer_socket {
-            Some(PeerSocket::Direct { source, .. }) => source,
-            Some(PeerSocket::Relay { relay, .. }) => match allocations.get(&relay) {
-                Some(alloc) => alloc.server(),
+        let Some(socket) = self.socket() else {
+            return;
+        };
+
+        let socket = match socket {
+            PeerSocket::Direct { source, .. } => source,
+            PeerSocket::Relay { relay, .. } => match allocations.get(&relay) {
+                Some(r) => r.server(),
                 None => return,
             },
-            None => return,
         };
 
         let Some(nominated) = self.local_candidate(socket).cloned() else {
@@ -1598,6 +1674,17 @@ where
             .local_candidates()
             .iter()
             .find(|c| c.addr() == source)
+    }
+
+    fn socket(&self) -> Option<PeerSocket<RId>> {
+        match self.state {
+            ConnectionState::Connected { peer_socket, .. } => Some(peer_socket),
+            ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
+        }
+    }
+
+    fn is_failed(&self) -> bool {
+        matches!(self.state, ConnectionState::Failed)
     }
 }
 
