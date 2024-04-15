@@ -273,6 +273,12 @@ defmodule Web.AuthTest do
         |> Phoenix.ConnTest.response(200)
 
       assert response =~ "Sign in successful"
+
+      assert response
+             |> Floki.attribute("meta", "content")
+             |> Enum.any?(fn value ->
+               &(&1 == "0; url=/#{account.slug}/sign_in/client_redirect")
+             end)
     end
 
     test "redirects admin users to the sign in success page for client contexts", %{
@@ -297,6 +303,12 @@ defmodule Web.AuthTest do
         |> Phoenix.ConnTest.response(200)
 
       assert response =~ "Sign in successful"
+
+      assert response
+             |> Floki.attribute("meta", "content")
+             |> Enum.any?(fn value ->
+               &(&1 == "0; url=/#{account.slug}/sign_in/client_redirect")
+             end)
     end
 
     test "redirects admin user to the post-login path for browser contexts", %{
@@ -773,6 +785,12 @@ defmodule Web.AuthTest do
 
       assert response = response(conn, 200)
       assert response =~ "Sign in successful"
+
+      assert response
+             |> Floki.attribute("meta", "content")
+             |> Enum.any?(fn value ->
+               &(&1 == "0; url=/#{account.slug}/sign_in/client_redirect")
+             end)
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do

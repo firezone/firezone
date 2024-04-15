@@ -132,13 +132,13 @@ defmodule Web.Auth do
       ]
       |> Enum.reject(&is_nil(elem(&1, 1)))
 
-    redirect_url = ~p"/#{conn.assigns.account.slug}/sign_in/deep_link"
+    redirect_url = ~p"/#{conn.assigns.account.slug}/sign_in/client_redirect"
 
     conn
-    |> put_client_auth_cookie(client_auth_data)
+    |> put_client_auth_data_to_cookie(client_auth_data)
     |> Phoenix.Controller.put_root_layout(false)
     |> Phoenix.Controller.put_view(Web.SignInHTML)
-    |> Phoenix.Controller.render("deep_link_redirect.html",
+    |> Phoenix.Controller.render("client_redirect.html",
       redirect_url: redirect_url,
       layout: false
     )
@@ -507,19 +507,20 @@ defmodule Web.Auth do
     %{}
   end
 
-  def put_client_auth_state_from_cookie(%Plug.Conn{} = conn, _) do
+  def get_client_auth_data_from_cookie(%Plug.Conn{} = conn) do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@client_auth_cookie_name])
 
-    case cookie = conn.cookies[@client_auth_cookie_name] do
-      [actor_name: _, fragment: _, identity_provider_identifier: _, state: _] ->
-        Plug.Conn.assign(conn, :client_auth_data, cookie)
+    case conn.cookies[@client_auth_cookie_name] do
+      [actor_name: _, fragment: _, identity_provider_identifier: _, state: _] = client_auth_data ->
+        {:ok, client_auth_data, conn}
 
       _ ->
-        conn
-        |> Phoenix.Controller.put_flash(:error, "Client authentication failed. Please try again.")
-        |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
-        |> Plug.Conn.halt()
+        {:error, conn}
     end
+  end
+
+  defp put_client_auth_data_to_cookie(conn, state) do
+    Plug.Conn.put_resp_cookie(conn, @client_auth_cookie_name, state, @client_auth_cookie_options)
   end
 
   ###########################
@@ -671,9 +672,5 @@ defmodule Web.Auth do
       end
 
     real_ip || peer_data.address
-  end
-
-  defp put_client_auth_cookie(conn, state) do
-    Plug.Conn.put_resp_cookie(conn, @client_auth_cookie_name, state, @client_auth_cookie_options)
   end
 end

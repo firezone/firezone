@@ -1,7 +1,7 @@
 defmodule Web.SignInHTML do
   use Web, :html
 
-  def deep_link_redirect(assigns) do
+  def client_redirect(assigns) do
     ~H"""
     <!DOCTYPE html>
     <html lang="en" style="scrollbar-gutter: stable;">
@@ -47,6 +47,29 @@ defmodule Web.SignInHTML do
         </main>
       </body>
     </html>
+    """
+  end
+
+  def client_auth_error(assigns) do
+    ~H"""
+    <main class="h-auto pt-16">
+      <section>
+        <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
+          <.logo />
+
+          <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
+            <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
+              <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
+                <span>
+                  Sign in error!
+                </span>
+              </h1>
+              <p class="text-center">Please close this window and start the sign in process again.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
     """
   end
 end

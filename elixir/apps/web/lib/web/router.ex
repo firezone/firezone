@@ -32,10 +32,6 @@ defmodule Web.Router do
     plug :ensure_authenticated_actor_type, :account_admin_user
   end
 
-  pipeline :client_auth do
-    plug :put_client_auth_state_from_cookie
-  end
-
   scope "/browser", Web do
     pipe_through :public
 
@@ -91,13 +87,10 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :account, :client_auth]
-
-    get "/sign_in/deep_link", SignInController, :deeplink
-  end
-
-  scope "/:account_id_or_slug", Web do
     pipe_through [:browser, :account]
+
+    get "/sign_in/client_redirect", SignInController, :client_redirect
+    get "/sign_in/client_auth_error", SignInController, :client_auth_error
 
     scope "/sign_in/providers/:provider_id" do
       # UserPass
