@@ -247,7 +247,7 @@ defmodule Web.Sites.NewToken do
 
   defp manual_command(env) do
     """
-    #{Enum.map_join(env, "\n", fn {key, value} -> "#{key}=#{value}" end)})
+    #{Enum.map_join(env, "\n", fn {key, value} -> "#{key}=#{value}" end)}
     """
   end
 
