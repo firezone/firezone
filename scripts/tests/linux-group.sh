@@ -5,6 +5,16 @@
 
 set -euo pipefail
 
+BINARY_NAME=firezone-linux-client
+
+# Copy the Linux Client out of its container
+docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
+chmod u+x "$BINARY_NAME"
+sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
+
+sudo cp scripts/tests/systemd/firezone-client.service /usr/lib/systemd/system/
+systemd-analyze security firezone-client
+
 FZ_GROUP="firezone"
 
 sudo groupadd "$FZ_GROUP"
