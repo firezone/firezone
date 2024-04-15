@@ -30,6 +30,7 @@ pub async fn run() -> Result<()> {
 
     match cli.command() {
         Cmd::Daemon => run_daemon(cli).await,
+        Cmd::DebugIpcClient => run_debug_ipc_client(cli).await,
         Cmd::Standalone => run_standalone(cli).await,
     }
 }
@@ -174,22 +175,35 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-async fn run_daemon(_cli: Cli) -> Result<()> {
-    let sock_path = dirs::runtime_dir()
+fn sock_path() -> Result<PathBuf> {
+    let path = dirs::runtime_dir()
         .context("Failed to get `runtime_dir`")?
         .join("dev.firezone.client_ipc");
-    ipc_listen(&sock_path).await
+    Ok(path)
+}
+
+async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
+    tracing::info!(pid = std::process::id(), "Connecting to IPC server");
+    let stream = UnixStream::connect(&sock_path()?).await?;
+    let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
+
+    stream.send(serde_json::to_string("Hello")?.into()).await?;
+    Ok(())
+}
+
+async fn run_daemon(_cli: Cli) -> Result<()> {
+    ipc_listen(&sock_path()?).await
 }
 
 async fn ipc_listen(sock_path: &Path) -> Result<()> {
     // Remove the socket if a previous run left it there
     tokio::fs::remove_file(sock_path).await.ok();
-    let listener = UnixListener::bind(sock_path).unwrap();
+    let listener = UnixListener::bind(sock_path)?;
 
     loop {
         tracing::info!("Listening for GUI to connect over IPC...");
-        let (stream, _) = listener.accept().await.unwrap();
-        let cred = stream.peer_cred().unwrap();
+        let (stream, _) = listener.accept().await?;
+        let cred = stream.peer_cred()?;
         tracing::info!(
             uid = cred.uid(),
             gid = cred.gid(),
