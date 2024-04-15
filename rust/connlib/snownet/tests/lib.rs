@@ -111,7 +111,7 @@ fn reconnect_discovers_new_interface() {
     }
 
     alice.switch_network("10.0.0.1:80");
-    alice.node.reconnect(clock.now);
+    alice.span.in_scope(|| alice.node.reconnect(clock.now));
 
     // Make some progress.
     for _ in 0..10 {
