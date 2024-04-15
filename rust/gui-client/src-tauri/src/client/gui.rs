@@ -646,13 +646,14 @@ impl Controller {
                 bail!("Impossible error: `Quit` should be handled before this")
             }
             Req::TunnelReady => {
+                if !self.tunnel_ready {
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
-
-                os::show_notification(
-                    "Firezone connected",
-                    "You are now signed in and able to access resources.",
-                )?;
             }
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.tag_name);
