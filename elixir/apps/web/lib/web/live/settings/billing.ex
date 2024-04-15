@@ -219,7 +219,7 @@ defmodule Web.Settings.Billing do
             <.link class={link_style()} href="https://discourse.firez.one/">
               Discourse
             </.link>
-            or <.link class={link_style()} href="https://firez.slack.com/">Slack</.link>.
+            or <.link class={link_style()} href="https://discord.gg/DY8gxpSgep">Discord</.link>.
             Priority email and dedicated Slack support options are available on paid plans.
           </span>
         </div>

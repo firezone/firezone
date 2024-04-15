@@ -701,7 +701,7 @@ export default function PlanTable() {
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">Community Slack</td>
+          <td className="gmx-1 py-4">Community Discord</td>
           <td className="gmx-1 py-4">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
