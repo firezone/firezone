@@ -6,6 +6,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use core::fmt;
 use rand::random;
 use std::{
     collections::{HashMap, VecDeque},
@@ -35,7 +36,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 ///
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
 #[derive(Debug)]
-pub struct Allocation {
+pub struct Allocation<RId> {
+    id: RId,
+
     server: SocketAddr,
 
     /// If present, the last address the relay observed for us.
@@ -70,16 +73,19 @@ pub struct Allocation {
 /// Note that any combination of IP versions is possible here.
 /// We might have allocated an IPv6 address on a TURN server that we are talking to IPv4 and vice versa.
 #[derive(Debug, Clone, Copy)]
-pub struct Socket {
-    /// The server this socket was allocated on.
-    server: SocketAddr,
+pub struct Socket<RId> {
+    /// The ID of the relay.
+    id: RId,
     /// The address of the socket that was allocated.
     address: SocketAddr,
 }
 
-impl Socket {
-    pub fn server(&self) -> SocketAddr {
-        self.server
+impl<RId> Socket<RId>
+where
+    RId: Copy,
+{
+    pub fn id(&self) -> RId {
+        self.id
     }
 
     pub fn address(&self) -> SocketAddr {
@@ -87,8 +93,12 @@ impl Socket {
     }
 }
 
-impl Allocation {
+impl<RId> Allocation<RId>
+where
+    RId: Copy + fmt::Debug,
+{
     pub fn new(
+        id: RId,
         server: SocketAddr,
         username: Username,
         password: String,
@@ -96,6 +106,7 @@ impl Allocation {
         now: Instant,
     ) -> Self {
         let mut allocation = Self {
+            id,
             server,
             last_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
@@ -134,11 +145,13 @@ impl Allocation {
     /// This will implicitly trigger a [`refresh`](Allocation::refresh) to ensure these credentials are valid.
     pub fn update_credentials(
         &mut self,
+        socket: SocketAddr,
         username: Username,
         password: &str,
         realm: Realm,
         now: Instant,
     ) {
+        self.server = socket;
         self.username = username;
         self.realm = realm;
         self.password = password.to_owned();
@@ -392,7 +405,7 @@ impl Allocation {
         from: SocketAddr,
         packet: &'p [u8],
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
+    ) -> Option<(SocketAddr, &'p [u8], Socket<RId>)> {
         if from != self.server {
             return None;
         }
@@ -534,7 +547,7 @@ impl Allocation {
     }
 
     pub fn encode_to_slice(
-        &mut self,
+        &self,
         peer: SocketAddr,
         packet: &[u8],
         header: &mut [u8],
@@ -595,24 +608,28 @@ impl Allocation {
         is_ip4 || is_ip6
     }
 
-    pub fn ip4_socket(&self) -> Option<Socket> {
+    pub fn server(&self) -> SocketAddr {
+        self.server
+    }
+
+    pub fn ip4_socket(&self) -> Option<Socket<RId>> {
         let address = self.ip4_allocation.as_ref().map(|c| c.addr())?;
 
         debug_assert!(address.is_ipv4());
 
         Some(Socket {
-            server: self.server,
+            id: self.id,
             address,
         })
     }
 
-    pub fn ip6_socket(&self) -> Option<Socket> {
+    pub fn ip6_socket(&self) -> Option<Socket<RId>> {
         let address = self.ip6_allocation.as_ref().map(|c| c.addr())?;
 
         debug_assert!(address.is_ipv6());
 
         Some(Socket {
-            server: self.server,
+            id: self.id,
             address,
         })
     }
@@ -1080,6 +1097,7 @@ mod tests {
     const PEER2_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 20000);
 
     const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
+    const RELAY2: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 3478);
     const RELAY_ADDR_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
     const RELAY_ADDR_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 9999);
 
@@ -1909,6 +1927,23 @@ mod tests {
         )
     }
 
+    #[test]
+    fn new_address_is_used_for_new_messages() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test(now).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
+
+        allocation.update_credentials(
+            RELAY2,
+            allocation.username.clone(),
+            &allocation.password.clone(),
+            allocation.realm.clone(),
+            now,
+        );
+
+        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY2)
+    }
+
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
         Channel {
             peer,
@@ -2007,9 +2042,10 @@ mod tests {
         message.get_attribute::<XorPeerAddress>().unwrap().address()
     }
 
-    impl Allocation {
-        fn for_test(start: Instant) -> Allocation {
+    impl Allocation<u64> {
+        fn for_test(start: Instant) -> Self {
             Allocation::new(
+                1,
                 RELAY,
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),
@@ -2044,6 +2080,7 @@ mod tests {
 
         fn refresh_with_same_credentials(&mut self) {
             self.update_credentials(
+                self.server,
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz",
                 Realm::new("firezone".to_owned()).unwrap(),

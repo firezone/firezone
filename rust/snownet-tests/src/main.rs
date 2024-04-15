@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
         .context("Failed to parse `TURNERVER`")?
         .map(|ip| {
             (
+                1,
                 SocketAddr::new(ip, 3478),
                 "2000000000:client".to_owned(), // TODO: Use different credentials per role.
                 "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
@@ -76,7 +77,7 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut pool = ClientNode::<u64>::new(private_key);
+            let mut pool = ClientNode::<u64, u64>::new(private_key);
 
             let offer = pool.new_connection(
                 1,
@@ -161,7 +162,7 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut pool = ServerNode::<u64>::new(private_key);
+            let mut pool = ServerNode::<u64, u64>::new(private_key);
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)
@@ -334,7 +335,7 @@ impl FromStr for Role {
 
 struct Eventloop<T> {
     socket: UdpSocket,
-    pool: Node<T, u64>,
+    pool: Node<T, u64, u64>,
     timeout: BoxFuture<'static, Instant>,
     candidate_rx: mpsc::Receiver<wire::Candidate>,
     read_buffer: Box<[u8; MAX_UDP_SIZE]>,
@@ -344,7 +345,7 @@ struct Eventloop<T> {
 impl<T> Eventloop<T> {
     fn new(
         socket: UdpSocket,
-        pool: Node<T, u64>,
+        pool: Node<T, u64, u64>,
         candidate_rx: mpsc::Receiver<wire::Candidate>,
     ) -> Self {
         Self {

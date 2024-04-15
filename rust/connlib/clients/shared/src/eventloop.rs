@@ -179,6 +179,7 @@ where
             IngressMessages::Init(InitClient {
                 interface,
                 resources,
+                relays,
             }) => {
                 if let Err(e) = self.tunnel.set_new_interface_config(interface) {
                     tracing::warn!("Failed to set interface on tunnel: {e}");
@@ -187,6 +188,7 @@ where
 
                 tracing::info!("Firezone Started!");
                 let _ = self.tunnel.set_resources(resources);
+                self.tunnel.upsert_relays(relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();

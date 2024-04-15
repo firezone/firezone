@@ -16,6 +16,8 @@ use tracing_subscriber::util::SubscriberInitExt;
 #[test]
 fn smoke_direct() {
     let _guard = setup_tracing();
+    let firewall = Firewall::default();
+    let mut clock = Clock::new();
 
     let (alice, bob) = alice_and_bob();
 
@@ -23,10 +25,8 @@ fn smoke_direct() {
         TestNode::new(info_span!("Alice"), alice, "1.1.1.1:80").with_primary_as_host_candidate();
     let mut bob =
         TestNode::new(info_span!("Bob"), bob, "1.1.1.2:80").with_primary_as_host_candidate();
-    let firewall = Firewall::default();
-    let mut clock = Clock::new();
 
-    handshake(&mut alice, &mut bob, &[], &clock);
+    handshake(&mut alice, &mut bob, &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
@@ -40,20 +40,23 @@ fn smoke_direct() {
 #[test]
 fn smoke_relayed() {
     let _guard = setup_tracing();
-
-    let (alice, bob) = alice_and_bob();
-
-    let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
-    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
+    let mut clock = Clock::new();
     let firewall = Firewall::default()
         .with_block_rule("1.1.1.1:80", "2.2.2.2:80")
         .with_block_rule("2.2.2.2:80", "1.1.1.1:80");
-    let mut clock = Clock::new();
 
-    let mut relays = [relay];
+    let (alice, bob) = alice_and_bob();
 
-    handshake(&mut alice, &mut bob, &relays, &clock);
+    let mut relays = [TestRelay::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        debug_span!("Roger"),
+    )];
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
+        .with_relays(&mut relays, clock.now);
+    let mut bob =
+        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
+
+    handshake(&mut alice, &mut bob, &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
@@ -67,18 +70,21 @@ fn smoke_relayed() {
 #[test]
 fn reconnect_discovers_new_interface() {
     let _guard = setup_tracing();
+    let mut clock = Clock::new();
+    let firewall = Firewall::default();
 
     let (alice, bob) = alice_and_bob();
 
-    let relay = TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger"));
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80");
-    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80");
-    let firewall = Firewall::default();
-    let mut clock = Clock::new();
+    let mut relays = [TestRelay::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        debug_span!("Roger"),
+    )];
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
+        .with_relays(&mut relays, clock.now);
+    let mut bob =
+        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
 
-    let mut relays = [relay];
-
-    handshake(&mut alice, &mut bob, &relays, &clock);
+    handshake(&mut alice, &mut bob, &clock);
 
     loop {
         if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
@@ -177,11 +183,10 @@ fn answer_after_stale_connection_does_not_panic() {
 fn only_generate_candidate_event_after_answer() {
     let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
 
-    let mut alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
-
+    let mut alice = ClientNode::<u64, u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
     alice.add_local_host_candidate(local_candidate).unwrap();
 
-    let mut bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    let mut bob = ServerNode::<u64, u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     let offer = alice.new_connection(
         1,
@@ -219,12 +224,11 @@ fn only_generate_candidate_event_after_answer() {
 
 #[test]
 fn second_connection_with_same_relay_reuses_allocation() {
-    let mut alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
-
-    let _ = alice.new_connection(
+    let mut alice = ClientNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    _ = alice.new_connection(
         1,
         HashSet::new(),
-        HashSet::from([relay("user1", "pass1", "realm1")]),
+        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
         Instant::now(),
         Instant::now(),
     );
@@ -236,7 +240,7 @@ fn second_connection_with_same_relay_reuses_allocation() {
     let _ = alice.new_connection(
         2,
         HashSet::new(),
-        HashSet::from([relay("user1", "pass1", "realm1")]),
+        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
         Instant::now(),
         Instant::now(),
     );
@@ -252,14 +256,18 @@ fn setup_tracing() -> tracing::subscriber::DefaultGuard {
         .set_default()
 }
 
-fn alice_and_bob() -> (ClientNode<u64>, ServerNode<u64>) {
-    let alice = ClientNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
-    let bob = ServerNode::<u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
+fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
+    let alice = ClientNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
+    let bob = ServerNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
     (alice, bob)
 }
 
-fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Instant) -> Answer {
+fn send_offer(
+    alice: &mut ClientNode<u64, u64>,
+    bob: &mut ServerNode<u64, u64>,
+    now: Instant,
+) -> Answer {
     let offer = alice.new_connection(1, HashSet::new(), HashSet::new(), Instant::now(), now);
 
     bob.accept_connection(
@@ -272,8 +280,14 @@ fn send_offer(alice: &mut ClientNode<u64>, bob: &mut ServerNode<u64>, now: Insta
     )
 }
 
-fn relay(username: &str, pass: &str, realm: &str) -> (SocketAddr, String, String, String) {
+fn relay(
+    id: u64,
+    username: &str,
+    pass: &str,
+    realm: &str,
+) -> (u64, SocketAddr, String, String, String) {
     (
+        id,
         RELAY,
         username.to_owned(),
         pass.to_owned(),
@@ -520,18 +534,18 @@ impl TestRelay {
 }
 
 enum EitherNode {
-    Server(ServerNode<u64>),
-    Client(ClientNode<u64>),
+    Server(ServerNode<u64, u64>),
+    Client(ClientNode<u64, u64>),
 }
 
-impl From<ClientNode<u64>> for EitherNode {
-    fn from(value: ClientNode<u64>) -> Self {
+impl From<ClientNode<u64, u64>> for EitherNode {
+    fn from(value: ClientNode<u64, u64>) -> Self {
         Self::Client(value)
     }
 }
 
-impl From<ServerNode<u64>> for EitherNode {
-    fn from(value: ServerNode<u64>) -> Self {
+impl From<ServerNode<u64, u64>> for EitherNode {
+    fn from(value: ServerNode<u64, u64>) -> Self {
         Self::Server(value)
     }
 }
@@ -586,14 +600,14 @@ impl EitherNode {
         }
     }
 
-    fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64>> {
+    fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64, u64>> {
         match self {
             EitherNode::Server(_) => None,
             EitherNode::Client(c) => Some(c),
         }
     }
 
-    fn as_server_mut(&mut self) -> Option<&mut ServerNode<u64>> {
+    fn as_server_mut(&mut self) -> Option<&mut ServerNode<u64, u64>> {
         match self {
             EitherNode::Server(s) => Some(s),
             EitherNode::Client(_) => None,
@@ -642,6 +656,36 @@ impl TestNode {
             local: vec![primary],
             events: Default::default(),
         }
+    }
+
+    fn with_relays(mut self, relays: &mut [TestRelay], now: Instant) -> Self {
+        let username = match self.node {
+            EitherNode::Server(_) => "server",
+            EitherNode::Client(_) => "client",
+        };
+
+        let turn_servers = relays
+            .iter()
+            .enumerate()
+            .map(|(idx, relay)| {
+                let (username, password) = relay.make_credentials(username);
+
+                (
+                    idx as u64,
+                    relay.listen_addr,
+                    username,
+                    password,
+                    "firezone".to_owned(),
+                )
+            })
+            .collect::<HashSet<_>>();
+
+        match &mut self.node {
+            EitherNode::Server(s) => s.upsert_turn_servers(&turn_servers, now),
+            EitherNode::Client(c) => c.upsert_turn_servers(&turn_servers, now),
+        }
+
+        self
     }
 
     fn switch_network(&mut self, new_primary: &str) {
@@ -742,26 +786,15 @@ impl TestNode {
     }
 }
 
-fn handshake(client: &mut TestNode, server: &mut TestNode, relays: &[TestRelay], clock: &Clock) {
+fn handshake(client: &mut TestNode, server: &mut TestNode, clock: &Clock) {
     let client_node = &mut client.node.as_client_mut().unwrap();
     let server_node = &mut server.node.as_server_mut().unwrap();
-
-    let client_credentials = relays.iter().map(|relay| {
-        let (username, password) = relay.make_credentials("client");
-
-        (relay.listen_addr, username, password, "firezone".to_owned())
-    });
-    let server_credentials = relays.iter().map(|relay| {
-        let (username, password) = relay.make_credentials("client");
-
-        (relay.listen_addr, username, password, "firezone".to_owned())
-    });
 
     let offer = client.span.in_scope(|| {
         client_node.new_connection(
             1,
             HashSet::default(),
-            HashSet::from_iter(client_credentials),
+            HashSet::default(),
             clock.now,
             clock.now,
         )
@@ -772,7 +805,7 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, relays: &[TestRelay],
             offer,
             client_node.public_key(),
             HashSet::default(),
-            HashSet::from_iter(server_credentials),
+            HashSet::default(),
             clock.now,
         )
     });

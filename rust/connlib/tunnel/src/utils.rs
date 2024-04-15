@@ -1,5 +1,5 @@
 use crate::REALM;
-use connlib_shared::messages::Relay;
+use connlib_shared::messages::{Relay, RelayId};
 use std::{collections::HashSet, net::SocketAddr, time::Instant};
 
 pub fn stun(relays: &[Relay], predicate: impl Fn(&SocketAddr) -> bool) -> HashSet<SocketAddr> {
@@ -19,12 +19,13 @@ pub fn stun(relays: &[Relay], predicate: impl Fn(&SocketAddr) -> bool) -> HashSe
 pub fn turn(
     relays: &[Relay],
     predicate: impl Fn(&SocketAddr) -> bool,
-) -> HashSet<(SocketAddr, String, String, String)> {
+) -> HashSet<(RelayId, SocketAddr, String, String, String)> {
     relays
         .iter()
         .filter_map(|r| {
             if let Relay::Turn(r) = r {
                 Some((
+                    r.id,
                     r.addr,
                     r.username.clone(),
                     r.password.clone(),
@@ -34,7 +35,7 @@ pub fn turn(
                 None
             }
         })
-        .filter(|(socket, _, _, _)| predicate(socket))
+        .filter(|(_, socket, _, _, _)| predicate(socket))
         .collect()
 }
 
