@@ -64,13 +64,13 @@ futures = "0.3.30"
 [target.'cfg(target_os = "windows")'.dependencies]
 futures = { version = "0.3", default-features = false }
 tauri-winrt-notification = "0.2.0"
-windows-implement = "0.53.0"
+windows-implement = "0.56.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
 ipconfig = "0.3.2"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.54.0"
+version = "0.56.0"
 features = [
   # For implementing COM interfaces
   "implement",
