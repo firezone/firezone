@@ -1,4 +1,4 @@
-use super::Cli;
+use super::{Cli, Cmd};
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
@@ -28,10 +28,9 @@ pub async fn run() -> Result<()> {
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    if cli.act_as_tunnel {
-        run_tunnel(cli).await
-    } else {
-        run_standalone(cli).await
+    match cli.command() {
+        Cmd::Daemon => run_daemon(cli).await,
+        Cmd::Standalone => run_standalone(cli).await,
     }
 }
 
@@ -175,7 +174,7 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-async fn run_tunnel(_cli: Cli) -> Result<()> {
+async fn run_daemon(_cli: Cli) -> Result<()> {
     let sock_path = dirs::runtime_dir()
         .context("Failed to get `runtime_dir`")?
         .join("dev.firezone.client_ipc");

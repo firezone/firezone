@@ -28,7 +28,7 @@ To run the headless Client:
 1. Now, you can start the client with:
 
 ```
-./firezone-headless-client
+./firezone-headless-client standalone
 ```
 
 If you're running as an unprivileged user, you'll need the `CAP_NET_ADMIN`
