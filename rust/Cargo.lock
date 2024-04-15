@@ -1899,7 +1899,7 @@ dependencies = [
  "futures",
  "git-version",
  "hex",
- "hostname 0.3.1",
+ "hostname 0.4.0",
  "ipconfig",
  "keyring",
  "minidumper",

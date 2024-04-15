@@ -24,7 +24,7 @@ firezone-headless-client = { path = "../../headless-client" }
 git-version = "0.3.9"
 hex = "0.4.3"
 # Same crate Hickory uses
-hostname = "0.3.1"
+hostname = "0.4.0"
 keyring = "2.3.2"
 minidumper = "0.8.2"
 native-dialog = "0.7.0"
