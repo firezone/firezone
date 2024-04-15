@@ -199,6 +199,7 @@ async fn ipc_listen(sock_path: &Path) -> Result<()> {
     // Remove the socket if a previous run left it there
     tokio::fs::remove_file(sock_path).await.ok();
     let listener = UnixListener::bind(sock_path)?;
+    sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
         tracing::info!("Listening for GUI to connect over IPC...");
