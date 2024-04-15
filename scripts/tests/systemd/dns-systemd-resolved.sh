@@ -6,9 +6,6 @@ set -euo pipefail
 BINARY_NAME=firezone-linux-client
 
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
-# Maybe the Docker image of the Client should be down for this?
-docker compose stop client
-
 chmod u+x "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 # TODO: Check whether this is redundant with the systemd service file
