@@ -561,7 +561,7 @@ where
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
-    /// This functions is in the hot-path of packet processing and thus must be as efficient as possible.
+    /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
     /// Even look-ups in [`HashMap`]s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
