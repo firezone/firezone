@@ -1614,7 +1614,7 @@ where
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
         let TunnResult::WriteToNetwork(bytes) =
-            self.tunnel.format_handshake_initiation(&mut buf, true)
+            self.tunnel.format_handshake_initiation(&mut buf, false)
         else {
             return;
         };
