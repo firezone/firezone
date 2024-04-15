@@ -51,6 +51,19 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
+/// Deactivates DNS control on Windows
+#[cfg(target_os = "windows")]
+pub fn deactivate_dns_control() -> anyhow::Result<()> {
+    windows::dns::deactivate()
+}
+
+/// Deactivates DNS control on Windows
+#[cfg(not(target_os = "windows"))]
+#[allow(clippy::unnecessary_wraps)]
+pub fn deactivate_dns_control() -> anyhow::Result<()> {
+    Ok(())
+}
+
 pub fn keypair() -> (StaticSecret, PublicKey) {
     let private_key = StaticSecret::random_from_rng(OsRng);
     let public_key = PublicKey::from(&private_key);
