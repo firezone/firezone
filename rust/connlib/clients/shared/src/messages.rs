@@ -95,11 +95,9 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
-        ResourceDescriptionDns, Stun, Turn,
+        DnsServer, IpDnsServer, ResourceDescriptionCidr, ResourceDescriptionDns, Stun, Turn,
     };
     use phoenix_channel::PhoenixMessage;
-    use std::collections::HashSet;
 
     // TODO: request_connection tests
 

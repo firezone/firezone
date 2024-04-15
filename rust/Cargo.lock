@@ -1945,6 +1945,7 @@ dependencies = [
  "connlib-shared",
  "dirs",
  "firezone-cli-utils",
+ "futures",
  "humantime",
  "nix 0.28.0",
  "resolv-conf",
@@ -1952,6 +1953,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-util",
  "tracing",
  "url",
 ]
