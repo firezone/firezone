@@ -12,6 +12,10 @@ on:
       profile:
         required: true
         type: string
+    outputs:
+      tag_name:
+        description: "???"
+        value: ${{ jobs.update-release-draft.outputs.tag_name }}
 
 env:
   # mark:automatic-version

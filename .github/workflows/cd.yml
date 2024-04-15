@@ -20,12 +20,14 @@ jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
   build-dev-images:
+    needs: ci
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
       image_prefix: "dev"
       stage: "debug"
       profile: "debug"
+      tag_name: ${{ needs.ci.outputs.tag_name }}
 
   # Re-run CI checks to make sure everything's green, since "Merging as administrator"
   # won't trigger these in the merge group.
