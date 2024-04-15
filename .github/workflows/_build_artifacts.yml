@@ -3,6 +3,10 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
+      tag_name:
+        description: "The tag name of the release"
+        required: true
+        type: string
       image_prefix:
         description: |
           The prefix to prepend to the image name to prevent SHA conflicts.
@@ -46,36 +50,6 @@ permissions:
   id-token: write
 
 jobs:
-  update-release-draft:
-    runs-on: ubuntu-22.04
-    concurrency:
-      group: "staging-draft-release-${{ github.workflow }}-${{ github.ref }}"
-      cancel-in-progress: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
-    steps:
-      - uses: release-drafter/release-drafter@v6
-        id: update-release-draft
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          version: ${{ env.VERSION }}
-      - name: Delete stale artifacts
-        # Build artifacts are only uploaded to the drafted release on `main` release builds, so only clear them in those cases too to prevent PRs from removing drafted release assets.
-        if: inputs.profile == 'release' && inputs.stage == 'release'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -xe
-
-          gh release view ${{ steps.update-release-draft.outputs.tag_name }} \
-            --repo ${{ github.repository }} \
-            --json assets \
-            --jq '.assets[] | .name' \
-            | xargs -I{} gh release delete-asset ${{ steps.update-release-draft.outputs.tag_name }} {} --repo ${{ github.repository }} --yes
-    outputs:
-      name: ${{ steps.update-release-draft.outputs.name }}
-      tag_name: ${{ steps.update-release-draft.outputs.tag_name }}
-      upload_url: ${{ steps.update-release-draft.outputs.upload_url }}
-
   control-plane:
     name: ${{ matrix.image_name }}
     runs-on: ubuntu-22.04
@@ -150,9 +124,6 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
   data-plane:
-    # Runs the job after update-release-draft, regardless of the outcome
-    if: ${{ always() }}
-    needs: update-release-draft
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
     defaults:
@@ -161,6 +132,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Copy input vars to matrix vars to conditionally exclude them
+        image_prefix:
+          - ${{ inputs.image_prefix }}
+        stage:
+          - ${{ inputs.stage }}
+
+        # Syntax is weird because https://github.com/actions/runner/issues/1512
+        exclude:
+          # Exclude debug builds for non-amd64 targets since they won't be used.
+          - {stage: debug, arch: {platform: linux/arm/v7}}
+          - {stage: debug, arch: {platform: linux/arm64}}
+          # Exclude snownet-tests and http-test-server from perf image builds
+          - {image_prefix: perf, name: {package: snownet-tests}}
+          - {image_prefix: perf, name: {package: http-test-server}}
+
         arch:
           - target: x86_64-unknown-linux-musl
             shortname: x64
@@ -225,14 +211,14 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -xe
 
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-          gh release upload ${{ needs.update-release-draft.outputs.tag_name }} \
+          gh release upload ${{ inputs.tag_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             --clobber \
@@ -264,7 +250,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
@@ -278,7 +264,7 @@ jobs:
           REF="${{ github.ref_name }}"
           CACHE_TAG="${REF//\//-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      - name: Build and push Docker images by digest
+      - name: Build Docker images
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -292,9 +278,9 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
           cache-to: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
-          target: ${{ inputs.stage }}
+          target: ${{ matrix.stage }}
           outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
@@ -304,13 +290,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
+          name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ inputs.sha }}-digest-${{ matrix.arch.shortname }}
           path: /tmp/digests/${{ matrix.name.image_name }}
           if-no-files-found: error
           retention-days: 1
       - name: Output image name
         id: image-name
-        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
+        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image_name }}
@@ -320,6 +306,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Copy input vars to matrix vars to conditionally exclude them
+        image_prefix:
+          - ${{ inputs.image_prefix }}
+
+        # Exclude snownet-tests and http-test-server from perf image builds
+        exclude:
+          - {image_prefix: perf, image_name: snownet-tests}
+          - {image_prefix: perf, image_name: http-test-server}
+
         image_name:
           - relay
           - gateway
@@ -337,7 +332,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ matrix.image_name }}-${{ inputs.sha }}-digest-*
+          pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image_name }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
           path: /tmp/digests/${{ matrix.image_name }}
       - name: Display structure of downloaded artifacts
@@ -357,7 +352,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image_name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
@@ -369,7 +364,7 @@ jobs:
         working-directory: /tmp/digests/${{ matrix.image_name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.image_name }}@sha256:%s ' *)
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image_name }}@sha256:%s ' *)
           echo "$sources"
           docker buildx imagetools create $tags $sources
-          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ matrix.image_name }}"
+          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image_name }}"
