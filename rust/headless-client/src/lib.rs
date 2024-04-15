@@ -24,7 +24,8 @@ mod windows {
     use clap::Parser;
 
     pub async fn run() -> anyhow::Result<()> {
-        let _cli = super::Cli::parse();
+        let cli = super::Cli::parse();
+        let _cmd = cli.command();
         Ok(())
     }
 }
