@@ -197,7 +197,10 @@ export default function KbSidebar() {
                 />
               </li>
               <li>
-                <Item href="/kb/architecture/security" label="Security" />
+                <Item
+                  href="/kb/architecture/security-controls"
+                  label="Security controls"
+                />
               </li>
             </Collapse>
           </li>

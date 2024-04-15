@@ -12,7 +12,7 @@ Below is a table of cryptography used and to which contexts they apply.
 | AES-GCM                                                  | Data at rest    | Used to encrypt sensitive database fields such as device preshared keys and multi-factor authentication secrets.                                                                                                                           |
 | Argon2                                                   | Data at rest    | Used to hash user passwords for the local authentication method.                                                                                                                                                                           |
 | TLSv1.2/TLSv1.3                                          | Data in transit | Used by the Caddy server to encrypt HTTP connections to the portal. Read more at https://caddyserver.com/docs/caddyfile/directives/tls. SSL certificates are provisioned automatically with the ACME protocol by Let's Encrypt by default. |
-| ChaCha20, Poly1305, Curve25519, BLAKE2s, SipHash24, HKDF | Data in transit | Used by WireGuard® for VPN tunnels. Read more at https://wireguard.com/protocol. Firezone uses Linux kernel WireGuard without modification.                                                                                                |
+| ChaCha20, Poly1305, Curve25519, BLAKE2s, SipHash24, HKDF | Data in transit | Used by WireGuard® for VPN tunnels. Read more at https://wireguard.com/protocol. Firezone uses Linux kernel WireGuard without modification.                                                                                               |
 
 ## Security policy
 
@@ -41,7 +41,7 @@ and we'll respond as soon as possible.
 You may use the public key below to encrypt emails to
 `security AT firezone.dev`. You can also find this key at:
 
-https://pgp.mit.edu/pks/lookup?op=get&search=0x45113BA04AD83D8A
+https://keys.openpgp.org/vks/v1/by-fingerprint/250F8B56804107042DFC6A7345113BA04AD83D8A
 
 ```
 -----BEGIN PGP PUBLIC KEY BLOCK-----

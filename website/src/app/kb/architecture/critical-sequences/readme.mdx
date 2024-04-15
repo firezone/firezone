@@ -1,8 +1,190 @@
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
+import Alert from "@/components/DocsAlert";
+import Link from "next/link";
+import Image from "next/image";
 
 # Architecture: Critical Sequences
 
-{(<NextStep href="/kb/architecture/security">Next: Security</NextStep>)}
+Firezone is a distributed system with many moving parts, but some parts are
+especially critical to the integrity of the entire system:
+
+- [Authentication](#authentication): User authentication, usually with an
+  identity provider.
+- [Policy evaluation](#policy-evaluation): Deciding whether to allow or deny a
+  connection request.
+- [DNS resolution](#dns-resolution): Resolving DNS-based Resources.
+
+These will be explained in more detail below.
+
+## Authentication
+
+Firezone authenticates users using two primary methods:
+
+- [Email (OTP)](/kb/authenticate/email): Users receive a one-time password (OTP)
+  via email.
+- [OpenID Connect](/kb/authenticate/oidc): Users authenticate with an identity
+  provider that supports
+  [OpenID Connect (OIDC)](https://openid.net/developers/how-connect-works/).
+
+The authentication process for each is similar. Both methods begin the
+authentication process at your Firezone account's sign in page:
+`https://app.firezone.dev/<your-account>`.
+
+However, the OIDC flow redirects the user to the identity provder for
+authentication before the final redirect back to Firezone.
+
+Here's how the authentication flow works:
+
+<Link
+  target="_blank"
+  href="/images/kb/architecture/critical-sequences/authentication.svg"
+>
+  <Image
+    src="/images/kb/architecture/critical-sequences/authentication.svg"
+    alt="Firezone authentication sequence diagram"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+1. User clicks `Sign in` from the Client.
+1. The Client generates random 32-byte `state` and `nonce` values. These are
+   used to prevent certain kinds of forgery and injection attacks.
+1. A browser window opens to your account's sign in page,
+   `https://app.firezone.dev/<your-account>` containing the `nonce` and `state`
+   parameters.
+1. The user chooses which authentication method to use. If OIDC, the user is
+   redirected out to the identity provider.
+1. After successfully authenticating, the user is redirected back to the admin
+   portal.
+1. The admin portal mints a Firezone `token` created from the `nonce` parameter
+   and other information.
+1. The admin portal issues a final redirect to
+   `firezone-fd0020211111://handle_client_sign_in_callback` with the `token` and
+   `state` parameters from the initial request.
+1. The Client receives this callback URL and validates the `state` parameter
+   matches what it originally sent.
+1. The Client saves this `token` in a platform-specific secure storage
+   mechanism, for example Keychain on macOS and iOS.
+1. The Client now has a valid `token` and uses it to authenticate with the
+   control plane API.
+1. The authentication process is complete.
+
+## Policy evaluation
+
+Policy evaluation is the process the
+[Policy Engine](/kb/architecture/core-components#policy-engine) uses to decide
+whether to allow or deny a connection request from a Client to a Resource.
+
+If the request is allowed, connection setup information is sent to the Client
+and the appropriate Gateway. If the request is denied, it's logged and then
+dropped. This ensures that Clients are only connected to Gateways that are
+serving Resources the User is allowed to access.
+
+<Alert color="info">
+  Connections in Firezone are **always** default-deny. Policies must be created
+  to allow access.
+</Alert>
+
+Here's how the process works:
+
+<Link
+  target="_blank"
+  href="/images/kb/architecture/critical-sequences/policy-evaluation.svg"
+>
+  <Image
+    src="/images/kb/architecture/critical-sequences/policy-evaluation.svg"
+    alt="Firezone policy evaluation sequence diagram"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+1. The User attempts to access a Resource, e.g. `10.10.10.10`.
+1. The Client sees the request and opens a connection request to the Policy
+   Engine.
+1. The Policy Engine evaluates the request against the configured Policies in
+   your account based on factors such as the Groups the user is a part of, which
+   Resource is being accessed, and so forth. If a match is found, the connection
+   is allowed. If no match is found, the connection is dropped.
+1. If the connection is allowed, the Policy Engine sends the Client the
+   WireGuard keys and NAT traversal information for the Gateway that will serve
+   the Resource.
+1. The Policy Engine sends similar details to the Gateway.
+1. The Client and Gateway establish a WireGuard tunnel, and the Gateway sets up
+   a forwarding rule to the Resource.
+1. Connection setup is complete. The User can now access the Resource.
+
+Since the Client only receives WireGuard keys and NAT traversal information when
+a connection is allowed, **it's not possible** for a Client to exchange packets
+with the Gateway until explicitly allowed by the Policy Engine.
+
+This means **Gateways remain invisible to the outside world**, helping to
+protect against classes of attacks that perimeter-based models may be
+susceptible to, such as DDoS attacks.
+
+## DNS resolution
+
+Secure DNS resolution is a critical function in most organizations.
+
+Firezone employs a unique, granular approach to split-horizon DNS to ensure
+traffic intended **only** for DNS-based Resources is routed through Firezone,
+leaving other traffic untouched -- even when resolved IP addresses overlap.
+
+To achieve this, Firezone embeds a tiny, in-memory DNS proxy inside each Client
+that intercepts all DNS queries on the system.
+
+When the proxy sees a query that doesn't match a known Resource, it operates in
+pass-through mode, forwarding the the query to the system's default resolvers or
+[configured upstream resolvers](/kb/deploy/dns) in your account.
+
+If the query matches a Resource, however, the following happens:
+
+1. The proxy sends the query request to the Policy Engine for evaluation. If the
+   request is allowed, the Policy Engine finds an appropriate Gateway to resolve
+   the query.
+1. The Gateway resolves the query and sends the response back to the proxy.
+1. The proxy generates a special, internal IP from the range `100.96.0.0/11` or
+   `fd00:2021:1111:8000::/107` and maps this IP to the resolved IP returned by
+   the Gateway.
+1. The proxy responds to the Client with this internal IP where it is then
+   returned back to the application making the original request.
+
+This is why you'll see DNS-based Resources resolve to IPs such as `100.96.0.1`
+while the Client is signed in:
+
+```
+
+> nslookup github.com Server: 100.100.111.1 Address: 100.100.111.1#53
+
+Non-authoritative answer: Name: github.com Address: 100.96.0.1
+
+```
+
+### Why Firezone uses a mapped address for DNS Resources
+
+This is a common source of confusion among new Firezone users, so it's helpful
+to explain why Firezone uses mapped IPs for DNS Resources instead of simply
+using the actual resolved IP.
+
+Consider the case where two DNS Resources resolve to the same IP address, such
+as when Name-based virtual hosting is used to host two web applications on the
+same server:
+
+- `gitlab.company.com` resolves to IP `172.16.0.5`
+- `jenkins.company.com` _also_ resolves to IP `172.16.0.5`
+
+Remember that routing happens **at the IP level**. We can't independently route
+packets for the same IP to two different places. If Firezone used the Resource's
+actual IP address to route packets, the User would be able to access
+`jenkins.company.com` if they were granted access only to `gitlab.company.com`.
+
+Using mapped IPs allows Firezone to securely route DNS Resources **no matter how
+many other services share the same IP address**.
+
+{(<NextStep href="/kb/architecture/security-controls">Next: Security
+controls</NextStep>)}
 
 <SupportOptions />
+```
