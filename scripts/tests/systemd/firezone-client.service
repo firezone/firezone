@@ -3,6 +3,26 @@ Description=Firezone Client
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=
+DeviceAllow=/dev/net/tun
+MemoryDenyWriteExecute=true
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateMounts=true
+PrivateTmp=true
+PrivateUsers=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=true
+RestrictAddressFamilies=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=
 
 Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
@@ -11,7 +31,7 @@ Environment="RUST_LOG=info"
 
 ExecStart=firezone-linux-client
 Type=notify
-# TODO: Come back to this and cut down the permissions
+# Unfortunately we may need root to control DNS
 User=root
 
 [Install]
