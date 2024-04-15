@@ -21,7 +21,8 @@ mod windows {
     use clap::Parser;
 
     pub async fn run() -> anyhow::Result<()> {
-        let _cli = super::Cli::parse();
+        let cli = super::Cli::parse();
+        let _cmd = cli.command();
         Ok(())
     }
 }
@@ -32,11 +33,8 @@ pub use windows::run;
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Don't act as a CLI Client, act as a tunnel for a GUI Client
-    ///
-    /// This is not supported and will change in the near future.
-    #[arg(long, hide = true, default_value = "false")]
-    pub act_as_tunnel: bool,
+    #[command(subcommand)]
+    command: Option<Cmd>,
 
     #[arg(
         short = 'u',
@@ -70,4 +68,19 @@ struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
+}
+
+impl Cli {
+    fn command(&self) -> Cmd {
+        // Needed for backwards compatibility with old Docker images
+        self.command.unwrap_or(Cmd::Standalone)
+    }
+}
+
+#[derive(clap::Subcommand, Clone, Copy)]
+enum Cmd {
+    /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
+    Daemon,
+    /// Act as a CLI-only Client, don't listen for IPC connections
+    Standalone,
 }
