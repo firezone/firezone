@@ -26,7 +26,7 @@ pub async fn run() -> Result<()> {
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
-    match cli.command {
+    match cli.command() {
         Cmd::Daemon => run_daemon(cli).await,
         Cmd::Standalone => run_standalone(cli).await,
     }

@@ -36,7 +36,7 @@ pub use windows::run;
 #[command(author, version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Cmd,
+    command: Option<Cmd>,
 
     #[arg(
         short = 'u',
@@ -72,7 +72,14 @@ struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
-#[derive(clap::Subcommand)]
+impl Cli {
+    fn command(&self) -> Cmd {
+        // Needed for backwards compatibility with old Docker images
+        self.command.unwrap_or(Cmd::Standalone)
+    }
+}
+
+#[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     Daemon,
