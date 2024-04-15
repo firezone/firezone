@@ -1,6 +1,9 @@
 use crate::ip_packet::MutableIpPacket;
 use crate::FIREZONE_MARK;
-use crate::{device_channel::ioctl, ip_packet::IpPacket};
+use crate::{
+    device_channel::{ioctl, utils},
+    ip_packet::IpPacket,
+};
 use connlib_shared::{
     linux::{etc_resolv_conf, DnsControlMethod},
     messages::Interface as InterfaceConfig,
@@ -106,7 +109,7 @@ impl Tun {
         let packet = unsafe { std::mem::transmute(IoSlice::new(buf)) };
 
         unsafe {
-            let ret = writev(self.fd.as_raw_fd(), (&[header, packet]).as_ptr(), 2);
+            let ret = writev(self.fd.as_raw_fd(), ([header, packet]).as_ptr(), 2);
 
             match ret {
                 -1 => Err(io::Error::last_os_error()),
@@ -270,6 +273,7 @@ impl Tun {
         }
 
         if unsafe { libc::ioctl(fd, TUNSETVNETHDRSZ as _, &12) } < 0 {
+            dbg!("1");
             return Err(Error::Io(io::Error::last_os_error()));
         }
 
@@ -277,10 +281,11 @@ impl Tun {
             libc::ioctl(
                 fd,
                 TUNSETOFFLOAD as _,
-                TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6,
+                TUN_F_CSUM, //| TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6,
             )
         } < 0
         {
+            dbg!("2");
             return Err(Error::Io(io::Error::last_os_error()));
         }
 
@@ -289,6 +294,7 @@ impl Tun {
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
 
+        dbg!("3");
         Ok(Self {
             handle: handle.clone(),
             connection: join_handle,
