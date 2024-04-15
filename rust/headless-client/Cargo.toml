@@ -12,7 +12,6 @@ anyhow = { version = "1.0" }
 clap = { version = "4.5", features = ["derive",  "env"] }
 humantime = "2.1"
 serde = { version = "1.0.197", features = ["derive"] }
-serde_json = "1.0.115"
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
 tokio = { version = "1.36.0", features = ["macros", "signal"] }
@@ -23,9 +22,12 @@ connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 dirs = "5.0.1"
 firezone-cli-utils = { workspace = true }
+futures = "0.3.30"
 nix = { version =  "0.28.0", features = ["user"] }
 resolv-conf = "0.7.0"
+serde_json = "1.0.115"
 secrecy = { workspace = true }
+tokio-util = { version = "0.7.10", features = ["codec"] }
 tracing = { workspace = true }
 
 [lints]

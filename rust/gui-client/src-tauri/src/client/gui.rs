@@ -280,20 +280,21 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                     // This seems to be a platform limitation that Tauri is unable to hide
                     // from us. It was the source of much consternation at time of writing.
 
-                    match task.await {
+                    let exit_code = match task.await {
                         Err(error) => {
                             tracing::error!(?error, "run_controller panicked");
-                            app_handle.exit(1);
+                            1
                         }
                         Ok(Err(error)) => {
                             tracing::error!(?error, "run_controller returned an error");
-                            app_handle.exit(1);
+                            1
                         }
-                        Ok(Ok(_)) => {
-                            tracing::info!("GUI controller task exited cleanly. Exiting process");
-                            app_handle.exit(0);
-                        }
-                    }
+                        Ok(Ok(_)) => 0,
+                    };
+
+                    cleanup();
+                    tracing::info!(?exit_code);
+                    app_handle.exit(exit_code);
                 });
                 Ok(())
             };
@@ -332,6 +333,13 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         }
     });
     Ok(())
+}
+
+/// Best-effort cleanup of things like DNS control before graceful exit
+fn cleanup() {
+    // Do this redundant deactivation because `Tun` will not automatically Drop before
+    // the process exits
+    connlib_shared::deactivate_dns_control().ok();
 }
 
 /// Runs a smoke test and then asks Controller to exit gracefully
