@@ -74,7 +74,7 @@ private final class LogWriter {
   private let workQueue: DispatchQueue
   private let category: Log.Category
   private let logger: Logger
-  private let logFileURL: URL
+  private let handle: FileHandle
   private let dateFormatter: ISO8601DateFormatter
   private let jsonEncoder: JSONEncoder
 
@@ -83,7 +83,7 @@ private final class LogWriter {
     let dateFormatter = ISO8601DateFormatter()
     let jsonEncoder = JSONEncoder()
     dateFormatter.formatOptions = [.withFullDate, .withFullTime, .withFractionalSeconds]
-    jsonEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    jsonEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]    
 
     self.dateFormatter = dateFormatter
     self.jsonEncoder = jsonEncoder
@@ -97,18 +97,30 @@ private final class LogWriter {
       logger.error("Log directory isn't acceptable!")
       return nil
     }
-    self.logFileURL = folderURL
+
+    let logFileURL = folderURL
       .appendingPathComponent(dateFormatter.string(from: Date()))
       .appendingPathExtension("log")
 
     // Create log file
-    guard fileManager.createFile(atPath: self.logFileURL.path, contents: "".data(using: .utf8))
+    guard fileManager.createFile(atPath: logFileURL.path, contents: "".data(using: .utf8)),
+          let handle = try? FileHandle(forWritingTo: logFileURL),
+          let _ = try? handle.seekToEnd()
     else {
-      logger.error("Could not create log file: \(self.logFileURL.path)")
+      logger.error("Could not create log file: \(logFileURL.path)")
       return nil
     }
-
+    
+    self.handle = handle
     self.workQueue = DispatchQueue(label: "LogWriter.workQueue", qos: .utility)
+  }
+
+  deinit {
+    do {
+      try self.handle.close()
+    } catch {
+      logger.error("Could not close logfile: \(error)")
+    }
   }
 
   func write(severity: Severity, message: String) {
@@ -127,15 +139,6 @@ private final class LogWriter {
 
     jsonData.append(newLineData)
 
-    workQueue.async {
-      do {
-        let handle = try FileHandle(forWritingTo: self.logFileURL)
-        try handle.seekToEnd()
-        handle.write(jsonData)
-        try handle.close()
-      } catch {
-        self.logger.error("Could write log file \(self.logFileURL): \(error)")
-      }
-    }
+    workQueue.async { self.handle.write(jsonData) }
   }
 }
