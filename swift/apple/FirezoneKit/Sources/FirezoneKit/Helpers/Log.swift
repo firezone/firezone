@@ -112,6 +112,7 @@ private final class LogWriter {
   }
 
   func write(severity: Severity, message: String) {
+    logger.log("Writing message: \(message, privacy: .public)")
     let logEntry = LogEntry(
       time: dateFormatter.string(from: Date()),
       category: category,
@@ -129,9 +130,12 @@ private final class LogWriter {
 
     workQueue.async {
       do {
-        try jsonData.write(to: self.logFileURL, options: .atomic)
+        let handle = try FileHandle(forWritingTo: self.logFileURL)
+        try handle.seekToEnd()
+        handle.write(jsonData)
+        try handle.close()
       } catch {
-        self.logger.error("Could not write LogEntry! \(error)")
+        self.logger.error("Could write log file \(self.logFileURL) for writing: \(error)")
       }
     }
   }
