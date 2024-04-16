@@ -92,10 +92,10 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="/product/early-access"
+                    href="/kb/architecture"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Early Access
+                    Architecture
                   </Link>
                 </li>
                 <li className="mb-4">

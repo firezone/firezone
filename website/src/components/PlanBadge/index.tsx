@@ -3,6 +3,7 @@ function planBadge(plan: string) {
     case "enterprise":
       return (
         <span
+          key="plan-enterprise"
           className="bg-primary-500 text-white text-xs font-semibold me-2 px-2.5 py-0.5 rounded"
           title="Feature available on the Enterprise plan"
         >
@@ -12,6 +13,7 @@ function planBadge(plan: string) {
     case "team":
       return (
         <span
+          key="plan-team"
           className="bg-neutral-800 text-neutral-100 text-xs font-semibold me-2 px-2.5 py-0.5 rounded"
           title="Feature available on the Team plan"
         >
@@ -21,6 +23,7 @@ function planBadge(plan: string) {
     case "starter":
       return (
         <span
+          key="plan-starter"
           className="bg-neutral-200 text-neutral-900 text-xs font-semibold me-2 px-2.5 py-0.5 rounded"
           title="Feature available on the Starter plan"
         >

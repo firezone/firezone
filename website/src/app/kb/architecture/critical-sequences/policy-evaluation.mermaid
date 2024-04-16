@@ -1,0 +1,9 @@
+sequenceDiagram
+    autonumber
+    User->>Client: Access 10.10.10.10
+    Client->>Policy engine: Request
+    Policy engine-->>Policy engine: Evaluate
+    Policy engine->>Client: STUN info + keys
+    Policy engine->>Gateway: STUN info + keys
+    Client->>Gateway:  Secure tunnel
+    User->>Resource: Application traffic

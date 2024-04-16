@@ -1,0 +1,100 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import NextStep from "@/components/NextStep";
+import Image from "next/image";
+
+# Architecture Overview
+
+This section of the documentation contains a deep dive into the Firezone product
+architecture, intended for technical decision-makers and curious readers alike
+who want a better understanding of how Firezone works under the hood.
+
+<Alert color="info">
+  **Remember**: Firezone is open source. If you really want to see how
+  everything works, we encourage you to [read the
+  code](https://www.github.com/firezone/firezone).
+</Alert>
+
+## Introduction
+
+At its core, Firezone is a secure remote access platform that connects users to
+computing resources.
+
+These resources can be anything from a private web application or database to
+public SaaS apps and even entire subnets. Firezone makes no assumptions about
+what you want to secure access to.
+
+Firezone operates at layer 3 of the
+[OSI model](https://en.wikipedia.org/wiki/OSI_model). This means it can secure
+any resource that can be accessed over IP, include TCP, UDP, and HTTP-based
+services, similar to traditional VPNs.
+
+### What's different about Firezone?
+
+Unlike traditional VPNs, however, Firezone has the following key differences:
+
+- **Open source**: All source code is available for anyone to audit on
+  [GitHub](https://www.github.com/firezone/firezone).
+- **Scalable**: Firezone was designed to be horizontally scalable from the
+  start. Simply deploy more
+  [Gateways](/kb/architecture/core-components#gateways) to handle more traffic.
+- **Secure**: Firezone is built on [WireGuard](https://www.wireguard.com)®, a
+  fast, provably-secure VPN protocol. Firezone further builds on this security
+  with ephemeral encryption keys and firewall hole-punching to limit your
+  exposed attack surface.
+- **Easy to manage**: No firewall configuration or complex ACLs are required.
+  Firezone's [Policy Engine](/kb/architecture/core-components#policy-engine)
+  makes access easy to manage and audit at scale.
+
+### Key design principles
+
+Firezone was built to secure organizations in a world where traditional
+perimeter-based security models are no longer effective.
+
+The global workforce is increasingly remote, and the resources they need to
+access are distributed across multiple cloud providers and on-premises data
+centers. This creates a complex security challenge for organizations looking to
+maintain a strong security posture.
+
+To address these challenges, Firezone incorporates the following key design
+principles:
+
+- **Zero trust architecture**: Firezone follows what's commonly known as a
+  [Zero Trust security model](https://en.wikipedia.org/wiki/Zero_trust_security_model).
+  This means all users and devices are untrusted by default and must be
+  authenticated and authorized continuously before accessing each protected
+  Resource. Firezone's architecture draws heavily from The National Institute of
+  Standards and Technology (NIST)'s
+  [published guidelines on zero trust architecture](https://doi.org/10.6028/NIST.SP.800-207).
+- **Integration with existing identity providers**: Identity verification is
+  paramount to any Zero Trust architecture. Firezone
+  [integrates](/kb/authenticate/oidc) with virtually any identity provider to
+  authenticate your users in a secure and standards-compliant way.
+  [Directory sync](/kb/authenticate/directory-sync) takes this a step further to
+  ensure Firezone always has the latest user and group information to use when
+  evaluating access Policies.
+- **Portable and reliable**: Firezone can only protect resources where it's
+  deployed. If Firezone doesn't work reliably on a particular server or end-user
+  device, it won't be used, and that creates a potential entrypoint for
+  attackers. Firezone's tech stack
+  [was chosen carefully](/kb/architecture/tech-stack) to make sure it runs
+  reliably on a wide variety of platforms and devices.
+
+## What to read next
+
+- [Core components](/kb/architecture/core-components): A high-level overview of
+  the key concepts that power Firezone's access model.
+- [Tech stack](/kb/architecture/tech-stack): Why we chose the tech we did, and
+  how it all fits together.
+- [Critical sequences](/kb/architecture/critical-sequences): Sequence diagrams
+  that illustrate the interactions that power Firezone's core functionality.
+- [Security controls](/kb/architecture/security-controls): Details about the
+  cryptography used in Firezone and how to report security vulnerabilities.
+
+{(<NextStep href="/kb/architecture/core-components">
+
+Next: Core components
+
+</NextStep>)}
+
+<SupportOptions />
