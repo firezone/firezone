@@ -71,8 +71,9 @@ mod imp {
     }
 
     pub(crate) fn elevate() -> Result<()> {
-        // Hides Powershell's console on Windows
-        // <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
+        /// Hides Powershell's console on Windows
+        ///
+        /// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
         let current_exe = tauri_utils::platform::current_exe()?;

@@ -165,8 +165,8 @@ community support options:
 
 1. [Discussion Forums](https://discourse.firez.one/?utm_source=readme): Ask
    questions, report bugs, and suggest features.
-1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
-   Join live discussions, meet other users, and get to know the contributors.
+1. [Join our Discord Server](https://discord.gg/DY8gxpSgep): Join live
+   discussions, meet other users, and chat with the Firezone team.
 1. [Open a PR](https://github.com/firezone/firezone/issues): Contribute a bugfix
    or make a contribution to Firezone.
 
