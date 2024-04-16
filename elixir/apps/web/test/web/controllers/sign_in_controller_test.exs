@@ -19,11 +19,23 @@ defmodule Web.SignInControllerTest do
 
       conn_with_cookies =
         conn
-        |> put_client_auth_state(account, provider, identity)
+        |> put_client_auth_state(account, provider, identity, %{
+          "state" => "STATE",
+          "nonce" => "NONCE"
+        })
         |> get(~p"/#{account}/sign_in/client_redirect")
 
-      assert redirected = redirected_to(conn_with_cookies, 302)
-      assert redirected =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+      assert redirected_to = redirected_to(conn_with_cookies, 302)
+      assert redirected_to =~ "firezone-fd0020211111://handle_client_sign_in_callback"
+
+      assert redirected_uri = URI.parse(redirected_to)
+      assert query_params = URI.decode_query(redirected_uri.query)
+      assert not is_nil(query_params["fragment"])
+      refute query_params["fragment"] =~ "NONCE"
+      assert query_params["state"] == "STATE"
+      refute query_params["nonce"]
+      assert query_params["actor_name"] == actor.name
+      assert query_params["identity_provider_identifier"] == identity.provider_identifier
     end
 
     test "redirects to sign in page when cookie not present", %{account: account} do
