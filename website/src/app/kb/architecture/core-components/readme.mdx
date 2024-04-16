@@ -67,6 +67,12 @@ which Resources are available and which Gateways to use for connecting to them.
 This informs our approach to high availability in Firezone: if a Gateway goes
 offline, Clients will immediately discontinue using it for new connections.
 
+<Alert color="info">
+  Read more about how [high
+  availability](/kb/architecture/critical-sequences#high-availability) works in
+  Firezone.
+</Alert>
+
 WebSocket connections are authenticated using a cryptographic token with a
 lifetime that varies depending on the type of connection. See the
 [authentication docs](/kb/authenticate) for more information regarding token
@@ -156,7 +162,9 @@ executables onto a wide variety of Linux configurations.
 Gateways were designed to be portable, extremely lightweight, and require no
 external dependencies. This makes them easy to deploy and manage at scale.
 
-Gateways operate without the need for persistent storage; instead, they only require a handful of environment variables to be configured for proper functionality. For more information on deploying Gateways, see the
+Gateways operate without the need for persistent storage; instead, they only
+require a handful of environment variables to be configured for proper
+functionality. For more information on deploying Gateways, see the
 [Gateway deployment guide](/kb/deploy/gateways).
 
 Gateways can be downloaded from the following locations:
@@ -188,8 +196,9 @@ must be explicitly allowed by creating a Policy. For convenience, Firezone
 provides a special `Everyone` Group that can be applied to Policies to allow
 access to all authenticated users in your organization.
 
-Policies are evaluated in realtime by the [Policy Engine](#policy-engine) each
-time a Client attempts to connect to a Resource.
+Policies are evaluated by the [Policy Engine](#policy-engine) each time a Client
+attempts to connect to a Resource, or any time the Policy or related
+configuration is updated in the admin portal.
 
 {(<NextStep href="/kb/architecture/tech-stack">Next: Tech stack</NextStep>)}
 

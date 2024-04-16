@@ -14,6 +14,8 @@ especially critical to the integrity of the entire system:
 - [Policy evaluation](#policy-evaluation): Deciding whether to allow or deny a
   connection request.
 - [DNS resolution](#dns-resolution): Resolving DNS-based Resources.
+- [High availability](#high-availability): How Firezone achieves high avability
+  through load balancing and automatic failover.
 
 These will be explained in more detail below.
 
@@ -64,7 +66,8 @@ Here's how the authentication flow works:
    `firezone-fd0020211111://handle_client_sign_in_callback` with the `token` and
    `state` parameters from the initial request.
 1. The Client receives this callback URL and validates the `state` parameter
-   matches what it originally sent.
+   matches what it originally sent. This prevents other applications from
+   injecting tokens into the Client's callback handler.
 1. The Client saves this `token` in a platform-specific secure storage
    mechanism, for example Keychain on macOS and iOS.
 1. The Client now has a valid `token` and uses it to authenticate with the
@@ -155,11 +158,9 @@ This is why you'll see DNS-based Resources resolve to IPs such as `100.96.0.1`
 while the Client is signed in:
 
 ```
-
 > nslookup github.com Server: 100.100.111.1 Address: 100.100.111.1#53
 
 Non-authoritative answer: Name: github.com Address: 100.96.0.1
-
 ```
 
 ### Why Firezone uses a mapped address for DNS Resources
@@ -183,8 +184,46 @@ actual IP address to route packets, the User would be able to access
 Using mapped IPs allows Firezone to securely route DNS Resources **no matter how
 many other services share the same IP address**.
 
+## High availability
+
+Firezone was designed from the ground up to support high availability
+requirements. This is achieved through a combination of **load balancing** and
+**automatic failover**, described below.
+
+### Load balancing
+
+When a Client wants to connect to a Resource, Firezone randomly selects a
+healthy Gateway in the Site to handle the request. The Client maintains the
+connection to that Gateway until either the Client disconnects or the Gateway
+becomes unhealthy.
+
+This effectively shards Client connections across all Gateways in a Site,
+achieving higher overall throughput than otherwise possible with a single
+Gateway.
+
+### Automatic failover
+
+Two or more Gateways deployed within a Site provide automatic failover in the
+event of a Gateway failure.
+
+Here's how it works:
+
+1. When the admin portal detects a particular Gateway is unhealthy, it will stop
+   using it for new connection requests to Resources in the Site.
+1. Existing Clients will remain connected to the Gateway until they themselves
+   detect it to be unhealthy.
+1. Clients identify unhealthy gateways using keepalive timers. If the timer
+   expires, the Client will disconnect from the unhealthy Gateway and request a
+   new, healthy one from the portal.
+1. The Client keepalive timer expires after **10 seconds**. This is the maximum
+   time it takes for existing Client connections to be rerouted to a healthy
+   Gateway in the event of a Gateway failure.
+
+By using two independent health checks in the portal and the Client, Firezone
+ensures that temporary network issues between the Client and portal do not
+interrupt existing connections to healthy Gateways.
+
 {(<NextStep href="/kb/architecture/security-controls">Next: Security
 controls</NextStep>)}
 
 <SupportOptions />
-```
