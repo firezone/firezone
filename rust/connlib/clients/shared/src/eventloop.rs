@@ -7,9 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{
-        ConnectionAccepted, GatewayResponse, RelayStatusUpdate, ResourceAccepted, ResourceId,
-    },
+    messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
@@ -202,9 +200,9 @@ where
             IngressMessages::ResourceDeleted(resource) => {
                 self.tunnel.remove_resources(&[resource]);
             }
-            IngressMessages::RelayStatusUpdate(RelayStatusUpdate {
-                disconnected_relay_ids,
-                online_relays,
+            IngressMessages::RelaysPresence(RelaysPresence {
+                disconnected_ids: disconnected_relay_ids,
+                connected: online_relays,
             }) => self
                 .tunnel
                 .update_relays(HashSet::from_iter(disconnected_relay_ids), online_relays),
