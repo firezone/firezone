@@ -722,8 +722,8 @@ impl TestNode {
             .collect::<HashSet<_>>();
 
         self.span.in_scope(|| match &mut self.node {
-            EitherNode::Server(s) => s.upsert_turn_servers(&turn_servers, now),
-            EitherNode::Client(c) => c.upsert_turn_servers(&turn_servers, now),
+            EitherNode::Server(s) => s.update_relays(HashSet::default(), &turn_servers, now),
+            EitherNode::Client(c) => c.update_relays(HashSet::default(), &turn_servers, now),
         });
 
         self
