@@ -15,7 +15,7 @@ sleep 2 # Closing websocket isn't instant.
 client_curl_resource "172.20.0.100/get"
 
 # Assert: Websocket connection is cut
-OPEN_SOCKETS=$(relay ss --tcp --numeric state established dport 8081 | tail --lines=+2) # Portal listens on port 8081
+OPEN_SOCKETS=$(relay netstat -tn | grep "ESTABLISHED" | grep 8081) # Portal listens on port 8081
 test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
