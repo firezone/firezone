@@ -28,6 +28,8 @@ sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 systemd-analyze security "$SERVICE_NAME"
 
+stat /var/run /run
+
 sudo systemctl start "$SERVICE_NAME"
 
 # Make sure we don't belong to the group yet
