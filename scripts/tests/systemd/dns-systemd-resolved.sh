@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test Linux DNS control using `systemd-resolved` directly inside the CI runner
 
-set -euo pipefail
+set -euox pipefail
 
 BINARY_NAME=firezone-linux-client
 CONFIG_DIR=/etc/dev.firezone.client
@@ -27,12 +27,12 @@ HTTPBIN=dns.httpbin
 DOCKER_IFACE="docker0"
 FZ_IFACE="tun-firezone"
 
-echo "# Accessing a resource should fail before the client is up"
+# Accessing a resource should fail before the client is up
 # Force curl to try the Firezone interface. I can't block off the Docker interface yet
 # because it may be needed for the client to reach the portal.
 curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 
-echo "# Start Firezone"
+# Start Firezone
 resolvectl dns tun-firezone && exit 1
 if ! sudo systemctl start firezone-client; then
     sudo systemctl status firezone-client
@@ -41,13 +41,13 @@ fi
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN"
 
-echo "# Accessing a resource should succeed after the client is up"
+# Accessing a resource should succeed after the client is up
 # Block off Docker's DNS.
 sudo resolvectl dns "$DOCKER_IFACE" ""
 curl -v $HTTPBIN/get
 
-echo "# Make sure it's going through the tunnel"
+# Make sure it's going through the tunnel
 nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
 
-echo "# Print some debug info"
+# Print some debug info
 resolvectl status
