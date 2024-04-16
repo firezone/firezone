@@ -277,9 +277,9 @@ defmodule API.Client.ChannelTest do
 
       Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
 
-      assert_push "relay_offline", %{
-        offline_relay_ids: [relay_id],
-        online_relays: [relay_view1, relay_view2]
+      assert_push "relays_presence", %{
+        disconnected_ids: [relay_id],
+        connected: [relay_view1, relay_view2]
       }
 
       assert relay_view1.id == relay.id
