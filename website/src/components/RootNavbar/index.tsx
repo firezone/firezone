@@ -188,24 +188,17 @@ export default function RootNavbar() {
                 alt="Github Repo stars"
                 height={50}
                 width={100}
+                className=""
                 src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social"
               />
             </Link>
-            <Link
-              href="https://app.firezone.dev/sign_up"
-              className="hover:underline p-2 mr-1"
-              aria-label="Sign up"
-            >
-              Sign up
-            </Link>
-            |
             <span className="mr-2">
               <ActionLink
                 size="ml-1 -mr-1 w-5 h-5"
                 href="https://app.firezone.dev"
                 className="hover:underline p-2 mr-1"
               >
-                Sign in
+                Admin Portal
               </ActionLink>
             </span>
           </div>
