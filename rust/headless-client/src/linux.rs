@@ -36,6 +36,7 @@ pub async fn run() -> Result<()> {
 }
 
 async fn run_standalone(cli: Cli) -> Result<()> {
+    tracing::info!("run_standalone");
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     let callbacks = CallbackHandler;
@@ -183,8 +184,10 @@ fn sock_path() -> Result<PathBuf> {
 }
 
 async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
-    tracing::info!(pid = std::process::id(), "Connecting to IPC server");
-    let stream = UnixStream::connect(&sock_path()?).await?;
+    tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
+    let stream = UnixStream::connect(&sock_path()?)
+        .await
+        .context("couldn't connect to UDS")?;
     let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
     stream.send(serde_json::to_string("Hello")?.into()).await?;
@@ -192,6 +195,7 @@ async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
 }
 
 async fn run_daemon(_cli: Cli) -> Result<()> {
+    tracing::info!("run_daemon");
     ipc_listen(&sock_path()?).await
 }
 

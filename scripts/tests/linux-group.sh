@@ -7,6 +7,7 @@ source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
 SERVICE_NAME=firezone-client
+export RUST_LOG=info
 
 # Shellcheck can't do reachability for traps for some reason
 # shellcheck disable=SC2317
@@ -44,7 +45,7 @@ sudo gpasswd --add "$USER" "$FZ_GROUP"
 sudo su --login "$USER" --command groups | grep "$FZ_GROUP"
 
 # TODO: Expect Firezone to accept our commands if we run with `su --login`
-sudo su --login "$USER" --command "$BINARY_NAME" debug-ipc-client
+sudo su --login "$USER" --command RUST_LOG=info "$BINARY_NAME" debug-ipc-client
 
 # TODO: Expect Firezone to reject our command if we run without `su --login`
 "$BINARY_NAME" debug-ipc-client && exit 1
