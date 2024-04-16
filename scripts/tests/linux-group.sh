@@ -3,19 +3,26 @@
 # The integration tests call this to test security for Linux IPC.
 # Only users in the `firezone` group should be able to control the privileged tunnel process.
 
-set -euo pipefail
+set -euox pipefail
 
 BINARY_NAME=firezone-linux-client
+SERVICE_NAME=firezone-client
+
+function systemctl_status() {
+    systemctl status "$SERVICE_NAME"
+}
+
+trap systemctl_status EXIT
 
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-sudo cp scripts/tests/systemd/firezone-client.service /usr/lib/systemd/system/
-systemd-analyze security firezone-client
+sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
+systemd-analyze security "$SERVICE_NAME"
 
-sudo systemctl start firezone-client
+sudo systemctl start "$SERVICE_NAME"
 
 FZ_GROUP="firezone"
 
