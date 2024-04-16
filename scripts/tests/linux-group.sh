@@ -6,6 +6,7 @@
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
+FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
@@ -17,6 +18,8 @@ function systemctl_status {
 
 trap systemctl_status EXIT
 
+sudo groupadd "$FZ_GROUP"
+
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
@@ -26,10 +29,6 @@ sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 systemd-analyze security "$SERVICE_NAME"
 
 sudo systemctl start "$SERVICE_NAME"
-
-FZ_GROUP="firezone"
-
-sudo groupadd "$FZ_GROUP"
 
 # Make sure we don't belong to the group yet
 (groups | grep "$FZ_GROUP") && exit 1
