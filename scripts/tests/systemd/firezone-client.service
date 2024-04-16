@@ -19,9 +19,9 @@ ProtectClock=true
 #ProtectKernelModules=true
 #ProtectKernelTunables=true
 #ProtectSystem=true
-RestrictNamespaces=true
-RestrictSUIDSGID=true
-SystemCallArchitectures=native
+#RestrictNamespaces=true
+#RestrictSUIDSGID=true
+#SystemCallArchitectures=native
 #SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io \
 #@privileged @signal @sync @system-service @timer
 
