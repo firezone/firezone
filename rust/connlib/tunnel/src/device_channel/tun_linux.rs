@@ -20,6 +20,8 @@ use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use pnet_packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
 use pnet_packet::ipv4::Ipv4Packet;
+use pnet_packet::tcp::MutableTcpPacket;
+use pnet_packet::MutablePacket;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use rtnetlink::{RouteAddRequest, RuleAddRequest};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -207,34 +209,40 @@ impl Tun {
 
                 dbg!(bodies.len() / body_length);
 
-                let packets =
-                    bodies
-                        .chunks_mut(body_length)
-                        .enumerate()
-                        .filter_map(move |(index, body)| {
-                            let mut packet_buffer = vec![0u8; packet_length];
-                            packet_buffer[..header_length].copy_from_slice(header);
-                            packet_buffer[header_length..].copy_from_slice(body);
+                let packets = bodies.chunks_exact_mut(body_length).enumerate().filter_map(
+                    move |(index, body)| {
+                        let mut packet_buffer = vec![0u8; packet_length];
+                        packet_buffer[..header_length].copy_from_slice(header);
+                        packet_buffer[header_length..].copy_from_slice(body);
 
-                            let mut packet = MutableIpPacket::owned(packet_buffer)?;
+                        let mut packet = MutableIpPacket::owned(packet_buffer)?;
 
-                            // dbg!(&packet);
+                        // dbg!(&packet);
 
-                            packet.inc_ipv4_identification_by(index as u16);
-                            packet.set_len(packet_length, packet_length - ip_header_length);
-                            // packet.set_ipv4_no_fragment();
-                            packet.update_checksum();
+                        packet.inc_ipv4_identification_by(index as u16);
+                        packet.set_len(packet_length, packet_length - ip_header_length);
+                        // packet.set_ipv4_no_fragment();
 
-                            dbg!(&packet);
+                        dbg!(&packet);
 
-                            // dbg!(packet.packet_size());
+                        let mut mutable_tcp_packet =
+                            MutableTcpPacket::new(packet.payload_mut()).unwrap();
 
-                            // if needs_checksum_update {
-                            //     packet.update_checksum();
-                            // }
+                        mutable_tcp_packet.set_sequence(
+                            mutable_tcp_packet.get_sequence() + (index * body_length) as u32,
+                        );
 
-                            Some(packet)
-                        });
+                        packet.update_checksum();
+
+                        // dbg!(packet.packet_size());
+
+                        // if needs_checksum_update {
+                        //     packet.update_checksum();
+                        // }
+
+                        Some(packet)
+                    },
+                );
 
                 Poll::Ready(Ok(Box::new(packets)))
             }
