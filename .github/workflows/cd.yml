@@ -23,7 +23,9 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
-      tag_name: "${{ env.VERSION }}"
+      # See https://github.com/actions/runner/issues/2372
+      # mark:automatic-version
+      tag_name: "1.0.0"
       image_prefix: "dev"
       stage: "debug"
       profile: "debug"
