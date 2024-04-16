@@ -64,8 +64,12 @@ layer for Firezone's STUN/TURN implementation.
 All configuration updates made in the admin portal are pushed in realtime to
 connected Clients and Gateways so they always have up-to-date information about
 which Resources are available and which Gateways to use for connecting to them.
+
 This informs our approach to high availability in Firezone: if a Gateway goes
-offline, Clients will immediately discontinue using it for new connections.
+offline, the admin portal is immediately notified. When this happens, Clients
+receive the new configuration, discontinue using the offline Gateway for new
+connections, and re-establish existing connections with healthy Gateways in the
+same Site.
 
 <Alert color="info">
   Read more about how [high
