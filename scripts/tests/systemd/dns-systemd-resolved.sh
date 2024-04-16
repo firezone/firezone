@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test Linux DNS control using `systemd-resolved` directly inside the CI runner
 
-set -euo pipefail
+set -euox pipefail
 
 BINARY_NAME=firezone-linux-client
 CONFIG_DIR=/etc/dev.firezone.client
