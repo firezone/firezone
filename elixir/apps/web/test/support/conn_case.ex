@@ -117,6 +117,49 @@ defmodule Web.ConnCase do
     {conn_with_cookie, state, verifier}
   end
 
+  def put_client_auth_state(
+        conn,
+        account,
+        %{adapter: :email} = provider,
+        identity,
+        params \\ %{}
+      ) do
+    params =
+      Map.merge(
+        %{
+          "email" => %{"provider_identifier" => identity.provider_identifier},
+          "as" => "client",
+          "nonce" => "nonce",
+          "state" => "state"
+        },
+        params
+      )
+
+    redirected_conn =
+      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_magic_link", params)
+
+    assert_received {:email, email}
+    [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
+
+    auth_state_cookie_key = "fz_auth_state_#{provider.id}"
+    %{value: signed_state} = redirected_conn.resp_cookies[auth_state_cookie_key]
+
+    verified_conn =
+      conn
+      |> put_req_cookie("fz_auth_state_#{provider.id}", signed_state)
+      |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+        "identity_id" => identity.id,
+        "secret" => secret
+      })
+
+    client_cookie_key = "fz_client_auth"
+    %{value: signed_client_auth} = verified_conn.resp_cookies[client_cookie_key]
+
+    conn
+    |> put_req_cookie("fz_client_auth", signed_client_auth)
+    |> put_req_cookie("fz_auth_state_#{provider.id}", signed_state)
+  end
+
   ### Helpers to test LiveView forms
 
   def find_inputs(html, selector) do

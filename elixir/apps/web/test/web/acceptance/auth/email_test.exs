@@ -37,7 +37,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
     |> Auth.assert_authenticated(identity)
   end
 
-  feature "allows to sign in using email link to the client", %{session: session} do
+  feature "allows client to sign in using email link", %{session: session} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     nonce = Ecto.UUID.generate()
     state = Ecto.UUID.generate()

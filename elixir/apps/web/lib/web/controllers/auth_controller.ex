@@ -179,10 +179,7 @@ defmodule Web.AuthController do
   """
   def redirect_to_idp(
         conn,
-        %{
-          "account_id_or_slug" => account_id_or_slug,
-          "provider_id" => provider_id
-        } = params
+        %{"account_id_or_slug" => account_id_or_slug, "provider_id" => provider_id} = params
       ) do
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
       redirect_params = Web.Auth.take_sign_in_params(params)
