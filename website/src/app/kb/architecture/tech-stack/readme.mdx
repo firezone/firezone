@@ -39,13 +39,20 @@ it a great choice for building performant network applications.
 
 Some parts of the macOS, iOS, and Android applications can't be built in Rust,
 and so a foreign function interface (FFI) is used to call into either Swift or
-Kotlin code appropriately.
+Kotlin code appropriately. In general, we strive to keep the FFI architecture as
+simple as possible, leaving Rust-land only when absolutely required.
 
-In general, we strive to keep the FFI architecture as simple as possible,
-leaving Rust-land only when absolutely required.
+Internally, the Clients maintain two primary types of state:
+
+- Control plane event loop
+- Data plane state machine
+
+These manage the control path and hot paths of the Client, respectively. They
+interact through a thin software layer to exchange WireGuard keys and STUN
+information between the control plane API and the TUN interface.
 
 Here's a high-level diagram of the various software components used in the
-Client applications and how to relate to each other on a per-platform basis:
+Client applications:
 
 <Link
   target="_blank"
