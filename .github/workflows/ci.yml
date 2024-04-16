@@ -19,8 +19,8 @@ env:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
-  group: "ci-${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: true
+  group: "ci-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
   kotlin:

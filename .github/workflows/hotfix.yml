@@ -12,7 +12,7 @@ on:
         required: false
 
 concurrency:
-  group: "hotfix-production-${{ github.workflow }}-${{ github.ref }}"
+  group: "hotfix-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:
