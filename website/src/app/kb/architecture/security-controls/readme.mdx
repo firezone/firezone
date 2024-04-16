@@ -14,6 +14,7 @@ Below is a table of cryptography used and to which contexts they apply.
 | AES-256-GCM                                              | Data at rest    | Used to encrypt sensitive data that needs to be persisted, such as authentication tokens.                                                    |
 | TLSv1.2/TLSv1.3                                          | Data in transit | Used to encrypt connections to the admin portal and control plane API.                                                                       |
 | ChaCha20, Poly1305, Curve25519, BLAKE2s, SipHash24, HKDF | Data in transit | Used by WireGuard® for VPN tunnels. Read more at https://wireguard.com/protocol. Firezone uses Linux kernel WireGuard without modification. |
+| SHA-256                                                  | Data at rest    | Used to store hashed+salted randomly-generated authentication tokens.                                                                        |
 
 ## Security policy
 
