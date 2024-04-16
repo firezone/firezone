@@ -73,12 +73,14 @@ struct Cli {
 impl Cli {
     fn command(&self) -> Cmd {
         // Needed for backwards compatibility with old Docker images
-        self.command.unwrap_or(Cmd::Standalone)
+        self.command.unwrap_or(Cmd::Auto)
     }
 }
 
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
+    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC daemon
+    Auto,
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     Daemon,
     /// Act as an IPC client for headless testing

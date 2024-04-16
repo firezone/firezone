@@ -29,13 +29,46 @@ pub async fn run() -> Result<()> {
     setup_global_subscriber(layer);
 
     match cli.command() {
+        Cmd::Auto => {
+            if let Some(token) = token(&cli).await? {
+                run_standalone(cli, &token).await
+            } else {
+                run_daemon(cli).await
+            }
+        }
         Cmd::Daemon => run_daemon(cli).await,
         Cmd::DebugIpcClient => run_debug_ipc_client(cli).await,
-        Cmd::Standalone => run_standalone(cli).await,
+        Cmd::Standalone => {
+            let token = token(&cli)
+                .await?
+                .context("Need a token to run as standalone Client")?;
+            run_standalone(cli, &token).await
+        }
     }
 }
 
-async fn run_standalone(cli: Cli) -> Result<()> {
+async fn token(cli: &Cli) -> Result<Option<SecretString>> {
+    if let Some(token) = &cli.token {
+        // Token was provided in CLI args or env var
+        // Not very secure, but we do get the token
+        return Ok(Some(token.clone().into()));
+    }
+
+    let path = PathBuf::from("/etc")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("token.txt");
+    let Ok(bytes) = tokio::fs::read(path).await else {
+        // Can't read the file for some reason, so there's no token on disk
+        return Ok(None);
+    };
+    let s = String::from_utf8(bytes)?;
+    let token = s.trim().to_string();
+
+    // Token loaded from disk
+    Ok(Some(token.into()))
+}
+
+async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     tracing::info!("run_standalone");
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
@@ -47,26 +80,8 @@ async fn run_standalone(cli: Cli) -> Result<()> {
         None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
-    let token = match cli.token {
-        Some(x) => x,
-        None => {
-            let path = PathBuf::from("/etc")
-                .join(connlib_shared::BUNDLE_ID)
-                .join("token.txt");
-            let bytes = tokio::fs::read(path).await?;
-            let s = String::from_utf8(bytes)?;
-            s.trim().to_string()
-        }
-    };
-
     let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(
-        cli.api_url,
-        &SecretString::from(token),
-        firezone_id,
-        None,
-        public_key.to_bytes(),
-    )?;
+    let login = LoginUrl::client(cli.api_url, token, firezone_id, None, public_key.to_bytes())?;
 
     let session = Session::connect(
         login,

@@ -22,8 +22,6 @@ docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-create_token_file
-
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 systemd-analyze security "$SERVICE_NAME"
 
