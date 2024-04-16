@@ -90,7 +90,7 @@ impl<'a> MutableIpPacket<'a> {
     pub(crate) fn inc_ipv4_identification_by(&mut self, offset: u16) {
         match self {
             MutableIpPacket::MutableIpv4Packet(i) => {
-                i.set_identification(i.get_identification() + offset)
+                i.set_identification(i.get_identification().wrapping_add(offset))
             }
             MutableIpPacket::MutableIpv6Packet(_) => {}
         }

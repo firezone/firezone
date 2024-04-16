@@ -297,7 +297,7 @@ impl Tun {
             libc::ioctl(
                 fd,
                 TUNSETOFFLOAD as _,
-                TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6 | TUN_F_USO4 | TUN_F_USO6,
+                TUN_F_CSUM | TUN_F_TSO4 | TUN_F_TSO6, // | TUN_F_USO4 | TUN_F_USO6,
             )
         } < 0
         {
