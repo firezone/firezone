@@ -9,7 +9,8 @@ Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
 Environment="FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F"
 Environment="RUST_LOG=info"
 
-ExecStart=firezone-linux-client auto
+# TODO: Make subcommands explicit once PR #4628 merges
+ExecStart=firezone-linux-client
 Type=notify
 # TODO: Come back to this and cut down the permissions
 User=root
