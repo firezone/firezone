@@ -10,13 +10,7 @@ use connlib_shared::{
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{SinkExt, StreamExt};
 use secrecy::SecretString;
-use std::{
-    future,
-    net::IpAddr,
-    path::{Path, PathBuf},
-    str::FromStr,
-    task::Poll,
-};
+use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
 use tokio::{
     net::{UnixListener, UnixStream},
     signal::unix::SignalKind,
@@ -191,16 +185,11 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-fn sock_path() -> Result<PathBuf> {
-    let path = dirs::runtime_dir()
-        .context("Failed to get `runtime_dir`")?
-        .join("dev.firezone.client_ipc");
-    Ok(path)
-}
+const SOCK_PATH: &str = "/var/run/firezone-client.sock";
 
 async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
     tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
-    let stream = UnixStream::connect(&sock_path()?)
+    let stream = UnixStream::connect(SOCK_PATH)
         .await
         .context("couldn't connect to UDS")?;
     let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
@@ -211,13 +200,13 @@ async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
 
 async fn run_daemon(_cli: Cli) -> Result<()> {
     tracing::info!("run_daemon");
-    ipc_listen(&sock_path()?).await
+    ipc_listen().await
 }
 
-async fn ipc_listen(sock_path: &Path) -> Result<()> {
+async fn ipc_listen() -> Result<()> {
     // Remove the socket if a previous run left it there
-    tokio::fs::remove_file(sock_path).await.ok();
-    let listener = UnixListener::bind(sock_path)?;
+    tokio::fs::remove_file(SOCK_PATH).await.ok();
+    let listener = UnixListener::bind(SOCK_PATH)?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
