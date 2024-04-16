@@ -298,9 +298,9 @@ defmodule API.Client.Channel do
         {:ok, relays} = select_relays(socket)
         :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
 
-        push(socket, "relay_offline", %{
-          offline_relay_ids: [relay_id],
-          online_relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
+        push(socket, "relays_presence", %{
+          disconnected_ids: [relay_id],
+          connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
         })
 
         {:noreply, socket}
