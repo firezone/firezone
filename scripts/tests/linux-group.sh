@@ -25,7 +25,7 @@ sudo groupadd "$FZ_GROUP"
 (groups | grep "$FZ_GROUP") && exit 1
 
 # TODO: Expect Firezone to reject our commands here before the group is created
-firezone-client debug-ipc-client && exit 1
+"$BINARY_NAME" debug-ipc-client && exit 1
 
 sudo gpasswd --add "$USER" "$FZ_GROUP"
 
@@ -33,10 +33,10 @@ sudo gpasswd --add "$USER" "$FZ_GROUP"
 sudo su --login "$USER" --command groups | grep "$FZ_GROUP"
 
 # TODO: Expect Firezone to accept our commands if we run with `su --login`
-sudo su --login "$USER" --command firezone-client debug-ipc-client
+sudo su --login "$USER" --command "$BINARY_NAME" debug-ipc-client
 
 # TODO: Expect Firezone to reject our command if we run without `su --login`
-firezone-client debug-ipc-client && exit 1
+"$BINARY_NAME" debug-ipc-client && exit 1
 
 # Explicitly exiting is needed when we're intentionally having commands fail
 exit 0
