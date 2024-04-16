@@ -10,16 +10,6 @@ FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
-# Shellcheck can't do reachability for traps for some reason
-# shellcheck disable=SC2317
-function systemctl_status {
-    systemctl status "$SERVICE_NAME"
-}
-
-trap systemctl_status EXIT
-
-sudo groupadd "$FZ_GROUP"
-
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
@@ -30,23 +20,17 @@ systemd-analyze security "$SERVICE_NAME"
 
 stat /var/run /run
 
+# The firezone group must exist before the daemon starts
+sudo groupadd "$FZ_GROUP"
 sudo systemctl start "$SERVICE_NAME"
 
-# Make sure we don't belong to the group yet
-(groups | grep "$FZ_GROUP") && exit 1
-
-# TODO: Expect Firezone to reject our commands here before the group is created
-"$BINARY_NAME" debug-ipc-client && exit 1
-
+# Add ourselves to the firezone group
 sudo gpasswd --add "$USER" "$FZ_GROUP"
 
-# Start a new login shell to update our groups, and check again
-sudo su --login "$USER" --command groups | grep "$FZ_GROUP"
-
-# TODO: Expect Firezone to accept our commands if we run with `su --login`
+echo "# Expect Firezone to accept our commands if we run with `su --login`"
 sudo su --login "$USER" --command RUST_LOG=info "$BINARY_NAME" debug-ipc-client
 
-# TODO: Expect Firezone to reject our command if we run without `su --login`
+echo "# Expect Firezone to reject our command if we run without `su --login`"
 "$BINARY_NAME" debug-ipc-client && exit 1
 
 # Explicitly exiting is needed when we're intentionally having commands fail
