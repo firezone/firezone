@@ -5,7 +5,7 @@ use crate::messages::{
 use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
-use connlib_shared::messages::RelayStatusUpdate;
+use connlib_shared::messages::RelaysPresence;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted},
     Dname,
@@ -154,9 +154,9 @@ impl Eventloop {
             }
             phoenix_channel::Event::InboundMessage {
                 msg:
-                    IngressMessages::RelayStatusUpdate(RelayStatusUpdate {
-                        disconnected_relay_ids,
-                        online_relays,
+                    IngressMessages::RelaysPresence(RelaysPresence {
+                        disconnected_ids: disconnected_relay_ids,
+                        connected: online_relays,
                     }),
                 ..
             } => self
