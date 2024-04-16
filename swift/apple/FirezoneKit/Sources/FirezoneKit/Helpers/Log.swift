@@ -83,7 +83,7 @@ private final class LogWriter {
     let dateFormatter = ISO8601DateFormatter()
     let jsonEncoder = JSONEncoder()
     dateFormatter.formatOptions = [.withFullDate, .withFullTime, .withFractionalSeconds]
-    jsonEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]    
+    jsonEncoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
 
     self.dateFormatter = dateFormatter
     self.jsonEncoder = jsonEncoder
@@ -110,7 +110,7 @@ private final class LogWriter {
       logger.error("Could not create log file: \(logFileURL.path)")
       return nil
     }
-    
+
     self.handle = handle
     self.workQueue = DispatchQueue(label: "LogWriter.workQueue", qos: .utility)
   }
