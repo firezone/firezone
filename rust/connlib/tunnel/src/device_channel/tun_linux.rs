@@ -174,12 +174,12 @@ impl Tun {
         let mut vnet_header_buf = [0u8; 12];
 
         vnet_header_buf.copy_from_slice(&filled[..12]);
-        let vnet_header = dbg!(unsafe { std::mem::transmute::<_, VnetHeader>(vnet_header_buf) });
+        let vnet_header = unsafe { std::mem::transmute::<_, VnetHeader>(vnet_header_buf) };
 
         // let needs_checksum_update = vnet_header.flags == 1;
 
         let payload = &mut filled[12..];
-        let payload_len = dbg!(payload.len());
+        let payload_len = payload.len();
 
         let header_length = vnet_header.hdr_len as usize;
         let body_length = vnet_header.gso_size as usize;
@@ -194,55 +194,60 @@ impl Tun {
                             // p.set_len(payload_len, payload_len - ip_header_length);
                             p.update_checksum();
 
-                            dbg!(&p);
+                            // dbg!(&p);
 
                             p
                         }),
                 )
                     as Box<dyn Iterator<Item = MutableIpPacket<'b>>>));
             }
+            // TODO: Split this and mangle UDP packets correctly.
             1 | 3 | 4 | 5 => {
-                let packet_length = header_length + body_length;
+                // let packet_length = header_length + body_length;
                 let ip_header_length = header_length - vnet_header.csum_start as usize;
 
                 let (header, bodies) = payload.split_at_mut(header_length);
 
-                dbg!(bodies.len() / body_length);
+                // dbg!(bodies.len() / body_length);
 
-                let packets = bodies.chunks_exact_mut(body_length).enumerate().filter_map(
-                    move |(index, body)| {
-                        let mut packet_buffer = vec![0u8; packet_length];
-                        packet_buffer[..header_length].copy_from_slice(header);
-                        packet_buffer[header_length..].copy_from_slice(body);
+                let packets =
+                    bodies
+                        .chunks_mut(body_length)
+                        .enumerate()
+                        .filter_map(move |(index, body)| {
+                            let packet_length = header_length + body.len();
 
-                        let mut packet = MutableIpPacket::owned(packet_buffer)?;
+                            let mut packet_buffer = vec![0u8; packet_length];
+                            packet_buffer[..header_length].copy_from_slice(header);
+                            packet_buffer[header_length..].copy_from_slice(body);
 
-                        // dbg!(&packet);
+                            let mut packet = MutableIpPacket::owned(packet_buffer)?;
 
-                        packet.inc_ipv4_identification_by(index as u16);
-                        packet.set_len(packet_length, packet_length - ip_header_length);
-                        // packet.set_ipv4_no_fragment();
+                            // dbg!(&packet);
 
-                        dbg!(&packet);
+                            packet.inc_ipv4_identification_by(index as u16);
+                            packet.set_len(packet_length, packet_length - ip_header_length);
+                            // packet.set_ipv4_no_fragment();
 
-                        let mut mutable_tcp_packet =
-                            MutableTcpPacket::new(packet.payload_mut()).unwrap();
+                            // dbg!(&packet);
 
-                        mutable_tcp_packet.set_sequence(
-                            mutable_tcp_packet.get_sequence() + (index * body_length) as u32,
-                        );
+                            let mut mutable_tcp_packet =
+                                MutableTcpPacket::new(packet.payload_mut()).unwrap();
 
-                        packet.update_checksum();
+                            mutable_tcp_packet.set_sequence(
+                                mutable_tcp_packet.get_sequence() + (index * body_length) as u32,
+                            );
 
-                        // dbg!(packet.packet_size());
+                            packet.update_checksum();
 
-                        // if needs_checksum_update {
-                        //     packet.update_checksum();
-                        // }
+                            // dbg!(packet.packet_size());
 
-                        Some(packet)
-                    },
-                );
+                            // if needs_checksum_update {
+                            //     packet.update_checksum();
+                            // }
+
+                            Some(packet)
+                        });
 
                 Poll::Ready(Ok(Box::new(packets)))
             }
@@ -372,7 +377,7 @@ impl Tun {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(packed)]
 struct VnetHeader {
     flags: u8,
