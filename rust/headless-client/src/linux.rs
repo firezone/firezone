@@ -17,6 +17,8 @@ use tokio::{
 };
 use tokio_util::codec::LengthDelimitedCodec;
 
+const SOCK_PATH: &str = "/run/firezone-client.sock";
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
@@ -185,8 +187,6 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-const SOCK_PATH: &str = "/var/run/firezone-client.sock";
-
 async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
     tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
     let stream = UnixStream::connect(SOCK_PATH)
@@ -204,9 +204,18 @@ async fn run_daemon(_cli: Cli) -> Result<()> {
 }
 
 async fn ipc_listen() -> Result<()> {
+    // Find the `firezone` group
+    let fz_gid = nix::unistd::Group::from_name("firezone")
+        .context("can't get group by name")?
+        .context("firezone group must exist on the system")?
+        .gid;
+
     // Remove the socket if a previous run left it there
     tokio::fs::remove_file(SOCK_PATH).await.ok();
     let listener = UnixListener::bind(SOCK_PATH)?;
+    // UID 0 should be root. The daemon currently must run as root to control DNS.
+    std::os::unix::fs::chown(SOCK_PATH, Some(0), Some(fz_gid.into()))
+        .context("can't set firezone as the group for the UDS")?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
@@ -219,15 +228,10 @@ async fn ipc_listen() -> Result<()> {
             pid = cred.pid(),
             "Got an IPC connection"
         );
-        // TODO: Check that the user is in the `firezone` group
-        // For now, to make it work well in CI where that group isn't created,
-        // just check if it matches our own UID.
-        let actual_peer_uid = cred.uid();
-        let expected_peer_uid = nix::unistd::Uid::current().as_raw();
-        if actual_peer_uid != expected_peer_uid {
-            tracing::warn!("Connection from un-authorized user, ignoring");
-            continue;
-        }
+
+        // I'm not sure if we can enforce group membership here - Docker
+        // might just be enforcing it with filesystem permissions.
+        // Checking the secondary groups of another user looks complicated.
 
         let stream = IpcStream::new(stream, LengthDelimitedCodec::new());
         if let Err(error) = handle_ipc_client(stream).await {
