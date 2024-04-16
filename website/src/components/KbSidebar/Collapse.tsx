@@ -26,7 +26,7 @@ export default function Collapse({
         onClick={() => setExpandedState(!expandedState)}
       >
         <span
-          className="ml-3 flex-1 text-left whitespace-nowrap font-semibold"
+          className="uppercase ml-3 flex-1 text-left whitespace-nowrap font-semibold text-neutral-800"
           sidebar-toggle-item="true"
         >
           {label}
@@ -39,7 +39,7 @@ export default function Collapse({
       </button>
       <ul
         id={ctl}
-        className={[expandedState ? "" : "hidden", "ml-3 py-1"].join(" ")}
+        className={[expandedState ? "" : "hidden", "ml-3 py-0.5"].join(" ")}
       >
         {children}
       </ul>
