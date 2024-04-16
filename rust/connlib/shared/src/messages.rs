@@ -405,13 +405,13 @@ pub struct Stun {
     pub addr: SocketAddr,
 }
 
-/// A update to the status of several relays.
+/// A update to the presence of several relays.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-pub struct RelayStatusUpdate {
+pub struct RelaysPresence {
     /// These relays have disconnected from the portal. We need to stop using them.
-    pub disconnected_relay_ids: Vec<RelayId>,
+    pub disconnected_ids: Vec<RelayId>,
     /// These relays are still online. We can/should use these.
-    pub online_relays: Vec<Relay>,
+    pub connected: Vec<Relay>,
 }
 
 #[cfg(test)]
