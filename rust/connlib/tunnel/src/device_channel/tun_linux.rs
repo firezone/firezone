@@ -18,6 +18,8 @@ use libc::{
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
+use pnet_packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
+use pnet_packet::ipv4::Ipv4Packet;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle};
 use rtnetlink::{RouteAddRequest, RuleAddRequest};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -87,15 +89,21 @@ impl Drop for Tun {
 
 impl Tun {
     pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
-        dbg!(IpPacket::new(buf));
+        let ip_packet = Ipv4Packet::new(buf).unwrap();
+        let (csum_start, csum_offset) = match ip_packet.get_next_level_protocol() {
+            IpNextHeaderProtocols::Udp => (20, 6),
+            IpNextHeaderProtocols::Tcp => (20, 16),
+            _ => (0, 0),
+        };
 
         let hdr = VnetHeader {
-            flags: 0,
-            gso_type: 0,
+            flags: 1,
             hdr_len: 0,
+            csum_start,  // We need to calculate the length of the ip packet header
+            csum_offset, // 16 for TCP 6 for UDP
+            // GSO-related
+            gso_type: 0, // udp/tcp v4/v6
             gso_size: 0,
-            csum_start: 0,
-            csum_offset: 0,
             num_buffers: 0,
         };
 
