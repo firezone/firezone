@@ -2,26 +2,26 @@
 Description=Firezone Client
 
 [Service]
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
+#AmbientCapabilities=CAP_NET_ADMIN
+#CapabilityBoundingSet=CAP_NET_ADMIN
 #DeviceAllow=/dev/net/tun
-MemoryDenyWriteExecute=true
+#MemoryDenyWriteExecute=true
 #NoNewPrivileges=true
-PrivateDevices=false
+#PrivateDevices=false
 #PrivateMounts=true
 #PrivateTmp=true
 # We need to be real root, not just root in our cgroup
-PrivateUsers=false
-ProtectClock=true
-ProtectControlGroups=true
+#PrivateUsers=false
+#ProtectClock=true
+#ProtectControlGroups=true
 #ProtectHome=true
-ProtectKernelLogs=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
+#ProtectKernelLogs=true
+#ProtectKernelModules=true
+#ProtectKernelTunables=true
 #ProtectSystem=true
-RestrictNamespaces=true
-RestrictSUIDSGID=true
-SystemCallArchitectures=native
+#RestrictNamespaces=true
+#RestrictSUIDSGID=true
+#SystemCallArchitectures=native
 #SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io \
 #@privileged @signal @sync @system-service @timer
 
