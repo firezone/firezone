@@ -8,14 +8,14 @@ AmbientCapabilities=CAP_NET_ADMIN
 MemoryDenyWriteExecute=true
 #NoNewPrivileges=true
 #PrivateDevices=false
-PrivateMounts=true
+#PrivateMounts=true
 #PrivateTmp=true
 # We need to be real root, not just root in our cgroup
 #PrivateUsers=false
 ProtectClock=true
-ProtectControlGroups=true
+#ProtectControlGroups=true
 #ProtectHome=true
-ProtectKernelLogs=true
+#ProtectKernelLogs=true
 #ProtectKernelModules=true
 #ProtectKernelTunables=true
 #ProtectSystem=true
