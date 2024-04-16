@@ -3,12 +3,14 @@
 # The integration tests call this to test security for Linux IPC.
 # Only users in the `firezone` group should be able to control the privileged tunnel process.
 
-set -euox pipefail
+source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
 SERVICE_NAME=firezone-client
 
-function systemctl_status() {
+# Shellcheck can't do reachability for traps for some reason
+# shellcheck disable=SC2317
+function systemctl_status {
     systemctl status "$SERVICE_NAME"
 }
 

@@ -1,21 +1,16 @@
 #!/usr/bin/env bash
 # Test Linux DNS control using `systemd-resolved` directly inside the CI runner
 
-set -euo pipefail
+source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
-CONFIG_DIR=/etc/dev.firezone.client
-TOKEN_PATH="$CONFIG_DIR/token.txt"
 
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-sudo mkdir "$CONFIG_DIR"
-sudo touch "$TOKEN_PATH"
-sudo chmod 600 "$TOKEN_PATH"
-echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
+create_token_file
 
 sudo cp scripts/tests/systemd/firezone-client.service /usr/lib/systemd/system/
 systemd-analyze security firezone-client
