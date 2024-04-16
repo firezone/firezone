@@ -115,10 +115,7 @@ public final class Store: ObservableObject {
 
   func stop(clearToken: Bool = false) {
     guard [.connected, .connecting, .reasserting].contains(status)
-    else {
-      Log.app.error("\(#function): Can't stop from state: \(status)")
-      return
-    }
+    else { return }
 
     tunnelManager.stop(clearToken: clearToken)
   }
