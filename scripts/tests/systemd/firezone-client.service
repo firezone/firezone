@@ -3,14 +3,15 @@ Description=Firezone Client
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 MemoryDenyWriteExecute=true
 NoNewPrivileges=true
 PrivateDevices=true
 PrivateMounts=true
 PrivateTmp=true
-PrivateUsers=true
+# We need to be real root, not just root in our cgroup
+PrivateUsers=false
 ProtectClock=true
 ProtectControlGroups=true
 ProtectHome=true
@@ -18,11 +19,11 @@ ProtectKernelLogs=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectSystem=true
-RestrictAddressFamilies=true
 RestrictNamespaces=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
-SystemCallFilter=
+SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io \
+@privileged @signal @sync @system-service @timer
 
 Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
