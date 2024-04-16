@@ -988,7 +988,7 @@ defmodule Domain.RelaysTest do
       assert load_balance_relays({0, 0}, []) == []
     end
 
-    test "returns random relays when there are no coordinates" do
+    test "returns 2 random relays when there are no coordinates" do
       relay_1 = Fixtures.Relays.create_relay()
       relay_2 = Fixtures.Relays.create_relay()
       relay_3 = Fixtures.Relays.create_relay()
@@ -1050,6 +1050,101 @@ defmodule Domain.RelaysTest do
 
       assert [relay1] = load_balance_relays({32.2029, -80.0131}, relays)
       assert relay1.id in [relay_us_east_1.id, relay_us_east_2.id]
+    end
+
+    test "returns at most two relays - one from each location location" do
+      relay_us_east_1 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
+        )
+
+      relay_us_east_2 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
+        )
+
+      relay_us_east_3 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 33.2029,
+            remote_ip_location_lon: -80.0131
+          ]
+        )
+
+      us_east_relays = [
+        relay_us_east_1,
+        relay_us_east_2,
+        relay_us_east_3
+      ]
+
+      # The Dalles, Oregon
+      relay_us_west_1 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 45.5946,
+            remote_ip_location_lon: -121.1787
+          ]
+        )
+
+      relay_us_west_2 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 45.5946,
+            remote_ip_location_lon: -121.1787
+          ]
+        )
+
+      relay_us_west_3 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 45.5946,
+            remote_ip_location_lon: -121.1787
+          ]
+        )
+
+      # Ukraine
+      relay_eu_east_1 =
+        Fixtures.Relays.create_relay(
+          context: [
+            remote_ip_location_lat: 50.4501,
+            remote_ip_location_lon: 30.5234
+          ]
+        )
+
+      eu_east_relays = [
+        relay_eu_east_1
+      ]
+
+      us_west_relays = [
+        relay_us_west_1,
+        relay_us_west_2,
+        relay_us_west_3
+      ]
+
+      us_east_relay_ids = Enum.map(us_east_relays, & &1.id)
+      us_west_relay_ids = Enum.map(us_west_relays, & &1.id)
+
+      relays = us_east_relays ++ us_west_relays ++ eu_east_relays
+
+      assert relays = load_balance_relays({32.2029, -80.0131}, relays)
+      assert length(relays) == 2
+      assert Enum.any?(relays, &(&1.id in us_east_relay_ids))
+      assert Enum.any?(relays, &(&1.id in us_west_relay_ids))
+
+      assert relays = load_balance_relays({45.5946, -121.1787}, relays)
+      assert length(relays) == 2
+      assert Enum.any?(relays, &(&1.id in us_east_relay_ids))
+      assert Enum.any?(relays, &(&1.id in us_west_relay_ids))
+
+      assert relays = load_balance_relays({32.2029, -80.0131}, us_west_relays)
+      assert length(relays) == 1
+      assert Enum.all?(relays, &(&1.id in us_west_relay_ids))
     end
 
     test "selects relays in two closest regions to a given location" do

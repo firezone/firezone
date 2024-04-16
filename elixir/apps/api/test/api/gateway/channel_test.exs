@@ -502,6 +502,71 @@ defmodule API.Gateway.ChannelTest do
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
+    test "pushes request_connection message with at most 2 relays (4 addresses)", %{
+      account: account,
+      subject: subject,
+      client: client,
+      relay: relay
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      for relay <- [
+            relay,
+            Fixtures.Relays.create_relay(account: account),
+            Fixtures.Relays.create_relay(account: account),
+            Fixtures.Relays.create_relay(group: global_relay_group),
+            Fixtures.Relays.create_relay(group: global_relay_group)
+          ] do
+        stamp_secret = Ecto.UUID.generate()
+        :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      end
+
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      {:ok, _, socket} =
+        API.Gateway.Socket
+        |> socket("gateway:#{gateway.id}", %{
+          subject: subject,
+          gateway: gateway,
+          gateway_group: gateway_group,
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
+        |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      client_payload = "RTC_SD"
+      flow_id = Ecto.UUID.generate()
+
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      send(
+        socket.channel_pid,
+        {:request_connection, {channel_pid, socket_ref},
+         %{
+           client_id: client.id,
+           resource_id: resource.id,
+           flow_id: flow_id,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload,
+           client_preshared_key: preshared_key
+         }, otel_ctx}
+      )
+
+      assert_push "request_connection", payload
+      assert length(payload.relays) == 4
+    end
+
     test "subscribes for flow expiration event", %{
       account: account,
       client: client,
