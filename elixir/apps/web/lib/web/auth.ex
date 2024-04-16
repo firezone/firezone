@@ -124,13 +124,13 @@ defmodule Web.Auth do
          "state" => state
        }) do
     client_auth_data =
-      [
+      %{
         actor_name: identity.actor.name,
         fragment: encoded_fragment,
         identity_provider_identifier: identity.provider_identifier,
         state: state
-      ]
-      |> Enum.reject(&is_nil(elem(&1, 1)))
+      }
+      |> Map.reject(fn {_key, val} -> is_nil(val) end)
 
     redirect_url = ~p"/#{conn.assigns.account.slug}/sign_in/client_redirect"
 
@@ -511,7 +511,7 @@ defmodule Web.Auth do
     conn = Plug.Conn.fetch_cookies(conn, signed: [@client_auth_cookie_name])
 
     case conn.cookies[@client_auth_cookie_name] do
-      [actor_name: _, fragment: _, identity_provider_identifier: _, state: _] = client_auth_data ->
+      %{actor_name: _, fragment: _, identity_provider_identifier: _, state: _} = client_auth_data ->
         {:ok, client_auth_data, conn}
 
       _ ->

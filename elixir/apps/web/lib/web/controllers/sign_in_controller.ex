@@ -11,8 +11,8 @@ defmodule Web.SignInController do
 
       query =
         client_auth_data
-        |> Keyword.put_new(:account_slug, account.slug)
-        |> Keyword.put_new(:account_name, account.name)
+        |> Map.put_new(:account_slug, account.slug)
+        |> Map.put_new(:account_name, account.name)
         |> URI.encode_query()
 
       redirect(conn, external: "#{scheme}://#{url}?#{query}")

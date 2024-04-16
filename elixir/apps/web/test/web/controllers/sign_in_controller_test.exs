@@ -36,6 +36,8 @@ defmodule Web.SignInControllerTest do
       refute query_params["nonce"]
       assert query_params["actor_name"] == actor.name
       assert query_params["identity_provider_identifier"] == identity.provider_identifier
+      assert query_params["account_name"] == account.name
+      assert query_params["account_slug"] == account.slug
     end
 
     test "redirects to sign in page when cookie not present", %{account: account} do
