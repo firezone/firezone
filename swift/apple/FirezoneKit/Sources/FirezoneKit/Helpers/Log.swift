@@ -112,7 +112,6 @@ private final class LogWriter {
   }
 
   func write(severity: Severity, message: String) {
-    logger.log("Writing message: \(message, privacy: .public)")
     let logEntry = LogEntry(
       time: dateFormatter.string(from: Date()),
       category: category,
@@ -135,7 +134,7 @@ private final class LogWriter {
         handle.write(jsonData)
         try handle.close()
       } catch {
-        self.logger.error("Could write log file \(self.logFileURL) for writing: \(error)")
+        self.logger.error("Could write log file \(self.logFileURL): \(error)")
       }
     }
   }
