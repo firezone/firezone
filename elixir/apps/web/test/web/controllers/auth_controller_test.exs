@@ -270,18 +270,17 @@ defmodule Web.AuthControllerTest do
 
       assert conn.assigns.flash == %{}
 
-      assert redirected_to = redirected_to(conn)
-      assert redirected_to_uri = URI.parse(redirected_to)
-      assert redirected_to_uri.path == "/#{account.slug}/sign_in/success"
+      assert response = response(conn, 200)
+      assert response =~ "Sign in successful"
 
-      assert %{
-               "identity_provider_identifier" => identity_provider_identifier,
-               "actor_name" => actor_name,
-               "fragment" => _fragment
-             } = URI.decode_query(redirected_to_uri.query)
+      cookie_key = "fz_client_auth"
+      conn = fetch_cookies(conn, signed: [cookie_key])
+      client_auth_data = conn.cookies[cookie_key]
 
-      assert actor.name == actor_name
-      assert identity.provider_identifier == identity_provider_identifier
+      assert client_auth_data[:state] == "STATE"
+      assert client_auth_data[:fragment]
+      assert client_auth_data[:actor_name] == actor.name
+      assert client_auth_data[:identity_provider_identifier] == identity.provider_identifier
     end
 
     test "persists account into list of recent accounts when credentials are valid", %{
@@ -621,19 +620,22 @@ defmodule Web.AuthControllerTest do
           "secret" => secret
         })
 
+      client_auth_cookie_key = "fz_client_auth"
+
       assert conn.assigns.flash == %{}
       refute Map.has_key?(conn.cookies, "fz_auth_state_#{provider.id}")
+      assert Map.has_key?(conn.cookies, client_auth_cookie_key)
 
-      assert redirected_to = conn |> redirected_to() |> URI.parse()
-      assert redirected_to.path == "/#{account.slug}/sign_in/success"
+      assert response = response(conn, 200)
+      assert response =~ "Sign in successful"
 
-      assert query_params = URI.decode_query(redirected_to.query)
-      assert not is_nil(query_params["fragment"])
-      refute query_params["fragment"] =~ redirect_params["nonce"]
-      assert query_params["state"] == redirect_params["state"]
-      refute query_params["nonce"]
-      assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
-      assert query_params["identity_provider_identifier"] == identity.provider_identifier
+      conn = fetch_cookies(conn, signed: [client_auth_cookie_key])
+      client_auth_data = conn.cookies[client_auth_cookie_key]
+
+      assert client_auth_data[:state] == redirect_params["state"]
+      assert not is_nil(client_auth_data[:fragment])
+      assert client_auth_data[:actor_name] == Repo.preload(identity, :actor).actor.name
+      assert client_auth_data[:identity_provider_identifier] == identity.provider_identifier
     end
 
     test "appends a new valid session when credentials are valid", %{
@@ -947,7 +949,7 @@ defmodule Web.AuthControllerTest do
       assert redirected_to(conn) == "/#{account.slug}/foo"
     end
 
-    test "redirects clients to deep link on success", %{
+    test "redirects clients to sign in success page on success", %{
       account: account,
       provider: provider,
       bypass: bypass,
@@ -979,16 +981,17 @@ defmodule Web.AuthControllerTest do
           "code" => "MyFakeCode"
         })
 
-      assert redirected_to = conn |> redirected_to() |> URI.parse()
-      assert redirected_to.path == "/#{account.slug}/sign_in/success"
+      cookie_key = "fz_client_auth"
+      conn = fetch_cookies(conn, signed: [cookie_key])
+      client_auth_data = conn.cookies[cookie_key]
 
-      assert query_params = URI.decode_query(redirected_to.query)
-      assert not is_nil(query_params["fragment"])
-      refute query_params["fragment"] =~ "NONCE"
-      assert query_params["state"] == "STATE"
-      refute query_params["nonce"]
-      assert query_params["actor_name"] == Repo.preload(identity, :actor).actor.name
-      assert query_params["identity_provider_identifier"] == identity.provider_identifier
+      assert response = response(conn, 200)
+      assert response =~ "Sign in successful"
+
+      assert client_auth_data[:state] == "STATE"
+      assert not is_nil(client_auth_data[:fragment])
+      assert client_auth_data[:actor_name] == Repo.preload(identity, :actor).actor.name
+      assert client_auth_data[:identity_provider_identifier] == identity.provider_identifier
     end
 
     test "persists the valid auth token in session on success", %{
