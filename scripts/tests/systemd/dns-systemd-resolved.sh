@@ -43,10 +43,7 @@ echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
 which firezone-linux-client
 stat /usr/bin/firezone-linux-client
-if ! sudo systemctl start "$SERVICE_NAME"; then
-    sudo systemctl status "$SERVICE_NAME"
-    exit 1
-fi
+sudo systemctl start "$SERVICE_NAME"
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN"
 
