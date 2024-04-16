@@ -158,9 +158,15 @@ This is why you'll see DNS-based Resources resolve to IPs such as `100.96.0.1`
 while the Client is signed in:
 
 ```
-> nslookup github.com Server: 100.100.111.1 Address: 100.100.111.1#53
+> nslookup github.com
 
-Non-authoritative answer: Name: github.com Address: 100.96.0.1
+Server: 100.100.111.1
+Address: 100.100.111.1#53
+
+Non-authoritative answer:
+
+Name: github.com
+Address: 100.96.0.1
 ```
 
 ### Why Firezone uses a mapped address for DNS Resources
