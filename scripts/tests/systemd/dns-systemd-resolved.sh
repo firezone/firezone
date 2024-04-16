@@ -41,7 +41,6 @@ curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 
 echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
-which firezone-linux-client
 stat /usr/bin/firezone-linux-client
 sudo systemctl start "$SERVICE_NAME"
 resolvectl dns tun-firezone
