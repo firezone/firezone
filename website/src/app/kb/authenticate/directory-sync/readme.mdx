@@ -1,5 +1,6 @@
 import Alert from "@/components/DocsAlert";
 import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
 
 <PlanBadge plans={["enterprise"]}>
 
@@ -17,15 +18,17 @@ identity provider every few minutes.
 
 ## How Firezone treats deleted entities
 
-Firezone **never** deletes entities synced from your identity provider. This
-helps to preserve audit trails and other logged activity within Firezone.
+When you delete a user or group in your identity provider, Firezone soft-deletes
+them upon the next sync. This prevents data duplication if a user or group is
+only temporarily suspended, and helps preserve logged activity within Firezone
+for auditing purposes.
 
 ### Deleting or suspending a user
 
 When a user is deleted or suspended in your identity provider, Firezone will
-disable the user and clear all active Client and admin portal web sessions for
-that user upon the next sync. The user will be **signed out of all Clients** and
-forced to reauthenticate.
+delete the associated identity the user signs in with, clearing all active
+Client and admin portal web sessions for that identity. The user will be
+immediately **signed out of all Client and admin portal sessions**.
 
 This ensures terminated employees will have all Firezone access revoked within a
 few minutes of deleting or suspending them in your identity provider.
@@ -33,15 +36,16 @@ few minutes of deleting or suspending them in your identity provider.
 ### Deleting a group or organizational unit
 
 When a group or organizational unit is deleted in your identity provider,
-Firezone will hide the group and delete any associated Policies.
+Firezone will delete the group and all associated Policies. Any access granted
+by those Policies **will be immediately revoked**.
 
 ## Nested groups and organizational units
 
-Firezone syncs transitive memberships from your identity provider. This means
-user membership for a particular group is determined not only by its immediate
-members, but any child groups as well. This allows you to create nested group
-structures in your identity provider and have their memberships automatically
-reflected in Firezone.
+Firezone syncs nested (sometimes called "transitive") memberships from your
+identity provider. This means user membership for a particular group is
+determined not only by its immediate members, but any child groups as well. This
+allows you to create nested group structures in your identity provider and have
+their memberships automatically reflected in Firezone.
 
 For example, if you had the following group structure in your identity provider:
 
@@ -75,3 +79,5 @@ Group:Support:
 Group:DevOps:
   - john@company.com
 ```
+
+<SupportOptions />
