@@ -99,9 +99,29 @@ mod test {
     use connlib_shared::messages::{
         DnsServer, IpDnsServer, ResourceDescriptionCidr, ResourceDescriptionDns, Stun, Turn,
     };
-    use phoenix_channel::PhoenixMessage;
+    use phoenix_channel::{OutboundRequestId, PhoenixMessage};
 
     // TODO: request_connection tests
+
+    #[test]
+    fn broadcast_ice_candidates() {
+        let message = r#"{"topic":"client","event":"broadcast_ice_candidates","payload":{"gateway_ids":["b3d34a15-55ab-40df-994b-a838e75d65d7"],"candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
+        let expected = PhoenixMessage::new_message(
+            "client",
+            EgressMessages::BroadcastIceCandidates(BroadcastGatewayIceCandidates {
+                gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
+                candidates: vec![
+                    "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
+                        .to_owned(),
+                ],
+            }),
+            Some(OutboundRequestId::for_test(6)),
+        );
+
+        let ingress_message = serde_json::from_str::<PhoenixMessage<_, ()>>(message).unwrap();
+
+        assert_eq!(ingress_message, expected);
+    }
 
     #[test]
     fn connection_ready_deserialization() {
