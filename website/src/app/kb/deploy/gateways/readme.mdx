@@ -40,7 +40,7 @@ you'll need to make sure the following outbound traffic is allowed:
 | N/A              | Varies               | `49152 - 65535` | TURN            | TURN protocol channel data |
 | github.com       | Varies               | `443`           | HTTPS           | Gateway upgrades           |
 
-### Where to deploy Gateways
+## Where to deploy Gateways
 
 Ideally, Gateways should be deployed as close to the Resources they're serving
 -- in some cases, even on the same host. This ensures the lowest possible
@@ -85,25 +85,32 @@ keep in mind when planning your deployment.
 {/* Firezone's [automatic load balancing](#load-balancing) to distribute Client */}
 {/* connections across them. */}
 
-### Deploy a single Gateway
+## Deploy a single Gateway
 
 Deploying a single Gateway can be accomplished in the admin portal.
+
+<Alert color="warning">
+  We **strongly** recommend deploying a minimum of three Gateways in a Site for
+  production use cases. This ensures high availability even when performing
+  rolling upgrades.
+</Alert>
 
 Go to `Sites` -> `<name of Site>` -> `Deploy a Gateway` and follow the prompts
 to deploy for your preferred environment. This will deploy a single Gateway.
 
-### Deploy multiple Gateways
+## Deploy multiple Gateways
 
-To achieve [high availability](#high-availability), deploy more Gateways within
-the same Site.
+To achieve
+[high availability](/kb/architecture/critical-sequences#high-availability),
+deploy two or more Gateways within the same Site. High availability is achieved
+through a combination of automatic failover and load balancing, both of which
+are available on all plans.
 
 You can deploy multiple Gateways within a Site manually from the admin portal,
 or automate the process by reusing the `FIREZONE_TOKEN` environment variable
-shown when deploying a Gateway from the admin portal.
-
-When deploying a Gateway from the admin portal, a `FIREZONE_TOKEN` environment
-variable is shown. This is a multi-owner token that can be reused to deploy
-multiple Gateways within the same Site.
+shown on the `Manual` tab of the `Deploy a new Gateway` page. This is a
+multi-owner token that can be reused to deploy multiple Gateways within the same
+Site.
 
 <Alert color="warning">
   **Note:** Be sure to set a unique `FIREZONE_ID` for each Gateway you deploy.
@@ -112,7 +119,12 @@ multiple Gateways within the same Site.
   the portal.
 </Alert>
 
-### Deploy using Terraform
+Deploy as many Gateways as you need to handle the load of Client connections to
+Resources in a Site. This effectively shards Client connections across all
+Gateways in a Site, achieving higher overall throughput than otherwise possible
+with a single Gateway.
+
+#### Deploy using Terraform
 
 See our
 [Terraform examples](https://github.com/firezone/firezone/tree/main/terraform/examples)
@@ -123,49 +135,6 @@ for deploying and scaling Gateways using Terraform on various cloud providers.
 It's a good idea to keep your Gateways up to date with the latest version
 available. See [upgrading Gateways](/kb/administer/upgrading) for ways to
 automate this.
-
-## High availability
-
-Firezone was designed from the ground up to support high availability
-requirements. This is achieved through a combination of **automatic failover**
-and **load balancing**, both of which are available on all plans.
-
-### Automatic failover
-
-Deploy two or more Gateways within the same Site to achieve automatic failover
-for Client connections to Resources in that Site.
-
-Here's how it works:
-
-- When the admin portal detects a particular Gateway is unhealthy, it will stop
-  using it for new connection requests to Resources in the Site.
-- Existing Clients will remain connected to the Gateway until they themselves
-  detect it to be unhealthy.
-- Clients identify unhealthy gateways using keepalive timers. If the timer
-  expires, the Client will disconnect from the unhealthy Gateway and request a
-  new, healthy one from the portal.
-- The Client keepalive timer expires after **10 seconds**. This is the maximum
-  time it takes for existing Client connections to be rerouted to a healthy
-  Gateway in the event of a Gateway failure.
-
-By using two independent health checks in the portal and the Client, Firezone
-ensures that temporary network issues between the Client and portal do not
-interrupt existing connections to healthy Gateways.
-
-### Load balancing
-
-Similar to automatic failover, two or more Gateways deployed within a Site will
-automatic load balance Client connections to Resources in that Site.
-
-When a Client wants to connect to a Resource, Firezone randomly selects a
-healthy Gateway in the Site to handle the request. The Client maintains the
-connection to that Gateway until either the Client disconnects or the Gateway
-becomes unhealthy.
-
-Deploy as many Gateways as you need to handle the load of Client connections to
-Resources in a Site. This effectively shards Client connections across all
-Gateways in a Site, achieving higher overall throughput than otherwise possible
-with a single Gateway.
 
 <NextStep href="/kb/deploy/resources">Next: Create Resources</NextStep>
 
