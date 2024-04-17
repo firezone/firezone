@@ -29,7 +29,7 @@ pub async fn run() -> Result<()> {
     setup_global_subscriber(layer);
 
     match cli.command() {
-        Cmd::Daemon => run_daemon(cli).await,
+        Cmd::IpcService => run_daemon(cli).await,
         Cmd::Standalone => run_standalone(cli).await,
     }
 }

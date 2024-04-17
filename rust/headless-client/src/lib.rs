@@ -80,7 +80,7 @@ impl Cli {
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
-    Daemon,
+    IpcService,
     /// Act as a CLI-only Client, don't listen for IPC connections
     Standalone,
 }
