@@ -1,3 +1,5 @@
+//! Implementation, Linux-specific
+
 use super::{Cli, Cmd};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
