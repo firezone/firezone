@@ -52,14 +52,20 @@ fn smoke_relayed() {
 
     let (alice, bob) = alice_and_bob();
 
-    let mut relays = [TestRelay::new(
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        debug_span!("Roger"),
+    let mut relays = [(
+        1,
+        TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
     )];
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
-        .with_relays(&mut relays, clock.now);
-    let mut bob =
-        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
     let firewall = Firewall::default()
         .with_block_rule(&alice, &bob)
         .with_block_rule(&bob, &alice);
@@ -91,14 +97,20 @@ fn reconnect_discovers_new_interface() {
 
     let (alice, bob) = alice_and_bob();
 
-    let mut relays = [TestRelay::new(
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        debug_span!("Roger"),
+    let mut relays = [(
+        1,
+        TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
     )];
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
-        .with_relays(&mut relays, clock.now);
-    let mut bob =
-        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
 
     handshake(&mut alice, &mut bob, &clock);
 
@@ -674,6 +686,18 @@ impl EitherNode {
             EitherNode::Server(n) => n.reconnect(now),
         }
     }
+
+    fn update_relays(
+        &mut self,
+        to_remove: HashSet<u64>,
+        to_add: &HashSet<(u64, SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
+        match self {
+            EitherNode::Server(s) => s.update_relays(to_remove, to_add, now),
+            EitherNode::Client(c) => c.update_relays(to_remove, to_add, now),
+        }
+    }
 }
 
 impl TestNode {
@@ -692,7 +716,12 @@ impl TestNode {
         }
     }
 
-    fn with_relays(mut self, relays: &mut [TestRelay], now: Instant) -> Self {
+    fn with_relays(
+        mut self,
+        to_remove: HashSet<u64>,
+        relays: &mut [(u64, TestRelay)],
+        now: Instant,
+    ) -> Self {
         let username = match self.node {
             EitherNode::Server(_) => "server",
             EitherNode::Client(_) => "client",
@@ -700,12 +729,11 @@ impl TestNode {
 
         let turn_servers = relays
             .iter()
-            .enumerate()
             .map(|(idx, relay)| {
                 let (username, password) = relay.make_credentials(username);
 
                 (
-                    idx as u64,
+                    *idx,
                     relay.listen_addr,
                     username,
                     password,
@@ -714,10 +742,7 @@ impl TestNode {
             })
             .collect::<HashSet<_>>();
 
-        match &mut self.node {
-            EitherNode::Server(s) => s.update_relays(HashSet::default(), &turn_servers, now),
-            EitherNode::Client(c) => c.update_relays(HashSet::default(), &turn_servers, now),
-        }
+        self.node.update_relays(to_remove, &turn_servers, now);
 
         self
     }
@@ -809,7 +834,7 @@ impl TestNode {
     fn drain_transmits(
         &mut self,
         other: &mut TestNode,
-        relays: &mut [TestRelay],
+        relays: &mut [(u64, TestRelay)],
         firewall: &Firewall,
         now: Instant,
     ) {
@@ -817,7 +842,7 @@ impl TestNode {
             let payload = &trans.payload;
             let dst = trans.dst;
 
-            if let Some(relay) = relays.iter_mut().find(|r| r.wants(trans.dst)) {
+            if let Some((_, relay)) = relays.iter_mut().find(|(_, r)| r.wants(trans.dst)) {
                 relay.handle_packet(payload, self.primary, dst, other, now);
                 continue;
             }
@@ -876,7 +901,7 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, clock: &Clock) {
 fn progress(
     a1: &mut TestNode,
     a2: &mut TestNode,
-    relays: &mut [TestRelay],
+    relays: &mut [(u64, TestRelay)],
     firewall: &Firewall,
     clock: &mut Clock,
 ) {
@@ -888,7 +913,7 @@ fn progress(
     a1.drain_transmits(a2, relays, firewall, clock.now);
     a2.drain_transmits(a1, relays, firewall, clock.now);
 
-    for relay in relays.iter_mut() {
+    for (_, relay) in relays.iter_mut() {
         relay.drain_messages(a1, a2, clock.now);
     }
 
@@ -904,7 +929,7 @@ fn progress(
         }
     }
 
-    for relay in relays {
+    for (_, relay) in relays {
         if let Some(timeout) = relay.inner.poll_timeout() {
             if clock.now >= timeout {
                 relay
