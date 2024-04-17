@@ -92,10 +92,10 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="/product/early-access"
+                    href="/kb/architecture"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Early Access
+                    Architecture
                   </Link>
                 </li>
                 <li className="mb-4">
@@ -139,10 +139,10 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="https://join.slack.com/t/firezone-users/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA"
+                    href="https://discord.gg/DY8gxpSgep"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Slack
+                    Discord
                   </Link>
                 </li>
                 <li className="mb-4">

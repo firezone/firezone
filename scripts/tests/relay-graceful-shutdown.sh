@@ -7,7 +7,7 @@ install_iptables_drop_rules
 client_curl_resource "172.20.0.100/get"
 
 # Act: Send SIGTERM
-sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
+relay1 kill -s SIGTERM "$(pgrep firezone-relay)"
 
 sleep 2 # Closing websocket isn't instant.
 
@@ -15,11 +15,11 @@ sleep 2 # Closing websocket isn't instant.
 client_curl_resource "172.20.0.100/get"
 
 # Assert: Websocket connection is cut
-OPEN_SOCKETS=$(relay ss --tcp --numeric state established dport 8081 | tail --lines=+2) # Portal listens on port 8081
+OPEN_SOCKETS=$(relay netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Portal listens on port 8081
 test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
-sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
+relay1 kill -s SIGTERM "$(pgrep firezone-relay)"
 
 sleep 1 # Wait for process to exit
 

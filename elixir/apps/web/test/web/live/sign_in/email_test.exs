@@ -104,7 +104,8 @@ defmodule Web.SignIn.EmailTest do
       })
       |> submit_form(conn)
 
-    assert redirected_to(conn, 302) =~ "/#{account.slug}/sign_in/success"
+    assert response = response(conn, 200)
+    assert response =~ "Sign in successful"
     refute conn.assigns.flash["error"]
   end
 

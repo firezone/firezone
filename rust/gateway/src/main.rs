@@ -8,6 +8,7 @@ use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::{future, TryFutureExt};
 use secrecy::{Secret, SecretString};
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
@@ -110,6 +111,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     tunnel
         .set_interface(&init.interface)
         .context("Failed to set interface")?;
+    tunnel.update_relays(HashSet::default(), init.relays);
 
     let mut eventloop = Eventloop::new(tunnel, portal);
 

@@ -6,7 +6,7 @@ use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
-    IpDnsServer, Key, Offer, Relay, RequestConnection, ResourceDescription,
+    IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceDescription,
     ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
@@ -71,6 +71,14 @@ where
             .on_update_resources(self.role_state.resources());
 
         Ok(())
+    }
+
+    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+        self.role_state.update_relays(
+            to_remove,
+            turn(&to_add, |addr| self.io.sockets_ref().can_handle(addr)),
+            Instant::now(),
+        )
     }
 
     /// Adds a the given resource to the tunnel.
@@ -250,7 +258,7 @@ pub struct ClientState {
 
     pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
 
-    node: ClientNode<GatewayId>,
+    node: ClientNode<GatewayId, RelayId>,
 
     pub ip_provider: IpProvider,
 
@@ -425,7 +433,7 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         allowed_stun_servers: HashSet<SocketAddr>,
-        allowed_turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        allowed_turn_servers: HashSet<(RelayId, SocketAddr, String, String, String)>,
     ) -> connlib_shared::Result<Request> {
         tracing::trace!("create_or_reuse_connection");
 
@@ -984,6 +992,15 @@ impl ClientState {
         self.set_dns_mapping(dns_mapping);
 
         true
+    }
+
+    fn update_relays(
+        &mut self,
+        to_remove: HashSet<RelayId>,
+        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
+        self.node.update_relays(to_remove, &to_add, now);
     }
 }
 

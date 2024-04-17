@@ -43,9 +43,9 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Manages a set of wireguard connections for a server.
-pub type ServerNode<TId> = Node<Server, TId>;
+pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
-pub type ClientNode<TId> = Node<Client, TId>;
+pub type ClientNode<TId, RId> = Node<Client, TId, RId>;
 
 pub enum Server {}
 pub enum Client {}
@@ -72,7 +72,14 @@ pub enum Client {}
 /// 1. Change [`Node`]'s state (either via network messages, adding a new connection, etc)
 /// 2. Check [`Node::poll_timeout`] for when to wake the [`Node`]
 /// 3. Call [`Node::handle_timeout`] once that time is reached
-pub struct Node<T, TId> {
+///
+/// A [`Node`] is generic over three things:
+/// - `T`: The mode it is operating in, either [`Client`] or [`Server`].
+/// - `TId`: The type to use for uniquely identifying connections.
+/// - `RId`: The type to use for uniquely identifying relays.
+///
+/// We favor these generic parameters over having our own IDs to avoid mapping back and forth in upper layers.
+pub struct Node<T, TId, RId> {
     private_key: StaticSecret,
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -82,9 +89,9 @@ pub struct Node<T, TId> {
     next_rate_limiter_reset: Option<Instant>,
 
     bindings: HashMap<SocketAddr, StunBinding>,
-    allocations: HashMap<SocketAddr, Allocation>,
+    allocations: HashMap<RId, Allocation<RId>>,
 
-    connections: Connections<TId>,
+    connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
@@ -112,9 +119,10 @@ pub enum Error {
     BadLocalAddress(#[from] str0m::error::IceError),
 }
 
-impl<T, TId> Node<T, TId>
+impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     pub fn new(private_key: StaticSecret) -> Self {
         let public_key = &(&private_key).into();
@@ -149,10 +157,11 @@ where
         (&self.private_key).into()
     }
 
-    pub fn is_connected_to(&self, key: PublicKey) -> bool {
-        self.connections
-            .iter_established()
-            .any(|(_, c)| c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+    pub fn connection_id(&self, key: PublicKey) -> Option<TId> {
+        self.connections.iter_established().find_map(|(id, c)| {
+            (c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+                .then_some(id)
+        })
     }
 
     pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
@@ -230,7 +239,7 @@ where
     /// To do that, we need to check all candidates of each allocation and compare their IP.
     /// The same relay might be reachable over IPv4 and IPv6.
     #[must_use]
-    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation> {
+    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation<RId>> {
         self.allocations.iter_mut().find_map(|(_, allocation)| {
             allocation
                 .current_candidates()
@@ -322,7 +331,7 @@ where
                 payload: Cow::Borrowed(packet),
             })),
             PeerSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get_mut(&relay) else {
+                let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
@@ -339,7 +348,7 @@ where
 
                 Ok(Some(Transmit {
                     src: None,
-                    dst: relay,
+                    dst: allocation.server(),
                     payload: Cow::Borrowed(channel_data_packet),
                 }))
             }
@@ -440,6 +449,55 @@ where
         self.buffered_transmits.pop_front()
     }
 
+    pub fn update_relays(
+        &mut self,
+        to_remove: HashSet<RId>,
+        to_add: &HashSet<(RId, SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
+        // First, invalidate all candidates from relays that we should stop using.
+        for id in to_remove {
+            let Some(allocation) = self.allocations.remove(&id) else {
+                continue;
+            };
+
+            for (id, agent) in self.connections.agents_mut() {
+                let _span = info_span!("connection", %id).entered();
+
+                for candidate in allocation
+                    .current_candidates()
+                    .filter(|c| c.kind() == CandidateKind::Relayed)
+                {
+                    agent.invalidate_candidate(&candidate);
+                }
+            }
+        }
+
+        // Second, upsert all new relays.
+        for (id, server, username, password, realm) in to_add {
+            let Ok(username) = Username::new(username.to_owned()) else {
+                tracing::debug!(%username, "Invalid TURN username");
+                continue;
+            };
+            let Ok(realm) = Realm::new(realm.to_owned()) else {
+                tracing::debug!(%realm, "Invalid TURN realm");
+                continue;
+            };
+
+            if let Some(existing) = self.allocations.get_mut(id) {
+                existing.update_credentials(*server, username, password, realm, now);
+                continue;
+            }
+
+            self.allocations.insert(
+                *id,
+                Allocation::new(*id, *server, username, password.clone(), realm, now),
+            );
+
+            tracing::info!(%id, address = %server, "Added new TURN server");
+        }
+    }
+
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
@@ -449,7 +507,7 @@ where
         key: [u8; 32],
         intent_sent_at: Instant,
         now: Instant,
-    ) -> Connection {
+    ) -> Connection<RId> {
         agent.handle_timeout(now);
 
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
@@ -523,23 +581,36 @@ where
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
+    ///
+    /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
+    /// Even look-ups in [`HashMap`]s and linear searches across small lists are expensive at this point.
+    /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
+    ///
+    /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
+    ///
+    /// This heuristic might fail because we are also handling wireguard packets.
+    /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
+    /// We can detect this by further checking the origin of the packet.
     #[must_use]
+    #[allow(clippy::type_complexity)]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
         local: SocketAddr,
         packet: &'p [u8],
         now: Instant,
-    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
-        // First, check whether the packet is from a known allocation.
-        let Some(allocation) = self.allocations.get_mut(&from) else {
-            return ControlFlow::Continue((from, packet, None));
-        };
-
-        // See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
-        match packet.first() {
+    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket<RId>>)> {
+        match packet.first().copied() {
+            // STUN method range
             Some(0..=3) => {
+                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 if allocation.handle_input(from, local, packet, now) {
+                    // Successfully handled the packet
                     return ControlFlow::Break(());
                 }
 
@@ -547,8 +618,17 @@ where
 
                 ControlFlow::Break(()) // Stop processing the packet.
             }
+            // Channel data number range
             Some(64..=79) => {
+                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
+                    // Successfully handled the packet and decapsulated the channel data message.
+                    // Continue processing with the _unwrapped_ packet.
                     return ControlFlow::Continue((from, packet, Some(socket)));
                 }
 
@@ -556,7 +636,8 @@ where
 
                 ControlFlow::Break(()) // Stop processing the packet.
             }
-            _ => ControlFlow::Continue((from, packet, None)),
+            // Byte is in a different range? Move on with processing the packet.
+            Some(_) | None => ControlFlow::Continue((from, packet, None)),
         }
     }
 
@@ -601,7 +682,7 @@ where
         from: SocketAddr,
         local: SocketAddr,
         packet: &[u8],
-        relayed: Option<Socket>,
+        relayed: Option<Socket<RId>>,
         buffer: &'b mut [u8],
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
@@ -676,9 +757,10 @@ where
     }
 }
 
-impl<TId> Node<Client, TId>
+impl<TId, RId> Node<Client, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     /// Create a new connection indexed by the given ID.
     ///
@@ -690,7 +772,7 @@ where
         &mut self,
         id: TId,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Offer {
@@ -703,7 +785,7 @@ where
         };
 
         self.upsert_stun_servers(&stun_servers, now);
-        self.upsert_turn_servers(&turn_servers, now);
+        self.update_relays(HashSet::default(), &turn_servers, now);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
@@ -775,9 +857,10 @@ where
     }
 }
 
-impl<TId> Node<Server, TId>
+impl<TId, RId> Node<Server, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     /// Accept a new connection indexed by the given ID.
     ///
@@ -791,7 +874,7 @@ where
         offer: Offer,
         remote: PublicKey,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
         now: Instant,
     ) -> Answer {
         debug_assert!(
@@ -804,7 +887,7 @@ where
         };
 
         self.upsert_stun_servers(&stun_servers, now);
-        self.upsert_turn_servers(&turn_servers, now);
+        self.update_relays(HashSet::default(), &turn_servers, now);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(false);
@@ -838,9 +921,10 @@ where
     }
 }
 
-impl<T, TId> Node<T, TId>
+impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
     fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
         for server in servers {
@@ -850,35 +934,6 @@ where
                 self.bindings
                     .insert(*server, StunBinding::new(*server, now));
             }
-        }
-    }
-
-    fn upsert_turn_servers(
-        &mut self,
-        servers: &HashSet<(SocketAddr, String, String, String)>,
-        now: Instant,
-    ) {
-        for (server, username, password, realm) in servers {
-            let Ok(username) = Username::new(username.to_owned()) else {
-                tracing::debug!(%username, "Invalid TURN username");
-                continue;
-            };
-            let Ok(realm) = Realm::new(realm.to_owned()) else {
-                tracing::debug!(%realm, "Invalid TURN realm");
-                continue;
-            };
-
-            if let Some(existing) = self.allocations.get_mut(server) {
-                existing.update_credentials(username, password, realm, now);
-                continue;
-            }
-
-            self.allocations.insert(
-                *server,
-                Allocation::new(*server, username, password.clone(), realm, now),
-            );
-
-            tracing::info!(address = %server, "Added new TURN server");
         }
     }
 
@@ -915,12 +970,12 @@ where
     }
 }
 
-struct Connections<TId> {
+struct Connections<TId, RId> {
     initial: HashMap<TId, InitialConnection>,
-    established: HashMap<TId, Connection>,
+    established: HashMap<TId, Connection<RId>>,
 }
 
-impl<TId> Default for Connections<TId> {
+impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
             initial: Default::default(),
@@ -929,7 +984,7 @@ impl<TId> Default for Connections<TId> {
     }
 }
 
-impl<TId> Connections<TId>
+impl<TId, RId> Connections<TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
 {
@@ -974,15 +1029,15 @@ where
         initial_agents.chain(negotiated_agents)
     }
 
-    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection> {
+    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
         self.established.get_mut(id)
     }
 
-    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection)> {
+    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
         self.established.iter().map(|(id, conn)| (*id, conn))
     }
 
-    fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection)> {
+    fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
@@ -996,13 +1051,16 @@ where
 /// - `relay` is in fact a relay
 /// - We have an allocation on the relay
 /// - There is a channel bound to the provided peer
-fn encode_as_channel_data(
-    relay: SocketAddr,
+fn encode_as_channel_data<RId>(
+    relay: RId,
     dest: SocketAddr,
     contents: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation>,
+    allocations: &mut HashMap<RId, Allocation<RId>>,
     now: Instant,
-) -> Result<Transmit<'static>, EncodeError> {
+) -> Result<Transmit<'static>, EncodeError>
+where
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
+{
     let allocation = allocations
         .get_mut(&relay)
         .ok_or(EncodeError::NoAllocation)?;
@@ -1012,7 +1070,7 @@ fn encode_as_channel_data(
 
     Ok(Transmit {
         src: None,
-        dst: relay,
+        dst: allocation.server(),
         payload: Cow::Owned(payload),
     })
 }
@@ -1023,9 +1081,9 @@ enum EncodeError {
     NoChannel,
 }
 
-fn add_local_candidate_to_all<TId>(
+fn add_local_candidate_to_all<TId, RId>(
     candidate: Candidate,
-    connections: &mut Connections<TId>,
+    connections: &mut Connections<TId, RId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
     TId: Copy + fmt::Display,
@@ -1156,7 +1214,7 @@ impl InitialConnection {
     }
 }
 
-struct Connection {
+struct Connection<RId> {
     agent: IceAgent,
 
     remote_pub_key: PublicKey,
@@ -1165,7 +1223,7 @@ struct Connection {
     next_timer_update: Instant,
 
     // When this is `Some`, we are connected.
-    peer_socket: Option<PeerSocket>,
+    peer_socket: Option<PeerSocket<RId>>,
     // Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: HashSet<SocketAddr>,
 
@@ -1181,27 +1239,21 @@ struct Connection {
 
 /// The socket of the peer we are connected to.
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum PeerSocket {
+enum PeerSocket<RId> {
     Direct {
         source: SocketAddr,
         dest: SocketAddr,
     },
     Relay {
-        relay: SocketAddr,
+        relay: RId,
         dest: SocketAddr,
     },
 }
 
-impl PeerSocket {
-    fn our_socket(&self) -> SocketAddr {
-        match self {
-            PeerSocket::Direct { source, .. } => *source,
-            PeerSocket::Relay { relay, .. } => *relay,
-        }
-    }
-}
-
-impl Connection {
+impl<RId> Connection<RId>
+where
+    RId: PartialEq + Eq + Hash + fmt::Debug + Copy,
+{
     /// Checks if we want to accept a packet from a certain address.
     ///
     /// Whilst we establish connections, we may see traffic from a certain address, prior to the negotiation being fully complete.
@@ -1229,11 +1281,11 @@ impl Connection {
         &mut self,
         local: SocketAddr,
         dest: SocketAddr,
-        relay_socket: Option<Socket>,
-    ) -> PeerSocket {
+        relay_socket: Option<Socket<RId>>,
+    ) -> PeerSocket<RId> {
         let remote_socket = match relay_socket {
             Some(relay_socket) => PeerSocket::Relay {
-                relay: relay_socket.server(),
+                relay: relay_socket.id(),
                 dest,
             },
             None => PeerSocket::Direct {
@@ -1272,10 +1324,11 @@ impl Connection {
         &mut self,
         id: TId,
         now: Instant,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<RId, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
         TId: fmt::Display + Copy,
+        RId: Copy + fmt::Display,
     {
         self.agent.handle_timeout(now);
 
@@ -1375,7 +1428,7 @@ impl Connection {
                         tracing::info!(old = ?self.peer_socket, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
                         self.peer_socket = Some(remote_socket);
 
-                        self.invalidate_candiates();
+                        self.invalidate_candiates(allocations);
                         self.force_handshake(allocations, transmits, now);
                     }
                 }
@@ -1416,7 +1469,7 @@ impl Connection {
 
             transmits.push_back(Transmit {
                 src: None,
-                dst: *relay,
+                dst: allocation.server(),
                 payload: Cow::Owned(channel_data),
             });
         }
@@ -1445,9 +1498,9 @@ impl Connection {
         from: SocketAddr,
         local: SocketAddr,
         packet: &[u8],
-        relayed: Option<Socket>,
+        relayed: Option<Socket<RId>>,
         buffer: &'b mut [u8],
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<RId, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
@@ -1500,10 +1553,12 @@ impl Connection {
 
     fn force_handshake(
         &mut self,
-        allocations: &mut HashMap<SocketAddr, Allocation>,
+        allocations: &mut HashMap<RId, Allocation<RId>>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) {
+    ) where
+        RId: Copy,
+    {
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -1529,12 +1584,17 @@ impl Connection {
     /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
     /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
     #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
-    fn invalidate_candiates(&mut self) {
-        let Some(socket) = self.peer_socket else {
-            return;
+    fn invalidate_candiates(&mut self, allocations: &HashMap<RId, Allocation<RId>>) {
+        let socket = match self.peer_socket {
+            Some(PeerSocket::Direct { source, .. }) => source,
+            Some(PeerSocket::Relay { relay, .. }) => match allocations.get(&relay) {
+                Some(alloc) => alloc.server(),
+                None => return,
+            },
+            None => return,
         };
 
-        let Some(nominated) = self.local_candidate(socket.our_socket()).cloned() else {
+        let Some(nominated) = self.local_candidate(socket).cloned() else {
             return;
         };
 
@@ -1557,17 +1617,21 @@ impl Connection {
         self.agent
             .local_candidates()
             .iter()
+            .filter(|c| !c.discarded())
             .find(|c| c.addr() == source)
     }
 }
 
 #[must_use]
-fn make_owned_transmit(
-    socket: PeerSocket,
+fn make_owned_transmit<RId>(
+    socket: PeerSocket<RId>,
     message: &[u8],
-    allocations: &mut HashMap<SocketAddr, Allocation>,
+    allocations: &mut HashMap<RId, Allocation<RId>>,
     now: Instant,
-) -> Option<Transmit<'static>> {
+) -> Option<Transmit<'static>>
+where
+    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
+{
     let transmit = match socket {
         PeerSocket::Direct {
             dest: remote,

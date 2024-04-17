@@ -18,14 +18,27 @@ use crate::Dname;
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
+
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ResourceId(Uuid);
+
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RelayId(Uuid);
+
+impl FromStr for RelayId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(RelayId(Uuid::parse_str(s)?))
+    }
+}
 
 impl ResourceId {
     pub fn random() -> ResourceId {
         ResourceId(Uuid::new_v4())
     }
 
+    #[cfg(feature = "proptest")]
     pub(crate) fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
@@ -62,6 +75,12 @@ impl fmt::Display for ClientId {
 }
 
 impl fmt::Display for GatewayId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for RelayId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -364,6 +383,7 @@ pub enum Relay {
 /// Represent a TURN relay
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Turn {
+    pub id: RelayId,
     //// Expire time of the username/password in unix millisecond timestamp UTC
     #[serde(with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
@@ -379,8 +399,19 @@ pub struct Turn {
 /// Stun kind of relay
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Stun {
+    pub id: RelayId,
+
     /// Address for the relay
     pub addr: SocketAddr,
+}
+
+/// A update to the presence of several relays.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct RelaysPresence {
+    /// These relays have disconnected from the portal. We need to stop using them.
+    pub disconnected_ids: Vec<RelayId>,
+    /// These relays are still online. We can/should use these.
+    pub connected: Vec<Relay>,
 }
 
 #[cfg(test)]

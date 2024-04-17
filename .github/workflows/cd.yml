@@ -23,6 +23,7 @@ jobs:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
+      tag_name: "${{ github.ref_name }}"
       image_prefix: "dev"
       stage: "debug"
       profile: "debug"

@@ -24,8 +24,12 @@ function gateway() {
     docker compose exec -it gateway "$@"
 }
 
-function relay() {
-    docker compose exec -it relay "$@"
+function relay1() {
+    docker compose exec -it relay-1 "$@"
+}
+
+function relay2() {
+    docker compose exec -it relay-2 "$@"
 }
 
 function install_iptables_drop_rules() {
@@ -65,14 +69,16 @@ function assert_equals() {
 }
 
 function process_state() {
-    local process_name="$1"
+    local container="$1"
+    local process_name="$2"
 
-    ps -C "$process_name" -o state=
+    docker compose exec "$container" ps -C "$process_name" -o state=
 }
 
 function assert_process_state {
-    local process_name="$1"
-    local expected_state="$2"
+    local container="$1"
+    local process_name="$2"
+    local expected_state="$3"
 
-    assert_equals "$(process_state "$process_name")" "$expected_state"
+    assert_equals "$(process_state "$container" "$process_name")" "$expected_state"
 }

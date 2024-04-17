@@ -1,0 +1,209 @@
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import Image from "next/image";
+import Link from "next/link";
+import Alert from "@/components/DocsAlert";
+
+# Architecture: Core Components
+
+Firezone consists of a few core components that work together in unison to
+deliver secure, reliable access wherever your workforce is located.
+
+These components will be referred to throughout the documentation, so it's
+important to understand what each one does and how they interact with each
+other.
+
+## Overview
+
+Components in Firezone can be divided into two categories:
+
+1. **Firezone-managed**: Components that we host and operate for you.
+1. **User-managed**: Components you host and/or operate yourself.
+
+<Link
+  target="_blank"
+  href="/images/kb/architecture/core-components/component-diagram.svg"
+>
+  <Image
+    src="/images/kb/architecture/core-components/component-diagram.svg"
+    alt="Firezone core component diagram"
+    width={1200}
+    height={1200}
+    className="p-16"
+  />
+</Link>
+
+Each component is described in more detail below.
+
+## Firezone-managed components
+
+These are components we host and operate in our cloud environment.
+
+### Admin portal
+
+`https://app.firezone.dev`
+
+The admin portal is the web-based interface where you configure and manage
+Firezone for your organization.
+
+It provides a single pane of glass for configuring authentication, Resources,
+Gateways, Policies, and more.
+
+The admin portal is delivered as a managed SaaS application that's load-balanced
+globally for high availability.
+
+### Control plane API
+
+`wss://api.firezone.dev`
+
+The control plane API is a WebSocket-based, realtime API that Relays, Gateways,
+and Clients connect to for configuration and policy updates. It's responsible
+for distributing WireGuard keys to relevant peers and serves as the signaling
+layer for Firezone's STUN/TURN implementation.
+
+All configuration updates made in the admin portal are pushed in realtime to
+connected Clients and Gateways so they always have up-to-date information about
+which Resources are available and which Gateways to use for connecting to them.
+
+This informs our approach to high availability in Firezone: if a Gateway goes
+offline, the admin portal is immediately notified. When this happens, Clients
+receive the new configuration, discontinue using the offline Gateway for new
+connections, and re-establish existing connections with healthy Gateways in the
+same Site.
+
+<Alert color="info">
+  Read more about how [high
+  availability](/kb/architecture/critical-sequences#high-availability) works in
+  Firezone.
+</Alert>
+
+WebSocket connections are authenticated using a cryptographic token with a
+lifetime that varies depending on the type of connection. See the
+[authentication docs](/kb/authenticate) for more information regarding token
+lifetimes.
+
+The control plane API is delivered as a managed SaaS application that's
+load-balanced globally for high availability.
+
+### Policy engine
+
+The policy engine integrates closely with the control plane API to enforce
+Policies you've configured in your account. It evaluates each connection request
+to determine if it should be allowed or denied based factors such as the Actor's
+Group membership, the Resource being accessed, and so on.
+
+If a connection is allowed, the policy engine approves the distribution of
+WireGuard keys and STUN signaling information to the requesting Client and an
+appropriate Gateway in order to establish a secure connection.
+
+If a connection is is denied, the policy engine drops the connection request,
+preventing the Client from learning how to connect to the Gateway or establish a
+WireGuard tunnel.
+
+### Relay
+
+Relays help Clients establish direct connections to Gateways using a NAT
+traversal technique standardized as
+[STUN](https://www.rfc-editor.org/rfc/rfc8489.html). This works well for the
+vast majority of connections.
+
+However, in rare cases, a direct connection cannot be established. This can
+happen for a variety of reasons, most commonly one of the following:
+
+- The Client or Gateway is behind a particularly restrictive firewall, sometimes
+  referred to as a
+  [symmetric NAT](https://datatracker.ietf.org/doc/html/rfc3489#section-5).
+  These are more common in enterprise environments, but have become less common
+  in recent years.
+- The Client or Gateway's network environment is blocking WireGuard traffic.
+  This is rare, but can happen on some public WiFi networks and even in some
+  countries.
+
+In these cases, the Relay acts as a middleman, implementing the
+[TURN](https://www.rfc-editor.org/rfc/rfc8553) protocol to reliably relay
+traffic between the Client and Gateway, **regardless of any network restrictions
+standing in the way**.
+
+<Alert color="warning">
+  All data plane traffic in Firezone is end-to-end encrypted using WireGuard.
+  Relays do not possess the ability to decrypt or otherwise tamper with the data
+  being relayed.
+</Alert>
+
+Relays are globally distributed across multiple regions to ensure low latency
+and reliable connectivity wherever your workforce happens to be.
+
+## Components you manage
+
+These are components you deploy and manage in your environment.
+
+### Clients
+
+The official Firezone Client applications are hosted from the following
+locations:
+
+- **macOS / iOS**:
+  [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826)
+- **Android**:
+  [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android)
+- **Windows**:
+  [GitHub releases](https://www.github.com/firezone/firezone/releases)
+- **Linux**:
+  [GitHub releases](https://www.github.com/firezone/firezone/releases)
+
+We recommend only using Clients from these official sources to ensure you're
+always running an authentic version with the latest security patches.
+
+These can be further distributed using your organization's preferred MDM
+solution, if applicable.
+
+### Gateways
+
+Gateways are Linux binaries that run on your infrastructure. They can be
+deployed as Docker containers, systemd services, or even as standalone
+executables onto a wide variety of Linux configurations.
+
+Gateways were designed to be portable, extremely lightweight, and require no
+external dependencies. This makes them easy to deploy and manage at scale.
+
+Gateways operate without the need for persistent storage; instead, they only
+require a handful of environment variables to be configured for proper
+functionality. For more information on deploying Gateways, see the
+[Gateway deployment guide](/kb/deploy/gateways).
+
+Gateways can be downloaded from the following locations:
+
+- Binary: [GitHub releases](https://www.github.com/firezone/firezone/releases)
+- Docker: [GitHub Container Registry](ghcr.io/firezone/gateway)
+
+### Resources
+
+Resources are the applications and services you want to secure access to. These
+are defined in the admin portal as one of the following:
+
+- A CIDR range, such as `10.0.0.0/24`
+- An IP address, such as `172.16.55.1`
+- A DNS name with optional wildcard matching, such as `gitlab.company.com` or
+  `*.example.com`
+
+Resources can even be public SaaS applications. This can be used to secure
+access to public apps such as GitHub, Salesforce, or Slack using DNS names like
+`*.github.com`, `*.salesforce.com`, or `*.slack.com`.
+
+### Policies
+
+Policies are the rules that determine who can access which Resources. They're a
+simple one-to-one mapping of Group to Resource.
+
+Initially, no Policies are created, meaning all access is denied by default and
+must be explicitly allowed by creating a Policy. For convenience, Firezone
+provides a special `Everyone` Group that can be applied to Policies to allow
+access to all authenticated users in your organization.
+
+Policies are evaluated by the [Policy Engine](#policy-engine) each time a Client
+attempts to connect to a Resource, or any time the Policy or related
+configuration is updated in the admin portal.
+
+{(<NextStep href="/kb/architecture/tech-stack">Next: Tech stack</NextStep>)}
+
+<SupportOptions />

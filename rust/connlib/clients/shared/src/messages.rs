@@ -1,6 +1,6 @@
 use connlib_shared::messages::{
-    GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
-    ResourceId, ReuseConnection,
+    GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection,
+    ResourceDescription, ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, net::IpAddr};
@@ -10,6 +10,8 @@ pub struct InitClient {
     pub interface: Interface,
     #[serde(default)]
     pub resources: Vec<ResourceDescription>,
+    #[serde(default)]
+    pub relays: Vec<Relay>,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
@@ -47,6 +49,8 @@ pub enum IngressMessages {
     IceCandidates(GatewayIceCandidates),
 
     ConfigChanged(ConfigUpdate),
+
+    RelaysPresence(RelaysPresence),
 }
 
 /// A gateway's ice candidate message.
@@ -95,11 +99,9 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        DnsServer, Interface, IpDnsServer, Relay, ResourceDescription, ResourceDescriptionCidr,
-        ResourceDescriptionDns, Stun, Turn,
+        DnsServer, IpDnsServer, ResourceDescriptionCidr, ResourceDescriptionDns, Stun, Turn,
     };
     use phoenix_channel::PhoenixMessage;
-    use std::collections::HashSet;
 
     // TODO: request_connection tests
 
@@ -198,6 +200,7 @@ mod test {
                         name: "gitlab.mycorp.com".to_string(),
                     }),
                 ],
+                relays: vec![],
             }),
             None,
         );
@@ -256,6 +259,7 @@ mod test {
                         name: "gitlab.mycorp.com".to_string(),
                     }),
                 ],
+                relays: vec![],
             }),
             None,
         );
@@ -306,6 +310,7 @@ mod test {
                     upstream_dns: vec![],
                 },
                 resources: vec![],
+                relays: vec![],
             }),
             None,
         );
@@ -339,6 +344,7 @@ mod test {
                     upstream_dns: vec![],
                 },
                 resources: vec![],
+                relays: vec![],
             }),
             None,
         );
@@ -372,6 +378,7 @@ mod test {
                     upstream_dns: vec![],
                 },
                 resources: vec![],
+                relays: vec![],
             }),
             None,
         );
@@ -405,6 +412,7 @@ mod test {
                     upstream_dns: vec![],
                 },
                 resources: vec![],
+                relays: vec![],
             }),
             None,
         );
@@ -462,18 +470,22 @@ mod test {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
+                        id: "c9cb8892-e355-41e6-a882-b6d6c38beb66".parse().unwrap(),
                         addr: "189.172.73.111:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
+                        id: "6a7f3ba9-d9c4-4633-81ab-311276993fbd".parse().unwrap(),
                         expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
                         addr: "189.172.73.111:3478".parse().unwrap(),
                         username: "1686629954:C7I74wXYFdFugMYM".to_string(),
                         password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
                     }),
                     Relay::Stun(Stun {
+                        id: "1ea93681-aeda-467f-9dca-219c06c18c3d".parse().unwrap(),
                         addr: "[::1]:3478".parse().unwrap(),
                     }),
                     Relay::Turn(Turn {
+                        id: "94209389-e18d-4453-a00d-2583ba857592".parse().unwrap(),
                         expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
                         addr: "[::1]:3478".parse().unwrap(),
                         username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
@@ -495,10 +507,12 @@ mod test {
                         "gateway_remote_ip": "172.28.0.1",
                         "relays": [
                             {
+                                "id": "c9cb8892-e355-41e6-a882-b6d6c38beb66",
                                 "type":"stun",
                                 "addr": "189.172.73.111:3478"
                             },
                             {
+                                "id": "6a7f3ba9-d9c4-4633-81ab-311276993fbd",
                                 "expires_at": 1686629954,
                                 "password": "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98",
                                 "type": "turn",
@@ -506,10 +520,12 @@ mod test {
                                 "username":"1686629954:C7I74wXYFdFugMYM"
                             },
                             {
+                                "id": "1ea93681-aeda-467f-9dca-219c06c18c3d",
                                 "type": "stun",
                                 "addr": "[::1]:3478"
                             },
                             {
+                                "id": "94209389-e18d-4453-a00d-2583ba857592",
                                 "expires_at": 1686629954,
                                 "password": "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY",
                                 "type": "turn",
@@ -522,5 +538,49 @@ mod test {
             }"#;
         let reply_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, reply_message);
+    }
+
+    #[test]
+    fn relays_presence() {
+        let message = r#"
+        {
+            "event": "relays_presence",
+            "ref": null,
+            "topic": "client",
+            "payload": {
+                "disconnected_ids": [
+                    "e95f9517-2152-4677-a16a-fbb2687050a3",
+                    "b0724bd1-a8cc-4faf-88cd-f21159cfec47"
+                ],
+                "connected": [
+                    {
+                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
+                        "type": "turn",
+                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
+                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
+                        "addr": "172.28.0.101:3478",
+                        "expires_at": 1719367575
+                    }
+                ]
+            }
+        }
+        "#;
+        let expected = IngressMessages::RelaysPresence(RelaysPresence {
+            disconnected_ids: vec![
+                "e95f9517-2152-4677-a16a-fbb2687050a3".parse().unwrap(),
+                "b0724bd1-a8cc-4faf-88cd-f21159cfec47".parse().unwrap(),
+            ],
+            connected: vec![Relay::Turn(Turn {
+                id: "0a133356-7a9e-4b9a-b413-0d95a5720fd8".parse().unwrap(),
+                expires_at: DateTime::from_timestamp(1719367575, 0).unwrap(),
+                addr: "172.28.0.101:3478".parse().unwrap(),
+                username: "1719367575:ZQHcVGkdnfgGmcP1".to_owned(),
+                password: "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg".to_owned(),
+            })],
+        });
+
+        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
+
+        assert_eq!(ingress_message, expected);
     }
 }
