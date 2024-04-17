@@ -50,7 +50,7 @@ struct Cli {
     // TODO: It isn't good for security to pass the token as a CLI arg.
     // If we pass it as an env var, we should remove it immediately so that
     // child processes don't inherit it. Reading it from a file is probably safest.
-    #[arg(env = "FIREZONE_TOKEN", hide = true)]
+    #[arg(env = "FIREZONE_TOKEN", hide = true, long)]
     pub token: Option<String>,
 
     /// Identifier used by the portal to identify and display the device.
@@ -73,14 +73,21 @@ struct Cli {
 impl Cli {
     fn command(&self) -> Cmd {
         // Needed for backwards compatibility with old Docker images
-        self.command.unwrap_or(Cmd::Standalone)
+        self.command.unwrap_or(Cmd::Auto)
     }
 }
 
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
+    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC daemon. This will be removed in a future version.
+    #[command(hide = true)]
+    Auto,
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
+    #[command(hide = true)]
     IpcService,
-    /// Act as a CLI-only Client, don't listen for IPC connections
+    /// Act as a CLI-only Client
     Standalone,
+    /// Act as an IPC client for development
+    #[command(hide = true)]
+    StubIpcClient,
 }

@@ -62,3 +62,13 @@ function assert_process_state {
 
     assert_equals "$(process_state "$process_name")" "$expected_state"
 }
+
+function create_token_file {
+    CONFIG_DIR=/etc/dev.firezone.client
+    TOKEN_PATH="$CONFIG_DIR/token.txt"
+
+    sudo mkdir "$CONFIG_DIR"
+    sudo touch "$TOKEN_PATH"
+    sudo chmod 600 "$TOKEN_PATH"
+    echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
+}
