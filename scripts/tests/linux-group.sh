@@ -25,7 +25,7 @@ sudo systemctl start "$SERVICE_NAME"
 sudo gpasswd --add "$USER" "$FZ_GROUP"
 
 echo "# Expect Firezone to accept our commands if we run with 'su --login'"
-sudo su --login "$USER" --command RUST_LOG=fino "$BINARY_NAME" stub-ipc-client
+sudo su --login "$USER" --command RUST_LOG="$RUST_LOG" "$BINARY_NAME" stub-ipc-client
 
 echo "# Expect Firezone to reject our command if we run without 'su --login'"
 "$BINARY_NAME" stub-ipc-client && exit 1
