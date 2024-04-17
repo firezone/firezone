@@ -83,9 +83,9 @@ enum Cmd {
     Auto,
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     Daemon,
-    /// Act as an IPC client for headless testing
-    #[command(hide = true)]
-    DebugIpcClient,
     /// Act as a CLI-only Client, don't listen for IPC connections
     Standalone,
+    /// Act as an IPC client for development
+    #[command(hide = true)]
+    StubIpcClient,
 }

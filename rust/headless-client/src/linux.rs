@@ -33,13 +33,13 @@ pub async fn run() -> Result<()> {
             }
         }
         Cmd::Daemon => run_daemon(cli).await,
-        Cmd::DebugIpcClient => run_debug_ipc_client(cli).await,
         Cmd::Standalone => {
             let token = token(&cli)
                 .await?
                 .context("Need a token to run as standalone Client")?;
             run_standalone(cli, &token).await
         }
+        Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
     }
 }
 
