@@ -10,8 +10,12 @@ function gateway() {
     docker compose exec -it gateway "$@"
 }
 
-function relay() {
-    docker compose exec -it relay "$@"
+function relay1() {
+    docker compose exec -it relay-1 "$@"
+}
+
+function relay2() {
+    docker compose exec -it relay-2 "$@"
 }
 
 function install_iptables_drop_rules() {
