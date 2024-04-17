@@ -10,15 +10,20 @@
 
 use std::path::PathBuf;
 
-#[cfg(target_os = "linux")]
-mod linux;
+pub use imp::{default_token_path, run};
 
 #[cfg(target_os = "linux")]
-pub use linux::run;
+mod imp_linux;
+#[cfg(target_os = "linux")]
+use imp_linux as imp;
 
 #[cfg(target_os = "windows")]
-mod windows {
+mod imp_windows {
     use clap::Parser;
+
+    pub fn default_token_path() -> std::path::PathBuf {
+        todo!()
+    }
 
     pub async fn run() -> anyhow::Result<()> {
         let cli = super::Cli::parse();
@@ -26,15 +31,8 @@ mod windows {
         Ok(())
     }
 }
-
 #[cfg(target_os = "windows")]
-pub use windows::run;
-
-fn default_token_path() -> PathBuf {
-    PathBuf::from("/etc")
-        .join(connlib_shared::BUNDLE_ID)
-        .join("token.txt")
-}
+use imp_windows as imp;
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]

@@ -29,6 +29,12 @@ const ROOT_USER: u32 = 0;
 /// on some systems, `/run` should be the newer version.
 const SOCK_PATH: &str = "/run/firezone-client.sock";
 
+pub fn default_token_path() -> PathBuf {
+    PathBuf::from("/etc")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("token.txt")
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
