@@ -65,7 +65,7 @@ async fn token(cli: &Cli) -> Result<Option<SecretString>> {
 }
 
 async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
-    tracing::info!("run_standalone");
+    tracing::info!("Running in standalone mode");
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     let callbacks = CallbackHandler;
@@ -191,7 +191,7 @@ async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
     tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
     let stream = UnixStream::connect(SOCK_PATH)
         .await
-        .context("couldn't connect to UDS")?;
+        .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
     let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
     stream.send(serde_json::to_string("Hello")?.into()).await?;
