@@ -10,9 +10,9 @@ locals {
   # arm_client_id = "..."
   # arm_client_secret = "..."
   # arm_tenant_id = "..."
-  arm_client_id = var.arm_client_id
+  arm_client_id     = var.arm_client_id
   arm_client_secret = var.arm_client_secret
-  arm_tenant_id = var.arm_tenant_id
+  arm_tenant_id     = var.arm_tenant_id
 }
 
 terraform {
@@ -84,8 +84,8 @@ resource "azurerm_linux_virtual_machine" "vm-westus2" {
   location            = azurerm_resource_group.rg-westus2.location
 
   # 16 vCPUs, 56 GB RAM, Premium SSD
-  size                = "Standard_DS5_v2"
-  admin_username      = "adminuser"
+  size           = "Standard_DS5_v2"
+  admin_username = "adminuser"
   network_interface_ids = [
     azurerm_network_interface.nic-westus2.id
   ]
