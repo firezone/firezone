@@ -49,7 +49,7 @@ struct Cli {
 
     // TODO: It isn't good for security to pass the token as a CLI arg.
     // If we pass it as an env var, we should remove it immediately so that
-    // other processes don't see it. Reading it from a file is probably safest.
+    // child processes don't inherit it. Reading it from a file is probably safest.
     #[arg(env = "FIREZONE_TOKEN", hide = true)]
     pub token: Option<String>,
 
