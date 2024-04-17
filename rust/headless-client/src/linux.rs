@@ -55,9 +55,7 @@ pub async fn run() -> Result<()> {
 ///
 /// Sync because we do blocking file I/O
 fn token(cli: &Cli) -> Result<Option<SecretString>> {
-    let path = PathBuf::from("/etc")
-        .join(connlib_shared::BUNDLE_ID)
-        .join("token.txt");
+    let path = PathBuf::from(&cli.token_path);
 
     if let Some(token) = &cli.token {
         // Token was provided in CLI args or env var

@@ -30,6 +30,12 @@ mod windows {
 #[cfg(target_os = "windows")]
 pub use windows::run;
 
+fn default_token_path() -> PathBuf {
+    PathBuf::from("/etc")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("token.txt")
+}
+
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -52,6 +58,10 @@ struct Cli {
     // other processes don't see it. Reading it from a file is probably safest.
     #[arg(long, env = "FIREZONE_TOKEN")]
     pub token: Option<String>,
+
+    /// A filesystem path where the token can be found
+    #[arg(default_value_t = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
+    token_path: String,
 
     /// Identifier used by the portal to identify and display the device.
 
