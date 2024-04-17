@@ -49,9 +49,6 @@ fn smoke_direct() {
 fn smoke_relayed() {
     let _guard = setup_tracing();
     let mut clock = Clock::new();
-    let firewall = Firewall::default()
-        .with_block_rule("1.1.1.1:80", "2.2.2.2:80")
-        .with_block_rule("2.2.2.2:80", "1.1.1.1:80");
 
     let (alice, bob) = alice_and_bob();
 
@@ -63,6 +60,9 @@ fn smoke_relayed() {
         .with_relays(&mut relays, clock.now);
     let mut bob =
         TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
+    let firewall = Firewall::default()
+        .with_block_rule(&alice, &bob)
+        .with_block_rule(&bob, &alice);
 
     handshake(&mut alice, &mut bob, &clock);
 
@@ -395,9 +395,8 @@ impl Clock {
 }
 
 impl Firewall {
-    fn with_block_rule(mut self, from: &str, to: &str) -> Self {
-        self.blocked
-            .push((from.parse().unwrap(), to.parse().unwrap()));
+    fn with_block_rule(mut self, from: &TestNode, to: &TestNode) -> Self {
+        self.blocked.push((from.primary, to.primary));
 
         self
     }
