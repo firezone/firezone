@@ -1949,6 +1949,7 @@ dependencies = [
  "humantime",
  "nix 0.28.0",
  "resolv-conf",
+ "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
