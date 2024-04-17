@@ -586,10 +586,10 @@ impl EitherNode {
         }
     }
 
-    fn is_connected_to(&self, key: PublicKey) -> bool {
+    fn connection_id(&self, key: PublicKey) -> Option<u64> {
         match self {
-            EitherNode::Client(n) => n.is_connected_to(key),
-            EitherNode::Server(n) => n.is_connected_to(key),
+            EitherNode::Client(n) => n.connection_id(key),
+            EitherNode::Server(n) => n.connection_id(key),
         }
     }
 
@@ -694,7 +694,7 @@ impl TestNode {
     }
 
     fn is_connected_to(&self, other: &TestNode) -> bool {
-        self.node.is_connected_to(other.node.public_key())
+        self.node.connection_id(other.node.public_key()).is_some()
     }
 
     fn signalled_candidates(&self) -> impl Iterator<Item = (u64, Candidate, Instant)> + '_ {
