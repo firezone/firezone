@@ -494,7 +494,7 @@ where
                 Allocation::new(*id, *server, username, password.clone(), realm, now),
             );
 
-            tracing::info!(address = %server, "Added new TURN server");
+            tracing::info!(%id, address = %server, "Added new TURN server");
         }
     }
 
@@ -1617,6 +1617,7 @@ where
         self.agent
             .local_candidates()
             .iter()
+            .filter(|c| !c.discarded())
             .find(|c| c.addr() == source)
     }
 }
