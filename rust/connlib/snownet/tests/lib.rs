@@ -56,10 +56,16 @@ fn smoke_relayed() {
         1,
         TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
     )];
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
-        .with_relays(&mut relays, clock.now);
-    let mut bob =
-        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
     let firewall = Firewall::default()
         .with_block_rule(&alice, &bob)
         .with_block_rule(&bob, &alice);
@@ -95,10 +101,16 @@ fn reconnect_discovers_new_interface() {
         1,
         TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
     )];
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80")
-        .with_relays(&mut relays, clock.now);
-    let mut bob =
-        TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(&mut relays, clock.now);
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
 
     handshake(&mut alice, &mut bob, &clock);
 
@@ -682,6 +694,18 @@ impl EitherNode {
             EitherNode::Server(n) => n.reconnect(now),
         }
     }
+
+    fn update_relays(
+        &mut self,
+        to_remove: HashSet<u64>,
+        to_add: &HashSet<(u64, SocketAddr, String, String, String)>,
+        now: Instant,
+    ) {
+        match self {
+            EitherNode::Server(s) => s.update_relays(to_remove, to_add, now),
+            EitherNode::Client(c) => c.update_relays(to_remove, to_add, now),
+        }
+    }
 }
 
 impl TestNode {
@@ -700,7 +724,12 @@ impl TestNode {
         }
     }
 
-    fn with_relays(mut self, relays: &mut [(u64, TestRelay)], now: Instant) -> Self {
+    fn with_relays(
+        mut self,
+        to_remove: HashSet<u64>,
+        relays: &mut [(u64, TestRelay)],
+        now: Instant,
+    ) -> Self {
         let username = match self.node {
             EitherNode::Server(_) => "server",
             EitherNode::Client(_) => "client",
@@ -721,10 +750,8 @@ impl TestNode {
             })
             .collect::<HashSet<_>>();
 
-        self.span.in_scope(|| match &mut self.node {
-            EitherNode::Server(s) => s.update_relays(HashSet::default(), &turn_servers, now),
-            EitherNode::Client(c) => c.update_relays(HashSet::default(), &turn_servers, now),
-        });
+        self.span
+            .in_scope(|| self.node.update_relays(to_remove, &turn_servers, now));
 
         self
     }
