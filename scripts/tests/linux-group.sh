@@ -10,6 +10,12 @@ FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
+function print_debug_info {
+    systemctl status "$SERVICE_NAME"
+}
+
+trap print_debug_info EXIT
+
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
