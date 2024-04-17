@@ -6,8 +6,8 @@ source "./scripts/tests/lib.sh"
 install_iptables_drop_rules
 client_curl_resource "172.20.0.100/get"
 
-# Act: Send SIGTERM
-relay1 kill -s SIGTERM "$(pgrep firezone-relay)"
+# Act: Send SIGTERM (our process is pid 1 in the container)
+relay1 kill -s SIGTERM 1
 
 sleep 2 # Closing websocket isn't instant.
 
@@ -19,7 +19,7 @@ OPEN_SOCKETS=$(relay netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Por
 test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
-relay1 kill -s SIGTERM "$(pgrep firezone-relay)"
+relay1 kill -s SIGTERM 1
 
 sleep 1 # Wait for process to exit
 
