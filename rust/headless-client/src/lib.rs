@@ -79,7 +79,7 @@ impl Cli {
 
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
-    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC daemon
+    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC daemon. This will be removed in a future version.
     Auto,
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     Daemon,

@@ -1,5 +1,5 @@
 use super::{Cli, Cmd};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
 use connlib_shared::{
@@ -17,6 +17,14 @@ use tokio::{
 };
 use tokio_util::codec::LengthDelimitedCodec;
 
+const ROOT_GROUP: u32 = 0;
+const ROOT_USER: u32 = 0;
+
+/// The path for our Unix Domain Socket
+///
+/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
+/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
+/// on some systems, `/run` should be the newer version.
 const SOCK_PATH: &str = "/run/firezone-client.sock";
 
 pub async fn run() -> Result<()> {
@@ -26,7 +34,7 @@ pub async fn run() -> Result<()> {
 
     match cli.command() {
         Cmd::Auto => {
-            if let Some(token) = token(&cli).await? {
+            if let Some(token) = token(&cli)? {
                 run_standalone(cli, &token).await
             } else {
                 run_daemon(cli).await
@@ -34,33 +42,68 @@ pub async fn run() -> Result<()> {
         }
         Cmd::Daemon => run_daemon(cli).await,
         Cmd::Standalone => {
-            let token = token(&cli)
-                .await?
-                .context("Need a token to run as standalone Client")?;
+            let token = token(&cli)?.context("Need a token to run as standalone Client")?;
             run_standalone(cli, &token).await
         }
         Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
     }
 }
 
-async fn token(cli: &Cli) -> Result<Option<SecretString>> {
-    if let Some(token) = &cli.token {
-        // Token was provided in CLI args or env var
-        // Not very secure, but we do get the token
-        return Ok(Some(token.clone().into()));
-    }
-
+/// Try to retrieve the token from CLI arg, env var, or disk
+///
+/// Sync because we do blocking file I/O
+fn token(cli: &Cli) -> Result<Option<SecretString>> {
     let path = PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
         .join("token.txt");
-    let Ok(bytes) = tokio::fs::read(path).await else {
-        // Can't read the file for some reason, so there's no token on disk
+
+    if let Some(token) = &cli.token {
+        // Token was provided in CLI args or env var
+        // Not very secure, but we do get the token
+        tracing::info!(
+            ?path,
+            "Found token in environment or CLI args, ignoring any token that may be on disk."
+        );
+        return Ok(Some(token.clone().into()));
+    }
+
+    let Ok(stat) = nix::sys::stat::fstatat(None, &path, nix::fcntl::AtFlags::empty()) else {
+        // File doesn't exist or can't be read
+        tracing::info!(
+            ?path,
+            "No token found in CLI args, in environment, or on disk"
+        );
+        return Ok(None);
+    };
+    if stat.st_uid != ROOT_USER {
+        bail!(
+            "Token file `{}` should be owned by root user",
+            path.display()
+        );
+    }
+    if stat.st_gid != ROOT_GROUP {
+        bail!(
+            "Token file `{}` should be owned by root group",
+            path.display()
+        );
+    }
+    if stat.st_mode & 0o177 != 0 {
+        bail!(
+            "Token file `{}` should have mode 0o400 or 0x600",
+            path.display()
+        );
+    }
+
+    let Ok(bytes) = std::fs::read(&path) else {
+        // We got the metadata a second ago, but can't read the file itself.
+        // Pretty strange, would have to be a disk fault or TOCTOU.
+        tracing::info!(?path, "Token file existed but now is unreadable");
         return Ok(None);
     };
     let s = String::from_utf8(bytes)?;
     let token = s.trim().to_string();
 
-    // Token loaded from disk
+    tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token.into()))
 }
 
