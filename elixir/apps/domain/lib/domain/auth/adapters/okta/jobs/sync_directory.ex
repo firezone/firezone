@@ -1,42 +1,30 @@
-defmodule Domain.Auth.Adapters.Okta.Jobs do
-  use Domain.Jobs.Recurrent, otp_app: :domain
+defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
+  use Domain.Jobs.Job,
+    otp_app: :domain,
+    every: :timer.minutes(5),
+    executor: Domain.Jobs.Executors.Concurrent
+
+  alias Domain.Jobs.Executors.Concurrent
   alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.Okta
   require Logger
 
-  @behaviour DirectorySync
+  @task_supervisor __MODULE__.TaskSupervisor
 
-  every minutes(5), :refresh_access_tokens do
-    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:okta)
-    Logger.debug("Refreshing access tokens for #{length(providers)} Okta providers")
-
-    Enum.each(providers, fn provider ->
-      Logger.debug("Refreshing access token",
-        provider_id: provider.id,
-        account_id: provider.account_id
-      )
-
-      case Okta.refresh_access_token(provider) do
-        {:ok, provider} ->
-          Logger.debug("Finished refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id
-          )
-
-        {:error, reason} ->
-          Logger.error("Failed refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id,
-            reason: inspect(reason)
-          )
-      end
-    end)
+  @impl true
+  def state(_config) do
+    {:ok, pid} = Task.Supervisor.start_link(name: @task_supervisor)
+    {:ok, %{task_supervisor: pid}}
   end
 
-  every minutes(3), :sync_directory do
-    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
-    Logger.debug("Syncing #{length(providers)} Okta providers")
-    DirectorySync.sync_providers(__MODULE__, providers)
+  @impl true
+  def execute(_state) do
+    Domain.Repo.checkout(fn ->
+      all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
+      providers = Concurrent.reject_locked("auth_providers", all_providers)
+      Logger.debug("Syncing #{length(providers)} out of #{length(all_providers)} Okta providers")
+      DirectorySync.sync_providers(__MODULE__, providers)
+    end)
   end
 
   def gather_provider_data(provider) do
@@ -44,7 +32,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
     access_token = provider.adapter_state["access_token"]
 
     async_results =
-      DirectorySync.run_async_requests(Okta.TaskSupervisor,
+      DirectorySync.run_async_requests(@task_supervisor,
         users: fn ->
           Okta.APIClient.list_users(endpoint, access_token)
         end,
