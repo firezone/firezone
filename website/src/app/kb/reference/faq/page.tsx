@@ -1,5 +1,6 @@
-import FAQ from "@/components/FAQ";
+import Content from "./readme.mdx";
 import { Metadata } from "next";
+import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "FAQ • Firezone Docs",
@@ -7,5 +8,10 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <FAQ />;
+  return (
+    <>
+      <Content />
+      <LastUpdated dirname={__dirname} />
+    </>
+  );
 }

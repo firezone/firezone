@@ -39,10 +39,10 @@ pub async fn run() -> Result<()> {
             if let Some(token) = token(&cli)? {
                 run_standalone(cli, &token).await
             } else {
-                run_daemon(cli).await
+                run_ipc_service(cli).await
             }
         }
-        Cmd::Daemon => run_daemon(cli).await,
+        Cmd::IpcService => run_ipc_service(cli).await,
         Cmd::Standalone => {
             let token = token(&cli)?.context("Need a token to run as standalone Client")?;
             run_standalone(cli, &token).await
@@ -241,7 +241,7 @@ async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
     Ok(())
 }
 
-async fn run_daemon(_cli: Cli) -> Result<()> {
+async fn run_ipc_service(_cli: Cli) -> Result<()> {
     tracing::info!("run_daemon");
     ipc_listen().await
 }

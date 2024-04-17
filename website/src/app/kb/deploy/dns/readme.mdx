@@ -27,6 +27,11 @@ when the Firezone Client is signed in.
 
 ### How queries are resolved
 
+<Alert color="info">
+  DNS resolution is explained in detail in the [Firezone architecture
+  docs](/kb/architecture/critical-sequences#dns-resolution).
+</Alert>
+
 When the proxy sees a DNS query for a Resource, it asks the portal for a healthy
 Gateway to handle the query. The Gateway resolves the query using its system
 resolver and sends the result back to the proxy, which generates a mapped IP to
@@ -72,7 +77,7 @@ network.
 <Alert color="info">
   Custom resolvers such as
   [Cloudflare](https://developers.cloudflare.com/1.1.1.1/setup/#1111-for-families)
-  or [NextDNS](https://nextdns.io") can be used to block malware, ads, adult
+  or [NextDNS](https://nextdns.io) can be used to block malware, ads, adult
   material and other content for all users in your Firezone account.
 </Alert>
 

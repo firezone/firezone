@@ -4,16 +4,17 @@
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
+SERVICE_NAME=firezone-client
 
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
+sudo chown root:root "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 create_token_file
 
-sudo cp scripts/tests/systemd/firezone-client.service /usr/lib/systemd/system/
-systemd-analyze security firezone-client
+sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
 HTTPBIN=dns.httpbin
 
@@ -21,27 +22,25 @@ HTTPBIN=dns.httpbin
 DOCKER_IFACE="docker0"
 FZ_IFACE="tun-firezone"
 
-echo "# Accessing a resource should fail before the client is up"
+# Accessing a resource should fail before the client is up
 # Force curl to try the Firezone interface. I can't block off the Docker interface yet
 # because it may be needed for the client to reach the portal.
 curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 
-echo "# Start Firezone"
+# Start Firezone
 resolvectl dns tun-firezone && exit 1
-if ! sudo systemctl start firezone-client; then
-    sudo systemctl status firezone-client
-    exit 1
-fi
+stat /usr/bin/firezone-linux-client
+sudo systemctl start "$SERVICE_NAME"
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN"
 
-echo "# Accessing a resource should succeed after the client is up"
+# Accessing a resource should succeed after the client is up
 # Block off Docker's DNS.
 sudo resolvectl dns "$DOCKER_IFACE" ""
 curl -v $HTTPBIN/get
 
-echo "# Make sure it's going through the tunnel"
+# Make sure it's going through the tunnel
 nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."
 
-echo "# Print some debug info"
+# Print some debug info
 resolvectl status
