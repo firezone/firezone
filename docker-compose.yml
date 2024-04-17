@@ -389,9 +389,9 @@ services:
       resources:
         ipv4_address: 172.20.0.110
 
-  relay:
+  relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${PUBLIC_IP4_ADDR:-172.28.0.101}
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
       # PUBLIC_IP6_ADDR: fcff:3990:3990::101
       LOWEST_PORT: 55555
       HIGHEST_PORT: 55666
@@ -429,7 +429,49 @@ services:
       - 3478:3478/udp
     networks:
       app:
-        ipv4_address: ${PUBLIC_IP4_ADDR:-172.28.0.101}
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
+
+  relay-2:
+    environment:
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
+      # PUBLIC_IP6_ADDR: fcff:3990:3990::101
+      LOWEST_PORT: 55555
+      HIGHEST_PORT: 55666
+      # Token for self-hosted Relay
+      # FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkNTQ5YzQxMDctMTQ5Mi00ZjhmLWE0ZWMtYTlkMmE2NmQ4YWE5bQAAADhQVTVBSVRFMU84VkRWTk1ITU9BQzc3RElLTU9HVERJQTY3MlM2RzFBQjAyT1MzNEg1TUUwPT09PW4GAEngLBONAWIAAVGA.E-f2MFdGMX7JTL2jwoHBdWcUd2G3UNz2JRZLbQrlf0k"
+      # Token for global Relay
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GADXgLBONAWIAAVGA.dShU17FgnvO2GLcTSnBBTDoqQ2tScuG7qjiyKhhlq8s"
+      RUST_LOG: "debug"
+      RUST_BACKTRACE: 1
+      FIREZONE_API_URL: ws://api:8081
+    build:
+      target: dev
+      context: rust
+      dockerfile: Dockerfile
+      cache_from:
+        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
+      args:
+        PACKAGE: firezone-relay
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
+    healthcheck:
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    depends_on:
+      api:
+        condition: "service_healthy"
+    ports:
+      # NOTE: Only 111 ports are used for local dev / testing because Docker Desktop
+      # allocates a userland proxy process for each forwarded port X_X.
+      #
+      # Large ranges here will bring your machine to its knees.
+      - "55555-55666:55555-55666/udp"
+      - 3478:3478/udp
+    networks:
+      app:
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
 
 
 # IPv6 is currently causing flakiness with GH actions and on our testbed.
