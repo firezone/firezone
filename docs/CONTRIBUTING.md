@@ -26,6 +26,7 @@ started.
   - [Use Detailed Commit Messages](#use-detailed-commit-messages)
   - [Ensure Static Analysis Checks Pass](#ensure-static-analysis-checks-pass)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Logging and sensitive info](#logging-and-sensitive-info)
 - [Asking for Help](#asking-for-help)
 
 ## Overview
@@ -276,6 +277,11 @@ This should run automatically when you run `git commit`, but in case it doesn't:
 ```bash
 pre-commit run --all-files
 ```
+
+## Logging and sensitive info
+
+IP addresses and domain names may be logged at the DEBUG level, but not INFO or
+any other level that is enabled by default in production builds.
 
 ## Asking For Help
 
