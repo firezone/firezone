@@ -81,7 +81,7 @@ impl Cli {
 enum Cmd {
     /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC daemon. This will be removed in a future version.
     Auto,
-    /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
+    /// (Not implemented) Listen for IPC connections and act as a privileged tunnel process for a GUI client
     Daemon,
     /// Act as a CLI-only Client, don't listen for IPC connections
     Standalone,

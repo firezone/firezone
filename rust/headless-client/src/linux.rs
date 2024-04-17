@@ -17,6 +17,8 @@ use tokio::{
 };
 use tokio_util::codec::LengthDelimitedCodec;
 
+// The Client currently must run as root to control DNS
+// Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
@@ -256,8 +258,7 @@ async fn ipc_listen() -> Result<()> {
     // Remove the socket if a previous run left it there
     tokio::fs::remove_file(SOCK_PATH).await.ok();
     let listener = UnixListener::bind(SOCK_PATH).context("Couldn't bind UDS")?;
-    // UID 0 should be root. The daemon currently must run as root to control DNS.
-    std::os::unix::fs::chown(SOCK_PATH, Some(0), Some(fz_gid.into()))
+    std::os::unix::fs::chown(SOCK_PATH, Some(ROOT_USER), Some(fz_gid.into()))
         .context("can't set firezone as the group for the UDS")?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
