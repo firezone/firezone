@@ -43,9 +43,7 @@ pub fn run() -> Result<()> {
     // thread is reading or writing the environment, something bad can happen.
     // So `run` must take over as early as possible during startup, and
     // take the token env var before any other threads spawn.
-    let token = std::env::var(TOKEN_ENV_KEY)
-        .ok()
-        .map(|x| SecretString::from(x));
+    let token = std::env::var(TOKEN_ENV_KEY).ok().map(SecretString::from);
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
     // thing to run after entering `main`. So nobody else is reading the environment.
