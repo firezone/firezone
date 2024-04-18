@@ -180,6 +180,14 @@ impl Callbacks for CallbackHandler {
 
         std::process::exit(1);
     }
+
+    fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {
+        // See easily with `export RUST_LOG=firezone_headless_client=debug`
+        tracing::debug!(len = resources.len(), "Printing the resource list one time");
+        for resource in &resources {
+            tracing::debug!(?resource);
+        }
+    }
 }
 
 fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
