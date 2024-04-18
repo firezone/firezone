@@ -88,6 +88,8 @@ defmodule Domain.Auth.Adapter.DirectorySync do
       fn ->
         metadata = Logger.metadata()
         pdict = Process.get()
+        opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+        opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
 
         all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(adapter)
         providers = Concurrent.reject_locked("auth_providers", all_providers)
@@ -98,6 +100,9 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           supervisor_pid,
           providers,
           fn provider ->
+            OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+            OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
             OpenTelemetry.Tracer.with_span "sync_provider",
               attributes: %{
                 account_id: provider.account_id,
