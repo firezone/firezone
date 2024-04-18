@@ -52,7 +52,7 @@ export default function _Page() {
         </div>
         <div className="mx-auto max-w-screen-2xl md:grid md:grid-cols-3 pt-14 md:gap-4 px-4">
           <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
-            <h3 className="mb-4 text-2xl tracking-tight font-medium text-neutral-900">
+            <h3 className="mb-4 text-2xl tracking-tight font-semibold text-neutral-900">
               Starter
             </h3>
             <p className="mb-8">
