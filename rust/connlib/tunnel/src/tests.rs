@@ -138,9 +138,8 @@ impl ReferenceState {
     /// By chance, it could be that we pick a resource IP here.
     /// That is okay as our reference state machine checks separately whether we are pinging a resource here.
     fn icmp_to_random_ip(&self) -> impl Strategy<Value = Transition> {
-        (any::<IpAddr>(), any::<IpAddr>()).prop_filter_map("src != dst", {
-            |(src, dst)| Some(Transition::SendICMPPacketToResource { src, dst })
-        })
+        (any::<IpAddr>(), any::<IpAddr>())
+            .prop_map(|(src, dst)| Transition::SendICMPPacketToResource { src, dst })
     }
 
     fn icmp_to_ipv4_cidr_resource(&self) -> impl Strategy<Value = Transition> {
