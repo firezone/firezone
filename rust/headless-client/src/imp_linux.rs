@@ -30,6 +30,7 @@ const ROOT_USER: u32 = 0;
 /// for security, so we're following their lead. `/run` and `/var/run` are symlinked
 /// on some systems, `/run` should be the newer version.
 const SOCK_PATH: &str = "/run/firezone-client.sock";
+const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
@@ -56,7 +57,7 @@ pub async fn run() -> Result<()> {
         Cmd::Standalone => {
             let token = token(&cli)?.with_context(|| {
                 format!(
-                    "Can't find the Firezone token in $FIREZONE_TOKEN or in `{}`",
+                    "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
                     cli.token_path
                 )
             })?;
@@ -66,27 +67,31 @@ pub async fn run() -> Result<()> {
     }
 }
 
-/// Try to retrieve the token from CLI arg, env var, or disk
+/// Try to retrieve the token from env var or disk
 ///
 /// Sync because we do blocking file I/O
+/// This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
 fn token(cli: &Cli) -> Result<Option<SecretString>> {
     let path = PathBuf::from(&cli.token_path);
 
-    if let Some(token) = &cli.token {
-        // Token was provided in CLI args or env var
-        // Not very secure, but we do get the token
+    if let Ok(token) = std::env::var(TOKEN_ENV_KEY) {
+        std::env::remove_var(TOKEN_ENV_KEY);
+        let token = SecretString::from(token);
+        // Token was provided in env var
         tracing::info!(
             ?path,
-            "Found token in environment or CLI args, ignoring any token that may be on disk."
+            ?TOKEN_ENV_KEY,
+            "Found token in env var, ignoring any token that may be on disk."
         );
-        return Ok(Some(token.clone().into()));
+        return Ok(Some(token));
     }
 
     let Ok(stat) = nix::sys::stat::fstatat(None, &path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read
         tracing::info!(
             ?path,
-            "No token found in CLI args, in environment, or on disk"
+            ?TOKEN_ENV_KEY,
+            "No token found in env var or on disk"
         );
         return Ok(None);
     };
@@ -115,11 +120,11 @@ fn token(cli: &Cli) -> Result<Option<SecretString>> {
         tracing::info!(?path, "Token file existed but now is unreadable");
         return Ok(None);
     };
-    let s = String::from_utf8(bytes)?;
-    let token = s.trim().to_string();
+    let token = String::from_utf8(bytes)?.trim().to_string();
+    let token = SecretString::from(token);
 
     tracing::info!(?path, "Loaded token from disk");
-    Ok(Some(token.into()))
+    Ok(Some(token))
 }
 
 async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
