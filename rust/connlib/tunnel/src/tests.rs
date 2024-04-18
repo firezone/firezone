@@ -167,6 +167,15 @@ impl ReferenceStateMachine for ReferenceState {
         let add_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
 
+        let send_unknown_icmp = (any::<IpAddr>(), any::<IpAddr>()).prop_filter_map("src != dst", {
+            move |(src, dst)| {
+                if src == dst {
+                    return None;
+                }
+
+                Some(Transition::SendICMPPacketToResource { src, dst })
+            }
+        });
         let send_icmp_v4 = (
             any::<Ipv4Addr>(),
             sample::select(state.ip4_resource_ips.clone()),
@@ -201,10 +210,17 @@ impl ReferenceStateMachine for ReferenceState {
             });
 
         match (state.ip4_resource_ips.len(), state.ip6_resource_ips.len()) {
-            (0, 0) => prop_oneof![add_resource, tick].boxed(),
-            (0, _) => prop_oneof![add_resource, tick, send_icmp_v6].boxed(),
-            (_, 0) => prop_oneof![add_resource, tick, send_icmp_v4].boxed(),
-            (_, _) => prop_oneof![add_resource, tick, send_icmp_v4, send_icmp_v6].boxed(),
+            (0, 0) => prop_oneof![add_resource, tick, send_unknown_icmp].boxed(),
+            (0, _) => prop_oneof![add_resource, tick, send_unknown_icmp, send_icmp_v6].boxed(),
+            (_, 0) => prop_oneof![add_resource, tick, send_unknown_icmp, send_icmp_v4].boxed(),
+            (_, _) => prop_oneof![
+                add_resource,
+                tick,
+                send_unknown_icmp,
+                send_icmp_v4,
+                send_icmp_v6
+            ]
+            .boxed(),
         }
     }
 
