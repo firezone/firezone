@@ -132,6 +132,38 @@ impl ReferenceState {
 
         self.now.duration_since(*last_intent) >= Duration::from_secs(2)
     }
+
+    /// Generates a [`Transition`] that sends an ICMP packet to a random IP.
+    ///
+    /// By chance, it could be that we pick a resource IP here.
+    /// That is okay as our reference state machine checks separately whether we are pinging a resource here.
+    fn icmp_to_random_ip(&self) -> impl Strategy<Value = Transition> {
+        (any::<IpAddr>(), any::<IpAddr>()).prop_filter_map("src != dst", {
+            |(src, dst)| Some(Transition::SendICMPPacketToResource { src, dst })
+        })
+    }
+
+    fn icmp_to_ipv4_cidr_resource(&self) -> impl Strategy<Value = Transition> {
+        (
+            any::<Ipv4Addr>(),
+            sample::select(self.ip4_resource_ips.clone()),
+        )
+            .prop_map(|(src, dst)| Transition::SendICMPPacketToResource {
+                src: src.into(),
+                dst: dst.into(),
+            })
+    }
+
+    fn icmp_to_ipv6_cidr_resource(&self) -> impl Strategy<Value = Transition> {
+        (
+            any::<Ipv6Addr>(),
+            sample::select(self.ip6_resource_ips.clone()),
+        )
+            .prop_map(|(src, dst)| Transition::SendICMPPacketToResource {
+                src: src.into(),
+                dst: dst.into(),
+            })
+    }
 }
 
 /// Implementation of our reference state machine.
@@ -167,39 +199,31 @@ impl ReferenceStateMachine for ReferenceState {
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        let add_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
+        let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
 
-        let send_unknown_icmp = (any::<IpAddr>(), any::<IpAddr>()).prop_filter_map("src != dst", {
-            |(src, dst)| Some(Transition::SendICMPPacketToResource { src, dst })
-        });
-        let send_icmp_v4 = (
-            any::<Ipv4Addr>(),
-            sample::select(state.ip4_resource_ips.clone()),
-        )
-            .prop_map(|(src, dst)| Transition::SendICMPPacketToResource {
-                src: src.into(),
-                dst: dst.into(),
-            });
-        let send_icmp_v6 = (
-            any::<Ipv6Addr>(),
-            sample::select(state.ip6_resource_ips.clone()),
-        )
-            .prop_map(|(src, dst)| Transition::SendICMPPacketToResource {
-                src: src.into(),
-                dst: dst.into(),
-            });
-
         match (state.ip4_resource_ips.len(), state.ip6_resource_ips.len()) {
-            (0, 0) => prop_oneof![add_resource, tick, send_unknown_icmp].boxed(),
-            (0, _) => prop_oneof![add_resource, tick, send_unknown_icmp, send_icmp_v6].boxed(),
-            (_, 0) => prop_oneof![add_resource, tick, send_unknown_icmp, send_icmp_v4].boxed(),
-            (_, _) => prop_oneof![
-                add_resource,
+            (0, 0) => prop_oneof![add_cidr_resource, tick, state.icmp_to_random_ip()].boxed(),
+            (0, _) => prop_oneof![
+                add_cidr_resource,
                 tick,
-                send_unknown_icmp,
-                send_icmp_v4,
-                send_icmp_v6
+                state.icmp_to_random_ip(),
+                state.icmp_to_ipv4_cidr_resource()
+            ]
+            .boxed(),
+            (_, 0) => prop_oneof![
+                add_cidr_resource,
+                tick,
+                state.icmp_to_random_ip(),
+                state.icmp_to_ipv6_cidr_resource()
+            ]
+            .boxed(),
+            (_, _) => prop_oneof![
+                add_cidr_resource,
+                tick,
+                state.icmp_to_random_ip(),
+                state.icmp_to_ipv6_cidr_resource(),
+                state.icmp_to_ipv4_cidr_resource()
             ]
             .boxed(),
         }
