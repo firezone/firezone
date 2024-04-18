@@ -212,36 +212,42 @@ defmodule Domain.Auth.Adapter.DirectorySync do
          {identities_attrs, actor_groups_attrs, membership_tuples}
        ) do
     OpenTelemetry.Tracer.with_span "sync_provider.insert_data" do
-      start_time = System.monotonic_time(:millisecond)
+      Repo.checkout(
+        fn ->
+          start_time = System.monotonic_time(:millisecond)
 
-      with {:ok, identities_effects} <- Auth.sync_provider_identities(provider, identities_attrs),
-           {:ok, groups_effects} <- Actors.sync_provider_groups(provider, actor_groups_attrs),
-           {:ok, memberships_effects} <-
-             Actors.sync_provider_memberships(
-               identities_effects.actor_ids_by_provider_identifier,
-               groups_effects.group_ids_by_provider_identifier,
-               provider,
-               membership_tuples
-             ) do
-        Auth.Provider.Changeset.sync_finished(provider)
-        |> Repo.update!()
+          with {:ok, identities_effects} <-
+                 Auth.sync_provider_identities(provider, identities_attrs),
+               {:ok, groups_effects} <- Actors.sync_provider_groups(provider, actor_groups_attrs),
+               {:ok, memberships_effects} <-
+                 Actors.sync_provider_memberships(
+                   identities_effects.actor_ids_by_provider_identifier,
+                   groups_effects.group_ids_by_provider_identifier,
+                   provider,
+                   membership_tuples
+                 ) do
+            Auth.Provider.Changeset.sync_finished(provider)
+            |> Repo.update!()
 
-        finish_time = System.monotonic_time(:millisecond)
+            finish_time = System.monotonic_time(:millisecond)
 
-        log_sync_result(
-          start_time,
-          finish_time,
-          identities_effects,
-          groups_effects,
-          memberships_effects
-        )
+            log_sync_result(
+              start_time,
+              finish_time,
+              identities_effects,
+              groups_effects,
+              memberships_effects
+            )
 
-        {:ok, finish_time - start_time}
-      else
-        {:error, reason} ->
-          OpenTelemetry.Tracer.set_status(:error, inspect(reason))
-          log_sync_error(provider, "Repo error: " <> inspect(reason))
-      end
+            {:ok, finish_time - start_time}
+          else
+            {:error, reason} ->
+              OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+              log_sync_error(provider, "Repo error: " <> inspect(reason))
+          end
+        end,
+        timeout: @database_operations_timeout
+      )
     end
   end
 
