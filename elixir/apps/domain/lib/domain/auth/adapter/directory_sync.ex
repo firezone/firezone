@@ -138,9 +138,9 @@ defmodule Domain.Auth.Adapter.DirectorySync do
     start_time = System.monotonic_time(:millisecond)
     Logger.debug("Syncing provider")
 
-    {:ok, pid} = Task.Supervisor.start_link()
-
     if Domain.Accounts.idp_sync_enabled?(provider.account) do
+      {:ok, pid} = Task.Supervisor.start_link()
+
       with {:ok, data, data_fetch_time_taken} <- fetch_provider_data(module, provider, pid),
            {:ok, db_operations_time_taken} <- insert_provider_updates(provider, data) do
         finish_time = System.monotonic_time(:millisecond)
