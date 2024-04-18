@@ -7,6 +7,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
   alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.MicrosoftEntra
   require Logger
+  require OpenTelemetry.Tracer
 
   @task_supervisor __MODULE__.TaskSupervisor
 
@@ -53,16 +54,18 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
   end
 
   defp list_membership_tuples(access_token, groups) do
-    Enum.reduce_while(groups, {:ok, []}, fn group, {:ok, tuples} ->
-      case MicrosoftEntra.APIClient.list_group_members(access_token, group["id"]) do
-        {:ok, members} ->
-          tuples = Enum.map(members, &{"G:" <> group["id"], &1["id"]}) ++ tuples
-          {:cont, {:ok, tuples}}
+    OpenTelemetry.Tracer.with_span "sync_provider.fetch_data.memberships" do
+      Enum.reduce_while(groups, {:ok, []}, fn group, {:ok, tuples} ->
+        case MicrosoftEntra.APIClient.list_group_members(access_token, group["id"]) do
+          {:ok, members} ->
+            tuples = Enum.map(members, &{"G:" <> group["id"], &1["id"]}) ++ tuples
+            {:cont, {:ok, tuples}}
 
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-      end
-    end)
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+      end)
+    end
   end
 
   # Map identity attributes from Microsoft Entra to Domain
