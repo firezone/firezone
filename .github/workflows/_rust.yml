@@ -142,3 +142,6 @@ jobs:
         name: "linux-group"
         shell: bash
         working-directory: ./
+      - run: scripts/tests/token-path.sh
+        name: "token-path"
+        shell: bash

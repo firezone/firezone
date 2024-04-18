@@ -106,7 +106,6 @@ jobs:
           direct-download-roaming-network,
           dns-failsafe, # Uses the default DNS control method
           dns-nm,
-          # linux-group,  # Stub, doesn't run Firezone code yet. (broken compat test)
           relay-graceful-shutdown,
           relayed-curl-api-down,
           relayed-curl-api-restart,
@@ -115,7 +114,6 @@ jobs:
           relayed-dns-relay-restart,
           relayed-dns,
           systemd/dns-systemd-resolved,
-          token-path,
         ]
     steps:
       - uses: actions/checkout@v4
