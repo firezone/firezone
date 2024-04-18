@@ -36,6 +36,7 @@ defmodule API.Gateway.ChannelTest do
       identity: identity,
       subject: subject,
       client: client,
+      gateway_group: gateway_group,
       gateway: gateway,
       resource: resource,
       relay: relay,
@@ -227,6 +228,46 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
     end
+
+    test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
+      relay_group = Fixtures.Relays.create_global_group()
+      relay = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      API.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        gateway: gateway,
+        gateway_group: gateway_group,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
+      assert relay_view1.id == relay.id
+      assert relay_view2.id == relay.id
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view1
+
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [relay_id],
+        connected: [relay_view1, relay_view2]
+      }
+
+      assert relay_view1.id == relay.id
+      assert relay_view2.id == relay.id
+      assert relay_id == relay.id
+    end
   end
 
   describe "handle_info/2 :expire_flow" do
@@ -359,8 +400,8 @@ defmodule API.Gateway.ChannelTest do
       assert username1 != username2
       assert password1 != password2
       assert [username_expires_at_unix, username_salt] = String.split(username1, ":", parts: 2)
-      assert username_expires_at_unix == to_string(DateTime.to_unix(expires_at, :second))
-      assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
+      assert username_expires_at_unix == to_string(expires_at_unix)
+      assert DateTime.from_unix!(expires_at_unix) != DateTime.truncate(expires_at, :second)
       assert is_binary(username_salt)
 
       assert payload.resource == %{
@@ -471,8 +512,10 @@ defmodule API.Gateway.ChannelTest do
       assert username1 != username2
       assert password1 != password2
       assert [username_expires_at_unix, username_salt] = String.split(username1, ":", parts: 2)
-      assert username_expires_at_unix == to_string(DateTime.to_unix(expires_at, :second))
-      assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
+      assert username_expires_at_unix == to_string(expires_at_unix)
+      assert DateTime.from_unix!(expires_at_unix) != DateTime.truncate(expires_at, :second)
+      in_7_days = DateTime.utc_now() |> DateTime.add(7, :day)
+      assert DateTime.from_unix!(expires_at_unix) |> DateTime.compare(in_7_days) == :gt
       assert is_binary(username_salt)
 
       assert payload.resource == %{

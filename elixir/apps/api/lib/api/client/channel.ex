@@ -291,7 +291,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     if Map.has_key?(leaves, relay_id) do
-      OpenTelemetry.Tracer.with_span "client.relay_offline",
+      OpenTelemetry.Tracer.with_span "client.relays_presence",
         attributes: %{
           relay_id: relay_id
         } do

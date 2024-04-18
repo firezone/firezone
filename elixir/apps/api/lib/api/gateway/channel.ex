@@ -37,8 +37,14 @@ defmodule API.Gateway.Channel do
       ipv4_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv4_masquerade)
       ipv6_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv6_masquerade)
 
+      # Return all connected relays for the account
+      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+      {:ok, relays} = select_relays(socket)
+      :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
       push(socket, "init", %{
         interface: Views.Interface.render(socket.assigns.gateway),
+        relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
         config: %{
           ipv4_masquerade_enabled: ipv4_masquerade_enabled?,
           ipv6_masquerade_enabled: ipv6_masquerade_enabled?
@@ -201,16 +207,9 @@ defmodule API.Gateway.Channel do
       resource = Resources.fetch_resource_by_id!(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id)
-
-      location = {
-        socket.assigns.gateway.last_seen_remote_ip_location_lat,
-        socket.assigns.gateway.last_seen_remote_ip_location_lon
-      }
-
-      OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
-
-      relays = Relays.load_balance_relays(location, relays)
+      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+      {:ok, relays} = select_relays(socket)
+      :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
       ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
@@ -219,7 +218,7 @@ defmodule API.Gateway.Channel do
         ref: ref,
         flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
-        relays: Views.Relay.render_many(relays, authorization_expires_at),
+        relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
         resource: Views.Resource.render(resource),
         client: Views.Client.render(client, payload, preshared_key),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)
@@ -231,6 +230,39 @@ defmodule API.Gateway.Channel do
         flow_id: flow_id
       )
 
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          event: "presence_diff",
+          topic: "presences:relays:" <> relay_id,
+          payload: %{leaves: leaves}
+        },
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    if Map.has_key?(leaves, relay_id) do
+      OpenTelemetry.Tracer.with_span "gateway.relays_presence",
+        attributes: %{
+          relay_id: relay_id
+        } do
+        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+        {:ok, relays} = select_relays(socket)
+        :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
+        push(socket, "relays_presence", %{
+          disconnected_ids: [relay_id],
+          connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
+        })
+
+        {:noreply, socket}
+      end
+    else
       {:noreply, socket}
     end
   end
@@ -366,5 +398,20 @@ defmodule API.Gateway.Channel do
     else
       {:error, :invalid} -> {:error, :invalid_ref}
     end
+  end
+
+  defp select_relays(socket) do
+    {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id)
+
+    location = {
+      socket.assigns.gateway.last_seen_remote_ip_location_lat,
+      socket.assigns.gateway.last_seen_remote_ip_location_lon
+    }
+
+    OpenTelemetry.Tracer.set_attribute(:relays_length, length(relays))
+
+    relays = Relays.load_balance_relays(location, relays)
+
+    {:ok, relays}
   end
 end
