@@ -162,7 +162,10 @@ impl ReferenceStateMachine for ReferenceState {
             .boxed()
     }
 
-    /// Generate a set of transitions from the current state.
+    /// Defines the [`Strategy`] on how we can [transition](Transition) from the current [`ReferenceState`].
+    ///
+    /// This is invoked by proptest repeatedly to explore further state transitions.
+    /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
@@ -243,6 +246,7 @@ impl ReferenceStateMachine for ReferenceState {
         state
     }
 
+    /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
     fn preconditions(_: &Self::State, transition: &Self::Transition) -> bool {
         match transition {
             Transition::AddCidrResource(_) => true,
