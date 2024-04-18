@@ -23,6 +23,10 @@ docker compose kill relay --signal SIGTERM
 
 sleep 5 # Wait for container to be fully exited
 
+# Seems to be necessary to return the correct state
+docker compose ps relay --all
+sleep 1
+
 # Assert: Container exited
 container_state=$(docker compose ps relay --all --format json | jq --raw-output '.State')
 assert_equals "$container_state" "exited"
