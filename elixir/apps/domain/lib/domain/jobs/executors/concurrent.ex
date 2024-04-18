@@ -67,7 +67,7 @@ defmodule Domain.Jobs.Executors.Concurrent do
     Logger.metadata(attributes)
 
     OpenTelemetry.Tracer.with_span job_callback, attributes: attributes do
-      _ = apply(module, :execute, [worker_state])
+      _ = module.execute(worker_state)
     end
 
     :ok

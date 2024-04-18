@@ -12,7 +12,7 @@ defmodule Domain.Actors.Group.Sync do
 
     provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
-    with groups = all_provider_groups(provider),
+    with {:ok, groups} <- all_provider_groups(provider),
          {:ok, {upsert, delete}} <- plan_groups_update(groups, provider_identifiers),
          {:ok, deleted} <- delete_groups(provider, delete),
          {:ok, upserted} <- upsert_groups(provider, attrs_by_provider_identifier, upsert) do
@@ -35,10 +35,13 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp all_provider_groups(provider) do
-    Group.Query.not_deleted()
-    |> Group.Query.by_account_id(provider.account_id)
-    |> Group.Query.by_provider_id(provider.id)
-    |> Repo.all()
+    groups =
+      Group.Query.not_deleted()
+      |> Group.Query.by_account_id(provider.account_id)
+      |> Group.Query.by_provider_id(provider.id)
+      |> Repo.all()
+
+    {:ok, groups}
   end
 
   defp plan_groups_update(groups, provider_identifiers) do

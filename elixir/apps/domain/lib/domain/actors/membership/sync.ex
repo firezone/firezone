@@ -22,7 +22,7 @@ defmodule Domain.Actors.Membership.Sync do
         end
       end)
 
-    with memberships = all_provider_memberships(provider),
+    with {:ok, memberships} <- all_provider_memberships(provider),
          {:ok, {insert, delete}} <- plan_memberships_update(tuples, memberships),
          deleted_stats = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
@@ -46,9 +46,12 @@ defmodule Domain.Actors.Membership.Sync do
   end
 
   defp all_provider_memberships(provider) do
-    Membership.Query.by_account_id(provider.account_id)
-    |> Membership.Query.by_group_provider_id(provider.id)
-    |> Repo.all()
+    memberships =
+      Membership.Query.by_account_id(provider.account_id)
+      |> Membership.Query.by_group_provider_id(provider.id)
+      |> Repo.all()
+
+    {:ok, memberships}
   end
 
   defp plan_memberships_update(tuples, memberships) do

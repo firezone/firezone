@@ -160,7 +160,7 @@ defmodule Domain.Jobs.Executors.GloballyUnique do
     Logger.metadata(attributes)
 
     OpenTelemetry.Tracer.with_span job_callback, attributes: attributes do
-      _ = apply(module, :execute, [config])
+      _ = module.execute(config)
     end
 
     :ok

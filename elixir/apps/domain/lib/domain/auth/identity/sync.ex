@@ -10,7 +10,7 @@ defmodule Domain.Auth.Identity.Sync do
 
     provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
-    with identities = all_provider_identities(provider),
+    with {:ok, identities} <- all_provider_identities(provider),
          {:ok, {insert, update, delete}} <-
            plan_identities_update(identities, provider_identifiers),
          {:ok, deleted} <- delete_identities(provider, delete),
@@ -39,10 +39,13 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp all_provider_identities(provider) do
-    Identity.Query.all()
-    |> Identity.Query.by_account_id(provider.account_id)
-    |> Identity.Query.by_provider_id(provider.id)
-    |> Repo.all()
+    identities =
+      Identity.Query.all()
+      |> Identity.Query.by_account_id(provider.account_id)
+      |> Identity.Query.by_provider_id(provider.id)
+      |> Repo.all()
+
+    {:ok, identities}
   end
 
   defp plan_identities_update(identities, provider_identifiers) do
