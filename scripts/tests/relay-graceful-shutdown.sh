@@ -7,7 +7,7 @@ install_iptables_drop_rules
 client_curl_resource "172.20.0.100/get"
 
 # Act: Send SIGTERM
-docker compose kill relay1 --signal SIGTERM
+docker compose kill relay-1 --signal SIGTERM
 
 sleep 2 # Closing websocket isn't instant.
 
@@ -19,7 +19,7 @@ OPEN_SOCKETS=$(relay1 netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Po
 test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
-docker compose kill relay1 --signal SIGTERM
+docker compose kill relay-1 --signal SIGTERM
 
 sleep 1 # Wait for process to exit
 
