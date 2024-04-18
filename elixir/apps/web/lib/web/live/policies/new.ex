@@ -65,6 +65,7 @@ defmodule Web.Policies.New do
                 disabled={not is_nil(@actor_group_id)}
                 required
               />
+
               <.input
                 field={@form[:resource_id]}
                 label="Resource"

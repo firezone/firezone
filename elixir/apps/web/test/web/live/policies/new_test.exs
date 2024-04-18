@@ -65,6 +65,36 @@ defmodule Web.Live.Policies.NewTest do
            ]
   end
 
+  test "renders form with pre-set actor_group_id", %{
+    account: account,
+    identity: identity,
+    actor_group: actor_group,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?actor_group_id=#{actor_group.id}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "policy[actor_group_id]",
+             "policy[description]",
+             "policy[resource_id]"
+           ]
+
+    html = render(form)
+    disabled_input = Floki.find(html, "select[name='policy[actor_group_id]']")
+    assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
+
+    assert disabled_input
+           |> Floki.find("option[selected=selected]")
+           |> Floki.attribute("value") == [actor_group.id]
+
+    assert has_element?(lv, "input[name='policy[actor_group_id]'][value='#{actor_group.id}']")
+  end
+
   test "renders form with pre-set resource_id", %{
     account: account,
     identity: identity,
@@ -85,11 +115,15 @@ defmodule Web.Live.Policies.NewTest do
              "policy[resource_id]"
            ]
 
-    disabled_input = render(form) |> Floki.find("select[name='policy[resource_id]']")
+    html = render(form)
+    disabled_input = Floki.find(html, "select[name='policy[resource_id]']")
     assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
 
-    assert disabled_input |> Floki.find("option[selected=selected]") |> Floki.attribute("value") ==
-             [resource.id]
+    assert disabled_input
+           |> Floki.find("option[selected=selected]")
+           |> Floki.attribute("value") == [resource.id]
+
+    assert has_element?(lv, "input[name='policy[resource_id]'][value='#{resource.id}']")
   end
 
   test "renders changeset errors on input change", %{
