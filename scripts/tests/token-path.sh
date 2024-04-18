@@ -12,10 +12,10 @@ sudo chown root:root "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 # Check should fail because there's no token yet
-sudo "$BINARY_NAME" standalone --check && exit 1
+sudo "$BINARY_NAME" --check standalone && exit 1
 
 # Check should fail because passing tokens as CLI args is not allowed anymore
-sudo "$BINARY_NAME" standalone --check --token "$TOKEN" && exit 1
+sudo "$BINARY_NAME" --check --token "$TOKEN" standalone && exit 1
 
 touch "$TOKEN_PATH"
 chmod 600 "$TOKEN_PATH"
