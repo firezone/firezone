@@ -42,6 +42,8 @@ pub async fn run() -> Result<()> {
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
+    tracing::info!(git_version = crate::GIT_VERSION);
+
     match cli.command() {
         Cmd::Auto => {
             if let Some(token) = token(&cli)? {
@@ -52,7 +54,12 @@ pub async fn run() -> Result<()> {
         }
         Cmd::IpcService => run_ipc_service(cli).await,
         Cmd::Standalone => {
-            let token = token(&cli)?.context("Need a token to run as standalone Client")?;
+            let token = token(&cli)?.with_context(|| {
+                format!(
+                    "Can't find the Firezone token in $FIREZONE_TOKEN or in `{}`",
+                    cli.token_path
+                )
+            })?;
             run_standalone(cli, &token).await
         }
         Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
