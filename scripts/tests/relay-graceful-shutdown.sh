@@ -21,6 +21,8 @@ test -z "$OPEN_SOCKETS"
 # Act: Send 2nd SIGTERM
 docker compose kill relay-1 --signal SIGTERM
 
+sleep 1 # Wait for container to be fully exited
+
 # Assert: Container exited
 container_state=$(docker compose ps relay-1 --all --format json | jq --raw-output '.State')
 assert_equals "$container_state" "exited"
