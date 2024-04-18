@@ -52,7 +52,21 @@ privacy-focused DNS resolvers for public use:
    `Settings -> DNS` tab.
 1. Add each of the IP addresses of the DNS resolvers you want to use in the
    **Client DNS** section.
-1. Click **Save** to apply the changes.
+1. Click **Save** to apply the changes. The Firezone Client will automatically
+   update its configuration to use the new DNS resolvers.
+
+<Link
+  href="/images/kb/use-cases/secure-dns/step2.png"
+  target="_blank"
+  rel="nofollow"
+>
+  <Image
+    src="/images/kb/use-cases/secure-dns/step2.png"
+    alt="Add the resolver in Firezone"
+    width={1200}
+    height={1200}
+  />
+</Link>
 
 <Alert color="info">
   Firezone currently supports upstream resolvers available over UDP/53 only. See
@@ -60,15 +74,11 @@ privacy-focused DNS resolvers for public use:
   need support for DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT) resolvers.
 </Alert>
 
-## Step 3: Open the Client and sign in
-
-1. Open the Firezone Client on your device.
-1. Sign in with your Firezone account credentials.
-
-## Step 4: Verify
+## Step 3: Verify
 
 You can verify that DNS is being filtered by querying a known malicious domain
-and checking if you receive an answer of `0.0.0.0` or `NXDOMAIN`.
+from a device with the Firezone Client signed in and checking if you receive an
+answer of `0.0.0.0` or `NXDOMAIN`.
 
 For example, the `zeustracker.abuse.ch` domain is associated with the Zeus
 botnet and is commonly blocked by many DNS providers:
