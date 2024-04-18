@@ -5800,7 +5800,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.5.0"
-source = "git+https://github.com/firezone/str0m?branch=main#aeb62dfe53270d29d2cc72b03930a462e55b2e88"
+source = "git+https://github.com/firezone/str0m?branch=main#1a69339a76ea21fa526d7a90893e3549e0281e0f"
 dependencies = [
  "combine",
  "crc",
