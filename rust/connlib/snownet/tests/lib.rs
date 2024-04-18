@@ -110,6 +110,11 @@ fn reconnect_discovers_new_interface() {
         progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
 
+    // To ensure that switching networks really works, block all traffic from the old IP.
+    let firewall = firewall
+        .with_block_rule(&alice, &bob)
+        .with_block_rule(&bob, &alice);
+
     alice.switch_network("10.0.0.1:80");
     alice.span.in_scope(|| alice.node.reconnect(clock.now));
 
