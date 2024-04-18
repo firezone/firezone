@@ -65,7 +65,7 @@ function assert_process_state {
 
 function create_token_file {
     CONFIG_DIR=/etc/dev.firezone.client
-    TOKEN_PATH="$CONFIG_DIR/token.txt"
+    TOKEN_PATH="$CONFIG_DIR/token"
 
     sudo mkdir "$CONFIG_DIR"
     sudo touch "$TOKEN_PATH"

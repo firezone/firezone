@@ -35,7 +35,7 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
-        .join("token.txt")
+        .join("token")
 }
 
 pub fn run() -> Result<()> {

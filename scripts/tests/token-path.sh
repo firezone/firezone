@@ -4,7 +4,7 @@ source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
 TOKEN="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
-TOKEN_PATH="token.txt"
+TOKEN_PATH="token"
 
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
@@ -33,7 +33,7 @@ sudo "$BINARY_NAME" --check --token-path "$TOKEN_PATH" standalone
 
 # Move the token to the default path
 sudo mkdir /etc/dev.firezone.client
-sudo mv "$TOKEN_PATH" /etc/dev.firezone.client/token.txt
+sudo mv "$TOKEN_PATH" /etc/dev.firezone.client/token
 
 # Now passes with the default path
 sudo "$BINARY_NAME" --check standalone
