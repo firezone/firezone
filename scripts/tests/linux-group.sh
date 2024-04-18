@@ -10,12 +10,6 @@ FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
-function print_debug_info {
-    systemctl status "$SERVICE_NAME" || true
-}
-
-trap print_debug_info EXIT
-
 # Copy the Linux Client out of the build dir
 ls . ./rust ./rust/target ./rust/target/debug
 sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
