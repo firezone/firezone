@@ -119,7 +119,7 @@ jobs:
       - name: Run smoke tests (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
-  
+
   headless-client:
     name: headless-client-${{ matrix.runs-on }}
     strategy:
@@ -138,6 +138,7 @@ jobs:
           CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
         name: "cargo build"
         shell: bash
-      - run: ../scripts/tests/linux-group.sh
+      - run: scripts/tests/linux-group.sh
         name: "linux-group"
         shell: bash
+        working-directory: ./
