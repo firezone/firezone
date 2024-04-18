@@ -16,12 +16,11 @@ function print_debug_info {
 
 trap print_debug_info EXIT
 
-# Copy the Linux Client out of its container
+# Copy the Linux Client out of the build dir
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
-chmod u+x "$BINARY_NAME"
-sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
+sudo cp "target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
+sudo cp "../scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
 # The firezone group must exist before the daemon starts
 sudo groupadd "$FZ_GROUP"
