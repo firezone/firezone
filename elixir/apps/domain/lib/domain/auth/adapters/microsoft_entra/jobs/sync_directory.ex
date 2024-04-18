@@ -4,7 +4,6 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
     every: :timer.minutes(5),
     executor: Domain.Jobs.Executors.Concurrent
 
-  alias Domain.Jobs.Executors.Concurrent
   alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.MicrosoftEntra
   require Logger
@@ -18,24 +17,15 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
   end
 
   @impl true
-  def execute(_state) do
-    Domain.Repo.checkout(fn ->
-      all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:microsoft_entra)
-      providers = Concurrent.reject_locked("auth_providers", all_providers)
-
-      Logger.debug(
-        "Syncing #{length(providers)} out of #{length(all_providers)} Microsoft Entra providers"
-      )
-
-      DirectorySync.sync_providers(__MODULE__, providers)
-    end)
+  def execute(%{task_supervisor: pid}) do
+    DirectorySync.sync_providers(__MODULE__, :microsoft_entra, pid)
   end
 
-  def gather_provider_data(provider) do
+  def gather_provider_data(provider, task_supervisor_pid) do
     access_token = provider.adapter_state["access_token"]
 
     async_results =
-      DirectorySync.run_async_requests(@task_supervisor,
+      DirectorySync.run_async_requests(task_supervisor_pid,
         users: fn ->
           MicrosoftEntra.APIClient.list_users(access_token)
         end,

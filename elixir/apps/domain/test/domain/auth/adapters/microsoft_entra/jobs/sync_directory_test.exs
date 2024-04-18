@@ -21,7 +21,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
     test "returns error when IdP sync is not enabled", %{account: account, provider: provider} do
       {:ok, _account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at
@@ -83,7 +84,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         MicrosoftEntraDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
       end)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       groups = Actors.Group |> Repo.all()
       assert length(groups) == 2
@@ -129,7 +131,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       Bypass.down(bypass)
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert Repo.aggregate(Actors.Group, :count) == 0
     end
@@ -163,7 +166,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, [])
       MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, users)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_identity =
                Repo.get(Domain.Auth.Identity, identity.id)
@@ -330,7 +334,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         one_member
       )
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_group = Repo.get(Domain.Actors.Group, group.id)
       assert updated_group.name == "Group:All"
@@ -429,7 +434,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         end)
       end
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at
@@ -445,7 +451,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         end)
       end
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at

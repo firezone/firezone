@@ -1,9 +1,19 @@
 defmodule Domain.Auth.Adapter.DirectorySync do
   alias Domain.Repo
+  alias Domain.Jobs.Executors.Concurrent
   alias Domain.{Auth, Actors}
   require Logger
 
-  @async_data_fetch_timeout :infinity
+  # The Finch will timeout requests after 30 seconds,
+  # but there are a lot of requests that need to be made
+  # so we don't want to limit the timeout here
+  @async_data_fetch_timeout :timer.minutes(30)
+
+  # This timeout is used to limit the time spent on a single provider
+  # inserting the records into the database
+  @database_operations_timeout :timer.minutes(30)
+
+  @provider_sync_timeout @async_data_fetch_timeout + @database_operations_timeout
 
   @doc """
   Returns a tuple with the data needed to sync all entities of the provider.
@@ -51,7 +61,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
   Where `user_message` user message will be rendered in the UI and `log_message` will be logged with
   a level that corresponds to number of retries (see `log_sync_error/2`).
   """
-  @callback gather_provider_data(%Auth.Provider{}) ::
+  @callback gather_provider_data(%Auth.Provider{}, task_supervisor_pid :: pid()) ::
               {:ok,
                {
                  identities_attrs :: [
@@ -70,29 +80,91 @@ defmodule Domain.Auth.Adapter.DirectorySync do
               | {:error, {:unauthorized, user_message :: String.t()}}
               | {:error, user_message :: String.t(), log_message :: String.t()}
 
-  def sync_providers(module, providers) do
+  def sync_providers(module, adapter, supervisor_pid) do
     start_time = System.monotonic_time(:millisecond)
 
-    providers
-    |> Domain.Repo.preload(:account)
-    |> Enum.each(&sync_provider(module, &1))
+    Domain.Repo.checkout(
+      fn ->
+        metadata = Logger.metadata()
+        pdict = Process.get()
+
+        all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(adapter)
+        providers = Concurrent.reject_locked("auth_providers", all_providers)
+        providers = Domain.Repo.preload(providers, :account)
+        Logger.info("Syncing #{length(providers)}/#{length(all_providers)} #{adapter} providers")
+
+        # TODO: add otlp spans for each execution
+        Task.Supervisor.async_stream_nolink(
+          supervisor_pid,
+          providers,
+          fn provider ->
+            :ok = maybe_reuse_connection(pdict)
+            Logger.metadata(metadata)
+
+            Logger.metadata(
+              account_id: provider.account_id,
+              provider_id: provider.id,
+              provider_adapter: provider.adapter
+            )
+
+            sync_provider(module, provider)
+          end,
+          timeout: @provider_sync_timeout,
+          max_concurrency: 3
+        )
+        |> Stream.run()
+      end,
+      # sync can take a long time so we will manage timeouts for each provider separately
+      timeout: :infinity
+    )
 
     time_taken = calculate_elapsed_time(start_time)
-    Logger.info("Finished syncing providers in #{time_taken}")
+    Logger.info("Finished syncing in #{time_taken}")
   end
 
   defp sync_provider(module, provider) do
-    Logger.debug("Syncing provider",
-      account_id: provider.account_id,
-      provider_id: provider.id,
-      provider_adapter: provider.adapter
-    )
+    start_time = System.monotonic_time(:millisecond)
+    Logger.debug("Syncing provider")
 
+    {:ok, pid} = Task.Supervisor.start_link()
+
+    if Domain.Accounts.idp_sync_enabled?(provider.account) do
+      with {:ok, data, data_fetch_time_taken} <- fetch_provider_data(module, provider, pid),
+           {:ok, db_operations_time_taken} <- insert_provider_updates(provider, data) do
+        time_taken = calculate_elapsed_time(start_time)
+
+        :telemetry.execute(
+          [:domain, :directory_sync],
+          %{
+            data_fetch_time: data_fetch_time_taken,
+            db_operations_time: db_operations_time_taken,
+            total_time: time_taken
+          },
+          %{
+            account_id: provider.account_id,
+            provider_id: provider.id,
+            provider_adapter: provider.adapter
+          }
+        )
+
+        Logger.debug("Finished syncing provider in #{time_taken}")
+      else
+        _other ->
+          time_taken = calculate_elapsed_time(start_time)
+          Logger.debug("Failed to sync provider in #{time_taken}")
+      end
+    else
+      message = "IdP sync is not enabled in your subscription plan"
+
+      Auth.Provider.Changeset.sync_failed(provider, message)
+      |> Domain.Repo.update!()
+    end
+  end
+
+  defp fetch_provider_data(module, provider, task_supervisor_pid) do
     start_time = System.monotonic_time(:millisecond)
 
-    with true <- Domain.Accounts.idp_sync_enabled?(provider.account),
-         {:ok, {identities_attrs, actor_groups_attrs, membership_tuples}} <-
-           module.gather_provider_data(provider) do
+    with {:ok, data} <- module.gather_provider_data(provider, task_supervisor_pid) do
       time_taken = calculate_elapsed_time(start_time)
 
       Logger.debug("Finished fetching data for provider in #{time_taken}",
@@ -102,44 +174,8 @@ defmodule Domain.Auth.Adapter.DirectorySync do
         time_taken: time_taken
       )
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.one(:lock_provider, fn _effects_so_far ->
-        Auth.Provider.Query.not_disabled()
-        |> Auth.Provider.Query.by_account_id(provider.account_id)
-        |> Auth.Provider.Query.by_id(provider.id)
-        |> Auth.Provider.Query.lock()
-      end)
-      |> Ecto.Multi.append(Auth.sync_provider_identities_multi(provider, identities_attrs))
-      |> Ecto.Multi.append(Actors.sync_provider_groups_multi(provider, actor_groups_attrs))
-      |> Actors.sync_provider_memberships_multi(provider, membership_tuples)
-      |> Ecto.Multi.update(:save_last_updated_at, fn _effects_so_far ->
-        Auth.Provider.Changeset.sync_finished(provider)
-      end)
-      |> Repo.transaction(timeout: :timer.minutes(30))
-      |> case do
-        {:ok, effects} ->
-          log_sync_result(provider, start_time, effects)
-          :ok
-
-        {:error, reason} ->
-          log_sync_error(
-            provider,
-            "Repo error: " <> inspect(reason)
-          )
-
-        {:error, step, reason, _effects_so_far} ->
-          log_sync_error(
-            provider,
-            "Multi error at step " <> inspect(step) <> ": " <> inspect(reason)
-          )
-      end
+      {:ok, data, time_taken}
     else
-      false ->
-        message = "IdP sync is not enabled in your subscription plan"
-
-        Auth.Provider.Changeset.sync_failed(provider, message)
-        |> Domain.Repo.update!()
-
       {:error, {:unauthorized, user_message}} ->
         Auth.Provider.Changeset.sync_requires_manual_intervention(provider, user_message)
         |> Domain.Repo.update!()
@@ -154,29 +190,59 @@ defmodule Domain.Auth.Adapter.DirectorySync do
     end
   end
 
-  defp log_sync_result(provider, start_time, effects) do
-    %{
-      # Identities
-      plan_identities: {identities_insert_ids, identities_update_ids, identities_delete_ids},
-      insert_identities: identities_inserted,
-      update_identities_and_actors: identities_updated,
-      delete_identities: identities_deleted,
-      # Groups
-      plan_groups: {groups_upsert_ids, groups_delete_ids},
-      upsert_groups: groups_upserted,
-      delete_groups: groups_deleted,
-      # Memberships
-      plan_memberships: {memberships_insert_tuples, memberships_delete_tuples},
-      insert_memberships: memberships_inserted,
-      delete_memberships: {deleted_memberships_count, _}
-    } = effects
+  defp insert_provider_updates(
+         provider,
+         {identities_attrs, actor_groups_attrs, membership_tuples}
+       ) do
+    start_time = System.monotonic_time(:millisecond)
 
-    time_taken = calculate_elapsed_time(start_time)
+    with {:ok, identities_effects} <- Auth.sync_provider_identities(provider, identities_attrs),
+         {:ok, groups_effects} <- Actors.sync_provider_groups(provider, actor_groups_attrs),
+         {:ok, memberships_effects} <-
+           Actors.sync_provider_memberships(
+             identities_effects.actor_ids_by_provider_identifier,
+             groups_effects.group_ids_by_provider_identifier,
+             provider,
+             membership_tuples
+           ) do
+      Auth.Provider.Changeset.sync_finished(provider)
+      |> Repo.update!()
+
+      time_taken = calculate_elapsed_time(start_time)
+      log_sync_result(time_taken, identities_effects, groups_effects, memberships_effects)
+      {:ok, time_taken}
+    else
+      {:error, reason} ->
+        log_sync_error(provider, "Repo error: " <> inspect(reason))
+    end
+  end
+
+  defp log_sync_result(
+         time_taken,
+         identities_effects,
+         groups_effects,
+         memberships_effects
+       ) do
+    %{
+      plan: {identities_insert_ids, identities_update_ids, identities_delete_ids},
+      inserted: identities_inserted,
+      updated: identities_updated,
+      deleted: identities_deleted
+    } = identities_effects
+
+    %{
+      plan: {groups_upsert_ids, groups_delete_ids},
+      upserted: groups_upserted,
+      deleted: groups_deleted
+    } = groups_effects
+
+    %{
+      plan: {memberships_insert_tuples, memberships_delete_tuples},
+      inserted: memberships_inserted,
+      deleted_stats: {deleted_memberships_count, _}
+    } = memberships_effects
 
     Logger.debug("Finished syncing provider in #{time_taken}",
-      provider_id: provider.id,
-      provider_adapter: provider.adapter,
-      account_id: provider.account_id,
       time_taken: time_taken,
       # Identities
       plan_identities_insert: length(identities_insert_ids),
@@ -257,5 +323,27 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           {:exit, reason} -> {:error, reason}
         end
     end)
+  end
+
+  if Mix.env() == :test do
+    # We need this function to reuse the connection that was checked out in a parent process.
+    #
+    # `Ecto.SQL.Sandbox.allow/3` will not work in this case because it will try to checkout the same connection
+    # that is held by the parent process by `Repo.checkout/2` which will lead to a timeout, so we need to hack
+    # and reuse it manually.
+    def maybe_reuse_connection(pdict) do
+      pdict
+      |> Enum.filter(fn
+        {{Ecto.Adapters.SQL, _pid}, _} -> true
+        _ -> false
+      end)
+      |> Enum.each(fn {key, value} ->
+        Process.put(key, value)
+      end)
+    end
+  else
+    def maybe_reuse_connection(_pdict) do
+      :ok
+    end
   end
 end

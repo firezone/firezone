@@ -4,7 +4,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
     every: :timer.minutes(5),
     executor: Domain.Jobs.Executors.Concurrent
 
-  alias Domain.Jobs.Executors.Concurrent
   alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.Okta
   require Logger
@@ -18,21 +17,16 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
   end
 
   @impl true
-  def execute(_state) do
-    Domain.Repo.checkout(fn ->
-      all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
-      providers = Concurrent.reject_locked("auth_providers", all_providers)
-      Logger.debug("Syncing #{length(providers)} out of #{length(all_providers)} Okta providers")
-      DirectorySync.sync_providers(__MODULE__, providers)
-    end)
+  def execute(%{task_supervisor: pid}) do
+    DirectorySync.sync_providers(__MODULE__, :okta, pid)
   end
 
-  def gather_provider_data(provider) do
+  def gather_provider_data(provider, task_supervisor_pid) do
     endpoint = provider.adapter_config["api_base_url"]
     access_token = provider.adapter_state["access_token"]
 
     async_results =
-      DirectorySync.run_async_requests(@task_supervisor,
+      DirectorySync.run_async_requests(task_supervisor_pid,
         users: fn ->
           Okta.APIClient.list_users(endpoint, access_token)
         end,

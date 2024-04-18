@@ -4,7 +4,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
     every: :timer.minutes(2),
     executor: Domain.Jobs.Executors.Concurrent
 
-  alias Domain.Jobs.Executors.Concurrent
   alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.GoogleWorkspace
   require Logger
@@ -18,24 +17,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
   end
 
   @impl true
-  def execute(_state) do
-    Domain.Repo.checkout(fn ->
-      all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:google_workspace)
-      providers = Concurrent.reject_locked("auth_providers", all_providers)
-
-      Logger.info(
-        "Syncing #{length(providers)} out of #{length(all_providers)} Google Workspace providers"
-      )
-
-      DirectorySync.sync_providers(__MODULE__, providers)
-    end)
+  def execute(%{task_supervisor: pid}) do
+    DirectorySync.sync_providers(__MODULE__, :google_workspace, pid)
   end
 
-  def gather_provider_data(provider) do
+  def gather_provider_data(provider, task_supervisor_pid) do
     access_token = provider.adapter_state["access_token"]
 
     async_results =
-      DirectorySync.run_async_requests(@task_supervisor,
+      DirectorySync.run_async_requests(task_supervisor_pid,
         users: fn ->
           GoogleWorkspace.APIClient.list_users(access_token)
         end,

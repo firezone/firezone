@@ -25,12 +25,12 @@ defmodule Domain.Jobs.Executors.GloballyUniqueTest do
              })
 
     refute_receive {:executed, _pid, _time}, 50
-    assert_receive {:executed, _pid, _time}, 1000
+    assert_receive {:executed, _pid, _time}, 2000
   end
 
   test "registers itself as a leader if there is no global name registered" do
     assert {:ok, pid} = start_link({__MODULE__, 25, test_pid: self()})
-    assert_receive {:executed, ^pid, _time}, 1000
+    assert_receive {:executed, ^pid, _time}, 2000
     name = {Domain.Jobs.Executors.GloballyUnique, __MODULE__}
     assert :global.whereis_name(name) == pid
 

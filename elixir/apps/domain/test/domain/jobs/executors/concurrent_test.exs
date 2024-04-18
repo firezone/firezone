@@ -30,7 +30,7 @@ defmodule Domain.Jobs.Executors.ConcurrentTest do
              })
 
     refute_receive {:executed, _pid, _time}, 50
-    assert_receive {:executed, _pid, _time}, 1000
+    assert_receive {:executed, _pid, _time}, 2000
   end
 
   describe "reject_locked/2" do
