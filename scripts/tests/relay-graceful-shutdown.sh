@@ -21,10 +21,6 @@ test -z "$OPEN_SOCKETS"
 # Act: Send 2nd SIGTERM
 docker compose kill relay-1 --signal SIGTERM
 
-sleep 2 # Wait for process to exit
-
-# Assert: Relay-1 is no longer there
-if docker compose ps relay-1 >/dev/null; then
-    echo "Relay-1 is still running."
-    exit 1
-fi
+# Assert: Container exited
+container_state=$(docker compose ps relay-1 --all --format json | jq --raw-output '.State')
+assert_equals "$container_state" "exited"
