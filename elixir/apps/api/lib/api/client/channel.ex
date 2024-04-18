@@ -154,6 +154,28 @@ defmodule API.Client.Channel do
     end
   end
 
+  def handle_info(
+        {:invalidate_ice_candidates, gateway_id, candidates,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.invalidate_ice_candidates",
+      attributes: %{
+        gateway_id: gateway_id,
+        candidates_length: length(candidates)
+      } do
+      push(socket, "invalidate_ice_candidates", %{
+        gateway_id: gateway_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
+    end
+  end
+
   # This message is sent by the gateway when it is ready to accept the connection from the client
   def handle_info(
         {:connect, socket_ref, resource_id, gateway_public_key, payload,
@@ -291,7 +313,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     if Map.has_key?(leaves, relay_id) do
-      OpenTelemetry.Tracer.with_span "client.relay_offline",
+      OpenTelemetry.Tracer.with_span "client.relays_presence",
         attributes: %{
           relay_id: relay_id
         } do
@@ -513,6 +535,31 @@ defmodule API.Client.Channel do
           Gateways.broadcast_to_gateway(
             gateway_id,
             {:ice_candidates, socket.assigns.client.id, candidates,
+             {opentelemetry_ctx, opentelemetry_span_ctx}}
+          )
+        end)
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_in(
+        "broadcast_invalidated_ice_candidates",
+        %{"candidates" => candidates, "gateway_ids" => gateway_ids},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.broadcast_invalidated_ice_candidates" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+      :ok =
+        Enum.each(gateway_ids, fn gateway_id ->
+          Gateways.broadcast_to_gateway(
+            gateway_id,
+            {:invalidate_ice_candidates, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
         end)

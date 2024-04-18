@@ -36,6 +36,7 @@ defmodule API.Gateway.ChannelTest do
       identity: identity,
       subject: subject,
       client: client,
+      gateway_group: gateway_group,
       gateway: gateway,
       resource: resource,
       relay: relay,
@@ -227,6 +228,46 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
     end
+
+    test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
+      relay_group = Fixtures.Relays.create_global_group()
+      relay = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      API.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        gateway: gateway,
+        gateway_group: gateway_group,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      assert_push "init", %{relays: [relay_view1, relay_view2]}
+      assert relay_view1.id == relay.id
+      assert relay_view2.id == relay.id
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view1
+
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [relay_id],
+        connected: [relay_view1, relay_view2]
+      }
+
+      assert relay_view1.id == relay.id
+      assert relay_view2.id == relay.id
+      assert relay_id == relay.id
+    end
   end
 
   describe "handle_info/2 :expire_flow" do
@@ -298,6 +339,29 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :invalidate_ice_candidates" do
+    test "pushes invalidate_ice_candidates message", %{
+      client: client,
+      socket: socket
+    } do
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      candidates = ["foo", "bar"]
+
+      send(
+        socket.channel_pid,
+        {:invalidate_ice_candidates, client.id, candidates, otel_ctx}
+      )
+
+      assert_push "invalidate_ice_candidates", payload
+
+      assert payload == %{
+               candidates: candidates,
+               client_id: client.id
+             }
+    end
+  end
+
   describe "handle_info/2 :request_connection" do
     test "pushes request_connection message with managed relays", %{
       client: client,
@@ -359,8 +423,8 @@ defmodule API.Gateway.ChannelTest do
       assert username1 != username2
       assert password1 != password2
       assert [username_expires_at_unix, username_salt] = String.split(username1, ":", parts: 2)
-      assert username_expires_at_unix == to_string(DateTime.to_unix(expires_at, :second))
-      assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
+      assert username_expires_at_unix == to_string(expires_at_unix)
+      assert DateTime.from_unix!(expires_at_unix) != DateTime.truncate(expires_at, :second)
       assert is_binary(username_salt)
 
       assert payload.resource == %{
@@ -471,8 +535,10 @@ defmodule API.Gateway.ChannelTest do
       assert username1 != username2
       assert password1 != password2
       assert [username_expires_at_unix, username_salt] = String.split(username1, ":", parts: 2)
-      assert username_expires_at_unix == to_string(DateTime.to_unix(expires_at, :second))
-      assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
+      assert username_expires_at_unix == to_string(expires_at_unix)
+      assert DateTime.from_unix!(expires_at_unix) != DateTime.truncate(expires_at, :second)
+      in_7_days = DateTime.utc_now() |> DateTime.add(7, :day)
+      assert DateTime.from_unix!(expires_at_unix) |> DateTime.compare(in_7_days) == :gt
       assert is_binary(username_salt)
 
       assert payload.resource == %{
@@ -778,6 +844,46 @@ defmodule API.Gateway.ChannelTest do
       push(socket, "broadcast_ice_candidates", attrs)
 
       assert_receive {:ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx}, 200
+      assert gateway.id == gateway_id
+    end
+  end
+
+  describe "handle_in/3 broadcast_invalidated_ice_candidates" do
+    test "does nothing when gateways list is empty", %{
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "client_ids" => []
+      }
+
+      push(socket, "broadcast_invalidated_ice_candidates", attrs)
+      refute_receive {:invalidate_ice_candidates, _client_id, _candidates, _opentelemetry_ctx}
+    end
+
+    test "broadcasts :invalidate_ice_candidates message to all gateways", %{
+      client: client,
+      gateway: gateway,
+      subject: subject,
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "client_ids" => [client.id]
+      }
+
+      :ok = Domain.Clients.connect_client(client)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+
+      push(socket, "broadcast_invalidated_ice_candidates", attrs)
+
+      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx},
+                     200
+
       assert gateway.id == gateway_id
     end
   end
