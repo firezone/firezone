@@ -84,7 +84,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
   def sync_providers(module, adapter, supervisor_pid) do
     start_time = System.monotonic_time(:millisecond)
 
-    Domain.Repo.checkout(
+    Domain.Repo.transaction(
       fn ->
         metadata = Logger.metadata()
         pdict = Process.get()
