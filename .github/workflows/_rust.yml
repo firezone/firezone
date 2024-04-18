@@ -119,3 +119,26 @@ jobs:
       - name: Run smoke tests (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
+
+  headless-client:
+    name: headless-client-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # TODO: Add Windows as part of issue #3782
+          - runs-on: ubuntu-20.04
+          - runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - run: cargo build -p firezone-headless-client
+        env:
+          CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
+        name: "cargo build"
+        shell: bash
+      - run: scripts/tests/linux-group.sh
+        name: "linux-group"
+        shell: bash
+        working-directory: ./
