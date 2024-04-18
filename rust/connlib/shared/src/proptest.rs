@@ -29,14 +29,17 @@ pub fn dns_resource_address() -> impl Strategy<Value = String> {
 }
 
 pub fn ip_network() -> impl Strategy<Value = IpNetwork> {
-    (any::<IpAddr>(), netmask()).prop_filter_map(
-        "ip + netmask combination must be a valid `IpNetwork`",
-        |(ip, netmask)| IpNetwork::new(ip, netmask).ok(),
-    )
-}
-
-pub fn netmask() -> impl Strategy<Value = u8> {
-    any::<u8>()
-        .prop_filter("must not be zero", |v| *v != 0)
-        .prop_map(|v| v % 33)
+    (any::<IpAddr>(), any::<u8>())
+        .prop_filter("netmask must not be zero", |(_, v)| *v != 0)
+        .prop_filter_map(
+            "ip + netmask combination must be a valid `IpNetwork`",
+            |(ip, netmask)| match ip {
+                IpAddr::V4(_) => IpNetwork::new(ip, netmask % 33).ok(),
+                IpAddr::V6(_) => IpNetwork::new(ip, netmask).ok(),
+            },
+        )
+        .prop_filter("network must have addresses", |r| match r {
+            IpNetwork::V4(v4) => v4.hosts().len() > 0,
+            IpNetwork::V6(v6) => v6.subnets_with_prefix(128).len() > 0,
+        })
 }
