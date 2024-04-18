@@ -35,5 +35,8 @@ sudo su --login "$USER" --command RUST_LOG="$RUST_LOG" "$BINARY_NAME" stub-ipc-c
 echo "# Expect Firezone to reject our command if we run without 'su --login'"
 "$BINARY_NAME" stub-ipc-client && exit 1
 
+# Stop the service in case other tests run on the same VM
+sudo systemctl stop "$SERVICE_NAME"
+
 # Explicitly exiting is needed when we're intentionally having commands fail
 exit 0
