@@ -29,7 +29,10 @@ mod imp_windows {
         let cli = super::Cli::parse();
         let _cmd = cli.command();
         tracing::info!(git_version = crate::GIT_VERSION);
-        Ok(())
+        // Clippy will complain that the `Result` type is pointless if we can't
+        // possibly throw an error, because it doesn't see that the Linux impl does
+        // throw errors
+        anyhow::bail!("`headless-client` is not implemented for Windows yet");
     }
 }
 #[cfg(target_os = "windows")]
