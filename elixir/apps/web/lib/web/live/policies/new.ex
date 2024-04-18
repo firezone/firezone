@@ -57,6 +57,12 @@ defmodule Web.Policies.New do
             <.base_error form={@form} field={:base} />
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <.input
+                :if={not is_nil(@actor_group_id)}
+                type="hidden"
+                field={@form[:actor_group_id]}
+                value={@actor_group_id}
+              />
+              <.input
                 field={@form[:actor_group_id]}
                 label="Group"
                 type="group_select"
@@ -64,6 +70,13 @@ defmodule Web.Policies.New do
                 value={@actor_group_id || @form[:actor_group_id].value}
                 disabled={not is_nil(@actor_group_id)}
                 required
+              />
+
+              <.input
+                :if={not is_nil(@resource_id)}
+                type="hidden"
+                field={@form[:resource_id]}
+                value={@resource_id}
               />
               <.input
                 field={@form[:resource_id]}
