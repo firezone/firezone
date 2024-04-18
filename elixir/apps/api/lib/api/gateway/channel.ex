@@ -85,6 +85,28 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info(
+        {:invalidate_ice_candidates, client_id, candidates,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.invalidate_ice_candidates",
+      attributes: %{
+        client_id: client_id,
+        candidates_length: length(candidates)
+      } do
+      push(socket, "invalidate_ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
         {:allow_access, {channel_pid, socket_ref}, attrs,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
         socket
@@ -322,6 +344,31 @@ defmodule API.Gateway.Channel do
           Clients.broadcast_to_client(
             client_id,
             {:ice_candidates, socket.assigns.gateway.id, candidates,
+             {opentelemetry_ctx, opentelemetry_span_ctx}}
+          )
+        end)
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_in(
+        "broadcast_invalidated_ice_candidates",
+        %{"candidates" => candidates, "client_ids" => client_ids},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.broadcast_invalidated_ice_candidates" do
+      opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+      opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+      :ok =
+        Enum.each(client_ids, fn client_id ->
+          Clients.broadcast_to_client(
+            client_id,
+            {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
         end)

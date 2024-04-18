@@ -339,6 +339,29 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :invalidate_ice_candidates" do
+    test "pushes invalidate_ice_candidates message", %{
+      client: client,
+      socket: socket
+    } do
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      candidates = ["foo", "bar"]
+
+      send(
+        socket.channel_pid,
+        {:invalidate_ice_candidates, client.id, candidates, otel_ctx}
+      )
+
+      assert_push "invalidate_ice_candidates", payload
+
+      assert payload == %{
+               candidates: candidates,
+               client_id: client.id
+             }
+    end
+  end
+
   describe "handle_info/2 :request_connection" do
     test "pushes request_connection message with managed relays", %{
       client: client,
@@ -821,6 +844,46 @@ defmodule API.Gateway.ChannelTest do
       push(socket, "broadcast_ice_candidates", attrs)
 
       assert_receive {:ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx}, 200
+      assert gateway.id == gateway_id
+    end
+  end
+
+  describe "handle_in/3 broadcast_invalidated_ice_candidates" do
+    test "does nothing when gateways list is empty", %{
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "client_ids" => []
+      }
+
+      push(socket, "broadcast_invalidated_ice_candidates", attrs)
+      refute_receive {:invalidate_ice_candidates, _client_id, _candidates, _opentelemetry_ctx}
+    end
+
+    test "broadcasts :invalidate_ice_candidates message to all gateways", %{
+      client: client,
+      gateway: gateway,
+      subject: subject,
+      socket: socket
+    } do
+      candidates = ["foo", "bar"]
+
+      attrs = %{
+        "candidates" => candidates,
+        "client_ids" => [client.id]
+      }
+
+      :ok = Domain.Clients.connect_client(client)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+
+      push(socket, "broadcast_invalidated_ice_candidates", attrs)
+
+      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx},
+                     200
+
       assert gateway.id == gateway_id
     end
   end
