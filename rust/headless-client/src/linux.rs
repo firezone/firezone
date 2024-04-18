@@ -34,6 +34,8 @@ pub async fn run() -> Result<()> {
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
+    tracing::info!(git_version = crate::GIT_VERSION);
+
     match cli.command() {
         Cmd::Auto => {
             if let Some(token) = token(&cli)? {
