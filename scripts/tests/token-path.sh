@@ -15,7 +15,7 @@ sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 sudo "$BINARY_NAME" --check standalone && exit 1
 
 # Pass if we use the env var
-sudo FIREZONE_TOKEN="$TOKEN" "$BINARY_NAME" --check standalone && exit 1
+sudo FIREZONE_TOKEN="$TOKEN" "$BINARY_NAME" --check standalone
 
 # Fails because passing tokens as CLI args is not allowed anymore
 sudo "$BINARY_NAME" --check --token "$TOKEN" standalone && exit 1
