@@ -1,0 +1,76 @@
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import Link from "next/link";
+import Image from "next/image";
+
+<PlanBadge plans={["starter", "team", "enterprise"]}>
+
+# Secure Access to a Postgres Database
+
+</PlanBadge>
+
+In this guide, we'll use Firezone to set up access to a Postgres database. This
+is useful when you have a Postgres database that you want to keep behind a
+firewall, but still need to access it from external networks like the internet.
+
+<Alert color="info">
+  This steps in this guide can be effectively applied to virtually any database
+  or service, not just Postgres.
+</Alert>
+
+## Prequisites
+
+- A Site that contains the Postgres database you want to secure access to.
+  [Create a Site](/kb/deploy/sites) if you haven't already.
+- One or more Gateways deployed within the Site.
+  [Deploy a Gateway](/kb/deploy/gateways) if you don't have any in the Site
+  where this database is located.
+
+<Alert color="warning">
+  For access to high-traffic services like databases, we highly recommend
+  setting up multiple Gateways for load balancing. See [Deploying multiple
+  Gateways](/kb/deploy/gateways#deploying-multiple-gateways).
+</Alert>
+
+## Step 1: Create a Resource
+
+1. In your [admin portal](https://app.firezone.dev), go to `Sites -> <site>` and
+   click the `Add Resource` button.
+1. Select `DNS` or `IP` as the Resource type depending on how you plan to access
+   the database. If you're using a DNS name, the address should be resolvable by
+   all of the Gateways in your Site.
+1. Enter the address of the Postgres database you want to secure access to.
+
+<Link
+  href="/images/kb/use-cases/postgres-access/step1.png"
+  target="_blank"
+  rel="nofollow"
+>
+  <Image
+    src="/images/kb/use-cases/postgres-access/step1.png"
+    alt="Create a Resource"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+## Step 2: Create a Policy
+
+1. In the `Policies` tab, click the `Add Policy` button.
+1. Create a Policy for the Resource you created in Step (1). Be sure to select
+   the appropriate Group and Resource for the Policy.
+
+## Step 3: Done!
+
+You've now secured access to your Postgres database. You can test the connection
+by testing access to the database with a tool like `psql`:
+
+```
+psql -h <resource-address> -U <username> -d <database>
+```
+
+If you get a password prompt, you've successfully secured access to your
+Postgres database.
+
+<SupportOptions />
