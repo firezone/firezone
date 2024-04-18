@@ -5,10 +5,7 @@ source "./scripts/tests/lib.sh"
 BINARY_NAME=firezone-linux-client
 TOKEN_PATH="token"
 
-docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
-chmod u+x "$BINARY_NAME"
-sudo chown root:root "$BINARY_NAME"
-sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
+sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
 
 # Check should fail because there's no token yet
 sudo "$BINARY_NAME" standalone --check && exit 1
