@@ -3,7 +3,8 @@ defmodule Domain.Jobs.Executors.Concurrent do
   This module starts a GenServer that executes a callback function
   on a given interval on each node that runs the jobs. This means
   concurrency control should be implemented in the callback function
-  itself (eg. by using `SELECT ... FOR UPDATE SKIP LOCKED`).
+  itself (eg. by using `SELECT ... FOR UPDATE SKIP LOCKED`) or
+  by using advisory locks (see `reject_locked/2`).
 
   If you need globally unique jobs see `Domain.Jobs.Executors.GloballyUnique`.
   """
