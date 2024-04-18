@@ -81,7 +81,7 @@ defmodule Domain.Jobs.Executors.Concurrent do
   row(s) at a time, without using actual row-level locks that can cause deadlocks and timeouts
   for long-running transactions (like IdP syncs).
 
-  Execution of this function should be wrapped in a transaction block (eg. `Ecto.Repo.checkout/2`),
+  Execution of this function should be wrapped in a transaction block (eg. `Ecto.Repo.transaction/2`),
   the locks are released when the transaction is committed or rolled back.
 
   ## Implementation notes
