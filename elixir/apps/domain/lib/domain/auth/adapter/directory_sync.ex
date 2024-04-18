@@ -1,9 +1,20 @@
 defmodule Domain.Auth.Adapter.DirectorySync do
   alias Domain.Repo
+  alias Domain.Jobs.Executors.Concurrent
   alias Domain.{Auth, Actors}
   require Logger
+  require OpenTelemetry.Tracer
 
-  @async_data_fetch_timeout :infinity
+  # The Finch will timeout requests after 30 seconds,
+  # but there are a lot of requests that need to be made
+  # so we don't want to limit the timeout here
+  @async_data_fetch_timeout :timer.minutes(30)
+
+  # This timeout is used to limit the time spent on a single provider
+  # inserting the records into the database
+  @database_operations_timeout :timer.minutes(30)
+
+  @provider_sync_timeout @async_data_fetch_timeout + @database_operations_timeout
 
   @doc """
   Returns a tuple with the data needed to sync all entities of the provider.
@@ -51,7 +62,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
   Where `user_message` user message will be rendered in the UI and `log_message` will be logged with
   a level that corresponds to number of retries (see `log_sync_error/2`).
   """
-  @callback gather_provider_data(%Auth.Provider{}) ::
+  @callback gather_provider_data(%Auth.Provider{}, task_supervisor_pid :: pid()) ::
               {:ok,
                {
                  identities_attrs :: [
@@ -70,95 +81,206 @@ defmodule Domain.Auth.Adapter.DirectorySync do
               | {:error, {:unauthorized, user_message :: String.t()}}
               | {:error, user_message :: String.t(), log_message :: String.t()}
 
-  def sync_providers(module, providers) do
-    providers
-    |> Domain.Repo.preload(:account)
-    |> Enum.each(&sync_provider(module, &1))
+  def sync_providers(module, adapter, supervisor_pid) do
+    start_time = System.monotonic_time(:millisecond)
+
+    Domain.Repo.transaction(
+      fn ->
+        metadata = Logger.metadata()
+        pdict = Process.get()
+
+        all_providers = Domain.Auth.all_providers_pending_sync_by_adapter!(adapter)
+        providers = Concurrent.reject_locked("auth_providers", all_providers)
+        providers = Domain.Repo.preload(providers, :account)
+        Logger.info("Syncing #{length(providers)}/#{length(all_providers)} #{adapter} providers")
+
+        Task.Supervisor.async_stream_nolink(
+          supervisor_pid,
+          providers,
+          fn provider ->
+            OpenTelemetry.Tracer.with_span "sync_provider",
+              attributes: %{
+                account_id: provider.account_id,
+                provider_id: provider.id,
+                provider_adapter: provider.adapter
+              } do
+              :ok = maybe_reuse_connection(pdict)
+              Logger.metadata(metadata)
+
+              Logger.metadata(
+                account_id: provider.account_id,
+                provider_id: provider.id,
+                provider_adapter: provider.adapter
+              )
+
+              sync_provider(module, provider)
+            end
+          end,
+          timeout: @provider_sync_timeout,
+          max_concurrency: 3
+        )
+        |> Stream.run()
+      end,
+      # sync can take a long time so we will manage timeouts for each provider separately
+      timeout: :infinity
+    )
+
+    finish_time = System.monotonic_time(:millisecond)
+    Logger.info("Finished syncing in #{time_taken(start_time, finish_time)}")
   end
 
   defp sync_provider(module, provider) do
-    Logger.debug("Syncing provider",
-      account_id: provider.account_id,
-      provider_id: provider.id,
-      provider_adapter: provider.adapter
-    )
+    start_time = System.monotonic_time(:millisecond)
+    Logger.debug("Syncing provider")
 
-    with true <- Domain.Accounts.idp_sync_enabled?(provider.account),
-         {:ok, {identities_attrs, actor_groups_attrs, membership_tuples}} <-
-           module.gather_provider_data(provider) do
-      Ecto.Multi.new()
-      |> Ecto.Multi.one(:lock_provider, fn _effects_so_far ->
-        Auth.Provider.Query.not_disabled()
-        |> Auth.Provider.Query.by_account_id(provider.account_id)
-        |> Auth.Provider.Query.by_id(provider.id)
-        |> Auth.Provider.Query.lock()
-      end)
-      |> Ecto.Multi.append(Auth.sync_provider_identities_multi(provider, identities_attrs))
-      |> Ecto.Multi.append(Actors.sync_provider_groups_multi(provider, actor_groups_attrs))
-      |> Actors.sync_provider_memberships_multi(provider, membership_tuples)
-      |> Ecto.Multi.update(:save_last_updated_at, fn _effects_so_far ->
-        Auth.Provider.Changeset.sync_finished(provider)
-      end)
-      |> Repo.transaction(timeout: :timer.minutes(30))
-      |> case do
-        {:ok, effects} ->
-          log_sync_result(provider, effects)
-          :ok
+    {:ok, pid} = Task.Supervisor.start_link()
 
-        {:error, reason} ->
-          log_sync_error(
-            provider,
-            "Repo error: " <> inspect(reason)
-          )
+    if Domain.Accounts.idp_sync_enabled?(provider.account) do
+      with {:ok, data, data_fetch_time_taken} <- fetch_provider_data(module, provider, pid),
+           {:ok, db_operations_time_taken} <- insert_provider_updates(provider, data) do
+        finish_time = System.monotonic_time(:millisecond)
 
-        {:error, step, reason, _effects_so_far} ->
-          log_sync_error(
-            provider,
-            "Multi error at step " <> inspect(step) <> ": " <> inspect(reason)
-          )
+        :telemetry.execute(
+          [:domain, :directory_sync],
+          %{
+            data_fetch_total_time: data_fetch_time_taken,
+            db_operations_total_time: db_operations_time_taken,
+            total_time: finish_time - start_time
+          },
+          %{
+            account_id: provider.account_id,
+            provider_id: provider.id,
+            provider_adapter: provider.adapter
+          }
+        )
+
+        Logger.debug("Finished syncing provider in #{time_taken(start_time, finish_time)}")
+      else
+        _other ->
+          finish_time = System.monotonic_time(:millisecond)
+          Logger.debug("Failed to sync provider in #{time_taken(start_time, finish_time)}")
       end
     else
-      false ->
-        message = "IdP sync is not enabled in your subscription plan"
+      message = "IdP sync is not enabled in your subscription plan"
 
-        Auth.Provider.Changeset.sync_failed(provider, message)
-        |> Domain.Repo.update!()
-
-      {:error, {:unauthorized, user_message}} ->
-        Auth.Provider.Changeset.sync_requires_manual_intervention(provider, user_message)
-        |> Domain.Repo.update!()
-
-      {:error, nil, log_message} ->
-        log_sync_error(provider, log_message)
-
-      {:error, user_message, log_message} ->
-        Auth.Provider.Changeset.sync_failed(provider, user_message)
-        |> Domain.Repo.update!()
-        |> log_sync_error(log_message)
+      Auth.Provider.Changeset.sync_failed(provider, message)
+      |> Domain.Repo.update!()
     end
   end
 
-  defp log_sync_result(provider, effects) do
-    %{
-      # Identities
-      plan_identities: {identities_insert_ids, identities_update_ids, identities_delete_ids},
-      insert_identities: identities_inserted,
-      update_identities_and_actors: identities_updated,
-      delete_identities: identities_deleted,
-      # Groups
-      plan_groups: {groups_upsert_ids, groups_delete_ids},
-      upsert_groups: groups_upserted,
-      delete_groups: groups_deleted,
-      # Memberships
-      plan_memberships: {memberships_insert_tuples, memberships_delete_tuples},
-      insert_memberships: memberships_inserted,
-      delete_memberships: {deleted_memberships_count, _}
-    } = effects
+  defp fetch_provider_data(module, provider, task_supervisor_pid) do
+    OpenTelemetry.Tracer.with_span "sync_provider.fetch_data" do
+      start_time = System.monotonic_time(:millisecond)
 
-    Logger.debug("Finished syncing provider",
-      provider_id: provider.id,
-      provider_adapter: provider.adapter,
-      account_id: provider.account_id,
+      with {:ok, data} <- module.gather_provider_data(provider, task_supervisor_pid) do
+        finish_time = System.monotonic_time(:millisecond)
+        time_taken = time_taken(start_time, finish_time)
+
+        Logger.debug(
+          "Finished fetching data for provider in #{time_taken}",
+          account_id: provider.account_id,
+          provider_id: provider.id,
+          provider_adapter: provider.adapter,
+          time_taken: time_taken
+        )
+
+        {:ok, data, finish_time - start_time}
+      else
+        {:error, {:unauthorized, user_message}} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(user_message))
+
+          Auth.Provider.Changeset.sync_requires_manual_intervention(provider, user_message)
+          |> Domain.Repo.update!()
+
+        {:error, nil, log_message} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(log_message))
+
+          log_sync_error(provider, log_message)
+
+        {:error, user_message, log_message} ->
+          OpenTelemetry.Tracer.set_status(:error, inspect(log_message))
+
+          Auth.Provider.Changeset.sync_failed(provider, user_message)
+          |> Domain.Repo.update!()
+          |> log_sync_error(log_message)
+      end
+    end
+  end
+
+  defp insert_provider_updates(
+         provider,
+         {identities_attrs, actor_groups_attrs, membership_tuples}
+       ) do
+    OpenTelemetry.Tracer.with_span "sync_provider.insert_data" do
+      Repo.checkout(
+        fn ->
+          start_time = System.monotonic_time(:millisecond)
+
+          with {:ok, identities_effects} <-
+                 Auth.sync_provider_identities(provider, identities_attrs),
+               {:ok, groups_effects} <- Actors.sync_provider_groups(provider, actor_groups_attrs),
+               {:ok, memberships_effects} <-
+                 Actors.sync_provider_memberships(
+                   identities_effects.actor_ids_by_provider_identifier,
+                   groups_effects.group_ids_by_provider_identifier,
+                   provider,
+                   membership_tuples
+                 ) do
+            Auth.Provider.Changeset.sync_finished(provider)
+            |> Repo.update!()
+
+            finish_time = System.monotonic_time(:millisecond)
+
+            log_sync_result(
+              start_time,
+              finish_time,
+              identities_effects,
+              groups_effects,
+              memberships_effects
+            )
+
+            {:ok, finish_time - start_time}
+          else
+            {:error, reason} ->
+              OpenTelemetry.Tracer.set_status(:error, inspect(reason))
+              log_sync_error(provider, "Repo error: " <> inspect(reason))
+          end
+        end,
+        timeout: @database_operations_timeout
+      )
+    end
+  end
+
+  defp log_sync_result(
+         start_time,
+         finish_time,
+         identities_effects,
+         groups_effects,
+         memberships_effects
+       ) do
+    %{
+      plan: {identities_insert_ids, identities_update_ids, identities_delete_ids},
+      inserted: identities_inserted,
+      updated: identities_updated,
+      deleted: identities_deleted
+    } = identities_effects
+
+    %{
+      plan: {groups_upsert_ids, groups_delete_ids},
+      upserted: groups_upserted,
+      deleted: groups_deleted
+    } = groups_effects
+
+    %{
+      plan: {memberships_insert_tuples, memberships_delete_tuples},
+      inserted: memberships_inserted,
+      deleted_stats: {deleted_memberships_count, _}
+    } = memberships_effects
+
+    time_taken = time_taken(start_time, finish_time)
+
+    Logger.debug("Finished syncing provider in #{time_taken}",
+      time_taken: time_taken,
       # Identities
       plan_identities_insert: length(identities_insert_ids),
       plan_identities_update: length(identities_update_ids),
@@ -177,6 +299,12 @@ defmodule Domain.Auth.Adapter.DirectorySync do
       memberships_inserted: length(memberships_inserted),
       memberships_deleted: deleted_memberships_count
     )
+  end
+
+  defp time_taken(start_time, finish_time) do
+    ~T[00:00:00]
+    |> Time.add(finish_time - start_time, :millisecond)
+    |> to_string()
   end
 
   defp log_sync_error(provider, message) do
@@ -213,7 +341,10 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           Process.put(:last_caller_pid, caller_pid)
           OpenTelemetry.Ctx.attach(opentelemetry_ctx)
           OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-          callback.()
+
+          OpenTelemetry.Tracer.with_span "sync_provider.fetch_data.#{name}" do
+            callback.()
+          end
         end)
 
       {name, task}
@@ -230,5 +361,27 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           {:exit, reason} -> {:error, reason}
         end
     end)
+  end
+
+  if Mix.env() == :test do
+    # We need this function to reuse the connection that was checked out in a parent process.
+    #
+    # `Ecto.SQL.Sandbox.allow/3` will not work in this case because it will try to checkout the same connection
+    # that is held by the parent process by `Repo.checkout/2` which will lead to a timeout, so we need to hack
+    # and reuse it manually.
+    def maybe_reuse_connection(pdict) do
+      pdict
+      |> Enum.filter(fn
+        {{Ecto.Adapters.SQL, _pid}, _} -> true
+        _ -> false
+      end)
+      |> Enum.each(fn {key, value} ->
+        Process.put(key, value)
+      end)
+    end
+  else
+    def maybe_reuse_connection(_pdict) do
+      :ok
+    end
   end
 end

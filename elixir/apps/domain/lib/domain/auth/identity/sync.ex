@@ -1,7 +1,8 @@
 defmodule Domain.Auth.Identity.Sync do
+  alias Domain.Repo
   alias Domain.Auth.{Identity, Provider}
 
-  def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
+  def sync_provider_identities(%Provider{} = provider, attrs_list) do
     attrs_by_provider_identifier =
       for attrs <- attrs_list, into: %{} do
         {Map.fetch!(attrs, "provider_identifier"), attrs}
@@ -9,56 +10,42 @@ defmodule Domain.Auth.Identity.Sync do
 
     provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.all(:identities, fn _effects_so_far ->
-      fetch_provider_identities_query(provider)
-    end)
-    |> Ecto.Multi.run(:plan_identities, fn _repo, %{identities: identities} ->
-      plan_identities_update(identities, provider_identifiers)
-    end)
-    |> Ecto.Multi.run(
-      :delete_identities,
-      fn repo, %{plan_identities: {_insert, _update, delete}} ->
-        delete_identities(repo, provider, delete)
-      end
-    )
-    |> Ecto.Multi.run(
-      :insert_identities,
-      fn repo, %{plan_identities: {insert, _update, _delete}} ->
-        insert_identities(repo, provider, attrs_by_provider_identifier, insert)
-      end
-    )
-    |> Ecto.Multi.run(
-      :update_identities_and_actors,
-      fn repo, %{identities: identities, plan_identities: {_insert, update, _delete}} ->
-        update_identities_and_actors(repo, identities, attrs_by_provider_identifier, update)
-      end
-    )
-    |> Ecto.Multi.run(
-      :actor_ids_by_provider_identifier,
-      fn _repo,
-         %{
-           update_identities_and_actors: update_identities,
-           insert_identities: insert_identities
-         } ->
-        actor_ids_by_provider_identifier =
-          for identity <- update_identities ++ insert_identities,
-              into: %{} do
-            {identity.provider_identifier, identity.actor_id}
-          end
-
-        {:ok, actor_ids_by_provider_identifier}
-      end
-    )
-    |> Ecto.Multi.run(:recalculate_dynamic_groups, fn _repo, _effects_so_far ->
+    with {:ok, identities} <- all_provider_identities(provider),
+         {:ok, {insert, update, delete}} <-
+           plan_identities_update(identities, provider_identifiers),
+         {:ok, deleted} <- delete_identities(provider, delete),
+         {:ok, inserted} <-
+           insert_identities(provider, attrs_by_provider_identifier, insert),
+         {:ok, updated} <-
+           update_identities_and_actors(identities, attrs_by_provider_identifier, update) do
       Domain.Actors.update_dynamic_group_memberships(provider.account_id)
-    end)
+
+      actor_ids_by_provider_identifier =
+        for identity <- updated ++ inserted,
+            into: %{} do
+          {identity.provider_identifier, identity.actor_id}
+        end
+
+      {:ok,
+       %{
+         identities: identities,
+         plan: {insert, update, delete},
+         delete: deleted,
+         insert: inserted,
+         update: updated,
+         actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
+       }}
+    end
   end
 
-  defp fetch_provider_identities_query(provider) do
-    Identity.Query.all()
-    |> Identity.Query.by_account_id(provider.account_id)
-    |> Identity.Query.by_provider_id(provider.id)
+  defp all_provider_identities(provider) do
+    identities =
+      Identity.Query.all()
+      |> Identity.Query.by_account_id(provider.account_id)
+      |> Identity.Query.by_provider_id(provider.id)
+      |> Repo.all()
+
+    {:ok, identities}
   end
 
   defp plan_identities_update(identities, provider_identifiers) do
@@ -85,7 +72,7 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, {insert, update, delete}}
   end
 
-  defp delete_identities(repo, provider, provider_identifiers_to_delete) do
+  defp delete_identities(provider, provider_identifiers_to_delete) do
     provider_identifiers_to_delete = Enum.uniq(provider_identifiers_to_delete)
 
     {_count, identities} =
@@ -94,7 +81,7 @@ defmodule Domain.Auth.Identity.Sync do
       |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
       |> Identity.Query.delete()
-      |> repo.update_all([])
+      |> Repo.update_all([])
 
     :ok =
       Enum.each(identities, fn identity ->
@@ -104,19 +91,14 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, identities}
   end
 
-  defp insert_identities(
-         repo,
-         provider,
-         attrs_by_provider_identifier,
-         provider_identifiers_to_insert
-       ) do
+  defp insert_identities(provider, attrs_by_provider_identifier, provider_identifiers_to_insert) do
     provider_identifiers_to_insert
     |> Enum.uniq()
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
       changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
 
-      case repo.insert(changeset) do
+      case Repo.insert(changeset) do
         {:ok, identity} ->
           {:cont, {:ok, [identity | acc]}}
 
@@ -127,7 +109,6 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp update_identities_and_actors(
-         repo,
          identities,
          attrs_by_provider_identifier,
          provider_identifiers_to_update
@@ -137,7 +118,7 @@ defmodule Domain.Auth.Identity.Sync do
       |> Enum.filter(fn identity ->
         identity.provider_identifier in provider_identifiers_to_update
       end)
-      |> repo.preload(:actor)
+      |> Repo.preload(:actor)
       |> Enum.reduce(%{}, fn identity, acc ->
         acc_identity = Map.get(acc, identity.provider_identifier)
 
@@ -161,7 +142,7 @@ defmodule Domain.Auth.Identity.Sync do
       attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
       changeset = Identity.Changeset.update_identity_and_actor(identity, attrs)
 
-      case repo.update(changeset) do
+      case Repo.update(changeset) do
         {:ok, identity} ->
           {:cont, {:ok, [identity | acc]}}
 
