@@ -121,12 +121,22 @@ defmodule Domain.Actors do
     end
   end
 
-  def sync_provider_groups_multi(%Auth.Provider{} = provider, attrs_list) do
-    Group.Sync.sync_provider_groups_multi(provider, attrs_list)
+  def sync_provider_groups(%Auth.Provider{} = provider, attrs_list) do
+    Group.Sync.sync_provider_groups(provider, attrs_list)
   end
 
-  def sync_provider_memberships_multi(multi, %Auth.Provider{} = provider, tuples) do
-    Membership.Sync.sync_provider_memberships_multi(multi, provider, tuples)
+  def sync_provider_memberships(
+        actor_ids_by_provider_identifier,
+        group_ids_by_provider_identifier,
+        %Auth.Provider{} = provider,
+        tuples
+      ) do
+    Membership.Sync.sync_provider_memberships(
+      actor_ids_by_provider_identifier,
+      group_ids_by_provider_identifier,
+      provider,
+      tuples
+    )
   end
 
   def new_group(attrs \\ %{}) do
