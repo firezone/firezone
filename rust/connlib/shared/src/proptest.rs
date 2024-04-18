@@ -43,9 +43,8 @@ pub fn ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
 }
 
 /// A strategy of IPv4 networks, configurable by the size of the host mask.
-///
-/// For the full range of networks, specify 0.
 pub fn ip4_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv4Network> {
+    assert!(host_mask_bits > 0);
     assert!(host_mask_bits <= 32);
 
     (any::<Ipv4Addr>(), any::<sample::Index>()).prop_filter_map(
@@ -60,9 +59,8 @@ pub fn ip4_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv4Network> 
 }
 
 /// A strategy of IPv6 networks, configurable by the size of the host mask.
-///
-/// For the full range of networks, specify 0.
 pub fn ip6_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv6Network> {
+    assert!(host_mask_bits > 0);
     assert!(host_mask_bits <= 128);
 
     (any::<Ipv6Addr>(), any::<sample::Index>()).prop_filter_map(
