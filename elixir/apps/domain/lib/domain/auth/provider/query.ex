@@ -56,6 +56,10 @@ defmodule Domain.Auth.Provider.Query do
     |> where([providers: providers], is_nil(providers.sync_disabled_at))
   end
 
+  def order_by_sync_priority(queryable) do
+    order_by(queryable, [providers: providers], asc_nulls_first: providers.last_synced_at)
+  end
+
   def by_non_empty_refresh_token(queryable) do
     where(
       queryable,

@@ -14,7 +14,7 @@ defmodule Domain.Billing do
   def init(_opts) do
     children = [
       APIClient,
-      {Domain.Jobs, Jobs}
+      Jobs.CheckAccountLimits
     ]
 
     if enabled?() do

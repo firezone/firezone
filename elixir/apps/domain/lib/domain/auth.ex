@@ -360,8 +360,8 @@ defmodule Domain.Auth do
     end
   end
 
-  def sync_provider_identities_multi(%Provider{} = provider, attrs_list) do
-    Identity.Sync.sync_provider_identities_multi(provider, attrs_list)
+  def sync_provider_identities(%Provider{} = provider, attrs_list) do
+    Identity.Sync.sync_provider_identities(provider, attrs_list)
   end
 
   def all_actor_ids_by_membership_rules!(account_id, membership_rules) do
@@ -789,6 +789,7 @@ defmodule Domain.Auth do
     {:error, :not_found}
   end
 
+  # Maybe we need a NOWAIT here to prevent timeouts when background jobs are updating the identity
   defp maybe_fetch_subject_identity(subject, token) do
     Identity.Query.not_disabled()
     |> Identity.Query.by_id(token.identity_id)

@@ -401,6 +401,12 @@ module "domain" {
       name  = "BACKGROUND_JOBS_ENABLED"
       value = "true"
     },
+    # Pool size is increased because background jobs are holding
+    # the connections for a long time
+    {
+      name  = "DATABASE_POOL_SIZE"
+      value = "15"
+    },
   ], local.shared_application_environment_variables)
 
   application_labels = {

@@ -12,7 +12,7 @@ defmodule Domain.Tokens do
   @impl true
   def init(_init_arg) do
     children = [
-      {Domain.Jobs, Jobs}
+      Jobs.DeleteExpiredTokens
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

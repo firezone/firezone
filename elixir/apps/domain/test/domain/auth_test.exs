@@ -1513,7 +1513,7 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "sync_provider_identities_multi/2" do
+  describe "sync_provider_identities/2" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -1544,16 +1544,15 @@ defmodule Domain.AuthTest do
       provider_identifiers = Enum.map(attrs_list, & &1["provider_identifier"])
       actor_names = Enum.map(attrs_list, & &1["actor"]["name"])
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
       assert {:ok,
               %{
                 identities: [],
-                plan_identities: {insert, [], []},
-                insert_identities: [_actor1, _actor2],
-                delete_identities: [],
+                plan: {insert, [], []},
+                insert: [_actor1, _actor2],
+                update: [],
+                delete: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_identities(provider, attrs_list)
 
       assert Enum.all?(provider_identifiers, &(&1 in insert))
 
@@ -1608,16 +1607,15 @@ defmodule Domain.AuthTest do
         }
       ]
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
       assert {:ok,
               %{
                 identities: [_identity1, _identity2],
-                plan_identities: {[], update, []},
-                delete_identities: [],
-                insert_identities: [],
+                plan: {[], update, []},
+                delete: [],
+                update: [_updated_identity1, _updated_identity2],
+                insert: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_identities(provider, attrs_list)
 
       assert length(update) == 2
       assert identity1.provider_identifier in update
@@ -1659,16 +1657,14 @@ defmodule Domain.AuthTest do
         }
       ]
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
       assert {:ok,
               %{
                 identities: [fetched_identity],
-                plan_identities: {[], ["USER_ID1"], []},
-                delete_identities: [],
-                insert_identities: [],
+                plan: {[], ["USER_ID1"], []},
+                delete: [],
+                insert: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_identities(provider, attrs_list)
 
       assert fetched_identity.actor_id == identity.actor_id
       assert actor_ids_by_provider_identifier == %{"USER_ID1" => identity.actor_id}
@@ -1695,16 +1691,15 @@ defmodule Domain.AuthTest do
         |> Fixtures.Auth.delete_identity()
 
       attrs_list = []
-      multi = sync_provider_identities_multi(provider, attrs_list)
 
       assert {:ok,
               %{
                 identities: [fetched_identity],
-                plan_identities: {[], [], []},
-                delete_identities: [],
-                insert_identities: [],
+                plan: {[], [], []},
+                delete: [],
+                insert: [],
                 actor_ids_by_provider_identifier: %{}
-              }} = Repo.transaction(multi)
+              }} = sync_provider_identities(provider, attrs_list)
 
       assert fetched_identity.id == identity.id
 
@@ -1757,16 +1752,14 @@ defmodule Domain.AuthTest do
 
       attrs_list = []
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
       assert {:ok,
               %{
                 identities: [_identity1, _identity2],
-                plan_identities: {[], [], delete},
-                delete_identities: [deleted_identity1, deleted_identity2],
-                insert_identities: [],
+                plan: {[], [], delete},
+                delete: [deleted_identity1, deleted_identity2],
+                insert: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_identities(provider, attrs_list)
 
       assert Enum.all?(provider_identifiers, &(&1 in delete))
       assert deleted_identity1.provider_identifier in delete
@@ -1805,18 +1798,15 @@ defmodule Domain.AuthTest do
 
       attrs_list = []
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
-      assert Repo.transaction(multi) ==
+      assert sync_provider_identities(provider, attrs_list) ==
                {:ok,
                 %{
                   identities: [],
-                  plan_identities: {[], [], []},
-                  delete_identities: [],
-                  insert_identities: [],
-                  update_identities_and_actors: [],
-                  actor_ids_by_provider_identifier: %{},
-                  recalculate_dynamic_groups: []
+                  plan: {[], [], []},
+                  delete: [],
+                  update: [],
+                  insert: [],
+                  actor_ids_by_provider_identifier: %{}
                 }}
     end
 
@@ -1830,9 +1820,7 @@ defmodule Domain.AuthTest do
         }
       ]
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
-      assert {:error, :insert_identities, changeset, _effects_so_far} = Repo.transaction(multi)
+      assert {:error, changeset} = sync_provider_identities(provider, attrs_list)
 
       assert errors_on(changeset) == %{
                actor: %{
@@ -1876,16 +1864,14 @@ defmodule Domain.AuthTest do
         }
       ]
 
-      multi = sync_provider_identities_multi(provider, attrs_list)
-
       assert {:ok,
               %{
                 identities: [_identity1, _identity2],
-                plan_identities: {[], update, []},
-                delete_identities: [],
-                insert_identities: [],
+                plan: {[], update, []},
+                delete: [],
+                insert: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_identities(provider, attrs_list)
 
       assert length(update) == 2
       assert update == ["USER_ID1", "USER_ID1"]

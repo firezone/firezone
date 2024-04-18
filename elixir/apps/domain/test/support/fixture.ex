@@ -40,7 +40,7 @@ defmodule Domain.Fixture do
   end
 
   def unique_integer do
-    System.unique_integer([:positive])
+    System.unique_integer([:positive, :monotonic])
   end
 
   def unique_ipv4 do
