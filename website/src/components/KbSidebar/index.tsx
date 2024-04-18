@@ -236,7 +236,7 @@ export default function KbSidebar() {
               <li>
                 <Item
                   href="/kb/use-cases/postgres-access"
-                  label="Secure access to Postgres"
+                  label="Access a Postgres DB"
                 />
               </li>
               <li>
@@ -260,7 +260,7 @@ export default function KbSidebar() {
               <li>
                 <Item
                   href="/kb/use-cases/web-app-access"
-                  label="Secure access to a web app"
+                  label="Access a private web app"
                 />
               </li>
             </Collapse>

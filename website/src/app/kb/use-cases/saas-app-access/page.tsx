@@ -1,4 +1,4 @@
-import Content from "./readme.mdx";
+import _Page from "./_page";
 import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <Content />
+      <_Page />
       <LastUpdated dirname={__dirname} />
     </>
   );

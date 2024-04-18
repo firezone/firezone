@@ -1,17 +1,17 @@
-import Content from "./readme.mdx";
+import _Page from "./_page";
 import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "Use Cases: Scale VPC Access • Firezone Docs",
   description:
-    "Use Firezone to scale access to a Google Cloud VPC across multiple Gateways.",
+    "Use Firezone to scale access to your VPC across multiple Gateways.",
 };
 
 export default function Page() {
   return (
     <>
-      <Content />
+      <_Page />
       <LastUpdated dirname={__dirname} />
     </>
   );
