@@ -3,7 +3,7 @@
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
-TOKEN_PATH="token.txt"
+TOKEN_PATH="token"
 
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"

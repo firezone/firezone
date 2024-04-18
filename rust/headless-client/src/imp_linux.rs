@@ -34,7 +34,7 @@ const SOCK_PATH: &str = "/run/firezone-client.sock";
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
-        .join("token.txt")
+        .join("token")
 }
 
 pub async fn run() -> Result<()> {
