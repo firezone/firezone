@@ -57,7 +57,7 @@ function assert_equals() {
 function process_state() {
     local container="$1"
 
-    docker compose exec "$container" ps 1 -o state= # In a container, our main process is always PID 1
+    docker compose exec "$container" ps --format state= -p 1 # In a container, our main process is always PID 1
 }
 
 function assert_process_state {
