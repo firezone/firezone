@@ -118,6 +118,14 @@ fn reconnect_discovers_new_interface() {
         progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
 
+    alice.ping(ip("9.9.9.9"), ip("8.8.8.8"), &bob, clock.now);
+    progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    assert_eq!(bob.packets_from(ip("9.9.9.9")).count(), 1);
+
+    bob.ping(ip("8.8.8.8"), ip("9.9.9.9"), &alice, clock.now);
+    progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    assert_eq!(alice.packets_from(ip("8.8.8.8")).count(), 1);
+
     assert!(alice
         .signalled_candidates()
         .any(|(_, c, _)| c.addr().to_string() == "10.0.0.1:80"));
