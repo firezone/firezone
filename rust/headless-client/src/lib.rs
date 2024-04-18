@@ -25,7 +25,7 @@ mod imp_windows {
         todo!()
     }
 
-    pub async fn run() -> anyhow::Result<()> {
+    pub fn run() -> anyhow::Result<()> {
         let cli = super::Cli::parse();
         let _cmd = cli.command();
         tracing::info!(git_version = crate::GIT_VERSION);

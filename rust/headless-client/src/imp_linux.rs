@@ -38,7 +38,30 @@ pub fn default_token_path() -> PathBuf {
         .join("token.txt")
 }
 
-pub async fn run() -> Result<()> {
+pub fn run() -> Result<()> {
+    // Modifying the environment of a running process is unsafe. If any other
+    // thread is reading or writing the environment, something bad can happen.
+    // So `run` must take over as early as possible during startup, and
+    // take the token env var before any other threads spawn.
+    let token = std::env::var(TOKEN_ENV_KEY)
+        .ok()
+        .map(|x| SecretString::from(x));
+    // Docs indicate that `remove_var` should actually be marked unsafe
+    // SAFETY: We haven't spawned any other threads, this code should be the first
+    // thing to run after entering `main`. So nobody else is reading the environment.
+    #[allow(unused_unsafe)]
+    unsafe {
+        // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
+        std::env::remove_var(TOKEN_ENV_KEY);
+    }
+    assert!(std::env::var(TOKEN_ENV_KEY).is_err());
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(run_async(token))?;
+    Ok(())
+}
+
+async fn run_async(token_env_var: Option<SecretString>) -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
@@ -47,7 +70,7 @@ pub async fn run() -> Result<()> {
 
     match cli.command() {
         Cmd::Auto => {
-            if let Some(token) = token(&cli)? {
+            if let Some(token) = get_token(token_env_var, &cli)? {
                 run_standalone(cli, &token).await
             } else {
                 run_ipc_service(cli).await
@@ -55,7 +78,7 @@ pub async fn run() -> Result<()> {
         }
         Cmd::IpcService => run_ipc_service(cli).await,
         Cmd::Standalone => {
-            let token = token(&cli)?.with_context(|| {
+            let token = get_token(token_env_var, &cli)?.with_context(|| {
                 format!(
                     "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
                     cli.token_path
@@ -67,15 +90,29 @@ pub async fn run() -> Result<()> {
     }
 }
 
-/// Try to retrieve the token from env var or disk
+/// Read the token from disk if it was not in the environment
+///
+/// # Returns
+/// - `Ok(None)` if there is no token to be found
+/// - `Ok(Some(_))` if we found the token
+/// - `Err(_)` if we found the token on disk but failed to read it
+fn get_token(token_env_var: Option<SecretString>, cli: &Cli) -> Result<Option<SecretString>> {
+    // This is very simple but I don't want to write it twice
+    if let Some(token) = token_env_var {
+        return Ok(Some(token));
+    }
+    read_token_file(cli)
+}
+
+/// Try to retrieve the token from disk
 ///
 /// Sync because we do blocking file I/O
-/// This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
-fn token(cli: &Cli) -> Result<Option<SecretString>> {
+fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
     let path = PathBuf::from(&cli.token_path);
 
     if let Ok(token) = std::env::var(TOKEN_ENV_KEY) {
         std::env::remove_var(TOKEN_ENV_KEY);
+
         let token = SecretString::from(token);
         // Token was provided in env var
         tracing::info!(
