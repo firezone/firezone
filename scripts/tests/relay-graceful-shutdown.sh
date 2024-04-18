@@ -7,7 +7,7 @@ install_iptables_drop_rules
 client_curl_resource "172.20.0.100/get"
 
 # Act: Send SIGTERM
-sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
+docker compose kill relay --signal SIGTERM
 
 sleep 2 # Closing websocket isn't instant.
 
@@ -19,12 +19,14 @@ OPEN_SOCKETS=$(relay netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Por
 test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
-sudo kill --signal SIGTERM "$(pgrep firezone-relay)"
+docker compose kill relay --signal SIGTERM
 
-sleep 1 # Wait for process to exit
+sleep 5 # Wait for container to be fully exited
 
-# Assert: Process is no longer there
-if pgrep firezone-relay >/dev/null; then
-    echo "Process is still running."
-    exit 1
-fi
+# Seems to be necessary to return the correct state
+docker compose ps relay --all
+sleep 1
+
+# Assert: Container exited
+container_state=$(docker compose ps relay --all --format json | jq --raw-output '.State')
+assert_equals "$container_state" "exited"

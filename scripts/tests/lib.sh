@@ -51,16 +51,16 @@ function assert_equals() {
 }
 
 function process_state() {
-    local process_name="$1"
+    local container="$1"
 
-    ps -C "$process_name" -o state=
+    docker compose exec "$container" ps --format state= -p 1 # In a container, our main process is always PID 1
 }
 
 function assert_process_state {
-    local process_name="$1"
+    local container="$1"
     local expected_state="$2"
 
-    assert_equals "$(process_state "$process_name")" "$expected_state"
+    assert_equals "$(process_state "$container")" "$expected_state"
 }
 
 function create_token_file {
