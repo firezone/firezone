@@ -235,6 +235,21 @@ where
         }
     }
 
+    #[tracing::instrument(level = "info", skip_all, fields(%id))]
+    pub fn remove_remote_candidate(&mut self, id: TId, candidate: String) {
+        let candidate = match Candidate::from_sdp_string(&candidate) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::debug!("Failed to parse candidate: {e}");
+                return;
+            }
+        };
+
+        if let Some(agent) = self.connections.agent_mut(id) {
+            agent.invalidate_candidate(&candidate);
+        }
+    }
+
     /// Attempts to find the [`Allocation`] on the same relay as the remote's candidate.
     ///
     /// To do that, we need to check all candidates of each allocation and compare their IP.
@@ -402,7 +417,13 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
+            connection.handle_timeout(
+                id,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+                &mut self.pending_events,
+            );
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -725,7 +746,8 @@ where
                 CandidateEvent::Invalid(candidate) => {
                     for (id, agent) in self.connections.agents_mut() {
                         let _span = info_span!("connection", %id).entered();
-                        agent.invalidate_candidate(&candidate);
+
+                        remove_local_candidate(id, agent, &candidate, &mut self.pending_events);
                     }
                 }
             }
@@ -1092,7 +1114,25 @@ fn add_local_candidate<TId>(
     let is_new = agent.add_local_candidate(candidate.clone());
 
     if is_new {
-        pending_events.push_back(Event::SignalIceCandidate {
+        pending_events.push_back(Event::NewIceCandidate {
+            connection: id,
+            candidate: candidate.to_sdp_string(),
+        })
+    }
+}
+
+fn remove_local_candidate<TId>(
+    id: TId,
+    agent: &mut IceAgent,
+    candidate: &Candidate,
+    pending_events: &mut VecDeque<Event<TId>>,
+) where
+    TId: fmt::Display,
+{
+    let was_present = agent.invalidate_candidate(candidate);
+
+    if was_present {
+        pending_events.push_back(Event::InvalidateIceCandidate {
             connection: id,
             candidate: candidate.to_sdp_string(),
         })
@@ -1118,13 +1158,22 @@ pub struct Credentials {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId> {
-    /// Signal the ICE candidate to the remote via the signalling channel.
+    /// We created a new candidate for this connection and ask to signal it to the remote party.
     ///
     /// Candidates are in SDP format although this may change and should be considered an implementation detail of the application.
-    SignalIceCandidate {
+    NewIceCandidate {
         connection: TId,
         candidate: String,
     },
+
+    /// We invalidated a candidate for this connection and ask to signal that to the remote party.
+    ///
+    /// Candidates are in SDP format although this may change and should be considered an implementation detail of the application.
+    InvalidateIceCandidate {
+        connection: TId,
+        candidate: String,
+    },
+
     ConnectionEstablished(TId),
 
     /// We failed to establish a connection.
@@ -1319,6 +1368,7 @@ where
         now: Instant,
         allocations: &mut HashMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
+        pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: fmt::Display + Copy,
         RId: Copy + fmt::Display,
@@ -1459,7 +1509,7 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.invalidate_candiates(allocations);
+                    self.invalidate_candiates(id, allocations, pending_events);
                     self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1631,7 +1681,14 @@ where
     /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
     /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
     #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
-    fn invalidate_candiates(&mut self, allocations: &HashMap<RId, Allocation>) {
+    fn invalidate_candiates<TId>(
+        &mut self,
+        id: TId,
+        allocations: &HashMap<RId, Allocation>,
+        pending_events: &mut VecDeque<Event<TId>>,
+    ) where
+        TId: Copy + fmt::Display,
+    {
         let Some(socket) = self.socket() else {
             return;
         };
@@ -1659,7 +1716,7 @@ where
             .collect::<Vec<_>>();
 
         for candidate in irrelevant_candidates {
-            self.agent.invalidate_candidate(&candidate);
+            remove_local_candidate(id, &mut self.agent, &candidate, pending_events)
         }
     }
 

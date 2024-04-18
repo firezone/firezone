@@ -1,6 +1,6 @@
 use crate::messages::{
-    AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates, ConnectionReady,
-    EgressMessages, IngressMessages, RejectAccess, RequestConnection,
+    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+    IngressMessages, RejectAccess, RequestConnection,
 };
 use crate::CallbackHandler;
 use anyhow::Result;
@@ -84,13 +84,25 @@ impl Eventloop {
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) {
         match event {
-            firezone_tunnel::GatewayEvent::SignalIceCandidate {
+            firezone_tunnel::GatewayEvent::NewIceCandidate {
                 conn_id: client,
                 candidate,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
+                    EgressMessages::BroadcastIceCandidates(ClientsIceCandidates {
+                        client_ids: vec![client],
+                        candidates: vec![candidate],
+                    }),
+                );
+            }
+            firezone_tunnel::GatewayEvent::InvalidIceCandidate {
+                conn_id: client,
+                candidate,
+            } => {
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
                         candidates: vec![candidate],
                     }),
@@ -138,6 +150,18 @@ impl Eventloop {
             } => {
                 for candidate in candidates {
                     self.tunnel.add_ice_candidate(client_id, candidate);
+                }
+            }
+            phoenix_channel::Event::InboundMessage {
+                msg:
+                    IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
+                        client_id,
+                        candidates,
+                    }),
+                ..
+            } => {
+                for candidate in candidates {
+                    self.tunnel.remove_ice_candidate(client_id, candidate);
                 }
             }
             phoenix_channel::Event::InboundMessage {

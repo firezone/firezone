@@ -382,7 +382,7 @@ impl<T> Eventloop<T> {
         }
 
         match self.pool.poll_event() {
-            Some(snownet::Event::SignalIceCandidate {
+            Some(snownet::Event::NewIceCandidate {
                 connection,
                 candidate,
             }) => {
@@ -397,7 +397,7 @@ impl<T> Eventloop<T> {
             Some(snownet::Event::ConnectionFailed(conn)) => {
                 return Poll::Ready(Ok(Event::ConnectionFailed { conn }))
             }
-            None => {}
+            Some(snownet::Event::InvalidateIceCandidate { .. }) | None => {}
         }
 
         if let Poll::Ready(Some(wire::Candidate { conn, candidate })) =
