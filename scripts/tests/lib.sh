@@ -45,8 +45,8 @@ function client_nslookup() {
 }
 
 function assert_equals() {
-    local expected="$1"
-    local actual="$2"
+    local actual="$1"
+    local expected="$2"
 
     if [[ "$expected" != "$actual" ]]; then
         echo "Expected $expected but got $actual"
