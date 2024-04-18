@@ -1,8 +1,10 @@
 use crate::{ip_packet::MutableIpPacket, ClientEvent, ClientState, GatewayState};
 use connlib_shared::{
     messages::{ResourceDescription, ResourceDescriptionCidr, ResourceId},
+    proptest::cidr_resource,
     StaticSecret,
 };
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use pretty_assertions::assert_eq;
 use proptest::{
@@ -25,12 +27,11 @@ proptest_state_machine::prop_state_machine! {
         // Enable verbose mode to make the state machine test print the
         // transitions for each case.
         verbose: 1,
-        cases: 50,
         .. Config::default()
     })]
 
     #[test]
-    fn run_tunnel_test(sequential 1..10 => TunnelTest);
+    fn run_tunnel_test(sequential 1..20 => TunnelTest);
 }
 
 /// The actual system-under-test.
@@ -57,6 +58,9 @@ struct ReferenceState {
 
     /// Which resources the clients is aware of.
     client_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// Cache for resource IPs.
+    ip4_resource_ips: Vec<Ipv4Addr>,
+    ip6_resource_ips: Vec<Ipv6Addr>,
 
     last_connection_intents: HashMap<ResourceId, Instant>,
 
@@ -128,33 +132,6 @@ impl ReferenceState {
 
         self.now.duration_since(*last_intent) >= Duration::from_secs(2)
     }
-
-    fn resource_dst_v4(&self, idx: sample::Index) -> Ipv4Addr {
-        let num_resources = self.client_resources.len().0;
-        let resource_idx = idx.index(num_resources);
-
-        let (ip4_network, _) = self.client_resources.iter_ipv4().nth(resource_idx).unwrap();
-        let num_ips = ip4_network.hosts().len();
-        let ip_idx = idx.index(num_ips);
-
-        ip4_network.hosts().nth(ip_idx).unwrap()
-    }
-
-    fn resource_dst_v6(&self, idx: sample::Index) -> Ipv6Addr {
-        let num_resources = self.client_resources.len().1;
-        let resource_idx = idx.index(num_resources);
-
-        let (ip6_network, _) = self.client_resources.iter_ipv6().nth(resource_idx).unwrap();
-
-        let num_ips = ip6_network.subnets_with_prefix(128).len();
-        let ip_idx = idx.index(num_ips);
-
-        ip6_network
-            .subnets_with_prefix(128)
-            .nth(ip_idx)
-            .unwrap()
-            .network_address()
-    }
 }
 
 /// Implementation of our reference state machine.
@@ -179,40 +156,51 @@ impl ReferenceStateMachine for ReferenceState {
                 client_resources: IpNetworkTable::new(),
                 client_new_events: Default::default(),
                 last_connection_intents: Default::default(),
+                ip4_resource_ips: Default::default(),
+                ip6_resource_ips: Default::default(),
             })
             .boxed()
     }
 
     /// Generate a set of transitions from the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        let add_resource =
-            connlib_shared::proptest::cidr_resource().prop_map(Transition::AddCidrResource);
+        let add_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
-        let send_icmp_v4 = (any::<Ipv4Addr>(), any::<sample::Index>()).prop_map({
-            let state = state.clone();
 
-            move |(src, idx)| {
-                let dst = state.resource_dst_v4(idx);
+        let send_icmp_v4 = (
+            any::<Ipv4Addr>(),
+            sample::select(state.ip4_resource_ips.clone()),
+        )
+            .prop_filter_map("src != dst", {
+                move |(src, dst)| {
+                    if src == dst {
+                        return None;
+                    }
 
-                Transition::SendICMPPacketToResource {
-                    src: src.into(),
-                    dst: dst.into(),
+                    Some(Transition::SendICMPPacketToResource {
+                        src: src.into(),
+                        dst: dst.into(),
+                    })
                 }
-            }
-        });
-        let send_icmp_v6 = (any::<Ipv6Addr>(), any::<sample::Index>()).prop_map({
-            let state = state.clone();
-            move |(src, idx)| {
-                let dst = state.resource_dst_v6(idx);
+            });
+        let send_icmp_v6 = (
+            any::<Ipv6Addr>(),
+            sample::select(state.ip6_resource_ips.clone()),
+        )
+            .prop_filter_map("src != dst", {
+                move |(src, dst)| {
+                    if src == dst {
+                        return None;
+                    }
 
-                Transition::SendICMPPacketToResource {
-                    src: src.into(),
-                    dst: dst.into(),
+                    Some(Transition::SendICMPPacketToResource {
+                        src: src.into(),
+                        dst: dst.into(),
+                    })
                 }
-            }
-        });
+            });
 
-        match state.client_resources.len() {
+        match (state.ip4_resource_ips.len(), state.ip6_resource_ips.len()) {
             (0, 0) => prop_oneof![add_resource, tick].boxed(),
             (0, _) => prop_oneof![add_resource, tick, send_icmp_v6].boxed(),
             (_, 0) => prop_oneof![add_resource, tick, send_icmp_v4].boxed(),
@@ -229,6 +217,12 @@ impl ReferenceStateMachine for ReferenceState {
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_resources.insert(r.address, r.clone());
+                match r.address {
+                    IpNetwork::V4(v4) => state.ip4_resource_ips.extend(v4.hosts()),
+                    IpNetwork::V6(v6) => state
+                        .ip6_resource_ips
+                        .extend(v6.subnets_with_prefix(128).map(|ip| ip.network_address())),
+                };
             }
             Transition::SendICMPPacketToResource { dst, .. } => {
                 // Packets to non-resources are ignored.

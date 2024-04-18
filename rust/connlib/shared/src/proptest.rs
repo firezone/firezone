@@ -1,18 +1,19 @@
 use crate::messages::{ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
+    sample,
     strategy::Strategy,
 };
-use std::net::IpAddr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
     (resource_id(), resource_name(), dns_resource_address())
         .prop_map(|(id, name, address)| ResourceDescriptionDns { id, address, name })
 }
 
-pub fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-    (resource_id(), resource_name(), ip_network())
+pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    (resource_id(), resource_name(), ip_network(host_mask_bits))
         .prop_map(|(id, name, address)| ResourceDescriptionCidr { id, address, name })
 }
 
@@ -28,18 +29,49 @@ pub fn dns_resource_address() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
 
-pub fn ip_network() -> impl Strategy<Value = IpNetwork> {
-    (any::<IpAddr>(), any::<u8>())
-        .prop_filter("netmask must not be zero", |(_, v)| *v != 0)
-        .prop_filter_map(
-            "ip + netmask combination must be a valid `IpNetwork`",
-            |(ip, netmask)| match ip {
-                IpAddr::V4(_) => IpNetwork::new(ip, netmask % 33).ok(),
-                IpAddr::V6(_) => IpNetwork::new(ip, netmask).ok(),
-            },
-        )
-        .prop_filter("network must have addresses", |r| match r {
-            IpNetwork::V4(v4) => v4.hosts().len() > 0,
-            IpNetwork::V6(v6) => v6.subnets_with_prefix(128).len() > 0,
-        })
+/// A strategy of IP networks, configurable by the size of the host mask.
+///
+/// For the full range of networks, specify 0.
+pub fn ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
+    (any::<bool>()).prop_flat_map(move |is_ip4| {
+        if is_ip4 {
+            ip4_network(host_mask_bits).prop_map(IpNetwork::V4).boxed()
+        } else {
+            ip6_network(host_mask_bits).prop_map(IpNetwork::V6).boxed()
+        }
+    })
+}
+
+/// A strategy of IPv4 networks, configurable by the size of the host mask.
+///
+/// For the full range of networks, specify 0.
+pub fn ip4_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv4Network> {
+    assert!(host_mask_bits <= 32);
+
+    (any::<Ipv4Addr>(), any::<sample::Index>()).prop_filter_map(
+        "ip network must be valid",
+        move |(ip, netmask)| {
+            let host_mask = netmask.index(host_mask_bits);
+            let netmask = 32 - host_mask;
+
+            Ipv4Network::new(ip, netmask as u8).ok()
+        },
+    )
+}
+
+/// A strategy of IPv6 networks, configurable by the size of the host mask.
+///
+/// For the full range of networks, specify 0.
+pub fn ip6_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv6Network> {
+    assert!(host_mask_bits <= 128);
+
+    (any::<Ipv6Addr>(), any::<sample::Index>()).prop_filter_map(
+        "ip network must be valid",
+        move |(ip, netmask)| {
+            let host_mask = netmask.index(host_mask_bits);
+            let netmask = 128 - host_mask;
+
+            Ipv6Network::new(ip, netmask as u8).ok()
+        },
+    )
 }

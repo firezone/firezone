@@ -1380,8 +1380,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1398,9 +1398,9 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] resource1: ResourceDescriptionCidr,
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] resource3: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1431,8 +1431,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
-        #[strategy(ip_network())] new_address: IpNetwork,
+        #[strategy(cidr_resource(0))] resource: ResourceDescriptionCidr,
+        #[strategy(ip_network(0))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
@@ -1457,7 +1457,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(ip_network())] address: IpNetwork,
+        #[strategy(ip_network(0))] address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
@@ -1483,7 +1483,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn resources_can_be_removed(
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] cidr_resource: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
@@ -1512,8 +1512,8 @@ mod proptests {
     fn resources_can_be_replaced(
         #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
         #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] cidr_resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(0))] cidr_resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
