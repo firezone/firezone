@@ -8,6 +8,7 @@ source "./scripts/tests/lib.sh"
 BINARY_NAME=firezone-linux-client
 FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
+SERVICE_FILE="scripts/tests/systemd/$SERVICE_NAME.service"
 export RUST_LOG=info
 
 function print_debug_info {
@@ -21,7 +22,8 @@ docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
+sudo cp "$SERVICE_FILE" /usr/lib/systemd/system/
+cat "$SERVICE_FILE"
 
 # The firezone group must exist before the daemon starts
 sudo groupadd "$FZ_GROUP"
