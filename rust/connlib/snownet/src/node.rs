@@ -21,6 +21,7 @@ use str0m::{Candidate, CandidateKind, IceConnectionState};
 
 use crate::allocation::{Allocation, Socket};
 use crate::index::IndexLfsr;
+use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::stun_binding::StunBinding;
 use crate::utils::earliest;
@@ -534,7 +535,7 @@ where
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
                 possible_sockets: HashSet::default(),
-                buffered: VecDeque::default(),
+                buffered: RingBuffer::new(10),
             },
         }
     }
@@ -1265,7 +1266,7 @@ enum ConnectionState<RId> {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        buffered: VecDeque<Vec<u8>>,
+        buffered: RingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
     Connected {
@@ -1613,12 +1614,12 @@ where
                     ConnectionState::Connecting { buffered, .. } => {
                         tracing::debug!("No socket has been nominated yet, buffering WG packet");
 
-                        buffered.push_back(bytes.to_owned());
+                        buffered.push(bytes.to_owned());
 
                         while let TunnResult::WriteToNetwork(packet) =
                             self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
                         {
-                            buffered.push_back(packet.to_owned());
+                            buffered.push(packet.to_owned());
                         }
                     }
                     ConnectionState::Connected { peer_socket, .. } => {

@@ -1752,10 +1752,10 @@ mod tests {
         let channel_bind_peer_2 = allocation.next_message().unwrap();
 
         assert_eq!(channel_bind_peer_1.method(), CHANNEL_BIND);
-        assert_eq!(peer_address(&channel_bind_peer_1), PEER2_IP4);
+        assert_eq!(peer_address(&channel_bind_peer_1), PEER1);
 
         assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
-        assert_eq!(peer_address(&channel_bind_peer_2), PEER1);
+        assert_eq!(peer_address(&channel_bind_peer_2), PEER2_IP4);
     }
 
     #[test]
