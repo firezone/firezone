@@ -70,15 +70,23 @@ function assert_equals() {
 
 function process_state() {
     local container="$1"
-    local process_name="$2"
 
-    docker compose exec "$container" ps -C "$process_name" -o state=
+    docker compose exec "$container" ps --format state= -p 1 # In a container, our main process is always PID 1
 }
 
 function assert_process_state {
     local container="$1"
-    local process_name="$2"
-    local expected_state="$3"
+    local expected_state="$2"
 
-    assert_equals "$(process_state "$container" "$process_name")" "$expected_state"
+    assert_equals "$(process_state "$container")" "$expected_state"
+}
+
+function create_token_file {
+    CONFIG_DIR=/etc/dev.firezone.client
+    TOKEN_PATH="$CONFIG_DIR/token.txt"
+
+    sudo mkdir "$CONFIG_DIR"
+    sudo touch "$TOKEN_PATH"
+    sudo chmod 600 "$TOKEN_PATH"
+    echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
 }

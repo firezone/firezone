@@ -22,7 +22,8 @@ obtain the following config settings required for the integration:
    which returns a JSON document used to construct subsequent requests to this
    OIDC provider.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone google sso login"
   src="/images/firezone-google-sso-login.gif"
   width={960}
@@ -39,7 +40,8 @@ belonging to users in your Google Workspace Organization can create device
 configs. DO NOT select `External` unless you want to enable anyone with a valid
 Google Account to create device configs.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="oauth consent internal"
   src="/images/oauth-consent-internal.png"
   width={960}
@@ -53,7 +55,8 @@ On the App information screen:
 1. **Application home page**: the URL of your Firezone instance.
 1. **Authorized domains**: the top level domain of your Firezone instance.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="oauth consent app info"
   src="/images/oauth-consent-app-info.png"
   width={960}
@@ -62,7 +65,8 @@ On the App information screen:
 
 On the next step add the following scopes:
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="oauth consent scopes"
   src="/images/oauth-consent-scopes.png"
   width={960}
@@ -78,7 +82,8 @@ Visit the Google Cloud Console
 [Credentials page](https://console.cloud.google.com/apis/credentials) page,
 click `+ Create Credentials` and select `OAuth client ID`.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="create oauth client id"
   src="/images/create-oauth-client-id.png"
   width={960}
@@ -92,7 +97,8 @@ On the OAuth client ID creation screen:
    `https://firezone.example.com/auth/oidc/google/callback/`) as an entry to
    Authorized redirect URIs.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="create oauth client id"
   src="/images/create-oauth-client-id-2.png"
   width={960}
@@ -101,13 +107,6 @@ On the OAuth client ID creation screen:
 
 After creating the OAuth client ID, you will be given a Client ID and Client
 Secret. These will be used together with the redirect URI in the next step.
-
-<Image className="mx-auto"
-  alt="copy client id and secret"
-  src="/images/copy-client-id-and-secret.png"
-  width={960}
-  height={540}
-/>
 
 ## Step 3: Integrate with Firezone
 
