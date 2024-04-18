@@ -9,12 +9,7 @@ defmodule Domain.Jobs.Job do
 
       def child_spec(_opts) do
         config = __config__()
-
-        if Keyword.get(config, :enabled, true) do
-          Supervisor.child_spec({@executor, {__MODULE__, @interval, config}}, id: __MODULE__)
-        else
-          :ignore
-        end
+        Supervisor.child_spec({@executor, {__MODULE__, @interval, config}}, id: __MODULE__)
       end
 
       @doc """

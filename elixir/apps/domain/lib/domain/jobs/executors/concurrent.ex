@@ -28,10 +28,14 @@ defmodule Domain.Jobs.Executors.Concurrent do
 
   @impl true
   def init({module, interval, config}) do
-    initial_delay = Keyword.get(config, :initial_delay, 0)
+    if Keyword.get(config, :enabled, true) do
+      initial_delay = Keyword.get(config, :initial_delay, 0)
 
-    with {:ok, worker_state} <- module.state(config) do
-      {:ok, {module, worker_state, interval}, initial_delay}
+      with {:ok, worker_state} <- module.state(config) do
+        {:ok, {module, worker_state, interval}, initial_delay}
+      end
+    else
+      :ignore
     end
   end
 

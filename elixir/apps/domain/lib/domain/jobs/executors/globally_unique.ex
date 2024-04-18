@@ -61,27 +61,31 @@ defmodule Domain.Jobs.Executors.GloballyUnique do
 
   @impl true
   def init({module, interval, config}) do
-    name = global_name(module)
+    if Keyword.get(config, :enabled, true) do
+      name = global_name(module)
 
-    # `random_notify_name` is used to avoid name conflicts in a cluster during deployments and
-    # network splits, it randomly selects one of the duplicate pids for registration,
-    # and sends the message {global_name_conflict, Name} to the other pid so that they stop
-    # trying to claim job queue leadership.
-    with :no <- :global.register_name(name, self(), &:global.random_notify_name/3),
-         pid when is_pid(pid) <- :global.whereis_name(name) do
-      # we monitor the leader process so that we start a race to become a new leader when it's down
-      monitor_ref = Process.monitor(pid)
-      {:ok, {{module, interval, config}, {:fallback, pid, monitor_ref}}, :hibernate}
+      # `random_notify_name` is used to avoid name conflicts in a cluster during deployments and
+      # network splits, it randomly selects one of the duplicate pids for registration,
+      # and sends the message {global_name_conflict, Name} to the other pid so that they stop
+      # trying to claim job queue leadership.
+      with :no <- :global.register_name(name, self(), &:global.random_notify_name/3),
+           pid when is_pid(pid) <- :global.whereis_name(name) do
+        # we monitor the leader process so that we start a race to become a new leader when it's down
+        monitor_ref = Process.monitor(pid)
+        {:ok, {{module, interval, config}, {:fallback, pid, monitor_ref}}, :hibernate}
+      else
+        :yes ->
+          Logger.debug("Recurrent job will be handled on this node", module: module)
+          initial_delay = Keyword.get(config, :initial_delay, 0)
+          {:ok, {{module, interval, config}, :leader}, initial_delay}
+
+        :undefined ->
+          Logger.warning("Recurrent job leader exists but is not yet available", module: module)
+          _timer_ref = :timer.sleep(100)
+          init(module)
+      end
     else
-      :yes ->
-        Logger.debug("Recurrent job will be handled on this node", module: module)
-        initial_delay = Keyword.get(config, :initial_delay, 0)
-        {:ok, {{module, interval, config}, :leader}, initial_delay}
-
-      :undefined ->
-        Logger.warning("Recurrent job leader exists but is not yet available", module: module)
-        _timer_ref = :timer.sleep(100)
-        init(module)
+      :ignore
     end
   end
 
