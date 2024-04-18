@@ -26,7 +26,7 @@ sudo "$BINARY_NAME" --check --token-path "$TOKEN_PATH" standalone
 
 # Move the token to the default path
 sudo mkdir /etc/dev.firezone.client
-sudo mv "$TOKEN_PATH" /etc/dev.firezone.client/token.txt
+sudo mv "$TOKEN_PATH" /etc/dev.firezone.client/token
 
 # Check should now pass with the default path
 sudo "$BINARY_NAME" --check standalone
