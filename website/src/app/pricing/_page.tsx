@@ -52,7 +52,7 @@ export default function _Page() {
         </div>
         <div className="mx-auto max-w-screen-2xl md:grid md:grid-cols-3 pt-14 md:gap-4 px-4">
           <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
-            <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
+            <h3 className="mb-4 text-2xl tracking-tight font-medium text-neutral-900">
               Starter
             </h3>
             <p className="mb-8">
@@ -111,7 +111,7 @@ export default function _Page() {
             </ul>
           </div>
           <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
-            <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
+            <h3 className="mb-4 text-2xl tracking-tight font-bold text-neutral-900">
               Team
             </h3>
             <p className="mb-8">
@@ -174,9 +174,16 @@ export default function _Page() {
             </ul>
           </div>
           <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
-            <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
-              Enterprise
-            </h3>
+            <div className="flex flex-wrap justify-between">
+              <h3 className="mb-4 text-2xl tracking-tight font-bold text-primary-450">
+                Enterprise
+              </h3>
+              <div className="mb-4">
+                <span className="px-1 py-0.5 text-nowrap text-xs font-semibold text-white bg-primary-450 rounded shadow">
+                  FREE 30-DAY TRIAL
+                </span>
+              </div>
+            </div>
             <p className="mb-8">
               Advanced zero trust network access for enterprises
             </p>
