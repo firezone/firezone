@@ -17,7 +17,6 @@ function print_debug_info {
 trap print_debug_info EXIT
 
 # Copy the Linux Client out of the build dir
-docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
