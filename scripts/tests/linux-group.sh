@@ -11,7 +11,7 @@ SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
 function print_debug_info {
-    systemctl status "$SERVICE_NAME"
+    systemctl status "$SERVICE_NAME" || true
 }
 
 trap print_debug_info EXIT
