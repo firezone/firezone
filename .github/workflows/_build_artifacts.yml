@@ -100,9 +100,9 @@ jobs:
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
       - name: Sanitize github.ref_name
         run: |
-          # `ref_name` contains `/` which is not a valid docker image tag
+          # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
           REF="${{ github.ref_name }}"
-          CACHE_TAG="${REF//\//-}"
+          CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build and push control plane images
         id: build
@@ -262,7 +262,7 @@ jobs:
         run: |
           # `ref_name` contains `/` which is not a valid docker image tag
           REF="${{ github.ref_name }}"
-          CACHE_TAG="${REF//\//-}"
+          CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build Docker images
         id: build
