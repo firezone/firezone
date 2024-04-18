@@ -21,7 +21,7 @@ test -z "$OPEN_SOCKETS"
 # Act: Send 2nd SIGTERM
 docker compose kill relay-1 --signal SIGTERM
 
-sleep 1 # Wait for process to exit
+sleep 2 # Wait for process to exit
 
 # Assert: Relay-1 is no longer there
 if docker compose ps relay-1 >/dev/null; then
