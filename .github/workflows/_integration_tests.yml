@@ -106,6 +106,7 @@ jobs:
           direct-download-roaming-network,
           dns-failsafe, # Uses the default DNS control method
           dns-nm,
+          # linux-group,  # Stub, doesn't run Firezone code yet. Broken too, see <https://github.com/firezone/firezone/issues/4669>
           relay-graceful-shutdown,
           relayed-curl-api-down,
           relayed-curl-api-restart,

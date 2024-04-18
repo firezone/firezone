@@ -1,5 +1,6 @@
+"use client";
 import Content from "./readme.mdx";
 
-export default function FAQ() {
+export default function _Page() {
   return <Content />;
 }

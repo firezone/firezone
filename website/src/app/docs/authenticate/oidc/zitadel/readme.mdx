@@ -22,29 +22,31 @@ settings required for the integration:
    which returns a JSON document used to construct subsequent requests to this
    OIDC provider.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone zitadel sso login"
-  src="/images/firezone-zitadel-sso-login.gif"
+  src="/images/firezone-sso-zitadel-login.gif"
   width={960}
   height={540}
 />
 
 ## Requirements
 
-- Setup your own [Zitadel Cloud](https://zitadel.cloud) account.
+- Set up your own [Zitadel Cloud](https://zitadel.com) account.
 - Create your first Zitadel instance in the
   [Zitadel Customer portal](https://zitadel.cloud/admin/instances)
 - Login to your Zitadel instance and create a project (i.e. "Internal")
 
 More information about these steps can be found in
-[Zitadel's documentation](https://docs.zitadel.com/docs/guides/start/quickstart#try-out-zitadel-cloud).
+[Zitadel's documentation](https://zitadel.com/docs/guides/start/quickstart).
 
 ## Create Zitadel Application
 
 In the Instance Console, go to **Projects** and select the project you want,
 then click **New**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel new application"
   src="/images/zitadel-new-application.png"
   width={960}
@@ -54,7 +56,8 @@ then click **New**.
 Give the application a name (e.g. "Firezone") and select **WEB** for the
 application type.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel name application"
   src="/images/zitadel-name-application.png"
   width={960}
@@ -63,7 +66,8 @@ application type.
 
 Select **CODE** for the authentication method.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel auth method"
   src="/images/zitadel-auth-method.png"
   width={960}
@@ -76,7 +80,8 @@ Specify the redirect URI and post logout URI.
    `https://vpn.example.com/auth/oidc/zitadel/callback/`)
 1. **Post Logout URIs**: `EXTERNAL_URL` (e.g. `https://vpn.example.com`)
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel uri"
   src="/images/zitadel-uri.png"
   width={960}
@@ -85,7 +90,8 @@ Specify the redirect URI and post logout URI.
 
 Double-check the configuration, then click **Create**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel configuration overview"
   src="/images/zitadel-configuration-overview.png"
   width={960}
@@ -95,7 +101,8 @@ Double-check the configuration, then click **Create**.
 Copy the **ClientId** and **ClientSecret** as it will be used for the Firezone
 configuration.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel client creds"
   src="/images/zitadel-client-creds.png"
   width={960}
@@ -105,7 +112,8 @@ configuration.
 In the application **Configuration** click **Refresh Token** and then on
 **Save**. The refresh token is optional for some features of Firezone.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel configuration"
   src="/images/zitadel-configuration.png"
   width={960}
@@ -115,7 +123,8 @@ In the application **Configuration** click **Refresh Token** and then on
 In the application **Token Settings** select **User roles inside ID Token** and
 **User Info inside ID Token**. Save it with a click on **Save**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel token settings"
   src="/images/zitadel-token-settings.png"
   width={960}
@@ -141,7 +150,8 @@ project where your created your application. In **General** you can find **Check
 Authorization on Authentication** which allows only users with at least one role
 to login to Firezone.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="zitadel check authorization"
   src="/images/zitadel-check-authorization.png"
   width={960}

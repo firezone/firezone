@@ -1,0 +1,124 @@
+import SupportOptions from "@/components/SupportOptions";
+import NextStep from "@/components/NextStep";
+import Image from "next/image";
+import Link from "next/link";
+import Alert from "@/components/DocsAlert";
+
+# Architecture: Tech Stack
+
+We built Firezone using the best tools for the job. Here's a high-level overview
+of the tech stack choices we made and why.
+
+## Control plane
+
+The control plane, which includes the
+[admin portal](/kb/architecture/core-components#admin-portal),
+[control plane API](/kb/architecture/core-components#control-plane-api), and
+[Policy Engine](/kb/architecture/core-components/#policy-engine), is built using
+Elixir and Phoenix.
+
+[Elixir](https://www.elixir-lang.org) is a functional programming language
+that's received lots of attention in recent years for its performance and
+scalability. It's built on top of the [Erlang VM](https://www.erlang.org/),
+which has a reputation for being fault-tolerant and highly concurrent.
+
+Together, these technologies power Firezone's realtime control plane API,
+allowing it to reliably handle thousands of policy decisions per second.
+
+## Data plane
+
+The data plane, which includes the Client, Gateway, and Relay, is built using
+Rust.
+
+[Rust](https://www.rust-lang.org) is a systems programming language that's known
+for its performance and safety. Not only does its memory safety guarantees
+prevent entire categories of security vulnerabilities, but it also has an
+outstanding [ecosystem](https://www.crates.io) of libraries and tools that make
+it a great choice for building performant network applications.
+
+### Client architecture
+
+Some parts of the macOS, iOS, and Android applications can't be built in Rust,
+and so a foreign function interface (FFI) is used to call into either Swift or
+Kotlin code appropriately. In general, we strive to keep the FFI architecture as
+simple as possible, leaving Rust-land only when absolutely required.
+
+Internally, the Clients maintain two primary types of state:
+
+- Control plane event loop
+- Data plane state machine
+
+These manage the control path and hot paths of the Client, respectively. They
+interact through a thin software layer to exchange WireGuard keys and STUN
+information between the control plane API and the TUN interface.
+
+Here's a high-level diagram of the various software components used in the
+Client applications:
+
+<Link
+  target="_blank"
+  href="/images/kb/architecture/tech-stack/client-architecture.svg"
+>
+  <Image
+    src="/images/kb/architecture/tech-stack/client-architecture.svg"
+    alt="Firezone client architecture diagram"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+## Ops and infrastructure
+
+Firezone uses the following tools for ops and infrastructure:
+
+| Category                | Tool/Service                  |
+| ----------------------- | ----------------------------- |
+| Cloud provider          | Google Cloud Platform         |
+| Source code management  | GitHub                        |
+| CI/CD                   | GitHub Actions                |
+| Monitoring and alerting | Google Cloud Monitoring       |
+| Logging                 | Google Cloud Logging          |
+| Persistence store       | Google Cloud SQL (PostgreSQL) |
+| Infrastructure as code  | Terraform                     |
+
+### Regional availability
+
+The Firezone-managed components are deployed globally across the following GCP
+zones for load balancing and latency optimization:
+
+| City                          | Region                 | Zones                    |
+| ----------------------------- | ---------------------- | ------------------------ |
+| Changhua, Taiwan              | `asia-east1`           | `asia-east1-a`           |
+| Mumbai, India                 | `asia-south1`          | `asia-south1-a`          |
+| Sydney, Australia             | `australia-southeast1` | `australia-southeast1-a` |
+| Warsaw, Poland                | `europe-central2`      | `europe-central2-c`      |
+| Hamina, Finland               | `europe-north1`        | `europe-north1-c`        |
+| Saint-Ghislain, Belgium       | `europe-west1`         | `europe-west1-d`         |
+| London, UK                    | `europe-west2`         | `europe-west2-c`         |
+| São Paulo, Brazil             | `southamerica-east1`   | `southamerica-east1-b`   |
+| Council Bluffs, Iowa          | `us-central1`          | `us-central1-b`          |
+| Moncks Corner, South Carolina | `us-east1`             | `us-east1-d`             |
+| Los Angeles, California       | `us-west2`             | `us-west2-b`             |
+
+<Link
+  target="_blank"
+  href="/images/kb/architecture/tech-stack/regional-availability.svg"
+>
+  <Image
+    src="/images/kb/architecture/tech-stack/regional-availability.svg"
+    alt="Firezone regional availability diagram"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+<Alert color="info">
+  For an accurate, up-to-date list of regions we are deployed in, refer to our
+  [Terraform
+  configuration](https://github.com/firezone/firezone/blob/main/terraform/environments/production/relays.tf).
+</Alert>
+
+{(<NextStep href="/kb/architecture/critical-sequences">Next: Critical
+sequences</NextStep>)}
+
+<SupportOptions />

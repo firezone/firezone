@@ -114,6 +114,9 @@ export default function KbSidebar() {
               label="Administer"
             >
               <li>
+                <Item href="/kb/administer" label="Overview" />
+              </li>
+              <li>
                 <Item
                   href="/kb/administer/upgrading"
                   label="Upgrading Gateways"
@@ -173,14 +176,50 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
-          <Collapse expanded={p.startsWith("/kb/reference")} label="Reference">
-            <li>
-              <Item href="/kb/reference/faq" label="FAQ" />
-            </li>
-            <li>
-              <Item href="/kb/reference/glossary" label="Glossary" />
-            </li>
-          </Collapse>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/architecture")}
+              label="Architecture"
+            >
+              <li>
+                <Item href="/kb/architecture" label="Overview" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/core-components"
+                  label="Core components"
+                />
+              </li>
+              <li>
+                <Item href="/kb/architecture/tech-stack" label="Tech stack" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/critical-sequences"
+                  label="Critical sequences"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/security-controls"
+                  label="Security controls"
+                />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/reference")}
+              label="Reference"
+            >
+              <li>
+                <Item href="/kb/reference/faq" label="FAQ" />
+              </li>
+              <li>
+                <Item href="/kb/reference/glossary" label="Glossary" />
+              </li>
+            </Collapse>
+          </li>
         </ul>
       </div>
     </aside>

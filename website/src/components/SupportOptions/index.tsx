@@ -2,6 +2,7 @@
 
 import { DocSearch } from "@docsearch/react";
 import "@docsearch/css";
+import Link from "next/link";
 
 export default function SupportOptions() {
   return (
@@ -12,20 +13,18 @@ export default function SupportOptions() {
         <p>Try asking on one of our community-powered support channels:</p>
         <ul>
           <li>
-            <a href="https://discourse.firez.one/?utm_source=docs.firezone.dev">
+            <Link href="https://discourse.firez.one/?utm_source=docs.firezone.dev">
               Discussion forums
-            </a>
+            </Link>
             : Ask questions, report bugs, and suggest features.
           </li>
           <li>
-            <a href="https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w">
-              Public Slack group
-            </a>
-            : Join discussions, meet other users, and meet the contributors
+            <Link href="https://discord.gg/DY8gxpSgep">Discord server</Link>:
+            Join discussions, meet other users, and chat with the Firezone team
           </li>
           <li>
-            <a href="mailto:support@firezone.dev">Email us</a>: We read every
-            message.
+            <Link href="mailto:support@firezone.dev">Email us</Link>: We read
+            every message.
           </li>
         </ul>
         <div className="flex">
