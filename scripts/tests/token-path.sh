@@ -15,7 +15,7 @@ sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 sudo "$BINARY_NAME" standalone --check && exit 1
 
 # Check should fail because passing tokens as CLI args is not allowed anymore
-"$BINARY_NAME" standalone --check --token "$TOKEN" && exit 1
+sudo "$BINARY_NAME" standalone --check --token "$TOKEN" && exit 1
 
 touch "$TOKEN_PATH"
 chmod 600 "$TOKEN_PATH"
