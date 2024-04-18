@@ -130,6 +130,11 @@ async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     let (private_key, public_key) = keypair();
     let login = LoginUrl::client(cli.api_url, token, firezone_id, None, public_key.to_bytes())?;
 
+    if cli.check {
+        tracing::info!("Check passed");
+        return Ok(());
+    }
+
     let session = Session::connect(
         login,
         Sockets::new(),

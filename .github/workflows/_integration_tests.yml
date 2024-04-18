@@ -115,6 +115,7 @@ jobs:
           relayed-dns-relay-restart,
           relayed-dns,
           systemd/dns-systemd-resolved,
+          token-path,
         ]
     steps:
       - uses: actions/checkout@v4
