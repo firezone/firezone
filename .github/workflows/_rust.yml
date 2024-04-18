@@ -145,3 +145,4 @@ jobs:
       - run: scripts/tests/token-path.sh
         name: "token-path"
         shell: bash
+        working-directory: ./
