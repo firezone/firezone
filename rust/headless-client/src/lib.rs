@@ -28,11 +28,25 @@ mod imp_windows {
     pub async fn run() -> anyhow::Result<()> {
         let cli = super::Cli::parse();
         let _cmd = cli.command();
+        tracing::info!(git_version = crate::GIT_VERSION);
         Ok(())
     }
 }
 #[cfg(target_os = "windows")]
 use imp_windows as imp;
+
+/// Output of `git describe` at compile time
+/// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
+///
+/// * `1.0.0-pre.4` is the most recent ancestor tag
+/// * `20` is the number of commits since then
+/// * `g` doesn't mean anything
+/// * `ed5437c88` is the Git commit hash
+/// * `-modified` is present if the working dir has any changes from that commit number
+pub const GIT_VERSION: &str = git_version::git_version!(
+    args = ["--always", "--dirty=-modified", "--tags"],
+    fallback = "unknown"
+);
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
