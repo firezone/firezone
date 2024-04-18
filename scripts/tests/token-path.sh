@@ -3,6 +3,7 @@
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
+TOKEN="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 TOKEN_PATH="token.txt"
 
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
@@ -13,9 +14,12 @@ sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 # Check should fail because there's no token yet
 "$BINARY_NAME" standalone --check && exit 1
 
+# Check should fail because passing tokens as CLI args is not allowed anymore
+"$BINARY_NAME" standalone --check --token "$TOKEN" && exit 1
+
 touch "$TOKEN_PATH"
 chmod 600 "$TOKEN_PATH"
-echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
+echo "$TOKEN" | sudo tee "$TOKEN_PATH" > /dev/null
 
 # Check should fail because the token is not in the default path
 "$BINARY_NAME" standalone --check && exit 1
