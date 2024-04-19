@@ -246,10 +246,10 @@ impl GatewayState {
 
         let packet = packet.into();
 
-        if !peer.is_allowed_from_network_to_tun(&packet) {
+        if let Err(e) = peer.ensure_allowed(&packet) {
             // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
             // source ips can be sticky.
-            tracing::warn!(%conn_id, %local, %from, "Packet not allowed");
+            tracing::warn!(%conn_id, %local, %from, "Packet not allowed: {e}");
 
             return None;
         }

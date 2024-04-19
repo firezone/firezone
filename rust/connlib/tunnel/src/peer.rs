@@ -121,9 +121,21 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    pub fn is_allowed_from_network_to_tun(&self, packet: &MutableIpPacket<'_>) -> bool {
-        self.allowed_ips.longest_match(packet.source()).is_some()
-            && self.resources.longest_match(packet.destination()).is_some()
+    pub fn ensure_allowed(
+        &self,
+        packet: &MutableIpPacket<'_>,
+    ) -> Result<(), connlib_shared::Error> {
+        if self.allowed_ips.longest_match(packet.source()).is_none() {
+            return Err(connlib_shared::Error::UnallowedPacket(packet.source()));
+        }
+
+        let dst = packet.destination();
+        if self.resources.longest_match(dst).is_none() {
+            tracing::warn!(%dst, "unallowed packet");
+            return Err(connlib_shared::Error::InvalidDst);
+        }
+
+        Ok(())
     }
 
     pub(crate) fn allow_ip(&mut self, ip: &IpNetwork) {
@@ -143,16 +155,16 @@ impl GatewayOnClient {
     /// Transform a packet that arrived via the network for the TUN device.
     pub(crate) fn transform_network_to_tun<'p>(
         &mut self,
-        mut packet: MutableIpPacket<'p>,
+        mut pkt: MutableIpPacket<'p>,
     ) -> Result<MutableIpPacket<'p>, connlib_shared::Error> {
-        let addr = packet.source();
+        let addr = pkt.source();
         let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
         if self.allowed_ips.longest_match(src).is_none() {
             return Err(connlib_shared::Error::UnallowedPacket(src));
         }
 
-        if let Some(dgm) = packet.as_udp() {
+        if let Some(dgm) = pkt.as_udp() {
             if let Some(sentinel) = self
                 .dns_mapping
                 .get_by_right(&(src, dgm.get_source()).into())
@@ -169,10 +181,10 @@ impl GatewayOnClient {
             }
         }
 
-        packet.set_src(src);
-        packet.update_checksum();
+        pkt.set_src(src);
+        pkt.update_checksum();
 
-        Ok(packet)
+        Ok(pkt)
     }
 
     /// Transform a packet that arrvied on the TUN device for the network.
