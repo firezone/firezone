@@ -4,7 +4,7 @@
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
-SERVICE_NAME=firezone-client
+SERVICE_NAME=firezone-client-headless
 
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"

@@ -7,7 +7,7 @@ source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-linux-client
 FZ_GROUP="firezone"
-SERVICE_NAME=firezone-client
+SERVICE_NAME=firezone-client-ipc
 export RUST_LOG=info
 
 # Copy the Linux Client out of the build dir
