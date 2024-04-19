@@ -1,0 +1,15 @@
+[package]
+name = "ip-packet"
+# mark:automatic-version
+version = "1.0.0"
+edition = "2021"
+authors = ["Firezone, Inc."]
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+pnet_packet = { version = "0.34" }
+
+[lints]
+workspace = true

@@ -1,5 +1,4 @@
 use crate::client::DnsResource;
-use crate::ip_packet::{to_dns, IpPacket, MutableIpPacket};
 use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
 use connlib_shared::Dname;
 use domain::base::RelativeDname;
@@ -11,8 +10,10 @@ use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
 use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
 use hickory_resolver::proto::rr::RecordType;
+use ip_packet::udp::UdpPacket;
+use ip_packet::Packet as _;
+use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
-use pnet_packet::{udp::MutableUdpPacket, MutablePacket, Packet as UdpPacket, PacketSize};
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -21,6 +22,7 @@ const UDP_HEADER_SIZE: usize = 8;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
+const DNS_PORT: u16 = 53;
 
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
@@ -39,7 +41,7 @@ pub struct DnsQuery<'a> {
     pub record_type: RecordType,
     // We could be much more efficient with this field,
     // we only need the header to create the response.
-    pub query: crate::ip_packet::IpPacket<'a>,
+    pub query: ip_packet::IpPacket<'a>,
 }
 
 impl<'a> DnsQuery<'a> {
@@ -50,7 +52,7 @@ impl<'a> DnsQuery<'a> {
             query,
         } = self;
         let buf = query.packet().to_vec();
-        let query = crate::ip_packet::IpPacket::owned(buf)
+        let query = ip_packet::IpPacket::owned(buf)
             .expect("We are constructing the ip packet from an ip packet");
 
         DnsQuery {
@@ -273,6 +275,12 @@ where
     .ok()?;
 
     Some(answer_builder.finish())
+}
+
+pub fn to_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
+    (pkt.get_destination() == DNS_PORT)
+        .then(|| Message::from_slice(pkt.payload()).ok())
+        .flatten()
 }
 
 // No object safety =_=
