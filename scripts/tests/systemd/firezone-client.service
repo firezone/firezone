@@ -35,7 +35,6 @@ UMask=177
 
 Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
-Environment="FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F"
 Environment="RUST_LOG=info"
 
 # TODO: Make subcommands explicit once PR #4628 merges
