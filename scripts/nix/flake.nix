@@ -51,7 +51,7 @@
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables cargo-udeps ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables cargo-udeps pkgs.deno ];
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
