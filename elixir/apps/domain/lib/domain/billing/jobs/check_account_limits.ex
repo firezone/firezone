@@ -1,8 +1,13 @@
-defmodule Domain.Billing.Jobs do
-  use Domain.Jobs.Recurrent, otp_app: :domain
+defmodule Domain.Billing.Jobs.CheckAccountLimits do
+  use Domain.Jobs.Job,
+    otp_app: :domain,
+    every: :timer.minutes(5),
+    executor: Domain.Jobs.Executors.GloballyUnique
+
   alias Domain.{Accounts, Billing, Actors, Clients, Gateways}
 
-  every minutes(30), :check_account_limits do
+  @impl true
+  def execute(_config) do
     Accounts.all_active_accounts!()
     |> Enum.each(fn account ->
       if Billing.enabled?() and Billing.account_provisioned?(account) do

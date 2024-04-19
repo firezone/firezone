@@ -16,6 +16,7 @@ members = [
   "gui-client/src-tauri",
   "http-health-check",
   "http-test-server",
+  "ip-packet",
 ]
 
 resolver = "2"
@@ -49,6 +50,7 @@ connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
 http-health-check = { path = "http-health-check"}
+ip-packet = { path = "ip-packet"}
 
 [workspace.lints]
 clippy.dbg_macro = "warn"
@@ -63,6 +65,7 @@ clippy.redundant_clone = "warn"
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
+ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 
 [profile.release]
 strip = true

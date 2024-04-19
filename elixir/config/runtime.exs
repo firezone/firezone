@@ -69,17 +69,28 @@ if config_env() == :prod do
   config :domain, outbound_email_adapter_configured?: !!compile_config!(:outbound_email_adapter)
 
   # Enable background jobs only on dedicated nodes
-  config :domain, Domain.Tokens.Jobs, enabled: compile_config!(:background_jobs_enabled)
-
-  config :domain, Elixir.Domain.Billing.Jobs, enabled: compile_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs,
+  config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
     enabled: compile_config!(:background_jobs_enabled)
 
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs,
+  config :domain, Domain.Billing.Jobs.CheckAccountLimits,
     enabled: compile_config!(:background_jobs_enabled)
 
-  config :domain, Domain.Auth.Adapters.Okta.Jobs,
+  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens,
+    enabled: compile_config!(:background_jobs_enabled)
+
+  config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
     enabled: compile_config!(:background_jobs_enabled)
 
   if external_url = compile_config!(:external_url) do

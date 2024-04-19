@@ -44,7 +44,6 @@ jobs:
             pkg-artifact: rust/gui-client/firezone-windows-client-x64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
-      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}

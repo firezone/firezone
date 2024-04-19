@@ -1,4 +1,4 @@
-defmodule Domain.Jobs.Executors.Global do
+defmodule Domain.Jobs.Executors.GloballyUnique do
   @moduledoc """
   This module is an abstraction on top of a GenServer that executes a callback function
   on a given interval on a globally unique process in an Erlang cluster.
@@ -50,68 +50,65 @@ defmodule Domain.Jobs.Executors.Global do
   require Logger
   require OpenTelemetry.Tracer
 
-  def start_link({{module, function}, interval, config}) do
-    GenServer.start_link(__MODULE__, {{module, function}, interval, config})
+  @doc """
+  Executes the callback function with the given configuration.
+  """
+  @callback execute(config :: term()) :: :ok
+
+  def start_link({module, interval, config}) do
+    GenServer.start_link(__MODULE__, {module, interval, config})
   end
 
   @impl true
-  def init({{module, function}, interval, config}) do
-    name = global_name(module, function)
+  def init({module, interval, config}) do
+    if Keyword.get(config, :enabled, true) do
+      name = global_name(module)
 
-    # `random_notify_name` is used to avoid name conflicts in a cluster during deployments and
-    # network splits, it randomly selects one of the duplicate pids for registration,
-    # and sends the message {global_name_conflict, Name} to the other pid so that they stop
-    # trying to claim job queue leadership.
-    with :no <- :global.register_name(name, self(), &:global.random_notify_name/3),
-         pid when is_pid(pid) <- :global.whereis_name(name) do
-      # we monitor the leader process so that we start a race to become a new leader when it's down
-      monitor_ref = Process.monitor(pid)
-      {:ok, {{{module, function}, interval, config}, {:fallback, pid, monitor_ref}}, :hibernate}
+      # `random_notify_name` is used to avoid name conflicts in a cluster during deployments and
+      # network splits, it randomly selects one of the duplicate pids for registration,
+      # and sends the message {global_name_conflict, Name} to the other pid so that they stop
+      # trying to claim job queue leadership.
+      with :no <- :global.register_name(name, self(), &:global.random_notify_name/3),
+           pid when is_pid(pid) <- :global.whereis_name(name) do
+        # we monitor the leader process so that we start a race to become a new leader when it's down
+        monitor_ref = Process.monitor(pid)
+        {:ok, {{module, interval, config}, {:fallback, pid, monitor_ref}}, :hibernate}
+      else
+        :yes ->
+          Logger.debug("Recurrent job will be handled on this node", module: module)
+          initial_delay = Keyword.get(config, :initial_delay, 0)
+          {:ok, {{module, interval, config}, :leader}, initial_delay}
+
+        :undefined ->
+          Logger.warning("Recurrent job leader exists but is not yet available", module: module)
+          _timer_ref = :timer.sleep(100)
+          init(module)
+      end
     else
-      :yes ->
-        Logger.debug("Recurrent job will be handled on this node",
-          module: module,
-          function: function
-        )
-
-        initial_delay = Keyword.get(config, :initial_delay, 0)
-        {:ok, {{{module, function}, interval, config}, :leader}, initial_delay}
-
-      :undefined ->
-        Logger.warning("Recurrent job leader exists but is not yet available",
-          module: module,
-          function: function
-        )
-
-        _timer_ref = :timer.sleep(100)
-        init(module)
+      :ignore
     end
   end
 
   @impl true
-  def handle_info(:timeout, {{{_module, _name}, interval, _config}, :leader} = state) do
+  def handle_info(:timeout, {{_module, interval, _config}, :leader} = state) do
     :ok = schedule_tick(interval)
     {:noreply, state}
   end
 
   @impl true
   def handle_info(
-        {:global_name_conflict, {__MODULE__, module, function}},
-        {{{module, function}, interval, config}, _leader_or_fallback} = state
+        {:global_name_conflict, {__MODULE__, module}},
+        {{module, interval, config}, _leader_or_fallback} = state
       ) do
-    name = global_name(module, function)
+    name = global_name(module)
 
     with pid when is_pid(pid) <- :global.whereis_name(name) do
       monitor_ref = Process.monitor(pid)
-      state = {{{module, function}, interval, config}, {:fallback, pid, monitor_ref}}
+      state = {{module, interval, config}, {:fallback, pid, monitor_ref}}
       {:noreply, state, :hibernate}
     else
       :undefined ->
-        Logger.warning("Recurrent job name conflict",
-          module: module,
-          function: function
-        )
-
+        Logger.warning("Recurrent job name conflict", module: module)
         _timer_ref = :timer.sleep(100)
         handle_info({:global_name_conflict, module}, state)
     end
@@ -119,7 +116,7 @@ defmodule Domain.Jobs.Executors.Global do
 
   def handle_info(
         {:DOWN, _ref, :process, _pid, reason},
-        {{{module, function}, interval, config}, {:fallback, pid, _monitor_ref}}
+        {{module, interval, config}, {:fallback, pid, _monitor_ref}}
       ) do
     # Solves the "Retry Storm" antipattern
     backoff_with_jitter = :rand.uniform(200) - 1
@@ -127,12 +124,11 @@ defmodule Domain.Jobs.Executors.Global do
 
     Logger.info("Recurrent job leader is down",
       module: module,
-      function: function,
       leader_pid: inspect(pid),
       leader_exit_reason: inspect(reason, pretty: true)
     )
 
-    case init({{module, function}, interval, config}) do
+    case init({module, interval, config}) do
       {:ok, state, :hibernate} -> {:noreply, state, :hibernate}
       {:ok, state, _initial_delay} -> {:noreply, state, 0}
     end
@@ -143,8 +139,8 @@ defmodule Domain.Jobs.Executors.Global do
     {:noreply, state}
   end
 
-  def handle_info(:tick, {{{module, function}, interval, config}, :leader} = state) do
-    :ok = execute_handler(module, function, config)
+  def handle_info(:tick, {{module, interval, config}, :leader} = state) do
+    :ok = execute_handler(module, config)
     :ok = schedule_tick(interval)
     {:noreply, state}
   end
@@ -156,8 +152,8 @@ defmodule Domain.Jobs.Executors.Global do
     :ok
   end
 
-  defp execute_handler(module, function, config) do
-    job_callback = "#{module}.#{function}/1"
+  defp execute_handler(module, config) do
+    job_callback = "#{module}.execute/1"
 
     attributes = [
       job_runner: __MODULE__,
@@ -168,11 +164,11 @@ defmodule Domain.Jobs.Executors.Global do
     Logger.metadata(attributes)
 
     OpenTelemetry.Tracer.with_span job_callback, attributes: attributes do
-      _ = apply(module, function, [config])
+      _ = module.execute(config)
     end
 
     :ok
   end
 
-  defp global_name(module, function), do: {__MODULE__, module, function}
+  defp global_name(module), do: {__MODULE__, module}
 end

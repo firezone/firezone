@@ -525,7 +525,7 @@ where
 
             if self.stats_log_interval.poll_tick(cx).is_ready() {
                 let num_allocations = self.server.num_allocations();
-                let num_channels = self.server.num_channels();
+                let num_channels = self.server.num_active_channels();
 
                 let bytes_relayed_since_last_tick =
                     self.server.num_relayed_bytes() - self.last_num_bytes_relayed;

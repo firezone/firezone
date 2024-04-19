@@ -1,50 +1,33 @@
-defmodule Domain.Auth.Adapters.Okta.Jobs do
-  use Domain.Jobs.Recurrent, otp_app: :domain
+defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
+  use Domain.Jobs.Job,
+    otp_app: :domain,
+    every: :timer.minutes(5),
+    executor: Domain.Jobs.Executors.Concurrent
+
   alias Domain.Auth.Adapter.DirectorySync
   alias Domain.Auth.Adapters.Okta
   require Logger
+  require OpenTelemetry.Tracer
 
-  @behaviour DirectorySync
+  @task_supervisor __MODULE__.TaskSupervisor
 
-  every minutes(5), :refresh_access_tokens do
-    providers = Domain.Auth.all_providers_pending_token_refresh_by_adapter!(:okta)
-    Logger.debug("Refreshing access tokens for #{length(providers)} Okta providers")
-
-    Enum.each(providers, fn provider ->
-      Logger.debug("Refreshing access token",
-        provider_id: provider.id,
-        account_id: provider.account_id
-      )
-
-      case Okta.refresh_access_token(provider) do
-        {:ok, provider} ->
-          Logger.debug("Finished refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id
-          )
-
-        {:error, reason} ->
-          Logger.error("Failed refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id,
-            reason: inspect(reason)
-          )
-      end
-    end)
+  @impl true
+  def state(_config) do
+    {:ok, pid} = Task.Supervisor.start_link(name: @task_supervisor)
+    {:ok, %{task_supervisor: pid}}
   end
 
-  every minutes(3), :sync_directory do
-    providers = Domain.Auth.all_providers_pending_sync_by_adapter!(:okta)
-    Logger.debug("Syncing #{length(providers)} Okta providers")
-    DirectorySync.sync_providers(__MODULE__, providers)
+  @impl true
+  def execute(%{task_supervisor: pid}) do
+    DirectorySync.sync_providers(__MODULE__, :okta, pid)
   end
 
-  def gather_provider_data(provider) do
+  def gather_provider_data(provider, task_supervisor_pid) do
     endpoint = provider.adapter_config["api_base_url"]
     access_token = provider.adapter_state["access_token"]
 
     async_results =
-      DirectorySync.run_async_requests(Okta.TaskSupervisor,
+      DirectorySync.run_async_requests(task_supervisor_pid,
         users: fn ->
           Okta.APIClient.list_users(endpoint, access_token)
         end,
@@ -73,16 +56,18 @@ defmodule Domain.Auth.Adapters.Okta.Jobs do
   end
 
   defp list_membership_tuples(endpoint, access_token, groups) do
-    Enum.reduce_while(groups, {:ok, []}, fn group, {:ok, tuples} ->
-      case Okta.APIClient.list_group_members(endpoint, access_token, group["id"]) do
-        {:ok, members} ->
-          tuples = Enum.map(members, &{"G:" <> group["id"], &1["id"]}) ++ tuples
-          {:cont, {:ok, tuples}}
+    OpenTelemetry.Tracer.with_span "sync_provider.fetch_data.memberships" do
+      Enum.reduce_while(groups, {:ok, []}, fn group, {:ok, tuples} ->
+        case Okta.APIClient.list_group_members(endpoint, access_token, group["id"]) do
+          {:ok, members} ->
+            tuples = Enum.map(members, &{"G:" <> group["id"], &1["id"]}) ++ tuples
+            {:cont, {:ok, tuples}}
 
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-      end
-    end)
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+      end)
+    end
   end
 
   # Map identity attributes from Okta to Domain

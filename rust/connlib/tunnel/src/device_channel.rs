@@ -25,23 +25,19 @@ use tun_android as tun;
 #[cfg(target_family = "unix")]
 mod utils;
 
-use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
 use connlib_shared::{Cidrv4, Cidrv6};
 use ip_network::IpNetwork;
-use pnet_packet::Packet;
+use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
-use std::time::{Duration, Instant};
 use tun::Tun;
 
 pub struct Device {
-    mtu: usize,
     tun: Option<Tun>,
     waker: Option<Waker>,
-    mtu_refreshed_at: Instant,
 }
 
 #[allow(dead_code)]
@@ -64,9 +60,7 @@ impl Device {
     pub(crate) fn new() -> Self {
         Self {
             tun: None,
-            mtu: 1_280,
             waker: None,
-            mtu_refreshed_at: Instant::now(),
         }
     }
 
@@ -77,11 +71,7 @@ impl Device {
         dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
-        let tun = Tun::new(config, dns_config, callbacks)?;
-        let mtu = ioctl::interface_mtu_by_name(tun.name())?;
-
-        self.tun = Some(tun);
-        self.mtu = mtu;
+        self.tun = Some(Tun::new(config, dns_config, callbacks)?);
 
         if let Some(waker) = self.waker.take() {
             waker.wake();
@@ -104,8 +94,6 @@ impl Device {
         if self.tun.is_none() {
             self.tun = Some(Tun::new()?);
         }
-
-        self.mtu = ioctl::interface_mtu_by_name(self.tun.as_ref().unwrap().name())?;
 
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
@@ -144,20 +132,14 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+        use ip_packet::Packet as _;
+
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
         };
 
-        use pnet_packet::Packet as _;
-
-        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
-            let mtu = ioctl::interface_mtu_by_name(tun.name())?;
-            self.mtu = mtu;
-            self.mtu_refreshed_at = Instant::now();
-        }
-
-        let n = std::task::ready!(tun.poll_read(&mut buf[..self.mtu], cx))?;
+        let n = std::task::ready!(tun.poll_read(buf, cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -184,18 +166,14 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+        use ip_packet::Packet as _;
+
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
         };
 
-        use pnet_packet::Packet as _;
-
-        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
-            // TODO
-        }
-
-        let n = std::task::ready!(tun.poll_read(&mut buf[..self.mtu], cx))?;
+        let n = std::task::ready!(tun.poll_read(buf, cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -236,8 +214,8 @@ impl Device {
         tracing::trace!(target: "wire", to = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
-            IpPacket::Ipv4Packet(msg) => self.tun()?.write4(msg.packet()),
-            IpPacket::Ipv6Packet(msg) => self.tun()?.write6(msg.packet()),
+            IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),
+            IpPacket::Ipv6(msg) => self.tun()?.write6(msg.packet()),
         }
     }
 
@@ -254,23 +232,10 @@ fn io_error_not_initialized() -> io::Error {
     io::Error::new(io::ErrorKind::NotConnected, "device is not initialized yet")
 }
 
-#[cfg(target_family = "unix")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 mod ioctl {
     use super::*;
     use std::os::fd::RawFd;
-    use tun::SIOCGIFMTU;
-
-    pub(crate) fn interface_mtu_by_name(name: &str) -> io::Result<usize> {
-        let socket = Socket::ip4()?;
-        let mut request = Request::<GetInterfaceMtuPayload>::new(name)?;
-
-        // Safety: The file descriptor is open.
-        unsafe {
-            exec(socket.fd, SIOCGIFMTU, &mut request)?;
-        }
-
-        Ok(request.payload.mtu as usize)
-    }
 
     /// Executes the `ioctl` syscall on the given file descriptor with the provided request.
     ///
@@ -298,53 +263,5 @@ mod ioctl {
     pub(crate) struct Request<P> {
         pub(crate) name: [std::ffi::c_uchar; libc::IF_NAMESIZE],
         pub(crate) payload: P,
-    }
-
-    /// A socket newtype which closes the file descriptor on drop.
-    struct Socket {
-        fd: RawFd,
-    }
-
-    impl Socket {
-        fn ip4() -> io::Result<Socket> {
-            // Safety: All provided parameters are constants.
-            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, libc::IPPROTO_IP) };
-
-            if fd == -1 {
-                return Err(io::Error::last_os_error());
-            }
-
-            Ok(Self { fd })
-        }
-    }
-
-    impl Drop for Socket {
-        fn drop(&mut self) {
-            // Safety: This is the only call to `close` and it happens when `Guard` is being dropped.
-            unsafe { libc::close(self.fd) };
-        }
-    }
-
-    impl Request<GetInterfaceMtuPayload> {
-        fn new(name: &str) -> io::Result<Self> {
-            if name.len() > libc::IF_NAMESIZE {
-                return Err(io::ErrorKind::InvalidInput.into());
-            }
-
-            let mut request = Request {
-                name: [0u8; libc::IF_NAMESIZE],
-                payload: Default::default(),
-            };
-
-            request.name[..name.len()].copy_from_slice(name.as_bytes());
-
-            Ok(request)
-        }
-    }
-
-    #[derive(Default)]
-    #[repr(C)]
-    struct GetInterfaceMtuPayload {
-        mtu: libc::c_int,
     }
 }

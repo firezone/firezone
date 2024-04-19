@@ -1,4 +1,3 @@
-use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformClient, Peer};
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
@@ -13,6 +12,7 @@ use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
 use crate::utils::{earliest, stun, turn};
@@ -331,7 +331,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .encapsulate(peer.conn_id, packet.as_immutable(), Instant::now())
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -362,7 +362,7 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.untransform(packet.into()) {
+        let packet = match peer.untransform(packet) {
             Ok(packet) => packet,
             Err(e) => {
                 tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
@@ -891,7 +891,7 @@ impl ClientState {
         );
     }
 
-    fn add_resources(&mut self, resources: &[ResourceDescription]) {
+    pub(crate) fn add_resources(&mut self, resources: &[ResourceDescription]) {
         for resource_description in resources {
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
                 if resource.has_different_address(resource_description) {
@@ -1395,8 +1395,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1413,9 +1413,9 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource1: ResourceDescriptionCidr,
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource3: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1446,8 +1446,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
-        #[strategy(ip_network())] new_address: IpNetwork,
+        #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
+        #[strategy(ip_network(8))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
@@ -1472,7 +1472,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(ip_network())] address: IpNetwork,
+        #[strategy(ip_network(8))] address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
@@ -1498,7 +1498,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn resources_can_be_removed(
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] cidr_resource: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
@@ -1527,8 +1527,8 @@ mod proptests {
     fn resources_can_be_replaced(
         #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
         #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] cidr_resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] cidr_resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[

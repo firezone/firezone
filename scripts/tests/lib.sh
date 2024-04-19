@@ -51,16 +51,16 @@ function assert_equals() {
 }
 
 function process_state() {
-    local process_name="$1"
+    local container="$1"
 
-    ps -C "$process_name" -o state=
+    docker compose exec "$container" ps --format state= -p 1 # In a container, our main process is always PID 1
 }
 
 function assert_process_state {
-    local process_name="$1"
+    local container="$1"
     local expected_state="$2"
 
-    assert_equals "$(process_state "$process_name")" "$expected_state"
+    assert_equals "$(process_state "$container")" "$expected_state"
 }
 
 function create_token_file {
@@ -71,4 +71,8 @@ function create_token_file {
     sudo touch "$TOKEN_PATH"
     sudo chmod 600 "$TOKEN_PATH"
     echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
+
+    # Also put it in `token.txt` for backwards compat, until pull #4666 merges and is
+    # cut into a release.
+    sudo cp "$TOKEN_PATH" "$TOKEN_PATH.txt"
 }
