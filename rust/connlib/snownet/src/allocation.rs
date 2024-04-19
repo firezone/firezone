@@ -707,44 +707,6 @@ where
         no_allocation && nothing_in_flight && nothing_buffered && waiting_on_nothing
     }
 
-    fn authenticate(
-        &self,
-        message: Message<Attribute>,
-        credentials: &Credentials,
-    ) -> Message<Attribute> {
-        let attributes = message
-            .attributes()
-            .filter(|a| !matches!(a, Attribute::Nonce(_)))
-            .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
-            .filter(|a| !matches!(a, Attribute::Realm(_)))
-            .filter(|a| !matches!(a, Attribute::Username(_)))
-            .cloned()
-            .chain([
-                Attribute::Username(credentials.username.clone()),
-                Attribute::Realm(credentials.realm.clone()),
-            ])
-            .chain(credentials.nonce.clone().map(Attribute::Nonce));
-
-        let transaction_id = TransactionId::new(random());
-        let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
-
-        for attribute in attributes {
-            message.add_attribute(attribute.to_owned());
-        }
-
-        let message_integrity = MessageIntegrity::new_long_term_credential(
-            &message,
-            &credentials.username,
-            &credentials.realm,
-            &credentials.password,
-        )
-        .expect("signing never fails");
-
-        message.add_attribute(message_integrity);
-
-        message
-    }
-
     /// Returns: Whether we actually queued a message.
     fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
@@ -763,7 +725,7 @@ where
             return false;
         };
 
-        let authenticated_message = self.authenticate(message, credentials);
+        let authenticated_message = authenticate(message, credentials);
         let id = authenticated_message.transaction_id();
 
         self.sent_requests
@@ -792,6 +754,40 @@ where
             self.backoff.reset();
         }
     }
+}
+
+fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
+    let attributes = message
+        .attributes()
+        .filter(|a| !matches!(a, Attribute::Nonce(_)))
+        .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
+        .filter(|a| !matches!(a, Attribute::Realm(_)))
+        .filter(|a| !matches!(a, Attribute::Username(_)))
+        .cloned()
+        .chain([
+            Attribute::Username(credentials.username.clone()),
+            Attribute::Realm(credentials.realm.clone()),
+        ])
+        .chain(credentials.nonce.clone().map(Attribute::Nonce));
+
+    let transaction_id = TransactionId::new(random());
+    let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
+
+    for attribute in attributes {
+        message.add_attribute(attribute.to_owned());
+    }
+
+    let message_integrity = MessageIntegrity::new_long_term_credential(
+        &message,
+        &credentials.username,
+        &credentials.realm,
+        &credentials.password,
+    )
+    .expect("signing never fails");
+
+    message.add_attribute(message_integrity);
+
+    message
 }
 
 fn update_candidate(
