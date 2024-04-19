@@ -16,10 +16,9 @@ function print_debug_info {
 
 trap print_debug_info EXIT
 
-# Copy the Linux Client out of its container
-docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
-chmod u+x "$BINARY_NAME"
-sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
+# Copy the Linux Client out of the build dir
+ls . ./rust ./rust/target ./rust/target/debug
+sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
 
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
