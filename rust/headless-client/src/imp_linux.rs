@@ -24,13 +24,6 @@ use tokio_util::codec::LengthDelimitedCodec;
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-/// The path for our Unix Domain Socket
-///
-/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
-/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
-/// on some systems, `/run` should be the newer version.
-const SOCK_PATH: &str = "/run/firezone-client.sock";
-
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
@@ -258,11 +251,25 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
+/// The path for our Unix Domain Socket
+///
+/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
+/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
+/// on some systems, `/run` should be the newer version.
+///
+/// Also systemd can create this with the `RuntimeDir=` directive which is nice.
+fn sock_path() -> PathBuf {
+    PathBuf::from("/run")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("ipc.sock")
+}
+
 async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
     tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
-    let stream = UnixStream::connect(SOCK_PATH)
+    let sock_path = sock_path();
+    let stream = UnixStream::connect(&sock_path)
         .await
-        .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
+        .with_context(|| format!("couldn't connect to UDS at {}", sock_path.display()))?;
     let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
     stream.send(serde_json::to_string("Hello")?.into()).await?;
@@ -282,9 +289,10 @@ async fn ipc_listen() -> Result<()> {
         .gid;
 
     // Remove the socket if a previous run left it there
-    tokio::fs::remove_file(SOCK_PATH).await.ok();
-    let listener = UnixListener::bind(SOCK_PATH).context("Couldn't bind UDS")?;
-    std::os::unix::fs::chown(SOCK_PATH, Some(ROOT_USER), Some(fz_gid.into()))
+    let sock_path = sock_path();
+    tokio::fs::remove_file(&sock_path).await.ok();
+    let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
+    std::os::unix::fs::chown(&sock_path, Some(ROOT_USER), Some(fz_gid.into()))
         .context("can't set firezone as the group for the UDS")?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
