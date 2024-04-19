@@ -73,8 +73,8 @@ defmodule Domain.Jobs.Executors.ConcurrentTest do
           end)
         end)
 
-      assert_receive {:locked, rows1}
-      assert_receive {:locked, rows2}
+      assert_receive {:locked, rows1}, 500
+      assert_receive {:locked, rows2}, 500
       assert length(rows1) + length(rows2) == length(rows)
 
       Task.ignore(task1)
