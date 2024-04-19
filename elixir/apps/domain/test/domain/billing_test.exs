@@ -477,6 +477,25 @@ defmodule Domain.BillingTest do
       assert Repo.aggregate(Domain.Accounts.Account, :count) == 1
     end
 
+    test "does nothing on customer.created event when metadata has account_id" do
+      customer_id = "cus_" <> Ecto.UUID.generate()
+
+      event =
+        Stripe.build_event(
+          "customer.created",
+          Stripe.customer_object(
+            customer_id,
+            "New Account Name",
+            "iown@bigcompany.com",
+            %{"account_id" => Ecto.UUID.generate()}
+          )
+        )
+
+      assert handle_events([event]) == :ok
+
+      assert Repo.aggregate(Domain.Accounts.Account, :count) == 1
+    end
+
     test "syncs an account from stripe on customer.created event" do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
