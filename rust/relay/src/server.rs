@@ -315,11 +315,9 @@ where
 
             error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
             error_response.add_attribute((*FIREZONE).clone());
-
-            tracing::debug!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
-        } else {
-            tracing::warn!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
         }
+
+        tracing::warn!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
 
         self.send_message(error_response, sender);
     }
