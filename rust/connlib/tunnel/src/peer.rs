@@ -7,10 +7,9 @@ use chrono::{DateTime, Utc};
 use connlib_shared::messages::{ClientId, DnsServer, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use pnet_packet::Packet;
+use ip_packet::{MutableIpPacket, Packet};
 
 use crate::client::IpProvider;
-use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
 

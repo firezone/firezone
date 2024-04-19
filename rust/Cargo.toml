@@ -16,6 +16,7 @@ members = [
   "gui-client/src-tauri",
   "http-health-check",
   "http-test-server",
+  "ip-packet",
 ]
 
 resolver = "2"
@@ -49,6 +50,7 @@ connlib-shared = { path = "connlib/shared"}
 firezone-tunnel = { path = "connlib/tunnel"}
 phoenix-channel = { path = "phoenix-channel"}
 http-health-check = { path = "http-health-check"}
+ip-packet = { path = "ip-packet"}
 
 [workspace.lints]
 clippy.dbg_macro = "warn"

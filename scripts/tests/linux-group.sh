@@ -10,12 +10,6 @@ FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
-function print_debug_info {
-    systemctl status "$SERVICE_NAME"
-}
-
-trap print_debug_info EXIT
-
 # Copy the Linux Client out of the build dir
 ls . ./rust ./rust/target ./rust/target/debug
 sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
@@ -34,6 +28,9 @@ sudo su --login "$USER" --command RUST_LOG="$RUST_LOG" "$BINARY_NAME" stub-ipc-c
 
 echo "# Expect Firezone to reject our command if we run without 'su --login'"
 "$BINARY_NAME" stub-ipc-client && exit 1
+
+# Stop the service in case other tests run on the same VM
+sudo systemctl stop "$SERVICE_NAME"
 
 # Explicitly exiting is needed when we're intentionally having commands fail
 exit 0
