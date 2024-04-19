@@ -22,8 +22,15 @@ for more information on how to update apps on your device.
 
 ## Known issues
 
-Web browsers that enable DNS-over-HTTPS by default may interfere with DNS
-resolution. See
-[this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing) to
-disable DNS-over-HTTPS if you're experiencing issues connecting to DNS Resources
-within your browser.
+- **DNS Resources**: Web browsers that enable "Secure DNS" or DNS-over-HTTPS by
+  default may interfere with DNS resolution because they force all DNS traffic
+  through the browser's configured resolvers. See
+  [this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing)
+  to disable DNS-over-HTTPS if you're experiencing issues connecting to DNS
+  Resources within your browser.
+- **Cloudflare WARP client conflicts with other VPN apps**: The Cloudflare WARP
+  client may interfere with Firezone's ability to initialize its tunnel
+  interface or resolve DNS resources. Ensure the Cloudflare WARP client is
+  disabled completely or uninstalled to prevent these issues. See
+  [this thread](https://discourse.firez.one/t/firezone-app-on-macos/682) for
+  more information.
