@@ -9,10 +9,11 @@ use std::{
 use anyhow::{bail, Context as _, Result};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use futures::{channel::mpsc, future::BoxFuture, FutureExt, SinkExt, StreamExt};
+use ip_packet::IpPacket;
 use pnet_packet::{ip::IpNextHeaderProtocols, ipv4::Ipv4Packet};
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{Answer, ClientNode, Credentials, IpPacket, Node, Offer, ServerNode};
+use snownet::{Answer, ClientNode, Credentials, Node, Offer, ServerNode};
 use tokio::{io::ReadBuf, net::UdpSocket};
 use tracing_subscriber::EnvFilter;
 

@@ -25,7 +25,6 @@ mod device_channel;
 mod dns;
 mod gateway;
 mod io;
-mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;

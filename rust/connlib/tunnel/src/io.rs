@@ -1,7 +1,6 @@
 use crate::{
     device_channel::Device,
     dns::{self, DnsQuery},
-    ip_packet::{IpPacket, MutableIpPacket},
     sockets::{Received, Sockets},
 };
 use bytes::Bytes;
@@ -12,6 +11,7 @@ use hickory_resolver::{
     config::{NameServerConfig, Protocol, ResolverConfig},
     TokioAsyncResolver,
 };
+use ip_packet::{IpPacket, MutableIpPacket};
 use quinn_udp::Transmit;
 use std::{
     collections::HashMap,

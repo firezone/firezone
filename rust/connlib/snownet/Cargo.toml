@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 boringtun = { workspace = true }
-pnet_packet = { version = "0.34" }
+ip-packet = { workspace = true }
 rand = "0.8"
 secrecy = { workspace = true }
 str0m = { workspace = true }

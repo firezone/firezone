@@ -25,11 +25,10 @@ use tun_android as tun;
 #[cfg(target_family = "unix")]
 mod utils;
 
-use crate::ip_packet::{IpPacket, MutableIpPacket};
 use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
 use connlib_shared::{Cidrv4, Cidrv6};
 use ip_network::IpNetwork;
-use pnet_packet::Packet;
+use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
@@ -133,7 +132,7 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<MutableIpPacket<'b>>> {
-        use pnet_packet::Packet as _;
+        use ip_packet::Packet as _;
 
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
@@ -167,7 +166,7 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<MutableIpPacket<'b>>> {
-        use pnet_packet::Packet as _;
+        use ip_packet::Packet as _;
 
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
@@ -215,8 +214,8 @@ impl Device {
         tracing::trace!(target: "wire", to = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
-            IpPacket::Ipv4Packet(msg) => self.tun()?.write4(msg.packet()),
-            IpPacket::Ipv6Packet(msg) => self.tun()?.write6(msg.packet()),
+            IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),
+            IpPacket::Ipv6(msg) => self.tun()?.write6(msg.packet()),
         }
     }
 
