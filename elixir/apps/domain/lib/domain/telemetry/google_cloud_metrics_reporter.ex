@@ -221,7 +221,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   defp flush(project_id, resource, labels, {buffer_size, buffer}) do
     buffer
     |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
-      labels = Map.merge(labels, tags)
+      labels = Map.merge(labels, tags) |> truncate_labels()
       format_time_series(schema, name, labels, resource, measurements, unit)
     end)
     |> Enum.chunk_every(200)
@@ -240,6 +240,18 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
     {0, %{}}
   end
+
+  defp truncate_labels(labels) do
+    for {k, v} <- labels, into: %{} do
+      {k, v |> to_string() |> truncate_label()}
+    end
+  end
+
+  defp truncate_label(value) when byte_size(value) > 1020,
+    do: String.slice(value, 0, 1020) <> "..."
+
+  defp truncate_label(value),
+    do: value
 
   defp format_time_series(Metrics.Counter, name, labels, resource, measurements, unit) do
     {started_at, ended_at, count} = measurements
