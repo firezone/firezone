@@ -587,6 +587,13 @@ where
         Some(channel_data)
     }
 
+    /// Whether this [`Allocation`] can be freed.
+    ///
+    /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events.
+    pub fn can_be_freed(&self) -> bool {
+        self.credentials.is_none() && self.events.is_empty()
+    }
+
     fn refresh_allocation_at(&self) -> Option<Instant> {
         let (received_at, lifetime) = self.allocation_lifetime?;
 
@@ -1948,7 +1955,8 @@ mod tests {
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
-        )
+        );
+        assert!(allocation.can_be_freed());
     }
 
     #[test]
@@ -1968,6 +1976,13 @@ mod tests {
         );
 
         assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY2)
+    }
+
+    #[test]
+    fn allocation_is_not_freed_on_startup() {
+        let allocation = Allocation::for_test(Instant::now());
+
+        assert!(!allocation.can_be_freed());
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
