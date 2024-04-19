@@ -21,7 +21,7 @@ macro_rules! for_both {
     };
 }
 
-// no std::mem:;swap? no problem
+// no std::mem::swap? no problem
 macro_rules! swap_src_dst {
     ($p:expr) => {
         let src = $p.get_source();
