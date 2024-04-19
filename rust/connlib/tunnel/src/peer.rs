@@ -138,14 +138,6 @@ impl ClientOnGateway {
         Ok(())
     }
 
-    pub(crate) fn allow_ip(&mut self, ip: &IpNetwork) {
-        self.allowed_ips.insert(*ip, ());
-    }
-
-    fn is_allowed(&self, addr: IpAddr) -> bool {
-        self.allowed_ips.longest_match(addr).is_some()
-    }
-
     pub fn id(&self) -> ClientId {
         self.id
     }

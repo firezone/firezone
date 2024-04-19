@@ -85,6 +85,7 @@ where
         self.peer_by_id.get_mut(id)
     }
 
+    #[cfg(test)]
     pub(crate) fn peer_by_ip(&self, ip: IpAddr) -> Option<&P> {
         let (_, id) = self.id_by_ip.longest_match(ip)?;
         self.peer_by_id.get(id)
@@ -97,10 +98,6 @@ where
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut P> {
         self.peer_by_id.values_mut()
-    }
-
-    pub(crate) fn iter(&mut self) -> impl Iterator<Item = &P> {
-        self.peer_by_id.values()
     }
 }
 
