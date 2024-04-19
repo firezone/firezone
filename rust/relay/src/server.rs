@@ -225,7 +225,6 @@ where
     ///
     /// - [`Some`] if the provided bytes were a [`ChannelData`] message.
     ///   In that case, you should forward the _payload_ to the [`PeerSocket`] on the [`AllocationPort`].
-    #[tracing::instrument(level = "debug", skip_all, fields(transaction_id, %sender, allocation, channel, recipient, peer))]
     pub fn handle_client_input(
         &mut self,
         bytes: &[u8],
@@ -236,10 +235,6 @@ where
 
         match self.decoder.decode(bytes) {
             Ok(Ok(message)) => {
-                if let Some(id) = message.transaction_id() {
-                    Span::current().record("transaction_id", field::debug(id));
-                }
-
                 return self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
@@ -415,13 +410,16 @@ where
         }
     }
 
-    fn handle_binding_request(&mut self, message: Binding, sender: ClientSocket) {
+    #[tracing::instrument(level = "info", skip_all, fields(transaction_id = ?request.transaction_id(), %sender))]
+    fn handle_binding_request(&mut self, request: Binding, sender: ClientSocket) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
-            message.transaction_id(),
+            request.transaction_id(),
         );
         message.add_attribute(XorMappedAddress::new(sender.0));
+
+        tracing::info!("Handled BINDING request");
 
         self.send_message(message, sender);
     }
@@ -429,6 +427,7 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, transaction_id = ?request.transaction_id(), %sender))]
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
@@ -539,6 +538,7 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, transaction_id = ?request.transaction_id(), %sender))]
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
@@ -571,11 +571,7 @@ where
 
         allocation.expires_at = now + effective_lifetime.lifetime();
 
-        tracing::info!(
-            target: "relay",
-            port = %allocation.port,
-            "Refreshed allocation",
-        );
+        tracing::info!(target: "relay", "Refreshed allocation");
 
         self.send_message(
             refresh_success_response(effective_lifetime, request.transaction_id()),
@@ -588,6 +584,7 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, transaction_id = ?request.transaction_id(), %sender))]
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
@@ -676,22 +673,23 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(level = "debug", skip_all, fields(%sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(transaction_id = ?request.transaction_id(), %sender))]
     fn handle_create_permission_request(
         &mut self,
-        message: CreatePermission,
+        request: CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&message)?;
+        self.verify_auth(&request)?;
 
         self.send_message(
-            create_permission_success_response(message.transaction_id()),
+            create_permission_success_response(request.transaction_id()),
             sender,
         );
 
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(allocation, recipient, channel, %sender))] // It is important that this is level `debug` otherwise performance is shit!
     fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
