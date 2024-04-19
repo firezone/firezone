@@ -82,10 +82,6 @@ struct Cli {
     #[arg(default_value_t = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: String,
 
-    /// A filesystem path where the token can be found
-    #[arg(default_value_t = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
-    token_path: String,
-
     /// Identifier used by the portal to identify and display the device.
 
     // AKA `device_id` in the Windows and Linux GUI clients
