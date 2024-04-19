@@ -880,6 +880,35 @@ where
 
         let port = allocation.port;
 
+        self.channels_by_client_and_number
+            .retain(|(cl, number), c| {
+                if c.allocation != port {
+                    return true;
+                }
+
+                debug_assert_eq!(cl, &client, "internal state to be consistent");
+
+                let peer = c.peer_address;
+
+                let existing = self
+                    .channel_numbers_by_client_and_peer
+                    .remove(&(client, peer));
+                debug_assert_eq!(existing, Some(*number), "internal state to be consistent");
+
+                let existing = self
+                    .channel_and_client_by_port_and_peer
+                    .remove(&(port, peer));
+                debug_assert_eq!(
+                    existing,
+                    Some((client, *number)),
+                    "internal state to be consistent"
+                );
+
+                tracing::info!(%peer, %number, "Deleted channel binding");
+
+                false
+            });
+
         self.allocations_up_down_counter.add(-1, &[]);
         self.pending_commands.push_back(Command::FreeAllocation {
             port,
