@@ -91,8 +91,6 @@ jobs:
       run:
         # Must be in this dir for `pnpm` to work
         working-directory: ./rust/gui-client
-    env:
-      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
       # The Windows client ignores RUST_LOG because it uses a settings file instead
     steps:
       - uses: actions/checkout@v4
@@ -133,8 +131,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - run: cargo build -p firezone-headless-client
-        env:
-          CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
         name: "cargo build"
         shell: bash
       - run: scripts/tests/${{ matrix.test }}.sh

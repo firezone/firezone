@@ -2032,6 +2032,7 @@ dependencies = [
  "futures-util",
  "hex",
  "hickory-resolver",
+ "ip-packet",
  "ip_network",
  "ip_network_table",
  "itertools 0.12.1",
@@ -2039,7 +2040,6 @@ dependencies = [
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
- "pnet_packet",
  "pretty_assertions",
  "proptest",
  "proptest-state-machine",
@@ -3118,6 +3118,13 @@ dependencies = [
  "hermit-abi",
  "libc",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "ip-packet"
+version = "1.0.0"
+dependencies = [
+ "pnet_packet",
 ]
 
 [[package]]
@@ -5689,8 +5696,8 @@ dependencies = [
  "bytes",
  "firezone-relay",
  "hex",
+ "ip-packet",
  "once_cell",
- "pnet_packet",
  "rand 0.8.5",
  "secrecy",
  "str0m",
@@ -5708,6 +5715,7 @@ dependencies = [
  "boringtun",
  "futures",
  "hex",
+ "ip-packet",
  "pnet_packet",
  "rand 0.8.5",
  "redis 0.25.3",
