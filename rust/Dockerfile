@@ -94,7 +94,6 @@ COPY ${PACKAGE} .
 RUN set -xe \
   && apk add --no-cache deno npm chromium
 COPY --from=browser-tests . .
-RUN npm install
 
 # Build a production image from including a binary compiled on the host
 FROM runtime AS release
