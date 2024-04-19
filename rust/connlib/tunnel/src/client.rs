@@ -1,4 +1,3 @@
-use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformClient, Peer};
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
@@ -13,6 +12,7 @@ use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
 use crate::utils::{earliest, stun, turn};
@@ -337,7 +337,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .encapsulate(peer.conn_id, packet.as_immutable(), Instant::now())
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -368,7 +368,7 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.untransform(packet.into()) {
+        let packet = match peer.untransform(packet) {
             Ok(packet) => packet,
             Err(e) => {
                 tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");

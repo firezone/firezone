@@ -1,14 +1,24 @@
+use crate::allocation::{Allocation, Socket};
+use crate::index::IndexLfsr;
+use crate::ringbuffer::RingBuffer;
+use crate::stats::{ConnectionStats, NodeStats};
+use crate::stun_binding::StunBinding;
+use crate::utils::earliest;
+use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::{fmt, slice};
-use pnet_packet::ipv4::MutableIpv4Packet;
-use pnet_packet::ipv6::MutableIpv6Packet;
-use pnet_packet::Packet;
+use ip_packet::ipv4::MutableIpv4Packet;
+use ip_packet::ipv6::MutableIpv6Packet;
+use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use rand::random;
 use secrecy::{ExposeSecret, Secret};
+use std::borrow::Cow;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::mem;
+use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -18,18 +28,6 @@ use std::{
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
-
-use crate::allocation::{Allocation, Socket};
-use crate::index::IndexLfsr;
-use crate::ringbuffer::RingBuffer;
-use crate::stats::{ConnectionStats, NodeStats};
-use crate::stun_binding::StunBinding;
-use crate::utils::earliest;
-use crate::{IpPacket, MutableIpPacket};
-use boringtun::noise::errors::WireGuardError;
-use std::borrow::Cow;
-use std::mem;
-use std::ops::ControlFlow;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 use tracing::{field, info_span, Span};
 

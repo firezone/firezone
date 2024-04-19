@@ -106,6 +106,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
             OpenTelemetry.Tracer.with_span "sync_provider",
               attributes: %{
                 account_id: provider.account_id,
+                account_slug: provider.account.slug,
                 provider_id: provider.id,
                 provider_adapter: provider.adapter
               } do
@@ -114,6 +115,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
 
               Logger.metadata(
                 account_id: provider.account_id,
+                account_slug: provider.account.slug,
                 provider_id: provider.id,
                 provider_adapter: provider.adapter
               )
@@ -124,7 +126,14 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           timeout: @provider_sync_timeout,
           max_concurrency: 3
         )
-        |> Stream.run()
+        |> Enum.to_list()
+        |> Enum.map(fn
+          {:ok, _result} ->
+            :ok
+
+          {:exit, _reason} = reason ->
+            Logger.error("Error syncing provider", crash_reason: reason)
+        end)
       end,
       # sync can take a long time so we will manage timeouts for each provider separately
       timeout: :infinity
@@ -164,12 +173,16 @@ defmodule Domain.Auth.Adapter.DirectorySync do
         _other ->
           finish_time = System.monotonic_time(:millisecond)
           Logger.debug("Failed to sync provider in #{time_taken(start_time, finish_time)}")
+
+          :error
       end
     else
       message = "IdP sync is not enabled in your subscription plan"
 
       Auth.Provider.Changeset.sync_failed(provider, message)
       |> Domain.Repo.update!()
+
+      :error
     end
   end
 
@@ -197,10 +210,14 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           Auth.Provider.Changeset.sync_requires_manual_intervention(provider, user_message)
           |> Domain.Repo.update!()
 
+          :error
+
         {:error, nil, log_message} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(log_message))
 
           log_sync_error(provider, log_message)
+
+          :error
 
         {:error, user_message, log_message} ->
           OpenTelemetry.Tracer.set_status(:error, inspect(log_message))
@@ -208,6 +225,8 @@ defmodule Domain.Auth.Adapter.DirectorySync do
           Auth.Provider.Changeset.sync_failed(provider, user_message)
           |> Domain.Repo.update!()
           |> log_sync_error(log_message)
+
+          :error
       end
     end
   end
@@ -249,6 +268,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
             {:error, reason} ->
               OpenTelemetry.Tracer.set_status(:error, inspect(reason))
               log_sync_error(provider, "Repo error: " <> inspect(reason))
+              :error
           end
         end,
         timeout: @database_operations_timeout
@@ -259,29 +279,23 @@ defmodule Domain.Auth.Adapter.DirectorySync do
   defp log_sync_result(
          start_time,
          finish_time,
-         identities_effects,
-         groups_effects,
-         memberships_effects
+         %{
+           plan: {identities_insert_ids, identities_update_ids, identities_delete_ids},
+           inserted: identities_inserted,
+           updated: identities_updated,
+           deleted: identities_deleted
+         },
+         %{
+           plan: {groups_upsert_ids, groups_delete_ids},
+           upserted: groups_upserted,
+           deleted: groups_deleted
+         },
+         %{
+           plan: {memberships_insert_tuples, memberships_delete_tuples},
+           inserted: memberships_inserted,
+           deleted_stats: {deleted_memberships_count, _}
+         }
        ) do
-    %{
-      plan: {identities_insert_ids, identities_update_ids, identities_delete_ids},
-      inserted: identities_inserted,
-      updated: identities_updated,
-      deleted: identities_deleted
-    } = identities_effects
-
-    %{
-      plan: {groups_upsert_ids, groups_delete_ids},
-      upserted: groups_upserted,
-      deleted: groups_deleted
-    } = groups_effects
-
-    %{
-      plan: {memberships_insert_tuples, memberships_delete_tuples},
-      inserted: memberships_inserted,
-      deleted_stats: {deleted_memberships_count, _}
-    } = memberships_effects
-
     time_taken = time_taken(start_time, finish_time)
 
     Logger.debug("Finished syncing provider in #{time_taken}",

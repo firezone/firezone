@@ -91,8 +91,6 @@ jobs:
       run:
         # Must be in this dir for `pnpm` to work
         working-directory: ./rust/gui-client
-    env:
-      CONNLIB_LOG_UPLOAD_INTERVAL_SECS: 300
       # The Windows client ignores RUST_LOG because it uses a settings file instead
     steps:
       - uses: actions/checkout@v4
@@ -119,3 +117,23 @@ jobs:
       - name: Run smoke tests (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: bash ../../scripts/tests/smoke-test-gui-windows.sh
+
+  headless-client:
+    name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: Add Windows as part of issue #3782
+        runs-on: [ubuntu-20.04, ubuntu-22.04]
+        test: [linux-group, token-path]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - run: cargo build -p firezone-headless-client
+        name: "cargo build"
+        shell: bash
+      - run: scripts/tests/${{ matrix.test }}.sh
+        name: "test script"
+        shell: bash
+        working-directory: ./

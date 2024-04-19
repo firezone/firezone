@@ -1,4 +1,3 @@
-use crate::ip_packet::{IpPacket, MutableIpPacket};
 use crate::peer::{PacketTransformGateway, Peer};
 use crate::peer_store::PeerStore;
 use crate::utils::{earliest, stun, turn};
@@ -11,6 +10,7 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
+use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::ServerNode;
 use std::collections::{HashSet, VecDeque};
@@ -221,7 +221,7 @@ impl GatewayState {
 
         let transmit = self
             .node
-            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .encapsulate(peer.conn_id, packet.as_immutable(), Instant::now())
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -252,7 +252,7 @@ impl GatewayState {
             return None;
         };
 
-        let packet = match peer.untransform(packet.into()) {
+        let packet = match peer.untransform(packet) {
             Ok(packet) => packet,
             Err(e) => {
                 // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
