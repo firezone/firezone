@@ -29,7 +29,7 @@ pub(crate) struct GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn allow_ip(&mut self, ip: &IpNetwork, id: &ResourceId) {
+    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
         if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
             resources.insert(*id);
         } else {
@@ -42,16 +42,16 @@ impl GatewayOnClient {
     pub(crate) fn new(
         id: GatewayId,
         ips: &[IpNetwork],
-        resource_ids: HashSet<ResourceId>,
+        resource: HashSet<ResourceId>,
     ) -> GatewayOnClient {
-        let mut resources = IpNetworkTable::new();
+        let mut allowed_ips = IpNetworkTable::new();
         for ip in ips {
-            resources.insert(*ip, resource_ids.clone());
+            allowed_ips.insert(*ip, resource.clone());
         }
 
         GatewayOnClient {
             id,
-            allowed_ips: resources,
+            allowed_ips,
             translations: Default::default(),
             dns_mapping: Default::default(),
             mangled_dns_ids: Default::default(),
@@ -153,10 +153,10 @@ impl ClientOnGateway {
 
 impl GatewayOnClient {
     /// Transform a packet that arrived via the network for the TUN device.
-    pub(crate) fn transform_network_to_tun<'p>(
+    pub(crate) fn transform_network_to_tun<'a>(
         &mut self,
-        mut pkt: MutableIpPacket<'p>,
-    ) -> Result<MutableIpPacket<'p>, connlib_shared::Error> {
+        mut pkt: MutableIpPacket<'a>,
+    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
         let addr = pkt.source();
         let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
@@ -188,10 +188,10 @@ impl GatewayOnClient {
     }
 
     /// Transform a packet that arrvied on the TUN device for the network.
-    pub(crate) fn transform_tun_to_network<'p>(
+    pub(crate) fn transform_tun_to_network<'a>(
         &mut self,
-        mut packet: MutableIpPacket<'p>,
-    ) -> MutableIpPacket<'p> {
+        mut packet: MutableIpPacket<'a>,
+    ) -> MutableIpPacket<'a> {
         if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();

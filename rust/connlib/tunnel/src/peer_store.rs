@@ -32,7 +32,7 @@ impl PeerStore<GatewayId, GatewayOnClient> {
             let Some(peer) = self.add_ip(id, ip) else {
                 continue;
             };
-            peer.allow_ip(ip, resource);
+            peer.insert_id(ip, resource);
         }
     }
 }
