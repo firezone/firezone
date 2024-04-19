@@ -233,7 +233,7 @@ fn io_error_not_initialized() -> io::Error {
     io::Error::new(io::ErrorKind::NotConnected, "device is not initialized yet")
 }
 
-#[cfg(target_family = "unix")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 mod ioctl {
     use super::*;
     use std::os::fd::RawFd;
