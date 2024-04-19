@@ -29,6 +29,16 @@ pub(crate) struct GatewayOnClient {
 }
 
 impl GatewayOnClient {
+    pub(crate) fn allow_ip(&mut self, ip: &IpNetwork, id: &ResourceId) {
+        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
+            resources.insert(*id);
+        } else {
+            self.allowed_ips.insert(*ip, HashSet::from([*id]));
+        }
+    }
+}
+
+impl GatewayOnClient {
     pub(crate) fn new(
         id: GatewayId,
         ips: &[IpNetwork],
@@ -45,14 +55,6 @@ impl GatewayOnClient {
             translations: Default::default(),
             dns_mapping: Default::default(),
             mangled_dns_ids: Default::default(),
-        }
-    }
-
-    pub(crate) fn allow_ip(&mut self, ip: &IpNetwork, id: &ResourceId) {
-        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
-            resources.insert(*id);
-        } else {
-            self.allowed_ips.insert(*ip, HashSet::from([*id]));
         }
     }
 
@@ -80,7 +82,64 @@ impl GatewayOnClient {
         self.mangled_dns_ids.clear();
         self.dns_mapping = mapping;
     }
+}
 
+impl ClientOnGateway {
+    pub(crate) fn new(id: ClientId, ips: &[IpNetwork]) -> ClientOnGateway {
+        let mut allowed_ips = IpNetworkTable::new();
+        for ip in ips {
+            allowed_ips.insert(*ip, ());
+        }
+
+        ClientOnGateway {
+            id,
+            allowed_ips,
+            resources: IpNetworkTable::new(),
+        }
+    }
+
+    pub(crate) fn is_emptied(&self) -> bool {
+        self.resources.is_empty()
+    }
+
+    pub(crate) fn expire_resources(&mut self) {
+        self.resources
+            .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
+    }
+
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
+        self.resources.retain(|_, (r, _)| r != resource)
+    }
+
+    pub(crate) fn add_resource(
+        &mut self,
+        ip: IpNetwork,
+        resource: ResourceId,
+        expires_at: Option<DateTime<Utc>>,
+    ) {
+        self.resources.insert(ip, (resource, expires_at));
+    }
+
+    /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
+    pub fn is_allowed_from_network_to_tun(&self, packet: &MutableIpPacket<'_>) -> bool {
+        self.allowed_ips.longest_match(packet.source()).is_some()
+            && self.resources.longest_match(packet.destination()).is_some()
+    }
+
+    pub(crate) fn allow_ip(&mut self, ip: &IpNetwork) {
+        self.allowed_ips.insert(*ip, ());
+    }
+
+    fn is_allowed(&self, addr: IpAddr) -> bool {
+        self.allowed_ips.longest_match(addr).is_some()
+    }
+
+    pub fn id(&self) -> ClientId {
+        self.id
+    }
+}
+
+impl GatewayOnClient {
     /// Transform a packet that arrived via the network for the TUN device.
     pub(crate) fn transform_network_to_tun<'p>(
         &mut self,
@@ -150,59 +209,4 @@ pub struct ClientOnGateway {
     id: ClientId,
     allowed_ips: IpNetworkTable<()>,
     resources: IpNetworkTable<ExpiryingResource>,
-}
-
-impl ClientOnGateway {
-    pub(crate) fn new(id: ClientId, ips: &[IpNetwork]) -> ClientOnGateway {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(*ip, ());
-        }
-
-        ClientOnGateway {
-            id,
-            allowed_ips,
-            resources: IpNetworkTable::new(),
-        }
-    }
-
-    pub(crate) fn is_emptied(&self) -> bool {
-        self.resources.is_empty()
-    }
-
-    pub(crate) fn expire_resources(&mut self) {
-        self.resources
-            .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
-    }
-
-    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.retain(|_, (r, _)| r != resource)
-    }
-
-    pub(crate) fn add_resource(
-        &mut self,
-        ip: IpNetwork,
-        resource: ResourceId,
-        expires_at: Option<DateTime<Utc>>,
-    ) {
-        self.resources.insert(ip, (resource, expires_at));
-    }
-
-    /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    pub fn is_allowed_from_network_to_tun(&self, packet: &MutableIpPacket<'_>) -> bool {
-        self.allowed_ips.longest_match(packet.source()).is_some()
-            && self.resources.longest_match(packet.destination()).is_some()
-    }
-
-    pub(crate) fn allow_ip(&mut self, ip: &IpNetwork) {
-        self.allowed_ips.insert(*ip, ());
-    }
-
-    fn is_allowed(&self, addr: IpAddr) -> bool {
-        self.allowed_ips.longest_match(addr).is_some()
-    }
-
-    pub fn id(&self) -> ClientId {
-        self.id
-    }
 }
