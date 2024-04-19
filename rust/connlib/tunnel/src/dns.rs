@@ -105,7 +105,7 @@ pub(crate) fn parse<'a>(
 ) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     dns_mapping.get_by_left(&packet.destination())?;
     let datagram = packet.as_udp()?;
-    let message = to_dns(&datagram)?;
+    let message = as_dns(&datagram)?;
     if message.header().qr() {
         return None;
     }
@@ -138,7 +138,7 @@ pub(crate) fn create_local_answer<'a>(
     packet: IpPacket<'a>,
 ) -> Option<IpPacket<'a>> {
     let datagram = packet.as_udp().unwrap();
-    let message = to_dns(&datagram).unwrap();
+    let message = as_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
     let qtype = question.qtype();
 
@@ -277,7 +277,7 @@ where
     Some(answer_builder.finish())
 }
 
-pub fn to_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
+pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
     (pkt.get_destination() == DNS_PORT)
         .then(|| Message::from_slice(pkt.payload()).ok())
         .flatten()
