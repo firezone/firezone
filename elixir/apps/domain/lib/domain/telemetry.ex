@@ -77,7 +77,18 @@ defmodule Domain.Telemetry do
 
       # Application metrics
       last_value("domain.relays.online_relays_count"),
-      last_value("domain.metrics.discovered_nodes_count")
+      last_value("domain.cluster.discovered_nodes_count"),
+
+      ## Directory Syncs
+      summary("domain.directory_sync.data_fetch_total_time",
+        tags: [:account_id, :provider_id, :provider_adapter]
+      ),
+      summary("domain.directory_sync.db_operations_total_time",
+        tags: [:account_id, :provider_id, :provider_adapter]
+      ),
+      distribution("domain.directory_sync.total_time",
+        tags: [:account_id, :provider_id, :provider_adapter]
+      )
     ]
   end
 

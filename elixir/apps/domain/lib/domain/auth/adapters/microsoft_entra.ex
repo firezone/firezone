@@ -17,8 +17,9 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra do
   def init(_init_arg) do
     children = [
       MicrosoftEntra.APIClient,
-      {Task.Supervisor, name: __MODULE__.TaskSupervisor},
-      {Domain.Jobs, MicrosoftEntra.Jobs}
+      # Background Jobs
+      MicrosoftEntra.Jobs.RefreshAccessTokens,
+      MicrosoftEntra.Jobs.SyncDirectory
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

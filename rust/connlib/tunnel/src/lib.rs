@@ -25,11 +25,13 @@ mod device_channel;
 mod dns;
 mod gateway;
 mod io;
-mod ip_packet;
 mod peer;
 mod peer_store;
 mod sockets;
 mod utils;
+
+#[cfg(all(test, feature = "proptest"))]
+mod tests;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
@@ -238,7 +240,7 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
     SignalIceCandidate {
         conn_id: GatewayId,

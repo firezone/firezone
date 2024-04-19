@@ -265,6 +265,12 @@ fn env_filter() -> EnvFilter {
         .from_env_lossy()
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum IngressMessage {
+    Init(Init),
+}
+
 #[derive(serde::Deserialize, Debug)]
 struct Init {}
 
@@ -289,7 +295,7 @@ struct Eventloop<R> {
     sockets: Sockets,
 
     server: Server<R>,
-    channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
+    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, ()>>,
     sleep: Sleep,
 
     sigterm: unix::Signal,
@@ -309,7 +315,7 @@ where
 {
     fn new(
         server: Server<R>,
-        channel: Option<PhoenixChannel<JoinMessage, (), ()>>,
+        channel: Option<PhoenixChannel<JoinMessage, IngressMessage, ()>>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
@@ -519,7 +525,7 @@ where
 
             if self.stats_log_interval.poll_tick(cx).is_ready() {
                 let num_allocations = self.server.num_allocations();
-                let num_channels = self.server.num_channels();
+                let num_channels = self.server.num_active_channels();
 
                 let bytes_relayed_since_last_tick =
                     self.server.num_relayed_bytes() - self.last_num_bytes_relayed;
@@ -536,7 +542,7 @@ where
         }
     }
 
-    fn handle_portal_event(&mut self, event: phoenix_channel::Event<(), ()>) {
+    fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessage, ()>) {
         match event {
             Event::SuccessResponse { res: (), .. } => {}
             Event::JoinedRoom { topic } => {
@@ -549,7 +555,10 @@ where
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
                 *self.last_heartbeat_sent.lock().unwrap() = Some(Instant::now());
             }
-            Event::InboundMessage { msg: (), .. } => {}
+            Event::InboundMessage {
+                msg: IngressMessage::Init(Init {}),
+                ..
+            } => {}
             Event::Closed => {
                 self.channel = None;
             }

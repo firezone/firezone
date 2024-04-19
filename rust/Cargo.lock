@@ -1504,6 +1504,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "diff"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
+
+[[package]]
 name = "difference"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1616,9 +1622,9 @@ checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
 
 [[package]]
 name = "either"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
+checksum = "a47c1c47d2f5964e29c61246e81db715514cd532db6b5116a25ea3c03d6780a2"
 
 [[package]]
 name = "embed-resource"
@@ -1946,9 +1952,11 @@ dependencies = [
  "dirs",
  "firezone-cli-utils",
  "futures",
+ "git-version",
  "humantime",
  "nix 0.28.0",
  "resolv-conf",
+ "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
@@ -2024,6 +2032,7 @@ dependencies = [
  "futures-util",
  "hex",
  "hickory-resolver",
+ "ip-packet",
  "ip_network",
  "ip_network_table",
  "itertools 0.12.1",
@@ -2031,8 +2040,9 @@ dependencies = [
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
- "pnet_packet",
+ "pretty_assertions",
  "proptest",
+ "proptest-state-machine",
  "quinn-udp",
  "rand_core 0.6.4",
  "rtnetlink",
@@ -2047,6 +2057,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-android",
+ "tracing-subscriber",
  "uuid",
  "windows 0.56.0",
  "wintun",
@@ -3110,6 +3121,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ip-packet"
+version = "1.0.0"
+dependencies = [
+ "pnet_packet",
+]
+
+[[package]]
 name = "ip_network"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3121,11 +3139,12 @@ dependencies = [
 [[package]]
 name = "ip_network_table"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4099b7cfc5c5e2fe8c5edf3f6f7adf7a714c9cc697534f63a5a5da30397cb2c0"
+source = "git+https://github.com/edmonds/ip_network_table?branch=some-useful-traits#faebbc9b9e727772dc1f6323cb5d5edbe4634fbb"
 dependencies = [
  "ip_network",
  "ip_network_table-deps-treebitmap",
+ "serde",
+ "serde_assert",
 ]
 
 [[package]]
@@ -4624,6 +4643,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "pretty_assertions"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af7cee1a6c8a5b9208b3cb1061f10c0cb689087b3d8ce85fb9d2dd7a29b6ba66"
+dependencies = [
+ "diff",
+ "yansi",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4700,6 +4729,15 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
+]
+
+[[package]]
+name = "proptest-state-machine"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28278d6a11102264b0c569c33dbe5286ba00d2dd6d96ff2a94296e0e5b3d1e04"
+dependencies = [
+ "proptest",
 ]
 
 [[package]]
@@ -5393,6 +5431,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_assert"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92b7be0ad5a7b2eefaa5418eb141838270f1ad2d2c6e88acec3795d2425ffa97"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5649,8 +5696,8 @@ dependencies = [
  "bytes",
  "firezone-relay",
  "hex",
+ "ip-packet",
  "once_cell",
- "pnet_packet",
  "rand 0.8.5",
  "secrecy",
  "str0m",
@@ -5668,6 +5715,7 @@ dependencies = [
  "boringtun",
  "futures",
  "hex",
+ "ip-packet",
  "pnet_packet",
  "rand 0.8.5",
  "redis 0.25.3",
@@ -7927,6 +7975,12 @@ dependencies = [
  "libc",
  "winapi",
 ]
+
+[[package]]
+name = "yansi"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 
 [[package]]
 name = "zbus"

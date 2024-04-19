@@ -23,7 +23,6 @@ ip_network_table = { version = "0.2", default-features = false }
 domain = { workspace = true }
 boringtun = { workspace = true }
 chrono = { workspace = true }
-pnet_packet = { version = "0.34" }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 bimap = "0.6"
@@ -32,6 +31,7 @@ snownet = { workspace = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main"}
 hex = "0.4.3"
 proptest = { version = "1.4.0", optional = true }
+ip-packet = { workspace = true }
 
 # Needed for Android logging until tracing is fixed
 log = "0.4"
@@ -39,6 +39,9 @@ log = "0.4"
 [dev-dependencies]
 serde_json = "1.0"
 test-strategy = "0.3.1"
+proptest-state-machine = "0.3"
+tracing-subscriber = {version = "0.3", features = ["env-filter"]}
+pretty_assertions = "1.4.0"
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]

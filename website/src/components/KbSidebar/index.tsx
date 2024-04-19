@@ -54,7 +54,7 @@ export default function KbSidebar() {
                 <Item href="/kb/deploy/policies" label="Policies" />
               </li>
               <li>
-                <Item href="/kb/deploy/clients" label="Clients" />
+                <Item href="/kb/deploy/clients" label="Distribute Clients" />
               </li>
               <li>
                 <Item href="/kb/deploy/dns" label="Configure DNS" />
@@ -83,22 +83,27 @@ export default function KbSidebar() {
                 />
               </li>
               <li>
-                <Item href="/kb/authenticate/google" label="Google Workspace" />
+                <Item
+                  href="/kb/authenticate/directory-sync"
+                  label="SSO + directory sync"
+                />
               </li>
               <li>
                 <Item
+                  nested
+                  href="/kb/authenticate/google"
+                  label="Google Workspace"
+                />
+              </li>
+              <li>
+                <Item
+                  nested
                   href="/kb/authenticate/entra"
                   label="Microsoft Entra ID"
                 />
               </li>
               <li>
-                <Item href="/kb/authenticate/okta" label="Okta" />
-              </li>
-              <li>
-                <Item
-                  href="/kb/authenticate/directory-sync"
-                  label="Directory sync"
-                />
+                <Item nested href="/kb/authenticate/okta" label="Okta" />
               </li>
               <li>
                 <Item
@@ -113,6 +118,9 @@ export default function KbSidebar() {
               expanded={p.startsWith("/kb/administer")}
               label="Administer"
             >
+              <li>
+                <Item href="/kb/administer" label="Overview" />
+              </li>
               <li>
                 <Item
                   href="/kb/administer/upgrading"
@@ -139,36 +147,40 @@ export default function KbSidebar() {
           <li>
             <Collapse
               expanded={p.startsWith("/kb/user-guides")}
-              label="User guides"
+              label="End-user guides"
             >
               <li>
-                <Item href="/kb/user-guides" label="Overview" />
+                <Item href="/kb/user-guides" label="Install Clients" />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/macos-client"
-                  label="macOS client"
+                  label="macOS"
                 />
               </li>
               <li>
-                <Item href="/kb/user-guides/ios-client" label="iOS client" />
+                <Item nested href="/kb/user-guides/ios-client" label="iOS" />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/windows-client"
-                  label="Windows client"
+                  label="Windows"
                 />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/android-client"
-                  label="Android / ChromeOS client"
+                  label="Android & ChromeOS"
                 />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/linux-client"
-                  label="Linux client"
+                  label="Linux"
                 />
               </li>
             </Collapse>

@@ -418,7 +418,7 @@ where
                             continue;
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to deserialize message {message}: {e}");
+                            tracing::warn!("Failed to deserialize message: {e}");
                             continue;
                         }
                     };
