@@ -55,7 +55,7 @@ defmodule Domain.Jobs.Executors.ConcurrentTest do
         Task.async(fn ->
           :ok = Ecto.Adapters.SQL.Sandbox.checkout(Domain.Repo)
 
-          Domain.Repo.checkout(fn ->
+          Domain.Repo.transaction(fn ->
             rows = reject_locked("accounts", rows)
             send(test_pid, {:locked, rows})
             Process.sleep(300)
@@ -66,7 +66,7 @@ defmodule Domain.Jobs.Executors.ConcurrentTest do
         Task.async(fn ->
           :ok = Ecto.Adapters.SQL.Sandbox.checkout(Domain.Repo)
 
-          Domain.Repo.checkout(fn ->
+          Domain.Repo.transaction(fn ->
             rows = reject_locked("accounts", rows)
             send(test_pid, {:locked, rows})
             Process.sleep(300)
