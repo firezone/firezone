@@ -585,7 +585,7 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "sync_provider_groups_multi/2" do
+  describe "sync_provider_groups/2" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -601,15 +601,13 @@ defmodule Domain.ActorsTest do
         %{"name" => "OrgUnit:Engineering", "provider_identifier" => "OU:OU_ID1"}
       ]
 
-      multi = sync_provider_groups_multi(provider, attrs_list)
-
       assert {:ok,
               %{
-                plan_groups: {upsert, []},
-                delete_groups: [],
-                upsert_groups: [_group1, _group2],
+                plan: {upsert, []},
+                deleted: [],
+                upserted: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_groups(provider, attrs_list)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in upsert))
       groups = Repo.all(Actors.Group)
@@ -651,15 +649,13 @@ defmodule Domain.ActorsTest do
         %{"name" => "OrgUnit:Engineering", "provider_identifier" => "OU:OU_ID1"}
       ]
 
-      multi = sync_provider_groups_multi(provider, attrs_list)
-
       assert {:ok,
               %{
-                plan_groups: {upsert, []},
-                delete_groups: [],
-                upsert_groups: [_group1, _group2],
+                plan: {upsert, []},
+                deleted: [],
+                upserted: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_groups(provider, attrs_list)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in upsert))
       assert Repo.aggregate(Actors.Group, :count) == 2
@@ -719,16 +715,14 @@ defmodule Domain.ActorsTest do
 
       attrs_list = []
 
-      multi = sync_provider_groups_multi(provider, attrs_list)
-
       assert {:ok,
               %{
                 groups: [_group1, _group2],
-                plan_groups: {[], delete},
-                delete_groups: [deleted_group1, deleted_group2],
-                upsert_groups: [],
+                plan: {[], delete},
+                deleted: [deleted_group1, deleted_group2],
+                upserted: [],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
-              }} = Repo.transaction(multi)
+              }} = sync_provider_groups(provider, attrs_list)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
       assert deleted_group1.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
@@ -772,21 +766,19 @@ defmodule Domain.ActorsTest do
 
       attrs_list = []
 
-      multi = sync_provider_groups_multi(provider, attrs_list)
-
-      assert Repo.transaction(multi) ==
+      assert sync_provider_groups(provider, attrs_list) ==
                {:ok,
                 %{
                   groups: [],
-                  plan_groups: {[], []},
-                  delete_groups: [],
-                  upsert_groups: [],
+                  plan: {[], []},
+                  deleted: [],
+                  upserted: [],
                   group_ids_by_provider_identifier: %{}
                 }}
     end
   end
 
-  describe "sync_provider_memberships_multi/2" do
+  describe "sync_provider_memberships/2" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -870,12 +862,6 @@ defmodule Domain.ActorsTest do
         group2.provider_identifier => group2.id
       }
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       :ok = subscribe_to_membership_updates_for_actor(actor1)
       :ok = subscribe_to_membership_updates_for_actor(actor2)
       :ok = Domain.Policies.subscribe_to_events_for_actor(actor1)
@@ -885,10 +871,16 @@ defmodule Domain.ActorsTest do
 
       assert {:ok,
               %{
-                plan_memberships: {insert, []},
-                delete_memberships: {0, nil},
-                insert_memberships: [_membership1, _membership2]
-              }} = Repo.transaction(multi)
+                plan: {insert, []},
+                deleted_stats: {0, nil},
+                inserted: [_membership1, _membership2]
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
 
       assert {group1.id, identity1.actor_id} in insert
       assert {group2.id, identity2.actor_id} in insert
@@ -941,12 +933,6 @@ defmodule Domain.ActorsTest do
         group2.provider_identifier => group2.id
       }
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       :ok = subscribe_to_membership_updates_for_actor(identity1.actor_id)
       :ok = subscribe_to_membership_updates_for_actor(identity2.actor_id)
       :ok = Domain.Policies.subscribe_to_events_for_actor(identity1.actor_id)
@@ -956,10 +942,16 @@ defmodule Domain.ActorsTest do
 
       assert {:ok,
               %{
-                plan_memberships: {[], []},
-                delete_memberships: {0, nil},
-                insert_memberships: []
-              }} = Repo.transaction(multi)
+                plan: {[], []},
+                deleted_stats: {0, nil},
+                inserted: []
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
 
       assert Repo.aggregate(Actors.Membership, :count) == 2
       assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 2
@@ -1021,12 +1013,6 @@ defmodule Domain.ActorsTest do
         group2.provider_identifier => group2.id
       }
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       :ok = subscribe_to_membership_updates_for_actor(identity1.actor_id)
       :ok = subscribe_to_membership_updates_for_actor(identity2.actor_id)
       :ok = Domain.Policies.subscribe_to_events_for_actor(identity1.actor_id)
@@ -1037,10 +1023,16 @@ defmodule Domain.ActorsTest do
 
       assert {:ok,
               %{
-                plan_memberships: {[], delete},
-                delete_memberships: {2, nil},
-                insert_memberships: []
-              }} = Repo.transaction(multi)
+                plan: {[], delete},
+                deleted_stats: {2, nil},
+                inserted: []
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
 
       assert {group1.id, identity1.actor_id} in delete
       assert {group2.id, identity2.actor_id} in delete
@@ -1095,18 +1087,18 @@ defmodule Domain.ActorsTest do
         group1.provider_identifier => group1.id
       }
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       assert {:ok,
               %{
-                plan_memberships: {[], delete},
-                insert_memberships: [],
-                delete_memberships: {1, nil}
-              }} = Repo.transaction(multi)
+                plan: {[], delete},
+                inserted: [],
+                deleted_stats: {1, nil}
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
 
       assert delete == [{group2.id, identity2.actor_id}]
 
@@ -1136,18 +1128,18 @@ defmodule Domain.ActorsTest do
         group2.provider_identifier => group2.id
       }
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       assert {:ok,
               %{
-                plan_memberships: {[], []},
-                delete_memberships: {0, nil},
-                insert_memberships: []
-              }} = Repo.transaction(multi)
+                plan: {[], []},
+                deleted_stats: {0, nil},
+                inserted: []
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
     end
 
     test "deletes actors that are not processed by identity sync", %{
@@ -1182,18 +1174,18 @@ defmodule Domain.ActorsTest do
         group2.provider_identifier => group2.id
       }
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       assert {:ok,
               %{
-                plan_memberships: {[], delete},
-                delete_memberships: {2, nil},
-                insert_memberships: []
-              }} = Repo.transaction(multi)
+                plan: {[], delete},
+                deleted_stats: {2, nil},
+                inserted: []
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
 
       assert {group1.id, identity1.actor_id} in delete
       assert {group2.id, identity2.actor_id} in delete
@@ -1231,18 +1223,18 @@ defmodule Domain.ActorsTest do
 
       group_ids_by_provider_identifier = %{}
 
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.put(:actor_ids_by_provider_identifier, actor_ids_by_provider_identifier)
-        |> Ecto.Multi.put(:group_ids_by_provider_identifier, group_ids_by_provider_identifier)
-        |> sync_provider_memberships_multi(provider, tuples_list)
-
       assert {:ok,
               %{
-                plan_memberships: {[], delete},
-                delete_memberships: {2, nil},
-                insert_memberships: []
-              }} = Repo.transaction(multi)
+                plan: {[], delete},
+                deleted_stats: {2, nil},
+                inserted: []
+              }} =
+               sync_provider_memberships(
+                 actor_ids_by_provider_identifier,
+                 group_ids_by_provider_identifier,
+                 provider,
+                 tuples_list
+               )
 
       assert {group1.id, identity1.actor_id} in delete
       assert {group2.id, identity2.actor_id} in delete

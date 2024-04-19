@@ -17,8 +17,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   def init(_init_arg) do
     children = [
       GoogleWorkspace.APIClient,
-      {Task.Supervisor, name: __MODULE__.TaskSupervisor},
-      {Domain.Jobs, GoogleWorkspace.Jobs}
+      # Background Jobs
+      GoogleWorkspace.Jobs.RefreshAccessTokens,
+      GoogleWorkspace.Jobs.SyncDirectory
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
