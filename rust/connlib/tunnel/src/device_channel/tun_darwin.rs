@@ -17,8 +17,6 @@ use std::{
 use tokio::io::unix::AsyncFd;
 
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
-/// `libc` for darwin doesn't define this constant so we declare it here.
-pub(crate) const SIOCGIFMTU: u64 = 0x0000_0000_c020_6933;
 
 #[derive(Debug)]
 pub(crate) struct Tun {

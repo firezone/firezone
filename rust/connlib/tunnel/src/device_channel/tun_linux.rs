@@ -32,8 +32,6 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-pub(crate) const SIOCGIFMTU: libc::c_ulong = libc::SIOCGIFMTU;
-
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
