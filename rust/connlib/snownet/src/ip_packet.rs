@@ -37,6 +37,16 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    pub fn owned(data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+        let packet = match data[0] >> 4 {
+            4 => MutableIpv4Packet::owned(data)?.into(),
+            6 => MutableIpv6Packet::owned(data)?.into(),
+            _ => return None,
+        };
+
+        Some(packet)
+    }
+
     pub fn to_owned(&self) -> MutableIpPacket<'static> {
         match self {
             MutableIpPacket::Ipv4(i) => MutableIpv4Packet::owned(i.packet().to_vec())
