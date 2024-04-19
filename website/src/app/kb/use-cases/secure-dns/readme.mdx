@@ -41,8 +41,7 @@ privacy-focused DNS resolvers for public use:
 | NextDNS                       | Varies. See [NextDNS](https://nextdns.io/) for more information.     |
 
 <Alert color="warning">
-  Each provider varies greatly in which domains they block which will affect
-  their effectiveness depending on your security requirements. We recommend
+  Each provider blocks different domains. We recommend
   testing a few providers to see which one works best for you.
 </Alert>
 
@@ -52,8 +51,8 @@ privacy-focused DNS resolvers for public use:
    `Settings -> DNS` tab.
 1. Add each of the IP addresses of the DNS resolvers you want to use in the
    **Client DNS** section.
-1. Click **Save** to apply the changes. The Firezone Client will automatically
-   update its configuration to use the new DNS resolvers.
+1. Click **Save** to apply the changes. The Firezone Clients will automatically
+   update their configuration to use the new DNS resolvers.
 
 <Link
   href="/images/kb/use-cases/secure-dns/step2.png"
@@ -69,7 +68,7 @@ privacy-focused DNS resolvers for public use:
 </Link>
 
 <Alert color="info">
-  Firezone currently supports upstream resolvers available over UDP/53 only. See
+  Firezone only supports upstream resolvers available over UDP/53. See
   [this GitHub issue](https://github.com/firezone/firezone/issues/4668) if you
   need support for DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT) resolvers.
 </Alert>

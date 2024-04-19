@@ -14,9 +14,9 @@ In this guide, we'll walk through the configuration required to use Firezone to
 route traffic through a public IP address, sometimes known as a NAT Gateway
 configuration.
 
-This is commonly used when you need your team's traffic to appear to come from a
+Use this when you need your team's traffic to appear to come from a
 single, static IP address to use services that require source traffic to come
-from specified IP whitelists.
+from specified IP allowlists.
 
 After completing this guide, your team's traffic will be routed to a Firezone
 Gateway and then out to the internet using its public IP address.
@@ -24,7 +24,7 @@ Gateway and then out to the internet using its public IP address.
 <Alert color="info">
   See our our [Terraform
   examples](https://www.github.com/firezone/firezone/tree/main/terrraform/examples)
-  for an high availability example of this guide using Terraform on Google Cloud
+  for a high availability example of this guide using Terraform on Google Cloud
   Platform.
 </Alert>
 
@@ -44,7 +44,7 @@ Gateway and then out to the internet using its public IP address.
 
 1. In your [admin portal](https://app.firezone.dev), go to `Sites -> <site>` and
    click the `Add Resource` button.
-1. Add Resource(s) for each service that requires an IP whitelist. For example,
+1. Add Resource(s) for each service that requires an IP allowlist. For example,
    if you need traffic to `*.gitlab.company.com` to appear to come from your
    Gateway's public IP address, you would enter `*.gitlab.company.com` as the
    Resource address.
