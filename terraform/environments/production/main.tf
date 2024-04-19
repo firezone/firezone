@@ -228,7 +228,7 @@ module "ops" {
     ## Mobile App
     "projects/firezone-prod/notificationChannels/203795594709100952",
     ## SMS
-    "projects/firezone-prod/notificationChannels/1314108963890678627",
+    # "projects/firezone-prod/notificationChannels/1314108963890678627",
     # Brian
     ## Mobile App
     "projects/firezone-prod/notificationChannels/16177228986287373178",
