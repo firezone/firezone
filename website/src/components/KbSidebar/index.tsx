@@ -218,6 +218,64 @@ export default function KbSidebar() {
           </li>
           <li>
             <Collapse
+              expanded={p.startsWith("/kb/use-cases")}
+              label="Use cases"
+            >
+              <li>
+                <Item href="/kb/use-cases" label="Overview" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/secure-dns"
+                  label="Block malicious DNS"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/scale-vpc-access"
+                  label="Scale access to a VPC"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/nat-gateway"
+                  label="Route through a public IP"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/postgres-access"
+                  label="Access a Postgres DB"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/saas-app-access"
+                  label="Manage access to a SaaS app"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/host-access"
+                  label="Access a remote host"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/private-network-access"
+                  label="Access a private network"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/web-app-access"
+                  label="Access a private web app"
+                />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
               expanded={p.startsWith("/kb/reference")}
               label="Reference"
             >

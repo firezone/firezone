@@ -1,0 +1,78 @@
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import Link from "next/link";
+import Image from "next/image";
+
+<PlanBadge plans={["starter", "team", "enterprise"]}>
+
+# Manage Access to a SaaS Application
+
+</PlanBadge>
+
+In this guide, we'll use Firezone to manage access to a public SaaS application
+such as
+[HubSpot](https://knowledge.hubspot.com/account-security/limit-logins-to-trusted-ip-addresses)
+or
+[GitHub](https://docs.github.com/en/enterprise-cloud@latest/organizations/keeping-your-organization-secure/managing-security-settings-for-your-organization/managing-allowed-ip-addresses-for-your-organization).
+
+This is useful when you want to restrict access to a public web app based on an
+IP allowlist configured in the app, effectively turning the Firezone Gateway
+into an **app connector** for SaaS applications that support IP allowlists.
+
+## Prerequisites
+
+- Any SaaS app that supports IP allowlists, configured to allow the public IP
+  address(es) of the NAT Gateway(s) you deployed above.
+- A Site with a descriptive name to use for deploying Gateways for this use
+  case, for example `SaaS connectors`. [Create a Site](/kb/deploy/sites) if you
+  haven't already.
+- One or more Gateways deployed within the Site in a NAT Gateway configuration.
+  See [Route traffic through a public IP](/kb/use-cases/nat-gateway) for how to
+  deploy a single NAT Gateway, or see our
+  [Terraform examples](https://www.github.com/firezone/firezone/tree/main/terrraform/examples)
+  for examples on how to automate deploying multiple Gateways to various cloud
+  providers.
+
+<Alert color="warning">
+  For reliable access to your SaaS apps, we always recommend deploying multiple
+  Gateways for high availability.
+</Alert>
+
+## Step 1: Create a Resource
+
+1. In your [admin portal](https://app.firezone.dev), go to `Sites -> <site>` and
+   click the `Add Resource` button.
+1. Select `DNS` as the Resource type.
+1. Enter the address of the SaaS app you want to secure access to. In some
+   cases, it's helpful to use wildcard matching to ensure all subdomains for the
+   SaaS app are routed appropriately as well. For example: `*.github.com`. This
+   address must be resolvable by all of the Gateway(s) in your Site.
+1. Enter a descriptive name for the Resource, e.g. `Public GitHub access`. This
+   will be used to identify the Resource in the Firezone admin portal.
+
+<Link
+  href="/images/kb/use-cases/saas-app-access/step1.png"
+  target="_blank"
+  rel="nofollow"
+>
+  <Image
+    src="/images/kb/use-cases/saas-app-access/step1.png"
+    alt="Create a Resource"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+## Step 2: Create a Policy
+
+1. In the `Policies` tab, click the `Add Policy` button.
+1. Create a Policy for the Resource you created in Step (1). Be sure to select
+   the appropriate Group and Resource for the Policy.
+
+## Step 3: Done!
+
+You've now secured access to your private web app with Firezone. You can now
+test access from any signed-in Client by visiting the SaaS app in a web browser.
+
+<SupportOptions />
