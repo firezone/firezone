@@ -1952,6 +1952,7 @@ dependencies = [
  "dirs",
  "firezone-cli-utils",
  "futures",
+ "git-version",
  "humantime",
  "nix 0.28.0",
  "resolv-conf",
