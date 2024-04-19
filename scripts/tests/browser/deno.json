@@ -1,7 +1,3 @@
 {
-  "imports": {},
-  "tasks": {
-    "load": "deno run src/load.ts",
-    "refresh": "deno run src/refresh.ts"
-  }
+  "imports": {}
 }

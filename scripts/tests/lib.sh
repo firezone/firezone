@@ -13,11 +13,12 @@ function start_chromium() {
 }
 
 function load_page() {
-    client deno run load -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
+    client ls -la
+    client deno run scripts/tests/browser/src/load.ts -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
 }
 
 function refresh_page() {
-    client deno run refresh -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
+    client deno run scripts/tests/browser/src/refresh.ts -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
 }
 
 function gateway() {

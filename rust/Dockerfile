@@ -92,7 +92,7 @@ ARG TARGET
 COPY ${PACKAGE} .
 
 RUN set -xe \
-  && apk add --no-cache deno npm chromium
+  && apk add --no-cache deno chromium
 COPY --from=browser-tests . .
 
 # Build a production image from including a binary compiled on the host
