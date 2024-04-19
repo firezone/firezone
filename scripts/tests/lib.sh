@@ -71,4 +71,8 @@ function create_token_file {
     sudo touch "$TOKEN_PATH"
     sudo chmod 600 "$TOKEN_PATH"
     echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
+
+    # Also put it in `token.txt` for backwards compat, until pull #4666 merges and is
+    # cut into a release.
+    sudo cp "$TOKEN_PATH" "$TOKEN_PATH.txt"
 }
