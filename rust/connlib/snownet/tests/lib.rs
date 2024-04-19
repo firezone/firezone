@@ -1,7 +1,8 @@
 use boringtun::x25519::{PublicKey, StaticSecret};
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
+use ip_packet::*;
 use rand::rngs::OsRng;
-use snownet::{Answer, ClientNode, Event, IpPacket, MutableIpPacket, ServerNode, Transmit};
+use snownet::{Answer, ClientNode, Event, ServerNode, Transmit};
 use std::{
     collections::{HashSet, VecDeque},
     iter,
@@ -928,7 +929,7 @@ fn progress(
 fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
     match (source, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            use pnet_packet::{
+            use ip_packet::{
                 icmp::{
                     echo_request::{IcmpCodes, MutableEchoRequestPacket},
                     IcmpTypes, MutableIcmpPacket,
@@ -948,7 +949,7 @@ fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> 
             ipv4_packet.set_next_level_protocol(IpNextHeaderProtocols::Icmp);
             ipv4_packet.set_source(src);
             ipv4_packet.set_destination(dst);
-            ipv4_packet.set_checksum(pnet_packet::ipv4::checksum(&ipv4_packet.to_immutable()));
+            ipv4_packet.set_checksum(ip_packet::ipv4::checksum(&ipv4_packet.to_immutable()));
 
             let mut icmp_packet = MutableIcmpPacket::new(&mut buf[20..]).unwrap();
             icmp_packet.set_icmp_type(IcmpTypes::EchoRequest);
@@ -959,7 +960,7 @@ fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> 
                 MutableEchoRequestPacket::new(icmp_packet.payload_mut()).unwrap();
             echo_request_packet.set_sequence_number(1);
             echo_request_packet.set_identifier(0);
-            echo_request_packet.set_checksum(pnet_packet::util::checksum(
+            echo_request_packet.set_checksum(ip_packet::util::checksum(
                 echo_request_packet.to_immutable().packet(),
                 2,
             ));
@@ -967,7 +968,7 @@ fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> 
             MutableIpPacket::owned(buf).unwrap()
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            use pnet_packet::{
+            use ip_packet::{
                 icmpv6::{
                     echo_request::MutableEchoRequestPacket, Icmpv6Code, Icmpv6Types,
                     MutableIcmpv6Packet,
@@ -999,7 +1000,7 @@ fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> 
             echo_request_packet.set_sequence_number(1);
             echo_request_packet.set_checksum(0);
 
-            let checksum = pnet_packet::icmpv6::checksum(&icmp_packet.to_immutable(), &src, &dst);
+            let checksum = ip_packet::icmpv6::checksum(&icmp_packet.to_immutable(), &src, &dst);
             MutableEchoRequestPacket::new(icmp_packet.payload_mut())
                 .unwrap()
                 .set_checksum(checksum);
