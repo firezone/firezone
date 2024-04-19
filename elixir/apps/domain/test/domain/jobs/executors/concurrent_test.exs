@@ -44,6 +44,8 @@ defmodule Domain.Jobs.Executors.ConcurrentTest do
       end)
     end
 
+    @tag :flaky
+    # https://github.com/firezone/firezone/actions/runs/8757197291/job/24035342741
     test "does not allow two processes to lock the same rows" do
       account1 = Fixtures.Accounts.create_account()
       account2 = Fixtures.Accounts.create_account()
