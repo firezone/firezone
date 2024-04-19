@@ -8,10 +8,9 @@ use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::{Error, Result};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use pnet_packet::Packet;
+use ip_packet::{MutableIpPacket, Packet};
 
 use crate::client::IpProvider;
-use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
 
