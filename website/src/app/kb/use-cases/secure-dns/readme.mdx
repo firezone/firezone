@@ -1,0 +1,138 @@
+import SupportOptions from "@/components/SupportOptions";
+import PlanBadge from "@/components/PlanBadge";
+import Image from "next/image";
+import Link from "next/link";
+import Alert from "@/components/DocsAlert";
+
+<PlanBadge plans={["starter", "team", "enterprise"]}>
+
+# Block Malicious DNS Queries
+
+</PlanBadge>
+
+In this guide we'll walk through how to configure custom DNS resolvers in your
+Firezone account to block malicious or unwanted DNS queries.
+
+This is commonly used by organizations to improve Internet security across their
+workforce. Blocking malicious DNS queries can prevent malware from communicating
+with command and control servers and reduce the risk of phishing attacks.
+
+## Prerequisites
+
+- A Firezone account. Sign up [here](https://app.firezone.dev/sign_up) if you
+  don't have one already.
+- Firezone Client installed on the devices you want to protect. The Firezone
+  Client **must be installed and signed in** for this configuration to take
+  effect. See our installation guides for each platform [here](/kb/user-guides).
+
+## Step 1: Choose a resolver to use
+
+You'll first need one more DNS resolvers to use. See the table below for
+examples of some popular providers that offer malware-blocking and
+privacy-focused DNS resolvers for public use:
+
+| Provider                      | DNS filtering IP(s)                                                  |
+| ----------------------------- | -------------------------------------------------------------------- |
+| Cloudflare                    | `1.1.1.2`, `1.0.0.2`, `2606:4700:4700::1112`, `2606:4700:4700::1002` |
+| Quad9                         | `9.9.9.11`, `149.112.112.11`, `2620:fe::11`, `2620:fe::fe:11`        |
+| Comodo Secure DNS             | `8.26.56.26`, `8.20.247.20`                                          |
+| dns0.eu                       | `193.110.81.9`, `185.253.5.9`                                        |
+| CleanBrowsing Security Filter | `185.228.168.9`, `185.228.169.9`, `2a0d:2a00:1::2`, `2a0d:2a00:2::2` |
+| NextDNS                       | Varies. See [NextDNS](https://nextdns.io/) for more information.     |
+
+<Alert color="warning">
+  Each provider blocks different domains. We recommend
+  testing a few providers to see which one works best for you.
+</Alert>
+
+## Step 2: Add the resolver in Firezone
+
+1. [Sign in](https://app.firezone.dev) to your Firezone account and navigate to
+   `Settings -> DNS` tab.
+1. Add each of the IP addresses of the DNS resolvers you want to use in the
+   **Client DNS** section.
+1. Click **Save** to apply the changes. The Firezone Clients will automatically
+   update their configuration to use the new DNS resolvers.
+
+<Link
+  href="/images/kb/use-cases/secure-dns/step2.png"
+  target="_blank"
+  rel="nofollow"
+>
+  <Image
+    src="/images/kb/use-cases/secure-dns/step2.png"
+    alt="Add the resolver in Firezone"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+<Alert color="info">
+  Firezone only supports upstream resolvers available over UDP/53. See
+  [this GitHub issue](https://github.com/firezone/firezone/issues/4668) if you
+  need support for DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT) resolvers.
+</Alert>
+
+## Step 3: Verify
+
+You can verify that DNS is being filtered by querying a known malicious domain
+from a device with the Firezone Client signed in and checking if you receive an
+answer of `0.0.0.0` or `NXDOMAIN`.
+
+For example, the `zeustracker.abuse.ch` domain is associated with the Zeus
+botnet and is commonly blocked by many DNS providers:
+
+```
+> dig zeustracker.abuse.ch
+
+; <<>> DiG 9.10.6 <<>> @1.1.1.1 zeustracker.abuse.ch
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 63245
+;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+;; QUESTION SECTION:
+;zeustracker.abuse.ch.		IN	A
+
+;; AUTHORITY SECTION:
+abuse.ch.		300	IN	SOA	ns-cloud-d1.googledomains.com. cloud-dns-hostmaster.google.com. 2 21600 3600 259200 300
+
+;; Query time: 256 msec
+;; SERVER: 100.100.111.1#53(100.100.111.1)
+;; WHEN: Thu Apr 18 08:05:28 PDT 2024
+;; MSG SIZE  rcvd: 142
+```
+
+If you're using one of the **Cloudflare** filtering resolvers mentioned above,
+you can test with `malware.testcategory.com` which Cloudflare provides to check
+if DNS filtering is working correctly:
+
+```
+> dig malware.testcategory.com
+
+; <<>> DiG 9.10.6 <<>> @1.1.1.2 malware.testcategory.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 57424
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; OPT=15: 00 10 ("..")
+;; QUESTION SECTION:
+;malware.testcategory.com.	IN	A
+
+;; ANSWER SECTION:
+malware.testcategory.com. 60	IN	A	0.0.0.0
+
+;; Query time: 52 msec
+;; SERVER: 100.100.111.1#53(100.100.111.1)
+;; WHEN: Thu Apr 18 08:02:34 PDT 2024
+;; MSG SIZE  rcvd: 75
+```
+
+<SupportOptions />
