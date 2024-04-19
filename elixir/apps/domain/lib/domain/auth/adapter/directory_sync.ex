@@ -106,6 +106,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
             OpenTelemetry.Tracer.with_span "sync_provider",
               attributes: %{
                 account_id: provider.account_id,
+                account_slug: provider.account.slug,
                 provider_id: provider.id,
                 provider_adapter: provider.adapter
               } do
@@ -114,6 +115,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
 
               Logger.metadata(
                 account_id: provider.account_id,
+                account_slug: provider.account.slug,
                 provider_id: provider.id,
                 provider_adapter: provider.adapter
               )
