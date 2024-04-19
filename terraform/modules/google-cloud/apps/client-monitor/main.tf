@@ -1,6 +1,6 @@
 locals {
-  application_name    = var.application_name != null ? var.application_name : var.image
-  application_version = var.application_version != null ? var.application_version : var.image_tag
+  application_name    = var.application_name
+  application_version = var.application_version
 
   application_labels = merge({
     managed_by  = "terraform"
@@ -22,24 +22,24 @@ locals {
   ], var.application_environment_variables)
 }
 
-# Fetch most recent COS image
-data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
-  project = "cos-cloud"
+# Find latest ubuntu 22.04 image
+data "google_compute_image" "ubuntu" {
+  family  = "ubuntu-2204-lts"
+  project = "ubuntu-os-cloud"
 }
 
 # Deploy app
-resource "google_compute_address" "metabase" {
+resource "google_compute_address" "client_monitor" {
   project = var.project_id
 
   region     = var.compute_region
-  name       = "metabase"
+  name       = "firezone-monitor"
   subnetwork = var.compute_subnetwork
 
   address_type = "INTERNAL"
 }
 
-resource "google_compute_instance" "metabase" {
+resource "google_compute_instance" "client_monitor" {
   project = var.project_id
 
   name        = local.application_name
@@ -54,21 +54,15 @@ resource "google_compute_instance" "metabase" {
   tags = local.application_tags
 
   labels = merge({
-    container-vm = data.google_compute_image.coreos.name
-    version      = local.application_version
+    ubuntu-vm = data.google_compute_image.ubuntu.name
+    version   = local.application_version
   }, local.application_labels)
-
-  scheduling {
-    automatic_restart   = true
-    on_host_maintenance = "MIGRATE"
-    provisioning_model  = "STANDARD"
-  }
 
   boot_disk {
     auto_delete = true
 
     initialize_params {
-      image = data.google_compute_image.coreos.self_link
+      image = data.google_compute_image.ubuntu.self_link
 
       labels = {
         managed_by = "terraform"
@@ -78,10 +72,8 @@ resource "google_compute_instance" "metabase" {
 
   network_interface {
     subnetwork = var.compute_subnetwork
-
     stack_type = "IPV4_ONLY"
-
-    network_ip = google_compute_address.metabase.address
+    network_ip = google_compute_address.client_monitor.address
 
     access_config {
       network_tier = "PREMIUM"
@@ -109,19 +101,14 @@ resource "google_compute_instance" "metabase" {
     enable_vtpm                 = true
   }
 
+  # us-east1-docker.pkg.dev/firezone-staging/firezone/client:1.0.0-3e457fbd3c9252ba4c5b7a7cc943bceae8c3c827
   metadata = {
-    gce-container-declaration = yamlencode({
-      spec = {
-        containers = [{
-          name  = local.application_name != null ? local.application_name : var.image
-          image = "${var.image_repo}/${var.image}:${var.image_tag}"
-          env   = local.environment_variables
-        }]
-
-        volumes = []
-
-        restartPolicy = "Always"
-      }
+    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
+      client_container_image    = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
+      firezone_token            = var.firezone_token
+      firezone_api_url          = var.firezone_api_url
+      firezone_client_id        = var.firezone_client_id
+      firezone_client_log_level = var.firezone_client_log_level
     })
 
     google-logging-enabled       = "true"
