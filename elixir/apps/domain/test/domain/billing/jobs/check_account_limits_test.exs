@@ -1,8 +1,8 @@
-defmodule Domain.Billing.JobsTest do
+defmodule Domain.Billing.Jobs.CheckAccountLimitsTest do
   use Domain.DataCase, async: true
-  import Domain.Billing.Jobs
+  import Domain.Billing.Jobs.CheckAccountLimits
 
-  describe "check_account_limits/1" do
+  describe "execute/1" do
     setup do
       account =
         Fixtures.Accounts.create_account(
@@ -22,7 +22,7 @@ defmodule Domain.Billing.JobsTest do
     test "does nothing when limits are not violated", %{
       account: account
     } do
-      assert check_account_limits(%{}) == :ok
+      assert execute(%{}) == :ok
 
       account = Repo.get!(Domain.Accounts.Account, account.id)
       refute account.warning
@@ -55,7 +55,7 @@ defmodule Domain.Billing.JobsTest do
         }
       })
 
-      assert check_account_limits(%{}) == :ok
+      assert execute(%{}) == :ok
 
       account = Repo.get!(Domain.Accounts.Account, account.id)
 

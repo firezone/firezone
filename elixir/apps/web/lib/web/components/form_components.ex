@@ -137,6 +137,12 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
+      <input
+        :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
+        type="hidden"
+        name={@name}
+        value={@value}
+      />
       <select
         id={@id}
         name={@name}
@@ -170,6 +176,12 @@ defmodule Web.FormComponents do
     ~H"""
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
+      <input
+        :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
+        type="hidden"
+        name={@name}
+        value={@value}
+      />
       <select
         id={@id}
         name={@name}
