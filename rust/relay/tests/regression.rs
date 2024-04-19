@@ -217,6 +217,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
         [],
     );
 }
+
 #[proptest]
 fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
     #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
@@ -291,6 +292,64 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
 
     // Assert that forwarding time does not produce an obsolete event.
     server.assert_commands(forward_time_to(first_wake + Duration::from_secs(1)), []);
+}
+
+#[proptest]
+fn freeing_allocation_clears_all_channels(
+    #[strategy(firezone_relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::transaction_id())]
+    channel_bind_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(firezone_relay::proptest::channel_number())] channel: ChannelNumber,
+    #[strategy(firezone_relay::proptest::username_salt())] username_salt: String,
+    source: SocketAddr,
+    peer: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(firezone_relay::proptest::nonce())] nonce: Uuid,
+) {
+    let now = Instant::now();
+
+    let _ = env_logger::try_init();
+
+    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
+    let secret = server.auth_secret().to_owned();
+
+    let _ = server.server.handle_client_message(
+        ClientMessage::Allocate(Allocate::new_authenticated_udp_implicit_ip4(
+            allocate_transaction_id,
+            None,
+            valid_username(&username_salt),
+            &secret,
+            nonce,
+        )),
+        ClientSocket::new(source),
+        now,
+    );
+    let _ = server.server.handle_client_message(
+        ClientMessage::ChannelBind(ChannelBind::new(
+            channel_bind_transaction_id,
+            channel,
+            XorPeerAddress::new(peer.into()),
+            valid_username(&username_salt),
+            &secret,
+            nonce,
+        )),
+        ClientSocket::new(source),
+        now,
+    );
+    let _ = server.server.handle_client_message(
+        ClientMessage::Refresh(Refresh::new(
+            refresh_transaction_id,
+            Some(Lifetime::new(Duration::ZERO).unwrap()),
+            valid_username(&username_salt),
+            &secret,
+            nonce,
+        )),
+        ClientSocket::new(source),
+        now,
+    );
+
+    assert_eq!(server.server.num_active_channels(), 0);
 }
 
 // #[test]
