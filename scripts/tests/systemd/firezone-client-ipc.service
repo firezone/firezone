@@ -3,7 +3,7 @@ Description=Firezone Client
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 LockPersonality=true
 MemoryDenyWriteExecute=true
