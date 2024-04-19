@@ -31,6 +31,9 @@ mod peer_store;
 mod sockets;
 mod utils;
 
+#[cfg(all(test, feature = "proptest"))]
+mod tests;
+
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 const REALM: &str = "firezone";
@@ -238,7 +241,7 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
     SignalIceCandidate {
         conn_id: GatewayId,
