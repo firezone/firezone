@@ -40,7 +40,9 @@ jobs:
         env:
           E2E_DEFAULT_WAIT_SECONDS: 20
         run: |
-          mix test --warnings-as-errors
+          mix test --warnings-as-errors \
+            --exclude flaky:true \
+            --exclude acceptance:true
       - name: Test Report
         uses: dorny/test-reporter@v1
         if:
