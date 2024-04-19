@@ -214,13 +214,6 @@ impl<'a> MutableIpPacket<'a> {
             _ => {}
         }
     }
-
-    pub fn set_len(&mut self, total_len: usize, payload_len: usize) {
-        match self {
-            Self::Ipv4(p) => p.set_total_length(total_len as u16),
-            Self::Ipv6(p) => p.set_payload_length(payload_len as u16),
-        }
-    }
 }
 
 impl<'a> IpPacket<'a> {

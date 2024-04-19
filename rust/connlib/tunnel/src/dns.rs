@@ -219,7 +219,10 @@ fn build_response(
 
     let mut pkt = MutableIpPacket::new(&mut res_buf)?;
     let dgm_len = UDP_HEADER_SIZE + response_len;
-    pkt.set_len(hdr_len + response_len, dgm_len);
+    match &mut pkt {
+        MutableIpPacket::Ipv4(p) => p.set_total_length((hdr_len + response_len) as u16),
+        MutableIpPacket::Ipv6(p) => p.set_payload_length(dgm_len as u16),
+    }
     pkt.swap_src_dst();
 
     let mut dgm = MutableUdpPacket::new(pkt.payload_mut())?;
