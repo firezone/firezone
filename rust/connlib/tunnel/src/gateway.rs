@@ -187,7 +187,7 @@ where
 }
 
 pub struct GatewayState {
-    pub peers: PeerStore<ClientId, ClientOnGateway>,
+    peers: PeerStore<ClientId, ClientOnGateway>,
     node: ServerNode<ClientId, RelayId>,
     next_expiry_resources_check: Option<Instant>,
     buffered_events: VecDeque<GatewayEvent>,

@@ -255,7 +255,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers: PeerStore<GatewayId, GatewayOnClient>,
+    peers: PeerStore<GatewayId, GatewayOnClient>,
 
     node: ClientNode<GatewayId, RelayId>,
 
@@ -326,6 +326,8 @@ impl ClientState {
             self.on_connection_intent_ip(dest, now);
             return None;
         };
+
+        let packet = peer.transform_tun_to_network(packet);
 
         let transmit = self
             .node

@@ -11,7 +11,6 @@ use pnet_packet::Packet;
 
 use crate::client::IpProvider;
 use crate::ip_packet::MutableIpPacket;
-use connlib_shared::Error;
 
 type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
 
@@ -121,7 +120,7 @@ impl GatewayOnClient {
     pub(crate) fn transform_tun_to_network<'p>(
         &mut self,
         mut packet: MutableIpPacket<'p>,
-    ) -> Option<MutableIpPacket<'p>> {
+    ) -> MutableIpPacket<'p> {
         if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
@@ -138,7 +137,7 @@ impl GatewayOnClient {
             }
         }
 
-        Some(packet)
+        packet
     }
 
     pub fn id(&self) -> GatewayId {
