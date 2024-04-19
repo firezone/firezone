@@ -6,7 +6,7 @@ import DocsSidebarToggle from "./DocsSidebarToggle";
 import KbSidebarToggle from "./KbSidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
-import RequestDemoButton from "@/components/RequestDemoButton";
+import { RequestDemoButton, SignUpButton } from "@/components/Buttons";
 import { useEffect } from "react";
 import { initFlowbite, Dropdown } from "flowbite";
 import { HiChevronDown } from "react-icons/hi2";
@@ -178,29 +178,9 @@ export default function RootNavbar() {
               Pricing
             </Link>
           </div>
-          <div className="hidden md:flex items-center lg:order-2">
-            <Link
-              href="https://github.com/firezone/firezone"
-              className="p-2 mr-1"
-              aria-label="GitHub Repository"
-            >
-              <Image
-                alt="Github Repo stars"
-                height={50}
-                width={100}
-                className=""
-                src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social"
-              />
-            </Link>
-            <span className="mr-2">
-              <ActionLink
-                size="ml-1 -mr-1 w-5 h-5"
-                href="https://app.firezone.dev"
-                className="hover:underline p-2 mr-1"
-              >
-                Admin Portal
-              </ActionLink>
-            </span>
+          <div className="hidden md:flex space-x-2.5 items-center lg:order-2 mr-2">
+            <RequestDemoButton />
+            <SignUpButton />
           </div>
         </div>
       </nav>
