@@ -23,15 +23,16 @@ ProtectKernelModules=true
 ProtectKernelTunables=true
 # Docs say it's useless when running as root, but defense-in-depth
 ProtectProc=invisible
-ProtectSystem=full
+ProtectSystem=strict
 RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
+StateDirectory=dev.firezone.client
 SystemCallArchitectures=native
 # TODO: Minimize
 SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal @system-service
-UMask=177
+UMask=077
 
 Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
