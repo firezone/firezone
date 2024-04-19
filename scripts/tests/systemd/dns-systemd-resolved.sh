@@ -30,7 +30,7 @@ curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 # Start Firezone
 resolvectl dns tun-firezone && exit 1
 stat /usr/bin/firezone-linux-client
-sudo systemctl start "$SERVICE_NAME"
+sudo systemctl start "$SERVICE_NAME" || systemctl status "$SERVICE_NAME"
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN"
 
