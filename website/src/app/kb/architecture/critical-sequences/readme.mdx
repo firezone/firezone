@@ -131,9 +131,9 @@ susceptible to, such as DDoS attacks.
 
 Secure DNS resolution is a critical function in most organizations.
 
-Firezone employs a unique, granular approach to split-horizon DNS to ensure
-traffic intended **only** for DNS-based Resources is routed through Firezone,
-leaving other traffic untouched -- even when resolved IP addresses overlap.
+Firezone employs a unique, granular approach to split DNS to ensure traffic
+intended **only** for DNS-based Resources is routed through Firezone, leaving
+other traffic untouched -- even when resolved IP addresses overlap.
 
 To achieve this, Firezone embeds a tiny, in-memory DNS proxy inside each Client
 that intercepts all DNS queries on the system.
