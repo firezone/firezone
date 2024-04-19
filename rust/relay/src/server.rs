@@ -215,8 +215,11 @@ where
         self.allocations.len()
     }
 
-    pub fn num_channels(&self) -> usize {
-        self.channels_by_client_and_number.len()
+    pub fn num_active_channels(&self) -> usize {
+        self.channels_by_client_and_number
+            .iter()
+            .filter(|(_, c)| c.bound)
+            .count()
     }
 
     /// Process the bytes received from a client.
