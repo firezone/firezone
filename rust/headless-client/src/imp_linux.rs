@@ -1,3 +1,5 @@
+//! Implementation, Linux-specific
+
 use super::{Cli, Cmd};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -29,10 +31,18 @@ const ROOT_USER: u32 = 0;
 /// on some systems, `/run` should be the newer version.
 const SOCK_PATH: &str = "/run/firezone-client.sock";
 
+pub fn default_token_path() -> PathBuf {
+    PathBuf::from("/etc")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("token")
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
+
+    tracing::info!(git_version = crate::GIT_VERSION);
 
     match cli.command() {
         Cmd::Auto => {
@@ -44,7 +54,12 @@ pub async fn run() -> Result<()> {
         }
         Cmd::IpcService => run_ipc_service(cli).await,
         Cmd::Standalone => {
-            let token = token(&cli)?.context("Need a token to run as standalone Client")?;
+            let token = token(&cli)?.with_context(|| {
+                format!(
+                    "Can't find the Firezone token in $FIREZONE_TOKEN or in `{}`",
+                    cli.token_path
+                )
+            })?;
             run_standalone(cli, &token).await
         }
         Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
@@ -55,9 +70,7 @@ pub async fn run() -> Result<()> {
 ///
 /// Sync because we do blocking file I/O
 fn token(cli: &Cli) -> Result<Option<SecretString>> {
-    let path = PathBuf::from("/etc")
-        .join(connlib_shared::BUNDLE_ID)
-        .join("token.txt");
+    let path = PathBuf::from(&cli.token_path);
 
     if let Some(token) = &cli.token {
         // Token was provided in CLI args or env var
@@ -123,6 +136,11 @@ async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     let (private_key, public_key) = keypair();
     let login = LoginUrl::client(cli.api_url, token, firezone_id, None, public_key.to_bytes())?;
+
+    if cli.check {
+        tracing::info!("Check passed");
+        return Ok(());
+    }
 
     let session = Session::connect(
         login,

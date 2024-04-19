@@ -125,7 +125,7 @@ jobs:
       matrix:
         # TODO: Add Windows as part of issue #3782
         runs-on: [ubuntu-20.04, ubuntu-22.04]
-        test: [linux-group]
+        test: [linux-group, token-path]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
