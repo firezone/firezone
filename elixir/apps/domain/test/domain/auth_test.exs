@@ -1548,9 +1548,9 @@ defmodule Domain.AuthTest do
               %{
                 identities: [],
                 plan: {insert, [], []},
-                insert: [_actor1, _actor2],
-                update: [],
-                delete: [],
+                inserted: [_actor1, _actor2],
+                updated: [],
+                deleted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1611,9 +1611,9 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], update, []},
-                delete: [],
-                update: [_updated_identity1, _updated_identity2],
-                insert: [],
+                deleted: [],
+                updated: [_updated_identity1, _updated_identity2],
+                inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1661,8 +1661,8 @@ defmodule Domain.AuthTest do
               %{
                 identities: [fetched_identity],
                 plan: {[], ["USER_ID1"], []},
-                delete: [],
-                insert: [],
+                deleted: [],
+                inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1696,8 +1696,8 @@ defmodule Domain.AuthTest do
               %{
                 identities: [fetched_identity],
                 plan: {[], [], []},
-                delete: [],
-                insert: [],
+                deleted: [],
+                inserted: [],
                 actor_ids_by_provider_identifier: %{}
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1756,8 +1756,8 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], [], delete},
-                delete: [deleted_identity1, deleted_identity2],
-                insert: [],
+                deleted: [deleted_identity1, deleted_identity2],
+                inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1803,9 +1803,9 @@ defmodule Domain.AuthTest do
                 %{
                   identities: [],
                   plan: {[], [], []},
-                  delete: [],
-                  update: [],
-                  insert: [],
+                  deleted: [],
+                  updated: [],
+                  inserted: [],
                   actor_ids_by_provider_identifier: %{}
                 }}
     end
@@ -1868,8 +1868,8 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], update, []},
-                delete: [],
-                insert: [],
+                deleted: [],
+                inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 

@@ -30,9 +30,9 @@ defmodule Domain.Auth.Identity.Sync do
        %{
          identities: identities,
          plan: {insert, update, delete},
-         delete: deleted,
-         insert: inserted,
-         update: updated,
+         deleted: deleted,
+         inserted: inserted,
+         updated: updated,
          actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
        }}
     end
