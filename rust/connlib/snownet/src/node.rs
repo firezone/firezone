@@ -157,10 +157,11 @@ where
         (&self.private_key).into()
     }
 
-    pub fn is_connected_to(&self, key: PublicKey) -> bool {
-        self.connections
-            .iter_established()
-            .any(|(_, c)| c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+    pub fn connection_id(&self, key: PublicKey) -> Option<TId> {
+        self.connections.iter_established().find_map(|(id, c)| {
+            (c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+                .then_some(id)
+        })
     }
 
     pub fn stats(&self) -> (NodeStats, impl Iterator<Item = (TId, ConnectionStats)> + '_) {
@@ -1135,7 +1136,7 @@ pub enum Event<TId> {
     ConnectionFailed(TId),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///
