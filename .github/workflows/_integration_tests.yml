@@ -97,6 +97,7 @@ jobs:
       fail-fast: false
       matrix:
         test: [
+          direct-browser-relay-restart,
           direct-curl-api-down,
           direct-curl-api-relay-down,
           direct-curl-api-restart,
