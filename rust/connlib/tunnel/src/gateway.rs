@@ -244,8 +244,6 @@ impl GatewayState {
             return None;
         };
 
-        let packet = packet;
-
         if let Err(e) = peer.ensure_allowed(&packet) {
             // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
             // source ips can be sticky.
