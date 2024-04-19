@@ -1,4 +1,4 @@
-import { get_args, connectBrowser, retryOrFail } from "./shared.ts";
+import { connectBrowser, get_args, retryOrFail } from "./shared.ts";
 
 (async (): Promise<void> => {
   const args = get_args();
@@ -8,5 +8,5 @@ import { get_args, connectBrowser, retryOrFail } from "./shared.ts";
   await retryOrFail(async () => await page.goto(args.url), args.retries);
 
   await browser.disconnect();
-  process.exit();
+  Deno.exit();
 })();

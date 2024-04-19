@@ -1,5 +1,5 @@
-import { parse } from "ts-command-line-args";
-import puppeteer, { Browser, HTTPResponse } from "puppeteer";
+import { parse } from "npm:ts-command-line-args@2.5.1";
+import puppeteer, { Browser, HTTPResponse } from "npm:puppeteer@21.0.3";
 
 export interface IArgs {
   debugPort: number;
@@ -23,7 +23,7 @@ export async function connectBrowser(args: IArgs): Promise<Browser> {
 
 export async function retryOrFail(
   get_page: () => Promise<HTTPResponse | null>,
-  retries: number
+  retries: number,
 ) {
   while (true) {
     try {

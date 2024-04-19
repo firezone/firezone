@@ -92,7 +92,7 @@ ARG TARGET
 COPY ${PACKAGE} .
 
 RUN set -xe \
-  && apk add --no-cache nodejs npm chromium
+  && apk add --no-cache deno npm chromium
 COPY --from=browser-tests . .
 RUN npm install
 

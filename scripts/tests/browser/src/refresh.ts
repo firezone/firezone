@@ -1,4 +1,4 @@
-import { Browser, Page } from "puppeteer";
+import { Browser, Page } from "npm:puppeteer@21.0.3";
 import { connectBrowser, get_args, IArgs, retryOrFail } from "./shared.ts";
 
 async function activePage(browser: Browser, args: IArgs): Promise<Page> {
@@ -24,9 +24,9 @@ async function activePage(browser: Browser, args: IArgs): Promise<Page> {
 
   await retryOrFail(
     async () => await page.reload({ timeout: 2000 }),
-    args.retries
+    args.retries,
   );
 
   await browser.disconnect();
-  process.exit();
+  Deno.exit();
 })();
