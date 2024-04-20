@@ -47,22 +47,21 @@ pub enum IngressMessages {
     ResourceDeleted(ResourceId),
 
     IceCandidates(GatewayIceCandidates),
+    InvalidateIceCandidates(GatewayIceCandidates),
 
     ConfigChanged(ConfigUpdate),
 
     RelaysPresence(RelaysPresence),
 }
 
-/// A gateway's ice candidate message.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct BroadcastGatewayIceCandidates {
-    /// Gateway's id the ice candidates are meant for
+pub struct GatewaysIceCandidates {
+    /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
     pub candidates: Vec<String>,
 }
 
-/// A gateway's ice candidate message.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
@@ -91,7 +90,10 @@ pub enum EgressMessages {
     },
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
-    BroadcastIceCandidates(BroadcastGatewayIceCandidates),
+    /// Candidates that can be used by the addressed gateways.
+    BroadcastIceCandidates(GatewaysIceCandidates),
+    /// Candidates that should no longer be used by the addressed gateways.
+    BroadcastInvalidatedIceCandidates(GatewaysIceCandidates),
 }
 
 #[cfg(test)]
@@ -110,7 +112,7 @@ mod test {
         let message = r#"{"topic":"client","event":"broadcast_ice_candidates","payload":{"gateway_ids":["b3d34a15-55ab-40df-994b-a838e75d65d7"],"candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
         let expected = PhoenixMessage::new_message(
             "client",
-            EgressMessages::BroadcastIceCandidates(BroadcastGatewayIceCandidates {
+            EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                 gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
                 candidates: vec![
                     "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
@@ -123,6 +125,22 @@ mod test {
         let ingress_message = serde_json::from_str::<PhoenixMessage<_, ()>>(message).unwrap();
 
         assert_eq!(ingress_message, expected);
+    }
+
+    #[test]
+    fn invalidate_ice_candidates_message() {
+        let msg = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"client","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+        let expected = IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
+            gateway_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
+            candidates: vec![
+                "candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"
+                    .to_owned(),
+            ],
+        });
+
+        let actual = serde_json::from_str::<IngressMessages>(msg).unwrap();
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

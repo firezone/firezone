@@ -6,7 +6,6 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use core::fmt;
 use rand::random;
 use std::{
     collections::{HashMap, VecDeque},
@@ -36,9 +35,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 ///
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
 #[derive(Debug)]
-pub struct Allocation<RId> {
-    id: RId,
-
+pub struct Allocation {
     server: SocketAddr,
 
     /// If present, the last address the relay observed for us.
@@ -73,32 +70,19 @@ pub struct Allocation<RId> {
 /// Note that any combination of IP versions is possible here.
 /// We might have allocated an IPv6 address on a TURN server that we are talking to IPv4 and vice versa.
 #[derive(Debug, Clone, Copy)]
-pub struct Socket<RId> {
-    /// The ID of the relay.
-    id: RId,
+pub struct Socket {
     /// The address of the socket that was allocated.
     address: SocketAddr,
 }
 
-impl<RId> Socket<RId>
-where
-    RId: Copy,
-{
-    pub fn id(&self) -> RId {
-        self.id
-    }
-
+impl Socket {
     pub fn address(&self) -> SocketAddr {
         self.address
     }
 }
 
-impl<RId> Allocation<RId>
-where
-    RId: Copy + fmt::Debug,
-{
+impl Allocation {
     pub fn new(
-        id: RId,
         server: SocketAddr,
         username: Username,
         password: String,
@@ -106,7 +90,6 @@ where
         now: Instant,
     ) -> Self {
         let mut allocation = Self {
-            id,
             server,
             last_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
@@ -405,7 +388,7 @@ where
         from: SocketAddr,
         packet: &'p [u8],
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], Socket<RId>)> {
+    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
         if from != self.server {
             return None;
         }
@@ -612,26 +595,20 @@ where
         self.server
     }
 
-    pub fn ip4_socket(&self) -> Option<Socket<RId>> {
+    pub fn ip4_socket(&self) -> Option<Socket> {
         let address = self.ip4_allocation.as_ref().map(|c| c.addr())?;
 
         debug_assert!(address.is_ipv4());
 
-        Some(Socket {
-            id: self.id,
-            address,
-        })
+        Some(Socket { address })
     }
 
-    pub fn ip6_socket(&self) -> Option<Socket<RId>> {
+    pub fn ip6_socket(&self) -> Option<Socket> {
         let address = self.ip6_allocation.as_ref().map(|c| c.addr())?;
 
         debug_assert!(address.is_ipv6());
 
-        Some(Socket {
-            id: self.id,
-            address,
-        })
+        Some(Socket { address })
     }
 
     fn has_allocation(&self) -> bool {
@@ -1775,10 +1752,10 @@ mod tests {
         let channel_bind_peer_2 = allocation.next_message().unwrap();
 
         assert_eq!(channel_bind_peer_1.method(), CHANNEL_BIND);
-        assert_eq!(peer_address(&channel_bind_peer_1), PEER2_IP4);
+        assert_eq!(peer_address(&channel_bind_peer_1), PEER1);
 
         assert_eq!(channel_bind_peer_2.method(), CHANNEL_BIND);
-        assert_eq!(peer_address(&channel_bind_peer_2), PEER1);
+        assert_eq!(peer_address(&channel_bind_peer_2), PEER2_IP4);
     }
 
     #[test]
@@ -2042,10 +2019,9 @@ mod tests {
         message.get_attribute::<XorPeerAddress>().unwrap().address()
     }
 
-    impl Allocation<u64> {
+    impl Allocation {
         fn for_test(start: Instant) -> Self {
             Allocation::new(
-                1,
                 RELAY,
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),

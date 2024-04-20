@@ -183,6 +183,12 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
+    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.role_state
+            .node
+            .remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
@@ -836,16 +842,25 @@ impl ClientState {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
                 }
-                snownet::Event::SignalIceCandidate {
+                snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
                 } => self
                     .buffered_events
-                    .push_back(ClientEvent::SignalIceCandidate {
+                    .push_back(ClientEvent::NewIceCandidate {
                         conn_id: connection,
                         candidate,
                     }),
-                _ => {}
+                snownet::Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } => self
+                    .buffered_events
+                    .push_back(ClientEvent::InvalidatedIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }),
+                snownet::Event::ConnectionEstablished { .. } => {}
             }
         }
     }
