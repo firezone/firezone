@@ -2,8 +2,22 @@
 
 set -euox pipefail
 
+CHROMIUM_PORT=9222
+
 function client() {
     docker compose exec -it client "$@"
+}
+
+function start_chromium() {
+    docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=$CHROMIUM_PORT
+}
+
+function load_page() {
+    client npm run load -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
+}
+
+function refresh_page() {
+    client npm run refresh -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
 }
 
 function gateway() {
@@ -30,7 +44,7 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    client curl --fail "$1" > /dev/null
+    client curl --fail "$1" >/dev/null
 }
 
 function client_ping_resource() {
