@@ -96,6 +96,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Don't run browser tests on main with the release images because
+        # they don't have chromium installed
+        ref_name:
+          - ${{ github.ref_name }}
+        exclude:
+          - {ref_name: main, test: direct-browser-relay-restart}
+          - {ref_name: main, test: relayed-browser-relay-restart}
+
         test: [
           direct-browser-relay-restart,
           direct-curl-api-down,
