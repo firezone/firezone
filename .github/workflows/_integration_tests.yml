@@ -96,7 +96,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Don't run browser tests on main with the release images because
+        # they don't have chromium installed
+        ref_name:
+          - ${{ github.ref_name }}
+        exclude:
+          - {ref_name: main, test: direct-browser-relay-restart}
+          - {ref_name: main, test: relayed-browser-relay-restart}
+
         test: [
+          direct-browser-relay-restart,
           direct-curl-api-down,
           direct-curl-api-relay-down,
           direct-curl-api-restart,
@@ -107,6 +116,7 @@ jobs:
           dns-failsafe, # Uses the default DNS control method
           dns-nm,
           relay-graceful-shutdown,
+          relayed-browser-relay-restart,
           relayed-curl-api-down,
           relayed-curl-api-restart,
           relayed-curl-relay-restart,
@@ -128,7 +138,8 @@ jobs:
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
-          docker compose up -d relay --no-build
+          docker compose up -d relay-1 --no-build
+          docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
 
@@ -137,9 +148,12 @@ jobs:
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
-      - name: Show Relay logs
+      - name: Show Relay-1 logs
         if: "!cancelled()"
-        run: docker compose logs relay
+        run: docker compose logs relay-1
+      - name: Show Relay-2 logs
+        if: "!cancelled()"
+        run: docker compose logs relay-2
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway

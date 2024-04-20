@@ -1,8 +1,8 @@
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
-        ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, ResourceDescription,
-        ResourceId,
+        ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, RelaysPresence,
+        ResourceDescription, ResourceId,
     },
     Dname,
 };
@@ -72,12 +72,14 @@ pub enum IngressMessages {
     AllowAccess(AllowAccess),
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
+    InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
+    RelaysPresence(RelaysPresence),
 }
 
 /// A client's ice candidate message.
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-pub struct BroadcastClientIceCandidates {
+pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
@@ -99,7 +101,8 @@ pub struct ClientIceCandidates {
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
-    BroadcastIceCandidates(BroadcastClientIceCandidates),
+    BroadcastIceCandidates(ClientsIceCandidates),
+    BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -112,6 +115,7 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
+    use connlib_shared::messages::Turn;
     use phoenix_channel::InitMessage;
     use phoenix_channel::PhoenixMessage;
 
@@ -168,6 +172,22 @@ mod test {
         }"#;
         // TODO: We are just testing we can deserialize for now.
         let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
+    }
+
+    #[test]
+    fn invalidate_ice_candidates_message() {
+        let msg = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"gateway","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"client_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+        let expected = IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
+            client_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
+            candidates: vec![
+                "candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"
+                    .to_owned(),
+            ],
+        });
+
+        let actual = serde_json::from_str::<IngressMessages>(msg).unwrap();
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -308,5 +328,49 @@ mod test {
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":[true,false],"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
         let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
         assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn relays_presence() {
+        let message = r#"
+        {
+            "event": "relays_presence",
+            "ref": null,
+            "topic": "gateway",
+            "payload": {
+                "disconnected_ids": [
+                    "e95f9517-2152-4677-a16a-fbb2687050a3",
+                    "b0724bd1-a8cc-4faf-88cd-f21159cfec47"
+                ],
+                "connected": [
+                    {
+                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
+                        "type": "turn",
+                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
+                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
+                        "addr": "172.28.0.101:3478",
+                        "expires_at": 1719367575
+                    }
+                ]
+            }
+        }
+        "#;
+        let expected = IngressMessages::RelaysPresence(RelaysPresence {
+            disconnected_ids: vec![
+                "e95f9517-2152-4677-a16a-fbb2687050a3".parse().unwrap(),
+                "b0724bd1-a8cc-4faf-88cd-f21159cfec47".parse().unwrap(),
+            ],
+            connected: vec![Relay::Turn(Turn {
+                id: "0a133356-7a9e-4b9a-b413-0d95a5720fd8".parse().unwrap(),
+                expires_at: DateTime::from_timestamp(1719367575, 0).unwrap(),
+                addr: "172.28.0.101:3478".parse().unwrap(),
+                username: "1719367575:ZQHcVGkdnfgGmcP1".to_owned(),
+                password: "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg".to_owned(),
+            })],
+        });
+
+        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
+
+        assert_eq!(ingress_message, expected);
     }
 }
