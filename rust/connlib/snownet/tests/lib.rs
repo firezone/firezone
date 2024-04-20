@@ -111,8 +111,13 @@ fn reconnect_discovers_new_interface() {
         progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
 
+    // To ensure that switching networks really works, block all traffic from the old IP.
+    let firewall = firewall
+        .with_block_rule(&alice, &bob)
+        .with_block_rule(&bob, &alice);
+
     alice.switch_network("10.0.0.1:80");
-    alice.node.reconnect(clock.now);
+    alice.span.in_scope(|| alice.node.reconnect(clock.now));
 
     // Make some progress.
     for _ in 0..10 {
@@ -239,7 +244,7 @@ fn only_generate_candidate_event_after_answer() {
     alice.accept_answer(1, bob.public_key(), answer, Instant::now());
 
     assert!(iter::from_fn(|| alice.poll_event()).any(|ev| ev
-        == Event::SignalIceCandidate {
+        == Event::NewIceCandidate {
             connection: 1,
             candidate: Candidate::host(local_candidate, Protocol::Udp)
                 .unwrap()
@@ -609,6 +614,13 @@ impl EitherNode {
         }
     }
 
+    fn remove_remote_candidate(&mut self, id: u64, candidate: String) {
+        match self {
+            EitherNode::Client(n) => n.remove_remote_candidate(id, candidate),
+            EitherNode::Server(n) => n.remove_remote_candidate(id, candidate),
+        }
+    }
+
     fn add_local_host_candidate(&mut self, socket: SocketAddr) {
         match self {
             EitherNode::Client(n) => n.add_local_host_candidate(socket).unwrap(),
@@ -763,7 +775,7 @@ impl TestNode {
 
     fn signalled_candidates(&self) -> impl Iterator<Item = (u64, Candidate, Instant)> + '_ {
         self.events.iter().filter_map(|(e, instant)| match e {
-            Event::SignalIceCandidate {
+            Event::NewIceCandidate {
                 connection,
                 candidate,
             } => Some((
@@ -771,7 +783,9 @@ impl TestNode {
                 Candidate::from_sdp_string(candidate).unwrap(),
                 *instant,
             )),
-            Event::ConnectionEstablished(_) | Event::ConnectionFailed(_) => None,
+            Event::InvalidateIceCandidate { .. }
+            | Event::ConnectionEstablished(_)
+            | Event::ConnectionFailed(_) => None,
         })
     }
 
@@ -784,7 +798,8 @@ impl TestNode {
     fn failed_connections(&self) -> impl Iterator<Item = (u64, Instant)> + '_ {
         self.events.iter().filter_map(|(e, instant)| match e {
             Event::ConnectionFailed(id) => Some((*id, *instant)),
-            Event::SignalIceCandidate { .. } => None,
+            Event::NewIceCandidate { .. } => None,
+            Event::InvalidateIceCandidate { .. } => None,
             Event::ConnectionEstablished(_) => None,
         })
     }
@@ -807,12 +822,18 @@ impl TestNode {
             self.events.push((v.clone(), now));
 
             match v {
-                Event::SignalIceCandidate {
+                Event::NewIceCandidate {
                     connection,
                     candidate,
                 } => other
                     .span
                     .in_scope(|| other.node.add_remote_candidate(connection, candidate, now)),
+                Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } => other
+                    .span
+                    .in_scope(|| other.node.remove_remote_candidate(connection, candidate)),
                 Event::ConnectionEstablished(_) => {}
                 Event::ConnectionFailed(_) => {}
             };

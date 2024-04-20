@@ -46,6 +46,14 @@ impl ResourceId {
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 
+impl FromStr for ClientId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ClientId(Uuid::parse_str(s)?))
+    }
+}
+
 impl FromStr for ResourceId {
     type Err = uuid::Error;
 

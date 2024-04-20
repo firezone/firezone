@@ -1,12 +1,14 @@
+use std::collections::VecDeque;
+
 #[derive(Debug)]
 pub struct RingBuffer<T> {
-    buffer: Vec<T>,
+    buffer: VecDeque<T>,
 }
 
 impl<T: PartialEq> RingBuffer<T> {
     pub fn new(capacity: usize) -> Self {
         RingBuffer {
-            buffer: Vec::with_capacity(capacity),
+            buffer: VecDeque::with_capacity(capacity),
         }
     }
 
@@ -15,11 +17,11 @@ impl<T: PartialEq> RingBuffer<T> {
             // Remove the oldest element (at the beginning) if at capacity
             self.buffer.remove(0);
         }
-        self.buffer.push(item);
+        self.buffer.push_back(item);
     }
 
     pub fn pop(&mut self) -> Option<T> {
-        self.buffer.pop()
+        self.buffer.pop_front()
     }
 
     pub fn clear(&mut self) {
@@ -30,9 +32,13 @@ impl<T: PartialEq> RingBuffer<T> {
         self.buffer.iter()
     }
 
+    pub fn into_iter(self) -> impl Iterator<Item = T> {
+        self.buffer.into_iter()
+    }
+
     #[cfg(test)]
-    fn inner(&self) -> &[T] {
-        self.buffer.as_slice()
+    fn inner(&self) -> (&[T], &[T]) {
+        self.buffer.as_slices()
     }
 }
 
@@ -48,7 +54,7 @@ mod tests {
         buffer.push(2);
         buffer.push(3);
 
-        assert_eq!(buffer.inner(), &[1, 2, 3]);
+        assert_eq!(buffer.inner().0, &[1, 2, 3]);
     }
 
     #[test]
@@ -59,6 +65,7 @@ mod tests {
         buffer.push(2);
         buffer.push(3);
 
-        assert_eq!(buffer.inner(), &[2, 3]);
+        assert_eq!(buffer.inner().0, &[2]);
+        assert_eq!(buffer.inner().1, &[3]);
     }
 }

@@ -72,12 +72,13 @@ pub enum IngressMessages {
     AllowAccess(AllowAccess),
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
+    InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
 }
 
 /// A client's ice candidate message.
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-pub struct BroadcastClientIceCandidates {
+pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
@@ -99,7 +100,8 @@ pub struct ClientIceCandidates {
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
-    BroadcastIceCandidates(BroadcastClientIceCandidates),
+    BroadcastIceCandidates(ClientsIceCandidates),
+    BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -168,6 +170,22 @@ mod test {
         }"#;
         // TODO: We are just testing we can deserialize for now.
         let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
+    }
+
+    #[test]
+    fn invalidate_ice_candidates_message() {
+        let msg = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"gateway","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"client_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+        let expected = IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
+            client_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
+            candidates: vec![
+                "candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"
+                    .to_owned(),
+            ],
+        });
+
+        let actual = serde_json::from_str::<IngressMessages>(msg).unwrap();
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

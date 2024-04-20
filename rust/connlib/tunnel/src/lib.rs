@@ -242,7 +242,11 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
-    SignalIceCandidate {
+    NewIceCandidate {
+        conn_id: GatewayId,
+        candidate: String,
+    },
+    InvalidatedIceCandidate {
         conn_id: GatewayId,
         candidate: String,
     },
@@ -256,7 +260,11 @@ pub enum ClientEvent {
 }
 
 pub enum GatewayEvent {
-    SignalIceCandidate {
+    NewIceCandidate {
+        conn_id: ClientId,
+        candidate: String,
+    },
+    InvalidIceCandidate {
         conn_id: ClientId,
         candidate: String,
     },
