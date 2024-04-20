@@ -215,11 +215,11 @@ where
                 self.tunnel.remove_resources(&[resource]);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
-                disconnected_ids: disconnected_relay_ids,
-                connected: online_relays,
+                disconnected_ids,
+                connected,
             }) => self
                 .tunnel
-                .update_relays(HashSet::from_iter(disconnected_relay_ids), online_relays),
+                .update_relays(HashSet::from_iter(disconnected_ids), connected),
             IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,

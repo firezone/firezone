@@ -1,4 +1,3 @@
-use crate::peer::{PacketTransformClient, Peer};
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
@@ -15,6 +14,7 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
+use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
@@ -262,7 +262,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
+    peers: PeerStore<GatewayId, GatewayOnClient>,
 
     node: ClientNode<GatewayId, RelayId>,
 
@@ -334,11 +334,11 @@ impl ClientState {
             return None;
         };
 
-        let packet = peer.transform(packet)?;
+        let packet = peer.transform_tun_to_network(packet);
 
         let transmit = self
             .node
-            .encapsulate(peer.conn_id, packet.as_immutable(), Instant::now())
+            .encapsulate(peer.id(), packet.as_immutable(), Instant::now())
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -369,7 +369,7 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.untransform(packet) {
+        let packet = match peer.transform_network_to_tun(packet) {
             Ok(packet) => packet,
             Err(e) => {
                 tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
@@ -416,9 +416,8 @@ impl ClientState {
         self.awaiting_connection.remove(&resource_id);
 
         let resource_ids = HashSet::from([resource_id]);
-        let mut peer: Peer<_, PacketTransformClient, _> =
-            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
-        peer.transform.set_dns(self.dns_mapping());
+        let mut peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
+        peer.set_dns(self.dns_mapping());
         self.peers.insert(peer, &[]);
 
         let peer_ips = if let Some(domain_response) = domain_response {
@@ -550,8 +549,7 @@ impl ClientState {
             .address
             .iter()
             .filter_map(|external_ip| {
-                peer.transform
-                    .get_or_assign_translation(external_ip, &mut self.ip_provider)
+                peer.get_or_assign_translation(external_ip, &mut self.ip_provider)
             })
             .collect();
 
@@ -710,7 +708,7 @@ impl ClientState {
         self.dns_mapping = new_mapping.clone();
         self.peers
             .iter_mut()
-            .for_each(|p| p.transform.set_dns(new_mapping.clone()));
+            .for_each(|p| p.set_dns(new_mapping.clone()));
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -808,9 +806,7 @@ impl ClientState {
             Some(next_dns_refresh) if now >= next_dns_refresh => {
                 let mut connections = Vec::new();
 
-                self.peers
-                    .iter_mut()
-                    .for_each(|p| p.transform.expire_dns_track());
+                self.peers.iter_mut().for_each(|p| p.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
@@ -963,9 +959,7 @@ impl ClientState {
 
                 // If the allowed_ips doesn't correspond to any resource anymore we
                 // clean up any related translation.
-                peer.transform
-                    .translations
-                    .remove_by_left(&network.network_address());
+                peer.translations.remove_by_left(&network.network_address());
             }
 
             // We remove all empty allowed ips entry since there's no resource that corresponds to it
