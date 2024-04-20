@@ -1,0 +1,17 @@
+{
+  "name": "browser-tests",
+  "version": "1.0.0",
+  "scripts": {
+    "load": "npx ts-node src/load.ts",
+    "refresh": "npx ts-node src/refresh.ts"
+  },
+  "dependencies": {
+    "puppeteer": "^22.6.3",
+    "ts-command-line-args": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

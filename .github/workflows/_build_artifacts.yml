@@ -273,6 +273,8 @@ jobs:
             PACKAGE=${{ matrix.name.package }}
             TARGET=${{ matrix.arch.target }}
           context: rust
+          build-contexts: |
+            browser-tests=${{ github.workspace }}/scripts/tests/browser
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
