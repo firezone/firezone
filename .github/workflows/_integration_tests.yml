@@ -128,7 +128,8 @@ jobs:
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
-          docker compose up -d relay --no-build
+          docker compose up -d relay-1 --no-build
+          docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
 
@@ -137,9 +138,12 @@ jobs:
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
-      - name: Show Relay logs
+      - name: Show Relay-1 logs
         if: "!cancelled()"
-        run: docker compose logs relay
+        run: docker compose logs relay-1
+      - name: Show Relay-2 logs
+        if: "!cancelled()"
+        run: docker compose logs relay-2
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway

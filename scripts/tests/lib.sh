@@ -10,8 +10,12 @@ function gateway() {
     docker compose exec -it gateway "$@"
 }
 
-function relay() {
-    docker compose exec -it relay "$@"
+function relay1() {
+    docker compose exec -it relay-1 "$@"
+}
+
+function relay2() {
+    docker compose exec -it relay-2 "$@"
 }
 
 function install_iptables_drop_rules() {
@@ -41,8 +45,8 @@ function client_nslookup() {
 }
 
 function assert_equals() {
-    local expected="$1"
-    local actual="$2"
+    local actual="$1"
+    local expected="$2"
 
     if [[ "$expected" != "$actual" ]]; then
         echo "Expected $expected but got $actual"

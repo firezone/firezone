@@ -7,13 +7,13 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
+    messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -202,7 +202,7 @@ where
 
                 tracing::info!("Firezone Started!");
                 let _ = self.tunnel.set_resources(resources);
-                self.tunnel.upsert_relays(relays)
+                self.tunnel.update_relays(HashSet::default(), relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
@@ -214,6 +214,12 @@ where
             IngressMessages::ResourceDeleted(resource) => {
                 self.tunnel.remove_resources(&[resource]);
             }
+            IngressMessages::RelaysPresence(RelaysPresence {
+                disconnected_ids,
+                connected,
+            }) => self
+                .tunnel
+                .update_relays(HashSet::from_iter(disconnected_ids), connected),
             IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,

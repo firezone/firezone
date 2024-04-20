@@ -14,6 +14,6 @@ function run_test() {
 
 run_test
 
-docker compose stop relay
+docker compose stop relay-1 relay-2
 
 run_test
