@@ -413,6 +413,15 @@ pub struct Stun {
     pub addr: SocketAddr,
 }
 
+/// A update to the presence of several relays.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct RelaysPresence {
+    /// These relays have disconnected from the portal. We need to stop using them.
+    pub disconnected_ids: Vec<RelayId>,
+    /// These relays are still online. We can/should use these.
+    pub connected: Vec<Relay>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;

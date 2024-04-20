@@ -318,11 +318,12 @@ impl GatewayState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn upsert_relays(
+    pub(crate) fn update_relays(
         &mut self,
-        relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_remove: HashSet<RelayId>,
+        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
         now: Instant,
     ) {
-        self.node.upsert_turn_servers(&relays, now);
+        self.node.update_relays(to_remove, &to_add, now);
     }
 }

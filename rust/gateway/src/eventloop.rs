@@ -5,6 +5,7 @@ use crate::messages::{
 use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
+use connlib_shared::messages::RelaysPresence;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted},
     Dname,
@@ -16,6 +17,7 @@ use firezone_tunnel::GatewayTunnel;
 use futures_bounded::Timeout;
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -174,6 +176,16 @@ impl Eventloop {
             } => {
                 self.tunnel.remove_access(&client_id, &resource_id);
             }
+            phoenix_channel::Event::InboundMessage {
+                msg:
+                    IngressMessages::RelaysPresence(RelaysPresence {
+                        disconnected_ids,
+                        connected,
+                    }),
+                ..
+            } => self
+                .tunnel
+                .update_relays(HashSet::from_iter(disconnected_ids), connected),
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::Init(_),
                 ..
