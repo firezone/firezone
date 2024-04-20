@@ -292,14 +292,14 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
             <span
-              data-tooltip-target="split-horizon-dns-tooltip"
+              data-tooltip-target="dns-routing-tooltip"
               data-tooltip-placement="top"
               className="underline hover:no-underline cursor-help"
             >
-              Split horizon DNS
+              DNS-based routing
             </span>
             <div
-              id="split-horizon-dns-tooltip"
+              id="dns-routing-tooltip"
               role="tooltip"
               className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
             >
