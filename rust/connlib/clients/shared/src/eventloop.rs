@@ -1,7 +1,7 @@
 use crate::{
     messages::{
-        BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
-        GatewayIceCandidates, IngressMessages, InitClient, ReplyMessages,
+        Connect, ConnectionDetails, EgressMessages, GatewayIceCandidates, GatewaysIceCandidates,
+        IngressMessages, InitClient, ReplyMessages,
     },
     PHOENIX_TOPIC,
 };
@@ -99,15 +99,29 @@ where
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::ClientEvent::SignalIceCandidate {
+            firezone_tunnel::ClientEvent::NewIceCandidate {
                 conn_id: gateway,
                 candidate,
             } => {
-                tracing::debug!(%gateway, %candidate, "Sending ICE candidate to gateway");
+                tracing::debug!(%gateway, %candidate, "Sending new ICE candidate to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(BroadcastGatewayIceCandidates {
+                    EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
+                        gateway_ids: vec![gateway],
+                        candidates: vec![candidate],
+                    }),
+                );
+            }
+            firezone_tunnel::ClientEvent::InvalidatedIceCandidate {
+                conn_id: gateway,
+                candidate,
+            } => {
+                tracing::debug!(%gateway, %candidate, "Sending invalidated ICE candidate to gateway");
+
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gateway],
                         candidates: vec![candidate],
                     }),
@@ -206,6 +220,14 @@ where
             }) => self
                 .tunnel
                 .update_relays(HashSet::from_iter(disconnected_relay_ids), online_relays),
+            IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
+                gateway_id,
+                candidates,
+            }) => {
+                for candidate in candidates {
+                    self.tunnel.add_ice_candidate(gateway_id, candidate)
+                }
+            }
         }
     }
 

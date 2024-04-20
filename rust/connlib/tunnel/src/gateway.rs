@@ -169,6 +169,12 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
+    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
+        self.role_state
+            .node
+            .remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     fn new_peer(
         &mut self,
         ips: Vec<IpNetwork>,
@@ -286,12 +292,22 @@ impl GatewayState {
                 snownet::Event::ConnectionFailed(id) => {
                     self.peers.remove(&id);
                 }
-                snownet::Event::SignalIceCandidate {
+                snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
                 } => {
                     self.buffered_events
-                        .push_back(GatewayEvent::SignalIceCandidate {
+                        .push_back(GatewayEvent::NewIceCandidate {
+                            conn_id: connection,
+                            candidate,
+                        });
+                }
+                snownet::Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } => {
+                    self.buffered_events
+                        .push_back(GatewayEvent::InvalidIceCandidate {
                             conn_id: connection,
                             candidate,
                         });
