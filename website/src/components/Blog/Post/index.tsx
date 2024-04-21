@@ -19,7 +19,7 @@ export default function Post({
   return (
     <main className="py-14 lg:pb-24 border border-b-1 ">
       <div className="flex justify-between px-4 mx-auto max-w-screen-xl">
-        <article className="mx-auto w-full max-w-2xl format format-lg format-firezone">
+        <article className="mx-auto w-full max-w-2xl format format-sm md:format-md lg:format-lg format-firezone">
           <header className="mb-4 lg:mb-6 not-format">
             <address className="flex items-center mb-6 not-italic">
               <div className="inline-flex items-center mr-3 text-sm ">
