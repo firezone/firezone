@@ -418,6 +418,15 @@ safe place as they won't be shown again.
 Go back to the setup page in the Firezone admin portal, ensure all fields are
 filled out, and click **Connect Identity Provider**.
 
+<Alert color="warning">
+  All users and groups are synced by default. You can limit which users and
+  groups are synced in the [Enteprise
+  Applications](https://portal.azure.com/#view/Microsoft_AAD_IAM/StartboardApplicationsMenuBlade/~/AppAppsPreview)
+  section of the Azure portal. See the [Microsoft
+  documentation](https://learn.microsoft.com/en-us/entra/identity-platform/howto-restrict-your-app-to-a-set-of-users)
+  for more information.
+</Alert>
+
 If you get successfully redirected back to your Firezone admin dashboard, you're
 done! Your Entra ID provider is now successfully configured. The first sync will
 occur within about 10 minutes. After that, users will be able to authenticate to
