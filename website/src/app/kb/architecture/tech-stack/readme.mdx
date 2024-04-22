@@ -6,35 +6,40 @@ import Alert from "@/components/DocsAlert";
 
 # Architecture: Tech Stack
 
-We built Firezone using the best tools for the job. Here's a high-level overview
-of the tech stack choices we made and why.
+Firezone has a unique mix of data throughput, reliability, and scability
+challenges. So we made sure to pick the right tools for the job. Here's a
+high-level overview of the tech stack choices we made and why.
 
 ## Control plane
 
 The control plane, which includes the
 [admin portal](/kb/architecture/core-components#admin-portal),
 [control plane API](/kb/architecture/core-components#control-plane-api), and
-[Policy Engine](/kb/architecture/core-components/#policy-engine), is built using
+[Policy Engine](/kb/architecture/core-components#policy-engine), is built using
 Elixir and Phoenix.
 
 [Elixir](https://www.elixir-lang.org) is a functional programming language
 that's received lots of attention in recent years for its performance and
-scalability. It's built on top of the [Erlang VM](https://www.erlang.org/),
-which has a reputation for being fault-tolerant and highly concurrent.
+scalability.
+
+It's built on top of the [Erlang VM](https://www.erlang.org/), which has a
+reputation for being fault-tolerant and highly concurrent. Erlang continues to
+power some of the world's most reliable systems, including a wide variety of
+telecom equipment and messaging platforms like WhatsApp.
 
 Together, these technologies power Firezone's realtime control plane API,
 allowing it to reliably handle thousands of policy decisions per second.
 
 ## Data plane
 
-The data plane, which includes the Client, Gateway, and Relay, is built using
+The data plane, which includes the Clients, Gateway, and Relay, is built using
 Rust.
 
 [Rust](https://www.rust-lang.org) is a systems programming language that's known
-for its performance and safety. Not only does its memory safety guarantees
-prevent entire categories of security vulnerabilities, but it also has an
-outstanding [ecosystem](https://www.crates.io) of libraries and tools that make
-it a great choice for building performant network applications.
+for its performance and safety. Not only do its memory safety guarantees prevent
+entire categories of security vulnerabilities, but it also has an outstanding
+[ecosystem](https://www.crates.io) of libraries and tools that make it a great
+choice for building performant network applications.
 
 ### Client architecture
 
