@@ -83,21 +83,21 @@ jobs:
       - name: Upload exe
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary-dest-path }}-exe
+          name: ${{ matrix.binary-dest-path }}-x86_64-exe
           path: |
             ${{ matrix.exe-artifact }}
           if-no-files-found: error
       - name: Upload debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary-dest-path }}-syms
+          name: ${{ matrix.binary-dest-path }}-x86_86-syms
           path: |
             ${{ matrix.syms-artifact }}
           if-no-files-found: error
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary-dest-path }}-pkg
+          name: ${{ matrix.binary-dest-path }}-x86_64-pkg
           path: |
             ${{ matrix.pkg-artifact }}
           if-no-files-found: error
