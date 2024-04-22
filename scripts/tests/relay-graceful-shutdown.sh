@@ -7,7 +7,7 @@ install_iptables_drop_rules
 client_curl_resource "172.20.0.100/get"
 
 # Act: Send SIGTERM
-docker compose kill relay --signal SIGTERM
+docker compose kill relay-1 --signal SIGTERM
 
 sleep 2 # Closing websocket isn't instant.
 
@@ -15,18 +15,18 @@ sleep 2 # Closing websocket isn't instant.
 client_curl_resource "172.20.0.100/get"
 
 # Assert: Websocket connection is cut
-OPEN_SOCKETS=$(relay netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Portal listens on port 8081
+OPEN_SOCKETS=$(relay1 netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Portal listens on port 8081
 test -z "$OPEN_SOCKETS"
 
 # Act: Send 2nd SIGTERM
-docker compose kill relay --signal SIGTERM
+docker compose kill relay-1 --signal SIGTERM
 
 sleep 5 # Wait for container to be fully exited
 
 # Seems to be necessary to return the correct state
-docker compose ps relay --all
+docker compose ps relay-1 --all
 sleep 1
 
 # Assert: Container exited
-container_state=$(docker compose ps relay --all --format json | jq --raw-output '.State')
+container_state=$(docker compose ps relay-1 --all --format json | jq --raw-output '.State')
 assert_equals "$container_state" "exited"

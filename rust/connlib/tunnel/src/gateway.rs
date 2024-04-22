@@ -1,4 +1,4 @@
-use crate::peer::{PacketTransformGateway, Peer};
+use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::{earliest, stun, turn};
 use crate::{GatewayEvent, GatewayTunnel};
@@ -133,8 +133,7 @@ where
         };
 
         for address in &addresses {
-            peer.transform
-                .add_resource(*address, resource_id, expires_at);
+            peer.add_resource(*address, resource_id, expires_at);
         }
 
         tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
@@ -155,8 +154,8 @@ where
             return;
         };
 
-        peer.transform.remove_resource(resource);
-        if peer.transform.is_emptied() {
+        peer.remove_resource(resource);
+        if peer.is_emptied() {
             self.role_state.peers.remove(client);
         }
 
@@ -169,6 +168,12 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
+    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
+        self.role_state
+            .node
+            .remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     fn new_peer(
         &mut self,
         ips: Vec<IpNetwork>,
@@ -177,10 +182,10 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) {
-        let mut peer = Peer::new(client_id, PacketTransformGateway::default(), &ips, ());
+        let mut peer = ClientOnGateway::new(client_id, &ips);
 
         for address in resource_addresses {
-            peer.transform.add_resource(address, resource, expires_at);
+            peer.add_resource(address, resource, expires_at);
         }
 
         self.role_state.peers.insert(peer, &ips);
@@ -188,7 +193,7 @@ where
 }
 
 pub struct GatewayState {
-    pub peers: PeerStore<ClientId, PacketTransformGateway, ()>,
+    peers: PeerStore<ClientId, ClientOnGateway>,
     node: ServerNode<ClientId, RelayId>,
     next_expiry_resources_check: Option<Instant>,
     buffered_events: VecDeque<GatewayEvent>,
@@ -211,11 +216,10 @@ impl GatewayState {
         let dest = packet.destination();
 
         let peer = self.peers.peer_by_ip_mut(dest)?;
-        let packet = peer.transform(packet)?;
 
         let transmit = self
             .node
-            .encapsulate(peer.conn_id, packet.as_immutable(), Instant::now())
+            .encapsulate(peer.id(), packet.as_immutable(), Instant::now())
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -246,16 +250,13 @@ impl GatewayState {
             return None;
         };
 
-        let packet = match peer.untransform(packet) {
-            Ok(packet) => packet,
-            Err(e) => {
-                // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
-                // source ips can be sticky.
-                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+        if let Err(e) = peer.ensure_allowed(&packet) {
+            // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
+            // source ips can be sticky.
+            tracing::warn!(%conn_id, %local, %from, "Packet not allowed: {e}");
 
-                return None;
-            }
-        };
+            return None;
+        }
 
         Some(packet.into_immutable())
     }
@@ -270,10 +271,8 @@ impl GatewayState {
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
-                self.peers
-                    .iter_mut()
-                    .for_each(|p| p.transform.expire_resources());
-                self.peers.retain(|_, p| !p.transform.is_emptied());
+                self.peers.iter_mut().for_each(|p| p.expire_resources());
+                self.peers.retain(|_, p| !p.is_emptied());
 
                 self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
             }
@@ -286,12 +285,22 @@ impl GatewayState {
                 snownet::Event::ConnectionFailed(id) => {
                     self.peers.remove(&id);
                 }
-                snownet::Event::SignalIceCandidate {
+                snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
                 } => {
                     self.buffered_events
-                        .push_back(GatewayEvent::SignalIceCandidate {
+                        .push_back(GatewayEvent::NewIceCandidate {
+                            conn_id: connection,
+                            candidate,
+                        });
+                }
+                snownet::Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } => {
+                    self.buffered_events
+                        .push_back(GatewayEvent::InvalidIceCandidate {
                             conn_id: connection,
                             candidate,
                         });
@@ -309,11 +318,12 @@ impl GatewayState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn upsert_relays(
+    pub(crate) fn update_relays(
         &mut self,
-        relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_remove: HashSet<RelayId>,
+        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
         now: Instant,
     ) {
-        self.node.upsert_turn_servers(&relays, now);
+        self.node.update_relays(to_remove, &to_add, now);
     }
 }

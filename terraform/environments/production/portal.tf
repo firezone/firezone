@@ -376,7 +376,7 @@ module "domain" {
   image      = "domain"
   image_tag  = local.portal_image_tag
 
-  scaling_horizontal_replicas = 1
+  scaling_horizontal_replicas = 2
 
   observability_log_level = "debug"
 
