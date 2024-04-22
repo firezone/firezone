@@ -22,7 +22,7 @@ pub(crate) struct Release {
 #[derive(Deserialize, Serialize)]
 struct Asset {
     browser_download_url: Url,
-    /// Name of the asset, e.g. `firezone-windows-client-x64.msi`
+    /// Name of the asset, e.g. `firezone-client-gui-windows-x86_64.msi`
     name: String,
 }
 
