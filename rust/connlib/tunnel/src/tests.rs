@@ -1,10 +1,14 @@
-use crate::{ClientEvent, ClientState, GatewayState};
+use crate::{ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{client::ResourceDescription, client::ResourceDescriptionCidr, ResourceId},
+    messages::{
+        client::{ResourceDescription, ResourceDescriptionCidr},
+        gateway, ClientId, GatewayId, RelayId, ResourceId,
+    },
     proptest::cidr_resource,
     StaticSecret,
 };
+use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
@@ -15,13 +19,16 @@ use proptest::{
     test_runner::Config,
 };
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
+use rand::{rngs::StdRng, SeedableRng};
+use secrecy::ExposeSecret;
 use snownet::Transmit;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
-use tracing::subscriber::DefaultGuard;
+use tracing::{info_span, subscriber::DefaultGuard, Span};
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 proptest_state_machine::prop_state_machine! {
@@ -43,11 +50,15 @@ struct TunnelTest {
     now: Instant,
     utc_now: DateTime<Utc>,
 
-    client: SimNode<ClientState>,
-    gateway: SimNode<GatewayState>,
+    client: SimNode<ClientId, ClientState>,
+    gateway: SimNode<GatewayId, GatewayState>,
+    relay: SimRelay<firezone_relay::Server<StdRng>>,
+
+    client_span: Span,
+    gateway_span: Span,
 
     client_received_packets: VecDeque<IpPacket<'static>>,
-    gateway_received_packets: VecDeque<IpPacket<'static>>,
+    gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -55,25 +66,64 @@ struct TunnelTest {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct SimNode<S> {
+struct SimNode<ID, S> {
+    id: ID,
     state: S,
 
     ip4_socket: Option<SocketAddrV4>,
     ip6_socket: Option<SocketAddrV6>,
+
+    tunnel_ip4: Ipv4Addr,
+    tunnel_ip6: Ipv6Addr,
 }
 
-impl<S> SimNode<S> {
-    fn map_state<T>(self, f: impl FnOnce(S) -> T) -> SimNode<T> {
+#[derive(Debug, Clone)]
+struct SimRelay<S> {
+    id: RelayId,
+    state: S,
+
+    ip_stack: firezone_relay::IpStack,
+}
+
+impl<ID, S> SimNode<ID, S> {
+    fn map_state<T>(self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
         SimNode {
+            id: self.id,
             state: f(self.state),
             ip4_socket: self.ip4_socket,
             ip6_socket: self.ip6_socket,
+            tunnel_ip4: self.tunnel_ip4,
+            tunnel_ip6: self.tunnel_ip6,
         }
     }
 
     fn wants(&self, dst: SocketAddr) -> bool {
         self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
             || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
+    }
+}
+
+impl SimRelay<firezone_relay::Server<StdRng>> {
+    // fn explode_ip4(&self, username: &str) -> Option<(RelayId, SocketAddr, String, String, String)> {
+    //     let ipv4_addr = self.ip_stack.as_v4()?;
+
+    //     let (username, password) = self.make_credentials(username);
+
+    //     Some((self.id, ))
+    // }
+
+    fn make_credentials(&self, username: &str) -> (String, String) {
+        let expiry = SystemTime::now() + Duration::from_secs(60);
+
+        let secs = expiry
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("expiry must be later than UNIX_EPOCH")
+            .as_secs();
+
+        let password =
+            firezone_relay::auth::generate_password(self.state.auth_secret(), expiry, username);
+
+        (format!("{secs}:{username}"), password)
     }
 }
 
@@ -84,15 +134,15 @@ impl<S> SimNode<S> {
 struct ReferenceState {
     now: Instant,
     utc_now: DateTime<Utc>,
-    client: SimNode<[u8; 32]>,
-    gateway: SimNode<[u8; 32]>,
+    client: SimNode<ClientId, [u8; 32]>,
+    gateway: SimNode<GatewayId, [u8; 32]>,
+    relay: SimRelay<u64>,
 
     /// Which resources the clients is aware of.
-    client_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    last_connection_intents: HashMap<ResourceId, Instant>,
+    client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    connected_resources: HashSet<ResourceId>,
 
-    /// New events that we expect to be emitted.
-    client_new_events: Vec<(Instant, ClientEvent)>,
+    gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
 }
 
 impl StateMachineTest for TunnelTest {
@@ -119,7 +169,19 @@ impl StateMachineTest for TunnelTest {
                 .set_default(),
             buffer: Box::new([0u8; 10_000]),
             client_received_packets: Default::default(),
-            gateway_received_packets: Default::default(),
+            gateway_received_icmp_packets: Default::default(),
+            client_span: info_span!("client"),
+            gateway_span: info_span!("gateway"),
+            relay: SimRelay {
+                state: firezone_relay::Server::new(
+                    ref_state.relay.ip_stack,
+                    rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
+                    49152,
+                    65535,
+                ),
+                ip_stack: ref_state.relay.ip_stack,
+                id: ref_state.relay.id,
+            },
         }
     }
 
@@ -129,13 +191,14 @@ impl StateMachineTest for TunnelTest {
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
+        // 1. Apply the transition
         match transition {
-            Transition::AddCidrResource(r) => {
+            Transition::AddCidrResource(r) => state.client_span.in_scope(|| {
                 state
                     .client
                     .state
-                    .add_resources(&[ResourceDescription::Cidr(r)]);
-            }
+                    .add_resources(&[ResourceDescription::Cidr(r)])
+            }),
             Transition::SendICMPPacketToRandomIp { src, dst } => {
                 state.send_icmp_packet_client_to_gateway(src, dst);
             }
@@ -156,17 +219,34 @@ impl StateMachineTest for TunnelTest {
                 state.gateway.state.handle_timeout(state.now, state.utc_now);
             }
         };
+
+        // 2. Drain all resulting transmits / events
         while let Some(transmit) = state.client.state.poll_transmit() {
             state.dispatch_transmit(transmit)
+        }
+        while let Some(event) = state.client.state.poll_event() {
+            // state
+            //     .client_emitted_events
+            //     .push_back((state.now, event.clone()));
+            state.on_client_event(state.client.id, event, &ref_state.client_cidr_resources)
         }
         while let Some(transmit) = state.gateway.state.poll_transmit() {
             state.dispatch_transmit(transmit)
         }
-
-        for (time, expected_event) in &ref_state.client_new_events {
-            assert_eq!(time, &state.now);
-            assert_eq!(expected_event, &state.client.state.poll_event().unwrap());
+        while let Some(event) = state.gateway.state.poll_event() {
+            // state
+            //     .gateway_emitted_events
+            //     .push_back((state.now, event.clone()));
+            state.on_gateway_event(state.gateway.id, event)
         }
+
+        // 3. Assert expected state
+        // assert_eq!(state.client_emitted_events, ref_state.client_events);
+        // assert_eq!(state.gateway_emitted_events, ref_state.gateway_events); TODO
+        assert_eq!(
+            state.gateway_received_icmp_packets,
+            ref_state.gateway_received_icmp_packets
+        );
 
         state
     }
@@ -174,46 +254,33 @@ impl StateMachineTest for TunnelTest {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn on_icmp_packet_to(&mut self, dst: impl Into<IpAddr>) {
+    fn on_icmp_packet(&mut self, src: impl Into<IpAddr>, dst: impl Into<IpAddr>) {
+        let src = src.into();
         let dst = dst.into();
 
         // We select which resource to send to based on the _longest match_ of the IP network.
         // We may have resources with overlapping IP ranges so it is important that we do this the same way as connlib.
-        let Some((_, resource)) = self.client_resources.longest_match(dst) else {
+        let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
             return;
         };
         let resource = resource.id;
 
-        // Only expect a new connection intent if the last one was older than 2s
-        if !self.will_send_new_connection_intent(&resource) {
+        if !self.connected_resources.contains(&resource) {
+            self.connected_resources.insert(resource);
             return;
         }
 
-        self.last_connection_intents.insert(resource, self.now);
-        self.client_new_events.push((
-            self.now,
-            ClientEvent::ConnectionIntent {
-                resource,
-                connected_gateway_ids: HashSet::default(),
-            },
-        ));
-    }
-
-    fn will_send_new_connection_intent(&self, resource: &ResourceId) -> bool {
-        let Some(last_intent) = self.last_connection_intents.get(resource) else {
-            return true;
-        };
-
-        self.now.duration_since(*last_intent) >= Duration::from_secs(2)
+        self.gateway_received_icmp_packets
+            .push_back((self.now, src, dst))
     }
 
     /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
     fn sample_ipv4_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv4Addr {
-        let num_ip4_resources = self.client_resources.len().0;
+        let num_ip4_resources = self.client_cidr_resources.len().0;
         debug_assert!(num_ip4_resources > 0, "cannot sample without any resources");
         let r_idx = idx.index(num_ip4_resources);
         let (network, _) = self
-            .client_resources
+            .client_cidr_resources
             .iter_ipv4()
             .nth(r_idx)
             .expect("index to be in range");
@@ -233,11 +300,11 @@ impl ReferenceState {
 
     /// Samples an [`Ipv6Addr`] from _any_ of our IPv6 CIDR resources.
     fn sample_ipv6_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv6Addr {
-        let num_ip6_resources = self.client_resources.len().1;
+        let num_ip6_resources = self.client_cidr_resources.len().1;
         debug_assert!(num_ip6_resources > 0, "cannot sample without any resources");
         let r_idx = idx.index(num_ip6_resources);
         let (network, _) = self
-            .client_resources
+            .client_cidr_resources
             .iter_ipv6()
             .nth(r_idx)
             .expect("index to be in range");
@@ -267,10 +334,12 @@ impl TunnelTest {
         src: impl Into<IpAddr>,
         dst: impl Into<IpAddr>,
     ) {
-        let Some(transmit) = self.client.state.encapsulate(
-            ip_packet::make::icmp_request_packet(src.into(), dst.into()),
-            self.now,
-        ) else {
+        let Some(transmit) = self.client_span.in_scope(|| {
+            self.client.state.encapsulate(
+                ip_packet::make::icmp_request_packet(src.into(), dst.into()),
+                self.now,
+            )
+        }) else {
             return;
         };
         let transmit = transmit.into_owned();
@@ -287,29 +356,185 @@ impl TunnelTest {
         let payload = &transmit.payload;
 
         if self.client.wants(dst) {
-            if let Some(packet) =
+            if let Some(packet) = self.client_span.in_scope(|| {
                 self.client
                     .state
                     .decapsulate(dst, from, payload, self.now, self.buffer.as_mut())
-            {
+            }) {
                 self.client_received_packets.push_back(packet.to_owned());
             };
             return;
         }
 
         if self.gateway.wants(dst) {
-            if let Some(packet) =
+            if let Some(packet) = self.gateway_span.in_scope(|| {
                 self.gateway
                     .state
                     .decapsulate(dst, from, payload, self.now, self.buffer.as_mut())
-            {
-                self.gateway_received_packets.push_back(packet.to_owned());
+            }) {
+                // TODO: Assert that it is an ICMP packet.
+
+                self.gateway_received_icmp_packets.push_back((
+                    self.now,
+                    packet.source(),
+                    packet.destination(),
+                ));
             };
             return;
         }
 
         panic!("Unhandled packet: {from} -> {dst}")
     }
+
+    fn on_client_event(
+        &mut self,
+        src: ClientId,
+        event: ClientEvent,
+        client_cidr_resource: &IpNetworkTable<ResourceDescriptionCidr>,
+    ) {
+        match event {
+            ClientEvent::NewIceCandidate { candidate, .. } => self.client_span.in_scope(|| {
+                self.gateway
+                    .state
+                    .add_ice_candidate(src, candidate, self.now)
+            }),
+            ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
+                .gateway_span
+                .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
+            ClientEvent::ConnectionIntent { resource, .. } => {
+                // TODO: Should we somehow vary how many gateways we connect to?
+
+                let request = self
+                    .client_span
+                    .in_scope(|| {
+                        self.client.state.create_or_reuse_connection(
+                            resource,
+                            self.gateway.id,
+                            todo!(),
+                            HashSet::default(),
+                            HashSet::default(),
+                        )
+                    })
+                    .unwrap();
+
+                let resource_id = request.resource_id();
+                // TODO: For DNS resources, we need to come up with an IP that our resource resolves to on the other side.
+                let resource =
+                    map_client_resource_to_gateway_resource(client_cidr_resource, resource_id);
+
+                match request {
+                    Request::NewConnection(new_connection) => {
+                        let connection_accepted = self
+                            .gateway_span
+                            .in_scope(|| {
+                                self.gateway.state.accept(
+                                    self.client.id,
+                                    snownet::Offer {
+                                        session_key: new_connection
+                                            .client_preshared_key
+                                            .expose_secret()
+                                            .0
+                                            .into(),
+                                        credentials: snownet::Credentials {
+                                            username: new_connection
+                                                .client_payload
+                                                .ice_parameters
+                                                .username,
+                                            password: new_connection
+                                                .client_payload
+                                                .ice_parameters
+                                                .password,
+                                        },
+                                    },
+                                    self.client.state.public_key(),
+                                    vec![
+                                        self.client.tunnel_ip4.into(),
+                                        self.client.tunnel_ip6.into(),
+                                    ],
+                                    HashSet::default(),
+                                    HashSet::default(),
+                                    new_connection.client_payload.domain,
+                                    None, // TODO: How to generate expiry?
+                                    resource,
+                                    self.now,
+                                )
+                            })
+                            .unwrap();
+
+                        self.client_span
+                            .in_scope(|| {
+                                self.client.state.accept_answer(
+                                    snownet::Answer {
+                                        credentials: snownet::Credentials {
+                                            username: connection_accepted.ice_parameters.username,
+                                            password: connection_accepted.ice_parameters.password,
+                                        },
+                                    },
+                                    resource_id,
+                                    self.gateway.state.public_key(),
+                                    connection_accepted.domain_response,
+                                    self.now,
+                                )
+                            })
+                            .unwrap();
+                    }
+                    Request::ReuseConnection(reuse_connection) => {
+                        if let Some(domain_response) = self.gateway_span.in_scope(|| {
+                            self.gateway.state.allow_access(
+                                resource,
+                                self.client.id,
+                                None,
+                                reuse_connection.payload,
+                            )
+                        }) {
+                            self.client_span
+                                .in_scope(|| {
+                                    self.client
+                                        .state
+                                        .received_domain_parameters(resource_id, domain_response)
+                                })
+                                .unwrap();
+                        };
+                    }
+                };
+            }
+            ClientEvent::RefreshResources { .. } => {
+                tracing::warn!("Unimplemented");
+            }
+        }
+    }
+
+    fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
+        match event {
+            GatewayEvent::NewIceCandidate { candidate, .. } => self.client_span.in_scope(|| {
+                self.client
+                    .state
+                    .add_ice_candidate(src, candidate, self.now)
+            }),
+            GatewayEvent::InvalidIceCandidate { candidate, .. } => self
+                .client_span
+                .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
+        }
+    }
+}
+
+fn map_client_resource_to_gateway_resource(
+    client_cidr_resource: &IpNetworkTable<ResourceDescriptionCidr>,
+    resource_id: ResourceId,
+) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
+    let client_resource = client_cidr_resource
+        .iter()
+        .find_map(|(_, r)| (r.id == resource_id).then_some(r.clone()))
+        .expect("to know about ID");
+
+    gateway::ResourceDescription::<gateway::ResolvedResourceDescriptionDns>::Cidr(
+        gateway::ResourceDescriptionCidr {
+            id: client_resource.id,
+            address: client_resource.address,
+            name: client_resource.name,
+            filters: Vec::new(),
+        },
+    )
 }
 
 /// Generates a [`Transition`] that sends an ICMP packet to a random IP.
@@ -331,26 +556,78 @@ fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
         .prop_map(|(src, r_idx)| Transition::SendICMPPacketToIp6Resource { src, r_idx })
 }
 
-fn sim_node_prototype() -> impl Strategy<Value = SimNode<[u8; 32]>> {
+fn client_id() -> impl Strategy<Value = ClientId> {
+    (any::<u128>()).prop_map(ClientId::from_u128)
+}
+
+fn gateway_id() -> impl Strategy<Value = GatewayId> {
+    (any::<u128>()).prop_map(GatewayId::from_u128)
+}
+
+/// Generates an IPv4 address for the tunnel interface.
+///
+/// We use the CG-NAT range for IPv4.
+fn tunnel_ip4() -> impl Strategy<Value = Ipv4Addr> {
+    any::<sample::Index>().prop_map(|idx| {
+        let cgnat_block = Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10).unwrap();
+
+        let mut hosts = cgnat_block.hosts();
+
+        hosts.nth(idx.index(hosts.len())).unwrap()
+    })
+}
+
+/// Generates an IPv6 address for the tunnel interface.
+///
+/// TODO: Which subnet do we use here?
+fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
+    any::<Ipv6Addr>()
+}
+
+fn sim_node_prototype<ID>(
+    id: impl Strategy<Value = ID>,
+) -> impl Strategy<Value = SimNode<ID, [u8; 32]>>
+where
+    ID: fmt::Debug,
+{
     (
+        id,
         any::<[u8; 32]>(),
         any::<Option<SocketAddrV4>>(),
         any::<Option<SocketAddrV6>>(),
+        tunnel_ip4(),
+        tunnel_ip6(),
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(key, ip4_socket, ip6_socket)| {
+            |(id, key, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)| {
                 if ip4_socket.is_none() && ip6_socket.is_none() {
                     return None;
                 };
 
                 Some(SimNode {
+                    id,
                     state: key,
                     ip4_socket,
                     ip6_socket,
+                    tunnel_ip4,
+                    tunnel_ip6,
                 })
             },
         )
+}
+
+fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
+    (
+        any::<u64>(),
+        firezone_relay::proptest::ip_stack(),
+        any::<u128>(),
+    )
+        .prop_map(|(seed, ip_stack, id)| SimRelay {
+            id: RelayId::from_u128(id),
+            state: seed,
+            ip_stack,
+        })
 }
 
 /// Implementation of our reference state machine.
@@ -364,27 +641,25 @@ impl ReferenceStateMachine for ReferenceState {
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
         (
-
-            sim_node_prototype(),
-
-            sim_node_prototype(),
-
+            sim_node_prototype(client_id()),
+            sim_node_prototype(gateway_id()),
+            sim_relay_prototype(),
             Just(Instant::now()),
-        ,
             Just(Utc::now()),
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _)| c.state != g.state,
+                |(c, g, _, _, _)| c.state != g.state,
             )
-            .prop_map(|(client, gateway, now, utc_now)| Self {
+            .prop_map(|(client, gateway, relay, now, utc_now)| Self {
                 now,
                 utc_now,
                 client,
                 gateway,
-                client_resources: IpNetworkTable::new(),
-                client_new_events: Default::default(),
-                last_connection_intents: Default::default(),
+                relay,
+                client_cidr_resources: IpNetworkTable::new(),
+                connected_resources: Default::default(),
+                gateway_received_icmp_packets: Default::default(),
             })
             .boxed()
     }
@@ -397,7 +672,7 @@ impl ReferenceStateMachine for ReferenceState {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
 
-        match state.client_resources.len() {
+        match state.client_cidr_resources.len() {
             (0, 0) => prop_oneof![add_cidr_resource, tick, icmp_to_random_ip()].boxed(),
             (0, _) => prop_oneof![
                 add_cidr_resource,
@@ -428,22 +703,20 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
-        state.client_new_events.clear();
-
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client_resources.insert(r.address, r.clone());
+                state.client_cidr_resources.insert(r.address, r.clone());
             }
-            Transition::SendICMPPacketToRandomIp { dst, .. } => {
-                state.on_icmp_packet_to(*dst);
+            Transition::SendICMPPacketToRandomIp { src, dst } => {
+                state.on_icmp_packet(*src, *dst);
             }
-            Transition::SendICMPPacketToIp4Resource { r_idx, .. } => {
+            Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-                state.on_icmp_packet_to(dst);
+                state.on_icmp_packet(*src, dst);
             }
-            Transition::SendICMPPacketToIp6Resource { r_idx, .. } => {
+            Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-                state.on_icmp_packet_to(dst);
+                state.on_icmp_packet(*src, dst);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
         };
@@ -460,7 +733,7 @@ impl ReferenceStateMachine for ReferenceState {
                 src.is_ipv4() == dst.is_ipv4() && src != dst
             }
             Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
-                if state.client_resources.len().0 == 0 {
+                if state.client_cidr_resources.len().0 == 0 {
                     return false;
                 }
 
@@ -469,7 +742,7 @@ impl ReferenceStateMachine for ReferenceState {
                 src != &dst
             }
             Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
-                if state.client_resources.len().1 == 0 {
+                if state.client_cidr_resources.len().1 == 0 {
                     return false;
                 }
 

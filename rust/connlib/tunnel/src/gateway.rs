@@ -5,9 +5,9 @@ use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
-    gateway::Filters, gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription,
-    Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
-    Relay, RelayId, ResourceId,
+    gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId,
+    ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer, Relay, RelayId,
+    ResourceId,
 };
 use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
@@ -60,17 +60,7 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
-        match (&domain, &resource) {
-            (Some(domain), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
-            _ => {}
-        }
-
-        let answer = self.role_state.node.accept_connection(
+        self.role_state.accept(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -80,34 +70,14 @@ where
                 },
             },
             client,
+            ips,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays),
-            Instant::now(),
-        );
-
-        self.new_peer(
-            ips,
-            client_id,
-            resource.id(),
-            resource.filters(),
+            domain,
             expires_at,
-            resource.addresses(),
-        );
-
-        Ok(ConnectionAccepted {
-            ice_parameters: Answer {
-                username: answer.credentials.username,
-                password: answer.credentials.password,
-            },
-            domain_response: domain.map(|domain| DomainResponse {
-                domain,
-                address: resource
-                    .addresses()
-                    .into_iter()
-                    .map(|ip| ip.network_address())
-                    .collect(),
-            }),
-        })
+            resource,
+            Instant::now(),
+        )
     }
 
     pub fn cleanup_connection(&mut self, id: &ClientId) {
@@ -121,39 +91,8 @@ where
         expires_at: Option<DateTime<Utc>>,
         domain: Option<DomainName>,
     ) -> Option<DomainResponse> {
-        match (&domain, &resource) {
-            (Some(domain), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return None;
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => return None,
-            _ => {}
-        }
-
-        let peer = self.role_state.peers.get_mut(&client)?;
-
-        peer.add_resource(
-            resource.addresses(),
-            resource.id(),
-            resource.filters(),
-            expires_at,
-        );
-
-        tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
-
-        if let Some(domain) = domain {
-            return Some(DomainResponse {
-                domain,
-                address: resource
-                    .addresses()
-                    .iter()
-                    .map(|i| i.network_address())
-                    .collect(),
-            });
-        }
-
-        None
+        self.role_state
+            .allow_access(resource, client, expires_at, domain)
     }
 
     pub fn update_resource(&mut self, resource: ResourceDescription) {
@@ -178,30 +117,11 @@ where
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
         self.role_state
-            .node
-            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
+            .add_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.role_state
-            .node
-            .remove_remote_candidate(conn_id, ice_candidate);
-    }
-
-    fn new_peer(
-        &mut self,
-        ips: Vec<IpNetwork>,
-        client_id: ClientId,
-        resource: ResourceId,
-        filters: Filters,
-        expires_at: Option<DateTime<Utc>>,
-        resource_addresses: Vec<IpNetwork>,
-    ) {
-        let mut peer = ClientOnGateway::new(client_id, &ips);
-
-        peer.add_resource(resource_addresses, resource, filters, expires_at);
-
-        self.role_state.peers.insert(peer, &ips);
+        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
     }
 }
 
@@ -220,6 +140,11 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
+    }
+
+    #[cfg(all(feature = "proptest", test))]
+    pub(crate) fn public_key(&self) -> PublicKey {
+        self.node.public_key()
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -272,6 +197,121 @@ impl GatewayState {
         }
 
         Some(packet.into_immutable())
+    }
+
+    pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
+        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    }
+
+    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
+        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    }
+
+    /// Accept a connection request from a client.
+    #[allow(clippy::too_many_arguments)]
+    pub fn accept(
+        &mut self,
+        client_id: ClientId,
+        offer: snownet::Offer,
+        client: PublicKey,
+        ips: Vec<IpNetwork>,
+        stun_servers: HashSet<SocketAddr>,
+        turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
+        domain: Option<Dname>,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
+        now: Instant,
+    ) -> Result<ConnectionAccepted> {
+        match (&domain, &resource) {
+            (Some(domain), ResourceDescription::Dns(r)) => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
+                    return Err(Error::InvalidResource);
+                }
+            }
+            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
+            _ => {}
+        }
+
+        let answer =
+            self.node
+                .accept_connection(client_id, offer, client, stun_servers, turn_servers, now);
+
+        let mut peer = ClientOnGateway::new(client_id, &ips);
+
+        peer.add_resource(
+            resource.addresses(),
+            resource.id(),
+            resource.filters(),
+            expires_at,
+        );
+
+        self.peers.insert(peer, &ips);
+
+        Ok(ConnectionAccepted {
+            ice_parameters: Answer {
+                username: answer.credentials.username,
+                password: answer.credentials.password,
+            },
+            domain_response: domain.map(|domain| DomainResponse {
+                domain,
+                address: resource
+                    .addresses()
+                    .into_iter()
+                    .map(|ip| ip.network_address())
+                    .collect(),
+            }),
+        })
+    }
+
+    pub fn allow_access(
+        &mut self,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
+        client: ClientId,
+        expires_at: Option<DateTime<Utc>>,
+        domain: Option<Dname>,
+    ) -> Option<DomainResponse> {
+        match (&domain, &resource) {
+            (Some(domain), ResourceDescription::Dns(r)) => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
+                    return None;
+                }
+            }
+            (None, ResourceDescription::Dns(_)) => return None,
+            _ => {}
+        }
+
+        let peer = self.peers.get_mut(&client)?;
+
+        let (addresses, resource_id) = match &resource {
+            ResourceDescription::Dns(r) => {
+                let domain = domain.clone()?;
+
+                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                    return None;
+                }
+
+                (r.addresses.clone(), r.id)
+            }
+            ResourceDescription::Cidr(cidr) => (vec![cidr.address], cidr.id),
+        };
+
+        peer.add_resource(
+            resource.addresses(),
+            resource.id(),
+            resource.filters(),
+            expires_at,
+        );
+
+        tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+
+        if let Some(domain) = domain {
+            return Some(DomainResponse {
+                domain,
+                address: addresses.iter().map(|i| i.network_address()).collect(),
+            });
+        }
+
+        None
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {

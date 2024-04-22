@@ -263,6 +263,7 @@ pub enum ClientEvent {
     },
 }
 
+#[derive(Debug, Clone)]
 pub enum GatewayEvent {
     NewIceCandidate {
         conn_id: ClientId,

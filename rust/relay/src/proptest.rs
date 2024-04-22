@@ -1,9 +1,12 @@
 use crate::Binding;
 use crate::ChannelData;
+use crate::IpStack;
 use proptest::arbitrary::any;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::time::Duration;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use stun_codec::TransactionId;
@@ -63,4 +66,15 @@ pub fn username_salt() -> impl Strategy<Value = String> {
 
 pub fn nonce() -> impl Strategy<Value = Uuid> {
     any::<u128>().prop_map(Uuid::from_u128)
+}
+
+pub fn ip_stack() -> impl Strategy<Value = IpStack> {
+    (any::<Ipv4Addr>(), any::<Ipv6Addr>(), any::<u8>()).prop_map(|(ip4, ip6, mode)| {
+        match mode % 3 {
+            0 => IpStack::Ip4(ip4),
+            1 => IpStack::Ip6(ip6),
+            2 => IpStack::Dual { ip4, ip6 },
+            _ => unreachable!(),
+        }
+    })
 }
