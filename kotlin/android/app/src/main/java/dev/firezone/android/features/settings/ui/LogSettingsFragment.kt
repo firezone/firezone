@@ -9,13 +9,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dev.firezone.android.R
+import dev.firezone.android.core.di.MainImmediateDispatcher
 import dev.firezone.android.databinding.FragmentSettingsLogsBinding
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 class LogSettingsFragment : Fragment(R.layout.fragment_settings_logs) {
     private var _binding: FragmentSettingsLogsBinding? = null
     val binding: FragmentSettingsLogsBinding get() = _binding!!
     private val viewModel: SettingsViewModel by activityViewModels()
+    @Inject
+    @MainImmediateDispatcher
+    lateinit var mainImmediateDispatcher: CoroutineDispatcher
 
     override fun onViewCreated(
         view: View,
@@ -40,7 +46,7 @@ class LogSettingsFragment : Fragment(R.layout.fragment_settings_logs) {
     }
 
     private fun setupStateObservers() {
-        lifecycleScope.launch {
+        lifecycleScope.launch(mainImmediateDispatcher) {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { uiState ->
                     with(binding) {

@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.di.MainImmediateDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
 import javax.inject.Inject
@@ -16,6 +18,7 @@ internal class AuthViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        @MainImmediateDispatcher private val mainImmediateDispatcher: CoroutineDispatcher,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -23,7 +26,7 @@ internal class AuthViewModel
         private var authFlowLaunched: Boolean = false
 
         fun onActivityResume() =
-            viewModelScope.launch {
+            viewModelScope.launch(mainImmediateDispatcher) {
                 val state = generateRandomString(NONCE_LENGTH)
                 val nonce = generateRandomString(NONCE_LENGTH)
                 repo.saveNonceSync(nonce)

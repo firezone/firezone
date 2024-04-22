@@ -11,6 +11,8 @@ import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.di.MainImmediateDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -22,12 +24,13 @@ internal class CustomUriViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        @MainImmediateDispatcher private val mainImmediateDispatcher: CoroutineDispatcher,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
         fun parseCustomUri(intent: Intent) {
-            viewModelScope.launch {
+            viewModelScope.launch(mainImmediateDispatcher) {
                 when (intent.data?.host) {
                     PATH_CALLBACK -> {
                         intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->

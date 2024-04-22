@@ -4,10 +4,10 @@ package dev.firezone.android.core.presentation
 import android.view.View
 import android.view.ViewGroup
 import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.IdlingRegistry
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
-import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withParent
@@ -18,17 +18,26 @@ import androidx.test.filters.LargeTest
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.R
-import dev.firezone.android.core.waitForView
+import dev.firezone.android.core.di.TestDispatcherModule
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.hamcrest.Description
 import org.hamcrest.Matcher
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.TypeSafeMatcher
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @LargeTest
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 @HiltAndroidTest
 class MainActivityTest {
@@ -40,33 +49,28 @@ class MainActivityTest {
 
     @Before
     fun init() {
+        IdlingRegistry.getInstance().register(TestDispatcherModule.idlingResource)
+        Dispatchers.setMain(TestDispatcherModule.dispatcher)
         hiltRule.inject()
     }
 
-    @Test
-    fun mainActivityTest() {
-        onView(isRoot()).perform(
-            waitForView(
-                allOf(
-                    withId(R.id.btSettings),
-                    withText("Settings"),
-                    isDisplayed(),
-                ),
-                5000,
-            ),
-        )
+    @After
+    fun tearDown() {
+        IdlingRegistry.getInstance().unregister(TestDispatcherModule.idlingResource)
+        Dispatchers.resetMain()
+    }
 
-        val materialButton2 =
+    @Test
+    fun mainActivityTest() =
+        runTest {
+            advanceUntilIdle()
             onView(
                 allOf(
                     withId(R.id.btSettings),
                     withText("Settings"),
                     isDisplayed(),
                 ),
-            )
-        materialButton2.perform(click())
-
-        val tabView =
+            ).perform(click())
             onView(
                 allOf(
                     withContentDescription("Logs"),
@@ -79,10 +83,7 @@ class MainActivityTest {
                     ),
                     isDisplayed(),
                 ),
-            )
-        tabView.perform(click())
-
-        val tabView2 =
+            ).perform(click())
             onView(
                 allOf(
                     withContentDescription("Advanced"),
@@ -95,10 +96,7 @@ class MainActivityTest {
                     ),
                     isDisplayed(),
                 ),
-            )
-        tabView2.perform(click())
-
-        val materialButton3 =
+            ).perform(click())
             onView(
                 allOf(
                     withId(R.id.btSaveSettings),
@@ -112,10 +110,7 @@ class MainActivityTest {
                     ),
                     isDisplayed(),
                 ),
-            )
-        materialButton3.perform(click())
-
-        val button =
+            ).perform(click())
             onView(
                 allOf(
                     withId(R.id.btSignIn),
@@ -123,9 +118,8 @@ class MainActivityTest {
                     withParent(withParent(withId(R.id.fragmentContainer))),
                     isDisplayed(),
                 ),
-            )
-        button.check(matches(isDisplayed()))
-    }
+            ).check(matches(isDisplayed()))
+        }
 
     private fun childAtPosition(
         parentMatcher: Matcher<View>,

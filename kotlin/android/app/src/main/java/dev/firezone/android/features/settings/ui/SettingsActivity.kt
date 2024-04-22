@@ -14,13 +14,20 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.di.MainImmediateDispatcher
 import dev.firezone.android.databinding.ActivitySettingsBinding
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
+
+    @Inject
+    @MainImmediateDispatcher
+    lateinit var mainImmediateDispatcher: CoroutineDispatcher
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,7 +81,7 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupStateObservers() {
-        lifecycleScope.launch {
+        lifecycleScope.launch(mainImmediateDispatcher) {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { uiState ->
                     with(binding) {

@@ -11,6 +11,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.di.MainImmediateDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +34,7 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        @MainImmediateDispatcher private val mainImmediateDispatcher: CoroutineDispatcher,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -44,7 +47,7 @@ internal class SettingsViewModel
         private var logFilter = ""
 
         fun populateFieldsFromConfig() {
-            viewModelScope.launch {
+            viewModelScope.launch(mainImmediateDispatcher) {
                 repo.getConfig().collect {
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
@@ -68,7 +71,7 @@ internal class SettingsViewModel
         }
 
         fun onSaveSettingsCompleted() {
-            viewModelScope.launch {
+            viewModelScope.launch(mainImmediateDispatcher) {
                 repo.saveSettings(authBaseUrl, apiUrl, logFilter).collect {
                     actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
@@ -95,7 +98,7 @@ internal class SettingsViewModel
         }
 
         fun deleteLogDirectory(context: Context) {
-            viewModelScope.launch {
+            viewModelScope.launch(mainImmediateDispatcher) {
                 val logDir = context.cacheDir.absolutePath + "/logs"
                 val directory = File(logDir)
                 directory.walkTopDown().forEach { file ->
@@ -109,7 +112,7 @@ internal class SettingsViewModel
         }
 
         fun createLogZip(context: Context) {
-            viewModelScope.launch {
+            viewModelScope.launch(mainImmediateDispatcher) {
                 val logDir = context.cacheDir.absolutePath + "/logs"
                 val sourceFolder = File(logDir)
                 val zipFile = File(getLogZipPath(context))
