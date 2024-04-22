@@ -34,7 +34,7 @@ impl Release {
 
     /// Download URL for the first asset that matches the given arch, OS, and package type
     fn download_url_for(&self, arch: &str, os: &str) -> Option<&Url> {
-        let package = match std::env::consts::OS {
+        let package = match os {
             "linux" => "deb",
             "macos" => "dmg", // Unused in practice
             "windows" => "msi",
