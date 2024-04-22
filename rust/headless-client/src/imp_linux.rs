@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, Cmd};
+use super::{Cli, Cmd, TOKEN_ENV_KEY};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
@@ -30,7 +30,6 @@ const ROOT_USER: u32 = 0;
 /// for security, so we're following their lead. `/run` and `/var/run` are symlinked
 /// on some systems, `/run` should be the newer version.
 const SOCK_PATH: &str = "/run/firezone-client.sock";
-const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
@@ -39,11 +38,16 @@ pub fn default_token_path() -> PathBuf {
 }
 
 pub fn run() -> Result<()> {
+    let mut cli = Cli::parse();
+
     // Modifying the environment of a running process is unsafe. If any other
     // thread is reading or writing the environment, something bad can happen.
     // So `run` must take over as early as possible during startup, and
     // take the token env var before any other threads spawn.
-    let token_env_var = std::env::var(TOKEN_ENV_KEY).ok().map(SecretString::from);
+
+    let token_env_var = cli.token.take().map(SecretString::from);
+    let cli = cli;
+
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
     // thing to run after entering `main`. So nobody else is reading the environment.
@@ -54,7 +58,6 @@ pub fn run() -> Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
-    let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
