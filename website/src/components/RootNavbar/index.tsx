@@ -179,6 +179,18 @@ export default function RootNavbar() {
             </Link>
           </div>
           <div className="hidden md:flex space-x-2.5 items-center lg:order-2 mr-2">
+            <Link
+              href="https://github.com/firezone/firezone"
+              aria-label="GitHub Repository"
+            >
+              <Image
+                alt="Github Repo stars"
+                height={50}
+                width={100}
+                className=""
+                src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social"
+              />
+            </Link>
             <RequestDemoButton />
             <SignUpButton />
           </div>
