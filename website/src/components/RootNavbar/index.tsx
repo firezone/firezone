@@ -49,7 +49,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-main.svg"
-                className="md:hidden w-9 ml-2 flex"
+                className="lg:hidden w-9 ml-2 flex"
                 alt="Firezone Logo"
               />
             </Link>
@@ -58,7 +58,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-text.svg"
-                className="hidden md:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
+                className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
                 alt="Firezone Logo"
               />
             </Link>
@@ -178,7 +178,7 @@ export default function RootNavbar() {
               Pricing
             </Link>
           </div>
-          <div className="hidden md:flex space-x-2.5 items-center lg:order-2 mr-2">
+          <div className="hidden sm:flex space-x-2.5 items-center sm:order-2 mr-2">
             <Link
               href="https://github.com/firezone/firezone"
               aria-label="GitHub Repository"
