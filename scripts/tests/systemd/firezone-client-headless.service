@@ -23,9 +23,7 @@ ProtectKernelTunables=true
 # Docs say it's useless when running as root, but defense-in-depth
 ProtectProc=invisible
 ProtectSystem=strict
-# Need read-write access to the d-bus socket so `resolvectl` can control DNS
-ReadWritePaths=/run/dbus/system_bus_socket
-RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
