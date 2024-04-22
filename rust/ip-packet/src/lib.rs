@@ -65,10 +65,10 @@ impl<'a> MutableIpPacket<'a> {
     pub fn to_owned(&self) -> MutableIpPacket<'static> {
         match self {
             MutableIpPacket::Ipv4(i) => MutableIpv4Packet::owned(i.packet().to_vec())
-                .expect("owned packet is still valid")
+                .expect("owned packet should still be valid")
                 .into(),
             MutableIpPacket::Ipv6(i) => MutableIpv6Packet::owned(i.packet().to_vec())
-                .expect("owned packet is still valid")
+                .expect("owned packet should still be valid")
                 .into(),
         }
     }
@@ -110,7 +110,7 @@ impl<'a> MutableIpPacket<'a> {
         };
 
         self.as_udp()
-            .expect("Developer error: we can only get a checksum if the packet is udp")
+            .expect("Developer error: we can only get a UDP checksum if the packet is udp")
             .set_checksum(checksum);
     }
 
@@ -122,7 +122,7 @@ impl<'a> MutableIpPacket<'a> {
         };
 
         self.as_tcp()
-            .expect("Developer error: we can only get a checksum if the packet is tcp")
+            .expect("Developer error: we can only get a TCP checksum if the packet is tcp")
             .set_checksum(checksum);
     }
 
@@ -214,13 +214,6 @@ impl<'a> MutableIpPacket<'a> {
             _ => {}
         }
     }
-
-    pub fn set_len(&mut self, total_len: usize, payload_len: usize) {
-        match self {
-            Self::Ipv4(p) => p.set_total_length(total_len as u16),
-            Self::Ipv6(p) => p.set_payload_length(payload_len as u16),
-        }
-    }
 }
 
 impl<'a> IpPacket<'a> {
@@ -235,10 +228,10 @@ impl<'a> IpPacket<'a> {
     pub fn to_owned(&self) -> IpPacket<'static> {
         match self {
             IpPacket::Ipv4(i) => Ipv4Packet::owned(i.packet().to_vec())
-                .expect("owned packet is still valid")
+                .expect("owned packet should still be valid")
                 .into(),
             IpPacket::Ipv6(i) => Ipv6Packet::owned(i.packet().to_vec())
-                .expect("owned packet is still valid")
+                .expect("owned packet should still be valid")
                 .into(),
         }
     }
