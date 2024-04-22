@@ -2040,6 +2040,7 @@ dependencies = [
  "log",
  "netlink-packet-core",
  "netlink-packet-route",
+ "pnet_packet",
  "pretty_assertions",
  "proptest",
  "proptest-state-machine",

@@ -221,6 +221,15 @@ impl<'a> MutableIpPacket<'a> {
             Self::Ipv6(p) => p.set_payload_length(payload_len as u16),
         }
     }
+
+    pub fn inc_ipv4_identification_by(&mut self, inc: u16) {
+        match self {
+            MutableIpPacket::Ipv4(p) => {
+                p.set_identification(p.get_identification().wrapping_add(inc))
+            }
+            MutableIpPacket::Ipv6(_) => {}
+        }
+    }
 }
 
 impl<'a> IpPacket<'a> {

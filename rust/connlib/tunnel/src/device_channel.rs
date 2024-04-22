@@ -138,12 +138,6 @@ impl Device {
             return Poll::Pending;
         };
 
-        if self.mtu_refreshed_at.elapsed() > Duration::from_secs(30) {
-            let mtu = ioctl::interface_mtu_by_name(tun.name())?;
-            self.mtu = mtu;
-            self.mtu_refreshed_at = Instant::now();
-        }
-
         let packets = std::task::ready!(tun.poll_read(buf, cx))?;
 
         Poll::Ready(Ok(packets.inspect(|packet| {

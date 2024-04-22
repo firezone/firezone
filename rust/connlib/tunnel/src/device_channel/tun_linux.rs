@@ -1,7 +1,6 @@
 use super::utils;
-use crate::ip_packet::MutableIpPacket;
+use crate::device_channel::ioctl;
 use crate::FIREZONE_MARK;
-use crate::{device_channel::ioctl, ip_packet::IpPacket};
 use connlib_shared::{
     linux::{etc_resolv_conf, DnsControlMethod},
     messages::Interface as InterfaceConfig,
@@ -11,6 +10,7 @@ use futures::TryStreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::MutableIpPacket;
 use libc::{
     close, fcntl, makedev, mknod, open, writev, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI,
     IFF_TUN, IFF_VNET_HDR, O_NONBLOCK, O_RDWR, S_IFCHR, TUN_F_CSUM, TUN_F_TSO4, TUN_F_TSO6,
@@ -90,22 +90,30 @@ impl Drop for Tun {
 }
 
 impl Tun {
+    /*
+    #define VIRTIO_NET_HDR_GSO_NONE		0	/* Not a GSO frame */
+    #define VIRTIO_NET_HDR_GSO_TCPV4	1	/* GSO frame, IPv4 TCP (TSO) */
+    #define VIRTIO_NET_HDR_GSO_UDP		3	/* GSO frame, IPv4 UDP (UFO) */
+    #define VIRTIO_NET_HDR_GSO_TCPV6	4	/* GSO frame, IPv6 TCP */
+    #define VIRTIO_NET_HDR_GSO_UDP_L4	5	/* GSO frame, IPv4& IPv6 UDP (USO) */
+    */
     pub fn write4(&self, buf: &[u8]) -> io::Result<usize> {
         let ip_packet = Ipv4Packet::new(buf).unwrap();
-        let (csum_start, csum_offset) = match ip_packet.get_next_level_protocol() {
-            IpNextHeaderProtocols::Udp => (20, 6),
-            IpNextHeaderProtocols::Tcp => (20, 16),
-            _ => (0, 0),
-        };
+        let (csum_start, csum_offset, hdr_len, gso_type, gso_size) =
+            match ip_packet.get_next_level_protocol() {
+                IpNextHeaderProtocols::Udp => (20, 6, 40, 0, 0),
+                IpNextHeaderProtocols::Tcp => (20, 16, 52, 1, buf.len() as u16),
+                _ => (0, 0, 0, 0, 0),
+            };
 
         let hdr = VnetHeader {
             flags: 1,
-            hdr_len: 0,
+            hdr_len,
             csum_start,  // We need to calculate the length of the ip packet header
             csum_offset, // 16 for TCP 6 for UDP
             // GSO-related
-            gso_type: 0, // udp/tcp v4/v6
-            gso_size: 0,
+            gso_type, // udp/tcp v4/v6
+            gso_size,
             num_buffers: 0,
         };
 
@@ -115,7 +123,7 @@ impl Tun {
         let packet = unsafe { std::mem::transmute(IoSlice::new(buf)) };
 
         unsafe {
-            let ret = writev(self.fd.as_raw_fd(), (&[header, packet]).as_ptr(), 2);
+            let ret = writev(self.fd.as_raw_fd(), ([header, packet]).as_ptr(), 2);
 
             match ret {
                 -1 => Err(io::Error::last_os_error()),
@@ -209,6 +217,9 @@ impl Tun {
                 let (header, bodies) = payload.split_at_mut(header_length);
 
                 // dbg!(bodies.len() / body_length);
+                // if bodies.len() > body_length {
+                //     dbg!(vnet_header);
+                // }
 
                 let packets =
                     bodies
