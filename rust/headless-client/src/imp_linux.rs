@@ -161,7 +161,10 @@ fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
 
 fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     tracing::info!("Running in standalone mode");
-    let rt = tokio::runtime::Builder::new_current_thread().build()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     // AKA "Device ID", not the Firezone slug
