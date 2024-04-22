@@ -43,7 +43,7 @@ pub fn run() -> Result<()> {
     // thread is reading or writing the environment, something bad can happen.
     // So `run` must take over as early as possible during startup, and
     // take the token env var before any other threads spawn.
-    let token = std::env::var(TOKEN_ENV_KEY).ok().map(SecretString::from);
+    let token_env_var = std::env::var(TOKEN_ENV_KEY).ok().map(SecretString::from);
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
     // thing to run after entering `main`. So nobody else is reading the environment.
@@ -54,12 +54,6 @@ pub fn run() -> Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(run_async(token))?;
-    Ok(())
-}
-
-async fn run_async(token_env_var: Option<SecretString>) -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
@@ -69,12 +63,12 @@ async fn run_async(token_env_var: Option<SecretString>) -> Result<()> {
     match cli.command() {
         Cmd::Auto => {
             if let Some(token) = get_token(token_env_var, &cli)? {
-                run_standalone(cli, &token).await
+                run_standalone(cli, &token)
             } else {
-                run_ipc_service(cli).await
+                run_ipc_service(cli)
             }
         }
-        Cmd::IpcService => run_ipc_service(cli).await,
+        Cmd::IpcService => run_ipc_service(cli),
         Cmd::Standalone => {
             let token = get_token(token_env_var, &cli)?.with_context(|| {
                 format!(
@@ -82,9 +76,9 @@ async fn run_async(token_env_var: Option<SecretString>) -> Result<()> {
                     cli.token_path
                 )
             })?;
-            run_standalone(cli, &token).await
+            run_standalone(cli, &token)
         }
-        Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
+        Cmd::StubIpcClient => run_debug_ipc_client(cli),
     }
 }
 
@@ -162,11 +156,10 @@ fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
     Ok(Some(token))
 }
 
-async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
+fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     tracing::info!("Running in standalone mode");
+    let rt = tokio::runtime::Builder::new_current_thread().build()?;
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
-
-    let callbacks = CallbackHandler;
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -187,9 +180,9 @@ async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         Sockets::new(),
         private_key,
         None,
-        callbacks.clone(),
+        CallbackHandler,
         max_partition_time,
-        tokio::runtime::Handle::current(),
+        rt.handle().clone(),
     );
     // TODO: this should be added dynamically
     session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
@@ -197,27 +190,29 @@ async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
 
-    future::poll_fn(|cx| loop {
-        if sigint.poll_recv(cx).is_ready() {
-            tracing::debug!("Received SIGINT");
+    let result = rt.block_on(async {
+        future::poll_fn(|cx| loop {
+            if sigint.poll_recv(cx).is_ready() {
+                tracing::debug!("Received SIGINT");
 
-            return Poll::Ready(std::io::Result::Ok(()));
-        }
+                return Poll::Ready(std::io::Result::Ok(()));
+            }
 
-        if sighup.poll_recv(cx).is_ready() {
-            tracing::debug!("Received SIGHUP");
+            if sighup.poll_recv(cx).is_ready() {
+                tracing::debug!("Received SIGHUP");
 
-            session.reconnect();
-            continue;
-        }
+                session.reconnect();
+                continue;
+            }
 
-        return Poll::Pending;
-    })
-    .await?;
+            return Poll::Pending;
+        })
+        .await
+    });
 
     session.disconnect();
 
-    Ok(())
+    Ok(result?)
 }
 
 fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
@@ -298,20 +293,25 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
-    tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
-    let stream = UnixStream::connect(SOCK_PATH)
-        .await
-        .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
-    let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
+fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
+        let stream = UnixStream::connect(SOCK_PATH)
+            .await
+            .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
+        let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
-    stream.send(serde_json::to_string("Hello")?.into()).await?;
+        stream.send(serde_json::to_string("Hello")?.into()).await?;
+        Ok::<_, anyhow::Error>(())
+    })?;
     Ok(())
 }
 
-async fn run_ipc_service(_cli: Cli) -> Result<()> {
+fn run_ipc_service(_cli: Cli) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
     tracing::info!("run_daemon");
-    ipc_listen().await
+    rt.block_on(async { ipc_listen().await })
 }
 
 async fn ipc_listen() -> Result<()> {
