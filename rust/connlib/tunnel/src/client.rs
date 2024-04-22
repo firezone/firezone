@@ -951,7 +951,7 @@ impl ClientState {
         self.node.reconnect(now)
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
         self.node.poll_transmit()
     }
 

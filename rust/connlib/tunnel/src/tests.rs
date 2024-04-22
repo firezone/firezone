@@ -6,6 +6,7 @@ use connlib_shared::{
     StaticSecret,
 };
 use ip_network_table::IpNetworkTable;
+use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -14,9 +15,10 @@ use proptest::{
     test_runner::Config,
 };
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
+use snownet::Transmit;
 use std::{
-    collections::{HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    collections::{HashMap, HashSet, VecDeque},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
 use tracing::subscriber::DefaultGuard;
@@ -41,11 +43,38 @@ struct TunnelTest {
     now: Instant,
     utc_now: DateTime<Utc>,
 
-    client: ClientState,
-    gateway: GatewayState,
+    client: SimNode<ClientState>,
+    gateway: SimNode<GatewayState>,
+
+    client_received_packets: VecDeque<IpPacket<'static>>,
+    gateway_received_packets: VecDeque<IpPacket<'static>>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
+    buffer: Box<[u8; 10_000]>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SimNode<S> {
+    state: S,
+
+    ip4_socket: Option<SocketAddrV4>,
+    ip6_socket: Option<SocketAddrV6>,
+}
+
+impl<S> SimNode<S> {
+    fn map_state<T>(self, f: impl FnOnce(S) -> T) -> SimNode<T> {
+        SimNode {
+            state: f(self.state),
+            ip4_socket: self.ip4_socket,
+            ip6_socket: self.ip6_socket,
+        }
+    }
+
+    fn wants(&self, dst: SocketAddr) -> bool {
+        self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
+            || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
+    }
 }
 
 /// The reference state machine of the tunnel.
@@ -55,8 +84,8 @@ struct TunnelTest {
 struct ReferenceState {
     now: Instant,
     utc_now: DateTime<Utc>,
-    client_priv_key: [u8; 32],
-    gateway_priv_key: [u8; 32],
+    client: SimNode<[u8; 32]>,
+    gateway: SimNode<[u8; 32]>,
 
     /// Which resources the clients is aware of.
     client_resources: IpNetworkTable<ResourceDescriptionCidr>,
@@ -77,13 +106,20 @@ impl StateMachineTest for TunnelTest {
         Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
-            client: ClientState::new(StaticSecret::from(ref_state.client_priv_key)),
-            gateway: GatewayState::new(StaticSecret::from(ref_state.gateway_priv_key)),
+            client: ref_state
+                .client
+                .map_state(|key| ClientState::new(StaticSecret::from(key))),
+            gateway: ref_state
+                .gateway
+                .map_state(|key| GatewayState::new(StaticSecret::from(key))),
             logger: tracing_subscriber::fmt()
                 .with_test_writer()
                 .with_env_filter("debug")
                 .finish()
                 .set_default(),
+            buffer: Box::new([0u8; 10_000]),
+            client_received_packets: Default::default(),
+            gateway_received_packets: Default::default(),
         }
     }
 
@@ -95,7 +131,10 @@ impl StateMachineTest for TunnelTest {
     ) -> Self::SystemUnderTest {
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client.add_resources(&[ResourceDescription::Cidr(r)]);
+                state
+                    .client
+                    .state
+                    .add_resources(&[ResourceDescription::Cidr(r)]);
             }
             Transition::SendICMPPacketToRandomIp { src, dst } => {
                 state.send_icmp_packet_client_to_gateway(src, dst);
@@ -113,17 +152,21 @@ impl StateMachineTest for TunnelTest {
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
                 state.utc_now += Duration::from_millis(millis);
-                state.client.handle_timeout(state.now);
-                state.gateway.handle_timeout(state.now, state.utc_now);
+                state.client.state.handle_timeout(state.now);
+                state.gateway.state.handle_timeout(state.now, state.utc_now);
             }
         };
+        while let Some(transmit) = state.client.state.poll_transmit() {
+            state.dispatch_transmit(transmit)
+        }
+        while let Some(transmit) = state.gateway.state.poll_transmit() {
+            state.dispatch_transmit(transmit)
+        }
 
         for (time, expected_event) in &ref_state.client_new_events {
             assert_eq!(time, &state.now);
-            assert_eq!(expected_event, &state.client.poll_event().unwrap());
+            assert_eq!(expected_event, &state.client.state.poll_event().unwrap());
         }
-
-        // TODO: Drain `poll_transmit` and execute it.
 
         state
     }
@@ -224,12 +267,48 @@ impl TunnelTest {
         src: impl Into<IpAddr>,
         dst: impl Into<IpAddr>,
     ) {
-        let _maybe_transmit = self.client.encapsulate(
+        let Some(transmit) = self.client.state.encapsulate(
             ip_packet::make::icmp_request_packet(src.into(), dst.into()),
             self.now,
-        );
+        ) else {
+            return;
+        };
+        let transmit = transmit.into_owned();
 
-        // TODO: Handle transmit (send to relay / gateway)
+        self.dispatch_transmit(transmit);
+    }
+
+    fn dispatch_transmit(&mut self, transmit: Transmit) {
+        let Some(from) = transmit.src else {
+            tracing::debug!("Dropping packet without `src`");
+            return;
+        };
+        let dst = transmit.dst;
+        let payload = &transmit.payload;
+
+        if self.client.wants(dst) {
+            if let Some(packet) =
+                self.client
+                    .state
+                    .decapsulate(dst, from, payload, self.now, self.buffer.as_mut())
+            {
+                self.client_received_packets.push_back(packet.to_owned());
+            };
+            return;
+        }
+
+        if self.gateway.wants(dst) {
+            if let Some(packet) =
+                self.gateway
+                    .state
+                    .decapsulate(dst, from, payload, self.now, self.buffer.as_mut())
+            {
+                self.gateway_received_packets.push_back(packet.to_owned());
+            };
+            return;
+        }
+
+        panic!("Unhandled packet: {from} -> {dst}")
     }
 }
 
@@ -252,6 +331,28 @@ fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
         .prop_map(|(src, r_idx)| Transition::SendICMPPacketToIp6Resource { src, r_idx })
 }
 
+fn sim_node_prototype() -> impl Strategy<Value = SimNode<[u8; 32]>> {
+    (
+        any::<[u8; 32]>(),
+        any::<Option<SocketAddrV4>>(),
+        any::<Option<SocketAddrV6>>(),
+    )
+        .prop_filter_map(
+            "must have at least one socket address",
+            |(key, ip4_socket, ip6_socket)| {
+                if ip4_socket.is_none() && ip6_socket.is_none() {
+                    return None;
+                };
+
+                Some(SimNode {
+                    state: key,
+                    ip4_socket,
+                    ip6_socket,
+                })
+            },
+        )
+}
+
 /// Implementation of our reference state machine.
 ///
 /// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
@@ -263,20 +364,24 @@ impl ReferenceStateMachine for ReferenceState {
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
         (
-            any::<[u8; 32]>(),
-            any::<[u8; 32]>(),
+
+            sim_node_prototype(),
+
+            sim_node_prototype(),
+
             Just(Instant::now()),
+        ,
             Just(Utc::now()),
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _)| c != g,
+                |(c, g, _, _)| c.state != g.state,
             )
-            .prop_map(|(client_priv_key, gateway_priv_key, now, utc_now)| Self {
+            .prop_map(|(client, gateway, now, utc_now)| Self {
                 now,
                 utc_now,
-                client_priv_key,
-                gateway_priv_key,
+                client,
+                gateway,
                 client_resources: IpNetworkTable::new(),
                 client_new_events: Default::default(),
                 last_connection_intents: Default::default(),
