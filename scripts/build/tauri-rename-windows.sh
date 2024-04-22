@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euox pipefail
 
 # For debugging
 ls ../target/release ../target/release/bundle/msi

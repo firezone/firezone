@@ -39,9 +39,9 @@ jobs:
             binary-dest-path: firezone-client-gui-windows
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
-            exe-artifact: rust/gui-client/firezone-client-gui-windows-x64.exe
-            syms-artifact: rust/gui-client/firezone-client-gui-windows-x64.pdb
-            pkg-artifact: rust/gui-client/firezone-client-gui-windows-x64.msi
+            exe-artifact: rust/gui-client/firezone-client-gui-windows-x86_64.exe
+            syms-artifact: rust/gui-client/firezone-client-gui-windows-x86_64.pdb
+            pkg-artifact: rust/gui-client/firezone-client-gui-windows-x86_64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
