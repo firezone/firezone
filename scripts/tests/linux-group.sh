@@ -10,10 +10,9 @@ FZ_GROUP="firezone"
 SERVICE_NAME=firezone-client
 export RUST_LOG=info
 
-# Copy the Linux Client out of its container
-docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
-chmod u+x "$BINARY_NAME"
-sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
+# Copy the Linux Client out of the build dir
+ls . ./rust ./rust/target ./rust/target/debug
+sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
 
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
@@ -29,6 +28,9 @@ sudo su --login "$USER" --command RUST_LOG="$RUST_LOG" "$BINARY_NAME" stub-ipc-c
 
 echo "# Expect Firezone to reject our command if we run without 'su --login'"
 "$BINARY_NAME" stub-ipc-client && exit 1
+
+# Stop the service in case other tests run on the same VM
+sudo systemctl stop "$SERVICE_NAME"
 
 # Explicitly exiting is needed when we're intentionally having commands fail
 exit 0

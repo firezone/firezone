@@ -54,7 +54,7 @@ export default function KbSidebar() {
                 <Item href="/kb/deploy/policies" label="Policies" />
               </li>
               <li>
-                <Item href="/kb/deploy/clients" label="Clients" />
+                <Item href="/kb/deploy/clients" label="Distribute Clients" />
               </li>
               <li>
                 <Item href="/kb/deploy/dns" label="Configure DNS" />
@@ -83,22 +83,27 @@ export default function KbSidebar() {
                 />
               </li>
               <li>
-                <Item href="/kb/authenticate/google" label="Google Workspace" />
+                <Item
+                  href="/kb/authenticate/directory-sync"
+                  label="SSO + directory sync"
+                />
               </li>
               <li>
                 <Item
+                  nested
+                  href="/kb/authenticate/google"
+                  label="Google Workspace"
+                />
+              </li>
+              <li>
+                <Item
+                  nested
                   href="/kb/authenticate/entra"
                   label="Microsoft Entra ID"
                 />
               </li>
               <li>
-                <Item href="/kb/authenticate/okta" label="Okta" />
-              </li>
-              <li>
-                <Item
-                  href="/kb/authenticate/directory-sync"
-                  label="Directory sync"
-                />
+                <Item nested href="/kb/authenticate/okta" label="Okta" />
               </li>
               <li>
                 <Item
@@ -142,36 +147,40 @@ export default function KbSidebar() {
           <li>
             <Collapse
               expanded={p.startsWith("/kb/user-guides")}
-              label="User guides"
+              label="End-user guides"
             >
               <li>
-                <Item href="/kb/user-guides" label="Overview" />
+                <Item href="/kb/user-guides" label="Install Clients" />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/macos-client"
-                  label="macOS client"
+                  label="macOS"
                 />
               </li>
               <li>
-                <Item href="/kb/user-guides/ios-client" label="iOS client" />
+                <Item nested href="/kb/user-guides/ios-client" label="iOS" />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/windows-client"
-                  label="Windows client"
+                  label="Windows"
                 />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/android-client"
-                  label="Android / ChromeOS client"
+                  label="Android & ChromeOS"
                 />
               </li>
               <li>
                 <Item
+                  nested
                   href="/kb/user-guides/linux-client"
-                  label="Linux client"
+                  label="Linux"
                 />
               </li>
             </Collapse>
@@ -203,6 +212,64 @@ export default function KbSidebar() {
                 <Item
                   href="/kb/architecture/security-controls"
                   label="Security controls"
+                />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/use-cases")}
+              label="Use cases"
+            >
+              <li>
+                <Item href="/kb/use-cases" label="Overview" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/secure-dns"
+                  label="Block malicious DNS"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/scale-vpc-access"
+                  label="Scale access to a VPC"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/nat-gateway"
+                  label="Route through a public IP"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/postgres-access"
+                  label="Access a Postgres DB"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/saas-app-access"
+                  label="Manage access to a SaaS app"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/host-access"
+                  label="Access a remote host"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/private-network-access"
+                  label="Access a private network"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/use-cases/web-app-access"
+                  label="Access a private web app"
                 />
               </li>
             </Collapse>

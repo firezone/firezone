@@ -4,14 +4,12 @@ use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::{DnsServer, ResourceId};
-use connlib_shared::{Error, Result};
+use connlib_shared::messages::{ClientId, DnsServer, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use pnet_packet::Packet;
+use ip_packet::{MutableIpPacket, Packet};
 
 use crate::client::IpProvider;
-use crate::ip_packet::MutableIpPacket;
 
 type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
 
@@ -19,20 +17,17 @@ type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-pub struct Peer<TId, TTransform, TResource> {
-    // TODO: we should refactor this
-    // in the gateway-side this means that we are explicit about ()
-    // maybe duping the Peer struct is the way to go
-    pub allowed_ips: IpNetworkTable<TResource>,
-    pub conn_id: TId,
-    pub transform: TTransform,
+/// The state of one gateway on a client.
+pub(crate) struct GatewayOnClient {
+    id: GatewayId,
+    pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
+
+    pub translations: BiMap<IpAddr, IpAddr>,
+    dns_mapping: BiMap<IpAddr, DnsServer>,
+    mangled_dns_ids: HashMap<u16, std::time::Instant>,
 }
 
-impl<TId, TTransform> Peer<TId, TTransform, HashSet<ResourceId>>
-where
-    TId: Copy,
-    TTransform: PacketTransform,
-{
+impl GatewayOnClient {
     pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
         if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
             resources.insert(*id);
@@ -42,76 +37,26 @@ where
     }
 }
 
-impl<TId, TTransform, TResource> Peer<TId, TTransform, TResource>
-where
-    TId: Copy,
-    TTransform: PacketTransform,
-    TResource: Clone,
-{
+impl GatewayOnClient {
     pub(crate) fn new(
-        conn_id: TId,
-        transform: TTransform,
+        id: GatewayId,
         ips: &[IpNetwork],
-        resource: TResource,
-    ) -> Peer<TId, TTransform, TResource> {
+        resource: HashSet<ResourceId>,
+    ) -> GatewayOnClient {
         let mut allowed_ips = IpNetworkTable::new();
         for ip in ips {
             allowed_ips.insert(*ip, resource.clone());
         }
 
-        Peer {
+        GatewayOnClient {
+            id,
             allowed_ips,
-            conn_id,
-            transform,
+            translations: Default::default(),
+            dns_mapping: Default::default(),
+            mangled_dns_ids: Default::default(),
         }
     }
 
-    fn is_allowed(&self, addr: IpAddr) -> bool {
-        self.allowed_ips.longest_match(addr).is_some()
-    }
-
-    /// Sends the given packet to this peer by encapsulating it in a wireguard packet.
-    pub(crate) fn transform<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Option<MutableIpPacket<'a>> {
-        self.transform.packet_transform(packet)
-    }
-
-    pub(crate) fn untransform<'b>(
-        &mut self,
-        packet: MutableIpPacket<'b>,
-    ) -> Result<MutableIpPacket<'b>> {
-        let (packet, addr) = self.transform.packet_untransform(packet)?;
-
-        if !self.is_allowed(addr) {
-            return Err(Error::UnallowedPacket(addr));
-        }
-
-        Ok(packet)
-    }
-}
-
-pub struct PacketTransformGateway {
-    resources: IpNetworkTable<ExpiryingResource>,
-}
-
-impl Default for PacketTransformGateway {
-    fn default() -> Self {
-        Self {
-            resources: IpNetworkTable::new(),
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct PacketTransformClient {
-    pub translations: BiMap<IpAddr, IpAddr>,
-    dns_mapping: BiMap<IpAddr, DnsServer>,
-    mangled_dns_ids: HashMap<u16, std::time::Instant>,
-}
-
-impl PacketTransformClient {
     pub fn get_or_assign_translation(
         &mut self,
         ip: &IpAddr,
@@ -138,7 +83,20 @@ impl PacketTransformClient {
     }
 }
 
-impl PacketTransformGateway {
+impl ClientOnGateway {
+    pub(crate) fn new(id: ClientId, ips: &[IpNetwork]) -> ClientOnGateway {
+        let mut allowed_ips = IpNetworkTable::new();
+        for ip in ips {
+            allowed_ips.insert(*ip, ());
+        }
+
+        ClientOnGateway {
+            id,
+            allowed_ips,
+            resources: IpNetworkTable::new(),
+        }
+    }
+
     pub(crate) fn is_emptied(&self) -> bool {
         self.resources.is_empty()
     }
@@ -160,47 +118,43 @@ impl PacketTransformGateway {
     ) {
         self.resources.insert(ip, (resource, expires_at));
     }
-}
 
-pub trait PacketTransform {
-    fn packet_untransform<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Result<(MutableIpPacket<'a>, IpAddr)>;
-
-    fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>>;
-}
-
-impl PacketTransform for PacketTransformGateway {
-    fn packet_untransform<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-    ) -> Result<(MutableIpPacket<'a>, IpAddr)> {
-        let addr = packet.source();
-        let dst = packet.destination();
-
-        if self.resources.longest_match(dst).is_none() {
-            tracing::warn!(%dst, "unallowed packet");
-            return Err(Error::InvalidDst);
+    /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
+    pub fn ensure_allowed(
+        &self,
+        packet: &MutableIpPacket<'_>,
+    ) -> Result<(), connlib_shared::Error> {
+        if self.allowed_ips.longest_match(packet.source()).is_none() {
+            return Err(connlib_shared::Error::UnallowedPacket(packet.source()));
         }
 
-        Ok((packet, addr))
+        let dst = packet.destination();
+        if self.resources.longest_match(dst).is_none() {
+            tracing::warn!(%dst, "unallowed packet");
+            return Err(connlib_shared::Error::InvalidDst);
+        }
+
+        Ok(())
     }
 
-    fn packet_transform<'a>(&mut self, packet: MutableIpPacket<'a>) -> Option<MutableIpPacket<'a>> {
-        Some(packet)
+    pub fn id(&self) -> ClientId {
+        self.id
     }
 }
 
-impl PacketTransform for PacketTransformClient {
-    fn packet_untransform<'a>(
+impl GatewayOnClient {
+    /// Transform a packet that arrived via the network for the TUN device.
+    pub(crate) fn transform_network_to_tun<'a>(
         &mut self,
         mut pkt: MutableIpPacket<'a>,
-    ) -> Result<(MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
         let addr = pkt.source();
         let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
-        let original_src = src;
+        if self.allowed_ips.longest_match(src).is_none() {
+            return Err(connlib_shared::Error::UnallowedPacket(src));
+        }
+
         if let Some(dgm) = pkt.as_udp() {
             if let Some(sentinel) = self
                 .dns_mapping
@@ -221,13 +175,14 @@ impl PacketTransform for PacketTransformClient {
         pkt.set_src(src);
         pkt.update_checksum();
 
-        Ok((pkt, original_src))
+        Ok(pkt)
     }
 
-    fn packet_transform<'a>(
+    /// Transform a packet that arrvied on the TUN device for the network.
+    pub(crate) fn transform_tun_to_network<'a>(
         &mut self,
         mut packet: MutableIpPacket<'a>,
-    ) -> Option<MutableIpPacket<'a>> {
+    ) -> MutableIpPacket<'a> {
         if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
@@ -244,6 +199,17 @@ impl PacketTransform for PacketTransformClient {
             }
         }
 
-        Some(packet)
+        packet
     }
+
+    pub fn id(&self) -> GatewayId {
+        self.id
+    }
+}
+
+/// The state of one client on a gateway.
+pub struct ClientOnGateway {
+    id: ClientId,
+    allowed_ips: IpNetworkTable<()>,
+    resources: IpNetworkTable<ExpiryingResource>,
 }

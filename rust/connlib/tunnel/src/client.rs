@@ -1,5 +1,3 @@
-use crate::ip_packet::{IpPacket, MutableIpPacket};
-use crate::peer::{PacketTransformClient, Peer};
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
@@ -13,8 +11,10 @@ use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
+use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
@@ -73,9 +73,10 @@ where
         Ok(())
     }
 
-    pub fn upsert_relays(&mut self, relays: Vec<Relay>) {
-        self.role_state.upsert_relays(
-            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+        self.role_state.update_relays(
+            to_remove,
+            turn(&to_add, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         )
     }
@@ -182,6 +183,12 @@ where
             .add_remote_candidate(conn_id, ice_candidate, Instant::now());
     }
 
+    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.role_state
+            .node
+            .remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
@@ -255,7 +262,7 @@ pub struct ClientState {
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
     pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
 
-    pub peers: PeerStore<GatewayId, PacketTransformClient, HashSet<ResourceId>>,
+    peers: PeerStore<GatewayId, GatewayOnClient>,
 
     node: ClientNode<GatewayId, RelayId>,
 
@@ -327,11 +334,11 @@ impl ClientState {
             return None;
         };
 
-        let packet = peer.transform(packet)?;
+        let packet = peer.transform_tun_to_network(packet);
 
         let transmit = self
             .node
-            .encapsulate(peer.conn_id, packet.as_immutable().into(), Instant::now())
+            .encapsulate(peer.id(), packet.as_immutable(), Instant::now())
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -362,7 +369,7 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.untransform(packet.into()) {
+        let packet = match peer.transform_network_to_tun(packet) {
             Ok(packet) => packet,
             Err(e) => {
                 tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
@@ -409,9 +416,8 @@ impl ClientState {
         self.awaiting_connection.remove(&resource_id);
 
         let resource_ids = HashSet::from([resource_id]);
-        let mut peer: Peer<_, PacketTransformClient, _> =
-            Peer::new(gateway_id, Default::default(), &ips, resource_ids);
-        peer.transform.set_dns(self.dns_mapping());
+        let mut peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
+        peer.set_dns(self.dns_mapping());
         self.peers.insert(peer, &[]);
 
         let peer_ips = if let Some(domain_response) = domain_response {
@@ -543,8 +549,7 @@ impl ClientState {
             .address
             .iter()
             .filter_map(|external_ip| {
-                peer.transform
-                    .get_or_assign_translation(external_ip, &mut self.ip_provider)
+                peer.get_or_assign_translation(external_ip, &mut self.ip_provider)
             })
             .collect();
 
@@ -703,7 +708,7 @@ impl ClientState {
         self.dns_mapping = new_mapping.clone();
         self.peers
             .iter_mut()
-            .for_each(|p| p.transform.set_dns(new_mapping.clone()));
+            .for_each(|p| p.set_dns(new_mapping.clone()));
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -801,9 +806,7 @@ impl ClientState {
             Some(next_dns_refresh) if now >= next_dns_refresh => {
                 let mut connections = Vec::new();
 
-                self.peers
-                    .iter_mut()
-                    .for_each(|p| p.transform.expire_dns_track());
+                self.peers.iter_mut().for_each(|p| p.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
                     let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
@@ -835,16 +838,25 @@ impl ClientState {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
                 }
-                snownet::Event::SignalIceCandidate {
+                snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
                 } => self
                     .buffered_events
-                    .push_back(ClientEvent::SignalIceCandidate {
+                    .push_back(ClientEvent::NewIceCandidate {
                         conn_id: connection,
                         candidate,
                     }),
-                _ => {}
+                snownet::Event::InvalidateIceCandidate {
+                    connection,
+                    candidate,
+                } => self
+                    .buffered_events
+                    .push_back(ClientEvent::InvalidatedIceCandidate {
+                        conn_id: connection,
+                        candidate,
+                    }),
+                snownet::Event::ConnectionEstablished { .. } => {}
             }
         }
     }
@@ -891,7 +903,7 @@ impl ClientState {
         );
     }
 
-    fn add_resources(&mut self, resources: &[ResourceDescription]) {
+    pub(crate) fn add_resources(&mut self, resources: &[ResourceDescription]) {
         for resource_description in resources {
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
                 if resource.has_different_address(resource_description) {
@@ -947,9 +959,7 @@ impl ClientState {
 
                 // If the allowed_ips doesn't correspond to any resource anymore we
                 // clean up any related translation.
-                peer.transform
-                    .translations
-                    .remove_by_left(&network.network_address());
+                peer.translations.remove_by_left(&network.network_address());
             }
 
             // We remove all empty allowed ips entry since there's no resource that corresponds to it
@@ -993,12 +1003,13 @@ impl ClientState {
         true
     }
 
-    fn upsert_relays(
+    fn update_relays(
         &mut self,
-        relays: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_remove: HashSet<RelayId>,
+        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
         now: Instant,
     ) {
-        self.node.upsert_turn_servers(&relays, now);
+        self.node.update_relays(to_remove, &to_add, now);
     }
 }
 
@@ -1395,8 +1406,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1413,9 +1424,9 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource1: ResourceDescriptionCidr,
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] resource3: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1446,8 +1457,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
-        #[strategy(ip_network())] new_address: IpNetwork,
+        #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
+        #[strategy(ip_network(8))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
@@ -1472,7 +1483,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(ip_network())] address: IpNetwork,
+        #[strategy(ip_network(8))] address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
@@ -1498,7 +1509,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn resources_can_be_removed(
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] cidr_resource: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
@@ -1527,8 +1538,8 @@ mod proptests {
     fn resources_can_be_replaced(
         #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
         #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] cidr_resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource(8))] cidr_resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[

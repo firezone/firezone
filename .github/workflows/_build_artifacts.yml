@@ -100,9 +100,9 @@ jobs:
             type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
       - name: Sanitize github.ref_name
         run: |
-          # `ref_name` contains `/` which is not a valid docker image tag
+          # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
           REF="${{ github.ref_name }}"
-          CACHE_TAG="${REF//\//-}"
+          CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build and push control plane images
         id: build
@@ -260,9 +260,9 @@ jobs:
             type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
       - name: Sanitize github.ref_name
         run: |
-          # `ref_name` contains `/` which is not a valid docker image tag
+          # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
           REF="${{ github.ref_name }}"
-          CACHE_TAG="${REF//\//-}"
+          CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build Docker images
         id: build
@@ -273,6 +273,8 @@ jobs:
             PACKAGE=${{ matrix.name.package }}
             TARGET=${{ matrix.arch.target }}
           context: rust
+          build-contexts: |
+            browser-tests=${{ github.workspace }}/scripts/tests/browser
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main

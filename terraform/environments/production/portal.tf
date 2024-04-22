@@ -270,7 +270,7 @@ locals {
         cluster_version_label = "cluster_version"
         cluster_version       = split(".", local.portal_image_tag)[0]
         node_name_label       = "application"
-        polling_interval_ms   = 7000
+        polling_interval_ms   = 10000
       })
     },
     {
@@ -376,7 +376,7 @@ module "domain" {
   image      = "domain"
   image_tag  = local.portal_image_tag
 
-  scaling_horizontal_replicas = 1
+  scaling_horizontal_replicas = 2
 
   observability_log_level = "debug"
 
