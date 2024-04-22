@@ -38,7 +38,6 @@ Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
 Environment="RUST_LOG=info"
 
-# TODO: Make subcommands explicit
 ExecStart=firezone-linux-client ipc-service
 Type=notify
 # Unfortunately we may need root to control DNS
