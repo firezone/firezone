@@ -23,6 +23,8 @@ ProtectKernelTunables=true
 # Docs say it's useless when running as root, but defense-in-depth
 ProtectProc=invisible
 ProtectSystem=strict
+# Need read-write access to the d-bus socket so `resolvectl` can control DNS
+ReadWritePaths=/run/dbus/system_bus_socket
 RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=true
 RestrictRealtime=true
@@ -37,7 +39,6 @@ Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
 Environment="RUST_LOG=info"
 
-# TODO: Make subcommands explicit once PR #4628 merges
 ExecStart=firezone-linux-client standalone
 Type=notify
 # Unfortunately we may need root to control DNS
