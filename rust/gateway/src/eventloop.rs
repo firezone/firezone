@@ -1,10 +1,11 @@
 use crate::messages::{
-    AllowAccess, BroadcastClientIceCandidates, ClientIceCandidates, ConnectionReady,
-    EgressMessages, IngressMessages, RejectAccess, RequestConnection,
+    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+    IngressMessages, RejectAccess, RequestConnection,
 };
 use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
+use connlib_shared::messages::RelaysPresence;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted},
     Dname,
@@ -16,6 +17,7 @@ use firezone_tunnel::GatewayTunnel;
 use futures_bounded::Timeout;
 use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -84,13 +86,25 @@ impl Eventloop {
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) {
         match event {
-            firezone_tunnel::GatewayEvent::SignalIceCandidate {
+            firezone_tunnel::GatewayEvent::NewIceCandidate {
                 conn_id: client,
                 candidate,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(BroadcastClientIceCandidates {
+                    EgressMessages::BroadcastIceCandidates(ClientsIceCandidates {
+                        client_ids: vec![client],
+                        candidates: vec![candidate],
+                    }),
+                );
+            }
+            firezone_tunnel::GatewayEvent::InvalidIceCandidate {
+                conn_id: client,
+                candidate,
+            } => {
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
                         candidates: vec![candidate],
                     }),
@@ -142,6 +156,18 @@ impl Eventloop {
             }
             phoenix_channel::Event::InboundMessage {
                 msg:
+                    IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
+                        client_id,
+                        candidates,
+                    }),
+                ..
+            } => {
+                for candidate in candidates {
+                    self.tunnel.remove_ice_candidate(client_id, candidate);
+                }
+            }
+            phoenix_channel::Event::InboundMessage {
+                msg:
                     IngressMessages::RejectAccess(RejectAccess {
                         client_id,
                         resource_id,
@@ -150,6 +176,16 @@ impl Eventloop {
             } => {
                 self.tunnel.remove_access(&client_id, &resource_id);
             }
+            phoenix_channel::Event::InboundMessage {
+                msg:
+                    IngressMessages::RelaysPresence(RelaysPresence {
+                        disconnected_ids,
+                        connected,
+                    }),
+                ..
+            } => self
+                .tunnel
+                .update_relays(HashSet::from_iter(disconnected_ids), connected),
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::Init(_),
                 ..

@@ -5,7 +5,7 @@
 
 use boringtun::x25519::StaticSecret;
 use connlib_shared::{
-    messages::{ClientId, GatewayId, Relay, ResourceId, ReuseConnection},
+    messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
     Callbacks, Result,
 };
 use io::Io;
@@ -174,9 +174,10 @@ where
         })
     }
 
-    pub fn upsert_relays(&mut self, relays: Vec<Relay>) {
-        self.role_state.upsert_relays(
-            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+        self.role_state.update_relays(
+            to_remove,
+            turn(&to_add, |addr| self.io.sockets_ref().can_handle(addr)),
             Instant::now(),
         )
     }
@@ -242,7 +243,11 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
-    SignalIceCandidate {
+    NewIceCandidate {
+        conn_id: GatewayId,
+        candidate: String,
+    },
+    InvalidatedIceCandidate {
         conn_id: GatewayId,
         candidate: String,
     },
@@ -256,7 +261,11 @@ pub enum ClientEvent {
 }
 
 pub enum GatewayEvent {
-    SignalIceCandidate {
+    NewIceCandidate {
+        conn_id: ClientId,
+        candidate: String,
+    },
+    InvalidIceCandidate {
         conn_id: ClientId,
         candidate: String,
     },

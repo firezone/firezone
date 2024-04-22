@@ -6,7 +6,7 @@ import DocsSidebarToggle from "./DocsSidebarToggle";
 import KbSidebarToggle from "./KbSidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
-import RequestDemoButton from "@/components/RequestDemoButton";
+import { RequestDemoButton, SignUpButton } from "@/components/Buttons";
 import { useEffect } from "react";
 import { initFlowbite, Dropdown } from "flowbite";
 import { HiChevronDown } from "react-icons/hi2";
@@ -49,7 +49,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-main.svg"
-                className="md:hidden w-9 ml-2 flex"
+                className="lg:hidden w-9 ml-2 flex"
                 alt="Firezone Logo"
               />
             </Link>
@@ -58,7 +58,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-text.svg"
-                className="hidden md:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
+                className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
                 alt="Firezone Logo"
               />
             </Link>
@@ -178,10 +178,9 @@ export default function RootNavbar() {
               Pricing
             </Link>
           </div>
-          <div className="hidden md:flex items-center lg:order-2">
+          <div className="hidden sm:flex space-x-2.5 items-center sm:order-2 mr-2">
             <Link
               href="https://github.com/firezone/firezone"
-              className="p-2 mr-1"
               aria-label="GitHub Repository"
             >
               <Image
@@ -192,15 +191,8 @@ export default function RootNavbar() {
                 src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social"
               />
             </Link>
-            <span className="mr-2">
-              <ActionLink
-                size="ml-1 -mr-1 w-5 h-5"
-                href="https://app.firezone.dev"
-                className="hover:underline p-2 mr-1"
-              >
-                Admin Portal
-              </ActionLink>
-            </span>
+            <RequestDemoButton />
+            <SignUpButton />
           </div>
         </div>
       </nav>

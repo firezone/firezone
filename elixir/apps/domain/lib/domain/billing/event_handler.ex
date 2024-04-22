@@ -203,6 +203,10 @@ defmodule Domain.Billing.EventHandler do
     :ok
   end
 
+  defp create_account_from_stripe_customer(%{"metadata" => %{"account_id" => _account_id}}) do
+    :ok
+  end
+
   defp create_account_from_stripe_customer(%{
          "id" => customer_id,
          "name" => customer_name,

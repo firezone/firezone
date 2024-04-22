@@ -1,6 +1,6 @@
 use connlib_shared::messages::{
-    GatewayId, GatewayResponse, Interface, Key, Relay, RequestConnection, ResourceDescription,
-    ResourceId, ReuseConnection,
+    GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection,
+    ResourceDescription, ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, net::IpAddr};
@@ -47,20 +47,21 @@ pub enum IngressMessages {
     ResourceDeleted(ResourceId),
 
     IceCandidates(GatewayIceCandidates),
+    InvalidateIceCandidates(GatewayIceCandidates),
 
     ConfigChanged(ConfigUpdate),
+
+    RelaysPresence(RelaysPresence),
 }
 
-/// A gateway's ice candidate message.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct BroadcastGatewayIceCandidates {
-    /// Gateway's id the ice candidates are meant for
+pub struct GatewaysIceCandidates {
+    /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
     pub candidates: Vec<String>,
 }
 
-/// A gateway's ice candidate message.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
@@ -89,7 +90,10 @@ pub enum EgressMessages {
     },
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
-    BroadcastIceCandidates(BroadcastGatewayIceCandidates),
+    /// Candidates that can be used by the addressed gateways.
+    BroadcastIceCandidates(GatewaysIceCandidates),
+    /// Candidates that should no longer be used by the addressed gateways.
+    BroadcastInvalidatedIceCandidates(GatewaysIceCandidates),
 }
 
 #[cfg(test)]
@@ -108,7 +112,7 @@ mod test {
         let message = r#"{"topic":"client","event":"broadcast_ice_candidates","payload":{"gateway_ids":["b3d34a15-55ab-40df-994b-a838e75d65d7"],"candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
         let expected = PhoenixMessage::new_message(
             "client",
-            EgressMessages::BroadcastIceCandidates(BroadcastGatewayIceCandidates {
+            EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                 gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
                 candidates: vec![
                     "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
@@ -121,6 +125,22 @@ mod test {
         let ingress_message = serde_json::from_str::<PhoenixMessage<_, ()>>(message).unwrap();
 
         assert_eq!(ingress_message, expected);
+    }
+
+    #[test]
+    fn invalidate_ice_candidates_message() {
+        let msg = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"client","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+        let expected = IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
+            gateway_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
+            candidates: vec![
+                "candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"
+                    .to_owned(),
+            ],
+        });
+
+        let actual = serde_json::from_str::<IngressMessages>(msg).unwrap();
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -556,5 +576,49 @@ mod test {
             }"#;
         let reply_message = serde_json::from_str(message).unwrap();
         assert_eq!(m, reply_message);
+    }
+
+    #[test]
+    fn relays_presence() {
+        let message = r#"
+        {
+            "event": "relays_presence",
+            "ref": null,
+            "topic": "client",
+            "payload": {
+                "disconnected_ids": [
+                    "e95f9517-2152-4677-a16a-fbb2687050a3",
+                    "b0724bd1-a8cc-4faf-88cd-f21159cfec47"
+                ],
+                "connected": [
+                    {
+                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
+                        "type": "turn",
+                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
+                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
+                        "addr": "172.28.0.101:3478",
+                        "expires_at": 1719367575
+                    }
+                ]
+            }
+        }
+        "#;
+        let expected = IngressMessages::RelaysPresence(RelaysPresence {
+            disconnected_ids: vec![
+                "e95f9517-2152-4677-a16a-fbb2687050a3".parse().unwrap(),
+                "b0724bd1-a8cc-4faf-88cd-f21159cfec47".parse().unwrap(),
+            ],
+            connected: vec![Relay::Turn(Turn {
+                id: "0a133356-7a9e-4b9a-b413-0d95a5720fd8".parse().unwrap(),
+                expires_at: DateTime::from_timestamp(1719367575, 0).unwrap(),
+                addr: "172.28.0.101:3478".parse().unwrap(),
+                username: "1719367575:ZQHcVGkdnfgGmcP1".to_owned(),
+                password: "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg".to_owned(),
+            })],
+        });
+
+        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
+
+        assert_eq!(ingress_message, expected);
     }
 }

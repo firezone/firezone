@@ -46,6 +46,14 @@ impl ResourceId {
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 
+impl FromStr for ClientId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ClientId(Uuid::parse_str(s)?))
+    }
+}
+
 impl FromStr for ResourceId {
     type Err = uuid::Error;
 
@@ -403,6 +411,15 @@ pub struct Stun {
 
     /// Address for the relay
     pub addr: SocketAddr,
+}
+
+/// A update to the presence of several relays.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct RelaysPresence {
+    /// These relays have disconnected from the portal. We need to stop using them.
+    pub disconnected_ids: Vec<RelayId>,
+    /// These relays are still online. We can/should use these.
+    pub connected: Vec<Relay>,
 }
 
 #[cfg(test)]
