@@ -23,6 +23,7 @@ ProtectKernelTunables=true
 # Docs say it's useless when running as root, but defense-in-depth
 ProtectProc=invisible
 ProtectSystem=strict
+# Netlink needed for the tunnel interface, Unix needed for `systemd-resolved`
 RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 RestrictNamespaces=true
 RestrictRealtime=true

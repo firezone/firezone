@@ -257,7 +257,7 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
 /// for security, so we're following their lead. `/run` and `/var/run` are symlinked
 /// on some systems, `/run` should be the newer version.
 ///
-/// Also systemd can create this with the `RuntimeDir=` directive which is nice.
+/// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
 fn sock_path() -> PathBuf {
     PathBuf::from("/run")
         .join(connlib_shared::BUNDLE_ID)
