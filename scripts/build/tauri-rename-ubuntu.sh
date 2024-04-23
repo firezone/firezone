@@ -27,7 +27,7 @@ make_hash "$BINARY_DEST_PATH"_x86_64.deb
 sudo dpkg --install "$BINARY_DEST_PATH"_x86_64.deb
 
 # Debug-print the files. The icons and both binaries should be in here
-dpkg --listfiles firezone
+dpkg --listfiles firezone-client-gui
 
 # Confirm that both binaries and at least one icon were installed
 which firezone-client-gui firezone-client-ipc
