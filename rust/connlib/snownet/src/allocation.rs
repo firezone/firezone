@@ -828,19 +828,21 @@ impl Allocation {
         };
 
         let authenticated_message = authenticate(message, credentials);
-        let id = authenticated_message.transaction_id();
+        self.queue(dst, authenticated_message, backoff);
 
-        self.sent_requests.insert(
-            id,
-            (dst, authenticated_message.clone(), self.last_now, backoff),
-        );
+        true
+    }
+
+    fn queue(&mut self, dst: SocketAddr, message: Message<Attribute>, backoff: Duration) {
+        let id = message.transaction_id();
+
+        self.sent_requests
+            .insert(id, (dst, message.clone(), self.last_now, backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: encode(authenticated_message).into(),
+            payload: encode(message).into(),
         });
-
-        true
     }
 
     fn update_now(&mut self, now: Instant) {
