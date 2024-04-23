@@ -71,6 +71,9 @@ pub async fn run_only_ipc_service() -> Result<()> {
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);
 
+    if !nix::unistd::getuid().is_root() {
+        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+    }
     run_ipc_service(cli).await
 }
 
