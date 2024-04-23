@@ -763,8 +763,8 @@ impl Allocation {
         is_ip4 || is_ip6
     }
 
-    pub fn server(&self) -> Option<SocketAddr> {
-        self.active_socket
+    pub fn server(&self) -> RelaySocket {
+        self.server
     }
 
     pub fn ip4_socket(&self) -> Option<Socket> {

@@ -640,7 +640,7 @@ where
                 let Some(allocation) = self
                     .allocations
                     .values_mut()
-                    .find(|a| a.server().is_some_and(|s| s == from))
+                    .find(|a| a.server().matches(from))
                 else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
@@ -660,7 +660,7 @@ where
                 let Some(allocation) = self
                     .allocations
                     .values_mut()
-                    .find(|a| a.server().is_some_and(|s| s == from))
+                    .find(|a| a.server().matches(from))
                 else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
