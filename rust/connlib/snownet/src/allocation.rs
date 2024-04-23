@@ -236,16 +236,28 @@ impl Allocation {
         realm: Realm,
         now: Instant,
     ) {
-        self.server = socket;
         self.credentials = Some(Credentials {
             username,
             realm,
             password: password.to_owned(),
             nonce: None,
         });
-        // TODO: Clear `socket`?
 
-        self.refresh(now);
+        // If the server is the same, just `refresh` the allocation.
+        if self.server == socket {
+            self.refresh(now);
+
+            return;
+        }
+
+        // Server isn't the same, let's pick a new socket.
+        self.active_socket = None;
+        if let Some(v4) = socket.as_v4() {
+            self.queue((*v4).into(), make_binding_request(), None);
+        }
+        if let Some(v6) = socket.as_v6() {
+            self.queue((*v6).into(), make_binding_request(), None);
+        }
     }
 
     /// Refresh this allocation.
