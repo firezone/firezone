@@ -360,12 +360,10 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(transmit) = allocation.encode_to_borrowed_transmit(
-                    peer,
-                    packet_len,
-                    self.buffer.as_mut(),
-                    now,
-                ) else {
+                let packet = &mut self.buffer.as_mut()[..packet_end];
+
+                let Some(transmit) = allocation.encode_to_borrowed_transmit(peer, packet, now)
+                else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };

@@ -551,10 +551,12 @@ impl Allocation {
     pub fn encode_to_borrowed_transmit<'b>(
         &self,
         peer: SocketAddr,
-        packet_len: usize,
         buffer: &'b mut [u8],
         now: Instant,
     ) -> Option<Transmit<'b>> {
+        let buffer_len = buffer.len();
+        let packet_len = buffer_len - 4;
+
         let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
         let total_length = crate::channel_data::encode_header_to_slice(
             &mut buffer[..4],
