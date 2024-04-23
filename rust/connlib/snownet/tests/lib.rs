@@ -332,32 +332,6 @@ fn only_generate_candidate_event_after_answer() {
         }));
 }
 
-#[test]
-fn second_connection_with_same_relay_reuses_allocation() {
-    let mut alice = ClientNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
-    _ = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
-        Instant::now(),
-        Instant::now(),
-    );
-
-    let transmit = alice.poll_transmit().unwrap();
-    assert_eq!(transmit.dst, RELAY_V4.into());
-    assert!(alice.poll_transmit().is_none());
-
-    let _ = alice.new_connection(
-        2,
-        HashSet::new(),
-        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
-        Instant::now(),
-        Instant::now(),
-    );
-
-    assert!(alice.poll_transmit().is_none());
-}
-
 fn setup_tracing() -> tracing::subscriber::DefaultGuard {
     tracing_subscriber::fmt()
         .with_test_writer()
@@ -390,21 +364,6 @@ fn send_offer(
     )
 }
 
-fn relay(
-    id: u64,
-    username: &str,
-    pass: &str,
-    realm: &str,
-) -> (u64, RelaySocket, String, String, String) {
-    (
-        id,
-        RelaySocket::V4(RELAY_V4),
-        username.to_owned(),
-        pass.to_owned(),
-        realm.to_owned(),
-    )
-}
-
 fn host(socket: &str) -> String {
     Candidate::host(s(socket), Protocol::Udp)
         .unwrap()
@@ -418,8 +377,6 @@ fn s(socket: &str) -> SocketAddr {
 fn ip(ip: &str) -> IpAddr {
     ip.parse().unwrap()
 }
-
-const RELAY_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 10000);
 
 // Heavily inspired by https://github.com/algesten/str0m/blob/7ed5143381cf095f7074689cc254b8c9e50d25c5/src/ice/mod.rs#L547-L647.
 struct TestNode {
