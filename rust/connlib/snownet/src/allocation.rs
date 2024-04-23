@@ -64,8 +64,16 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<CandidateEvent>,
 
-    backoff: ExponentialBackoff,
-    sent_requests: HashMap<TransactionId, (SocketAddr, Message<Attribute>, Instant, Duration)>,
+    sent_requests: HashMap<
+        TransactionId,
+        (
+            SocketAddr,
+            Message<Attribute>,
+            Instant,
+            Duration,
+            ExponentialBackoff,
+        ),
+    >,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: RingBuffer<SocketAddr>,
@@ -194,22 +202,13 @@ impl Allocation {
             channel_bindings: Default::default(),
             last_now: now,
             buffered_channel_bindings: RingBuffer::new(100),
-            backoff: backoff::new(now, REQUEST_TIMEOUT),
         };
 
         if let Some(v4) = server.as_v4() {
-            let backoff = allocation
-                .backoff
-                .next_backoff()
-                .expect("to have backoff on startup");
-            allocation.queue((*v4).into(), make_binding_request(), backoff);
+            allocation.queue((*v4).into(), make_binding_request(), None);
         }
         if let Some(v6) = server.as_v6() {
-            let backoff = allocation
-                .backoff
-                .next_backoff()
-                .expect("to have backoff on startup");
-            allocation.queue((*v6).into(), make_binding_request(), backoff);
+            allocation.queue((*v6).into(), make_binding_request(), None);
         }
 
         allocation
@@ -263,13 +262,13 @@ impl Allocation {
         if self.is_suspended() {
             tracing::debug!("Attempting to make a new allocation");
 
-            self.authenticate_and_queue(make_allocate_request());
+            self.authenticate_and_queue(make_allocate_request(), None);
             return;
         }
 
         tracing::debug!("Refreshing allocation");
 
-        self.authenticate_and_queue(make_refresh_request());
+        self.authenticate_and_queue(make_refresh_request(), None);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
@@ -298,12 +297,10 @@ impl Allocation {
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
-        let Some((_, original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
+        let Some((_, original_request, sent_at, _, _)) = self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
-
-        self.backoff.reset();
 
         let rtt = now.duration_since(sent_at);
         Span::current().record("rtt", field::debug(rtt));
@@ -345,7 +342,7 @@ impl Allocation {
                     "Request failed, re-authenticating"
                 );
 
-                self.authenticate_and_queue(original_request);
+                self.authenticate_and_queue(original_request, None);
 
                 return true;
             }
@@ -378,7 +375,7 @@ impl Allocation {
                 }
                 REFRESH => {
                     self.invalidate_allocation();
-                    self.authenticate_and_queue(make_allocate_request());
+                    self.authenticate_and_queue(make_allocate_request(), None);
                 }
                 _ => {}
             }
@@ -524,27 +521,27 @@ impl Allocation {
             self.invalidate_allocation();
         }
 
-        while let Some((timed_out_request, backoff)) =
+        while let Some(timed_out_request) =
             self.sent_requests
                 .iter()
-                .find_map(|(id, (_, _, sent_at, backoff))| {
-                    (now.duration_since(*sent_at) >= *backoff).then_some((*id, *backoff))
+                .find_map(|(id, (_, _, sent_at, backoff, _))| {
+                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
                 })
         {
-            let (_, request, _, _) = self
+            let (_, request, _, backoff_duration, backoff) = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff:?}, re-sending");
+            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff_duration:?}, re-sending");
 
-            self.authenticate_and_queue(request);
+            self.authenticate_and_queue(request, Some(backoff));
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
             if (now >= refresh_at) && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
-                let queued = self.authenticate_and_queue(make_refresh_request());
+                let queued = self.authenticate_and_queue(make_refresh_request(), None);
 
                 // If we fail to queue the refresh message because we've exceeded our backoff, give
                 if !queued {
@@ -565,7 +562,7 @@ impl Allocation {
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
         for message in channel_refresh_messages {
-            self.authenticate_and_queue(message);
+            self.authenticate_and_queue(message, None);
         }
 
         // TODO: Clean up unused channels
@@ -586,7 +583,7 @@ impl Allocation {
             None
         };
 
-        for (_, (_, _, sent_at, backoff)) in self.sent_requests.iter() {
+        for (_, (_, _, sent_at, backoff, _)) in self.sent_requests.iter() {
             earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
         }
 
@@ -629,7 +626,7 @@ impl Allocation {
             return;
         };
 
-        self.authenticate_and_queue(make_channel_bind_request(peer, channel));
+        self.authenticate_and_queue(make_channel_bind_request(peer, channel), None);
     }
 
     /// Encodes the packet contained in the given buffer into a [`Transmit`].
@@ -749,7 +746,7 @@ impl Allocation {
     }
 
     fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(_, r, _, _)| {
+        self.sent_requests.values().any(|(_, r, _, _, _)| {
             r.method() == CHANNEL_BIND
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
@@ -760,7 +757,7 @@ impl Allocation {
         let sent_requests = self
             .sent_requests
             .values()
-            .map(|(_, r, _, _)| r)
+            .map(|(_, r, _, _, _)| r)
             .filter(|message| message.method() == CHANNEL_BIND)
             .filter_map(|message| message.get_attribute::<XorPeerAddress>())
             .map(|a| a.address());
@@ -774,13 +771,13 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _, _)| r.method() == ALLOCATE)
+            .any(|(_, r, _, _, _)| r.method() == ALLOCATE)
     }
 
     fn refresh_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _, _)| r.method() == REFRESH)
+            .any(|(_, r, _, _, _)| r.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
@@ -796,15 +793,11 @@ impl Allocation {
     }
 
     /// Returns: Whether we actually queued a message.
-    fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
-        let Some(backoff) = self.backoff.next_backoff() else {
-            tracing::debug!(
-                "Unable to queue {} because we've exceeded our backoffs",
-                message.method()
-            );
-            return false;
-        };
-
+    fn authenticate_and_queue(
+        &mut self,
+        message: Message<Attribute>,
+        backoff: Option<ExponentialBackoff>,
+    ) -> bool {
         let Some(dst) = self.active_socket else {
             tracing::debug!(
                 "Unable to queue {} because we haven't nominated a socket yet",
@@ -827,16 +820,33 @@ impl Allocation {
         true
     }
 
-    fn queue(&mut self, dst: SocketAddr, message: Message<Attribute>, backoff: Duration) {
+    fn queue(
+        &mut self,
+        dst: SocketAddr,
+        message: Message<Attribute>,
+        backoff: Option<ExponentialBackoff>,
+    ) -> bool {
+        let mut backoff = backoff.unwrap_or(backoff::new(self.last_now, REQUEST_TIMEOUT));
+
+        let Some(duration) = backoff.next_backoff() else {
+            tracing::debug!(
+                "Unable to queue {} because we've exceeded its backoffs",
+                message.method()
+            );
+            return false;
+        };
+
         let id = message.transaction_id();
 
         self.sent_requests
-            .insert(id, (dst, message.clone(), self.last_now, backoff));
+            .insert(id, (dst, message.clone(), self.last_now, duration, backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
             payload: encode(message).into(),
         });
+
+        true
     }
 
     fn update_now(&mut self, now: Instant) {
@@ -845,13 +855,9 @@ impl Allocation {
         }
 
         self.last_now = now;
-        self.backoff.clock.now = now;
 
-        // The backoff always counts from the last reset.
-        // If we don't have any pending requests, reset it.
-        // This allows any newly queued messages to start at the correct time.
-        if self.sent_requests.is_empty() {
-            self.backoff.reset();
+        for (_, _, _, _, backoff) in self.sent_requests.values_mut() {
+            backoff.clock.now = now;
         }
     }
 }
