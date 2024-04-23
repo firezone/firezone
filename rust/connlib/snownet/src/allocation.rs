@@ -420,6 +420,8 @@ impl Allocation {
 
                 // If the socket isn't set yet, use the `original_dst` as the primary socket.
                 self.active_socket = Some(original_dst);
+                // Make an allocation using the chosen socket.
+                self.authenticate_and_queue(make_allocate_request(), None);
             }
             ALLOCATE => {
                 let Some(lifetime) = message.get_attribute::<Lifetime>().map(|l| l.lifetime())
