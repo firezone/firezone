@@ -2160,6 +2160,28 @@ mod tests {
     }
 
     #[test]
+    fn new_address_sends_binding_requests() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
+        let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
+
+        let existing_credentials = allocation.credentials.clone().unwrap();
+
+        allocation.update_credentials(
+            RelaySocket::V6(RELAY_V6),
+            existing_credentials.username,
+            &existing_credentials.password,
+            existing_credentials.realm,
+            now,
+        );
+
+        let message = allocation.next_message().unwrap();
+        assert_eq!(message.method(), BINDING)
+    }
+
+    #[test]
     fn relay_socket_matches_v4_socket() {
         let socket = RelaySocket::V4(RELAY_V4);
 
