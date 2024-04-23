@@ -545,13 +545,16 @@ impl Allocation {
         self.authenticate_and_queue(make_channel_bind_request(peer, channel));
     }
 
-    pub fn encode_to_slice(
+    /// Encodes the packet contained in the given buffer into a [`Transmit`].
+    ///
+    /// This function assumes that the first 4 bytes of `buffer` have been reserved for the header of the channel-data message.
+    pub fn encode_to_borrowed_transmit<'b>(
         &self,
         peer: SocketAddr,
         packet_len: usize,
-        buffer: &mut [u8],
+        buffer: &'b mut [u8],
         now: Instant,
-    ) -> Option<usize> {
+    ) -> Option<Transmit<'b>> {
         let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
         let total_length = crate::channel_data::encode_header_to_slice(
             &mut buffer[..4],
@@ -559,7 +562,11 @@ impl Allocation {
             packet_len,
         );
 
-        Some(total_length)
+        Some(Transmit {
+            src: None,
+            dst: self.server,
+            payload: Cow::Borrowed(&buffer[..total_length]),
+        })
     }
 
     pub fn encode_to_owned_transmit(

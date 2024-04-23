@@ -360,20 +360,17 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) =
-                    allocation.encode_to_slice(peer, packet_len, self.buffer.as_mut(), now)
-                else {
+                let Some(transmit) = allocation.encode_to_borrowed_transmit(
+                    peer,
+                    packet_len,
+                    self.buffer.as_mut(),
+                    now,
+                ) else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                let channel_data_packet = &self.buffer[..total_length];
-
-                Ok(Some(Transmit {
-                    src: None,
-                    dst: allocation.server(),
-                    payload: Cow::Borrowed(channel_data_packet),
-                }))
+                Ok(Some(transmit))
             }
         }
     }
