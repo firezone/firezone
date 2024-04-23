@@ -56,10 +56,10 @@ module.exports = [
     permanent: false,
   },
   {
-    source: "/dl/firezone-client-linux-headless/latest/armv7l",
+    source: "/dl/firezone-client-linux-headless/latest/armv7",
     destination:
       // mark:automatic-version
-      "https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-client-linux-headless_1.0.0_armv7l",
+      "https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-client-linux-headless_1.0.0_armv7",
     permanent: false,
   },
   // versioned
@@ -88,9 +88,9 @@ module.exports = [
     permanent: false,
   },
   {
-    source: "/dl/firezone-client-linux-headless/:version/armv7l",
+    source: "/dl/firezone-client-linux-headless/:version/armv7",
     destination:
-      "https://www.github.com/firezone/firezone/releases/download/:version/firezone-client-linux-headless_:version_armv7l",
+      "https://www.github.com/firezone/firezone/releases/download/:version/firezone-client-linux-headless_:version_armv7",
     permanent: false,
   },
   /*
@@ -114,10 +114,10 @@ module.exports = [
     permanent: false,
   },
   {
-    source: "/dl/firezone-gateway/latest/armv7l",
+    source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:automatic-version
-      "https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-gateway_1.0.0_armv7l",
+      "https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-gateway_1.0.0_armv7",
     permanent: false,
   },
   // versioned
@@ -134,9 +134,9 @@ module.exports = [
     permanent: false,
   },
   {
-    source: "/dl/firezone-gateway/:version/armv7l",
+    source: "/dl/firezone-gateway/:version/armv7",
     destination:
-      "https://www.github.com/firezone/firezone/releases/download/:version/firezone-gateway_:version_armv7l",
+      "https://www.github.com/firezone/firezone/releases/download/:version/firezone-gateway_:version_armv7",
     permanent: false,
   },
 ];

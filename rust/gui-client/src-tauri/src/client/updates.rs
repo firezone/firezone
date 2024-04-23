@@ -13,9 +13,9 @@ use url::Url;
 pub(crate) struct Release {
     /// All assets in a given release
     assets: Vec<Asset>,
-    /// Git tag name
+    /// Git tag name / Cargo version name
     ///
-    /// e.g. 1.0.0-pre.8
+    /// e.g. 1.0.1
     pub tag_name: semver::Version,
 }
 

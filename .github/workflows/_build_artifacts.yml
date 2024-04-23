@@ -156,7 +156,7 @@ jobs:
             platform: linux/arm64
           - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
             platform: linux/arm/v7
-            shortname: armv7l
+            shortname: armv7
         name:
           - package: firezone-linux-client
             artifact: firezone-client-linux-headless
