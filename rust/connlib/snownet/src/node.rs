@@ -8,7 +8,7 @@ use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
-use core::{fmt, slice};
+use core::fmt;
 use ip_packet::ipv4::MutableIpv4Packet;
 use ip_packet::ipv6::MutableIpv6Packet;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -329,36 +329,45 @@ where
         // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
         let socket = conn.socket().ok_or(Error::NotConnected)?;
 
-        let (header, payload) = self.buffer.as_mut().split_at_mut(4);
-
-        let Some(packet) = conn.encapsulate(packet.packet(), payload)? else {
+        // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
+        let Some(packet_len) = conn
+            .encapsulate(packet.packet(), &mut self.buffer[4..])?
+            .map(|p| p.len())
+        // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
+        else {
             return Ok(None);
         };
+
+        let packet_start = 4;
+        let packet_end = 4 + packet_len;
 
         match socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
-            } => Ok(Some(Transmit {
-                src: Some(source),
-                dst: remote,
-                payload: Cow::Borrowed(packet),
-            })),
+            } => {
+                // Re-borrow the actual packet.
+                let packet = &self.buffer[packet_start..packet_end];
+
+                Ok(Some(Transmit {
+                    src: Some(source),
+                    dst: remote,
+                    payload: Cow::Borrowed(packet),
+                }))
+            }
             PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) = allocation.encode_to_slice(peer, packet, header, now)
+                let Some(total_length) =
+                    allocation.encode_to_slice(peer, packet_len, self.buffer.as_mut(), now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                // Safety: We split the slice before, but the borrow-checker doesn't allow us to re-borrow `self.buffer`.
-                // Safety: `total_length` < `buffer.len()` because it is returned from `Tunn::encapsulate`.
-                let channel_data_packet =
-                    unsafe { slice::from_raw_parts(header.as_ptr(), total_length) };
+                let channel_data_packet = &self.buffer[..total_length];
 
                 Ok(Some(Transmit {
                     src: None,

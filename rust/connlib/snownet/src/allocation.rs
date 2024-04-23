@@ -548,13 +548,16 @@ impl Allocation {
     pub fn encode_to_slice(
         &self,
         peer: SocketAddr,
-        packet: &[u8],
-        header: &mut [u8],
+        packet_len: usize,
+        buffer: &mut [u8],
         now: Instant,
     ) -> Option<usize> {
         let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
-        let total_length =
-            crate::channel_data::encode_header_to_slice(header, channel_number, packet);
+        let total_length = crate::channel_data::encode_header_to_slice(
+            &mut buffer[..4],
+            channel_number,
+            packet_len,
+        );
 
         Some(total_length)
     }
