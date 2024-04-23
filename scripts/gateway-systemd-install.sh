@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source "./scripts/tests/lib.sh"
+set -euo pipefail
 
 hostname=$(hostname)
 FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
