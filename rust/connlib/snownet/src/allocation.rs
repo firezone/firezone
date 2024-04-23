@@ -243,6 +243,7 @@ impl Allocation {
             password: password.to_owned(),
             nonce: None,
         });
+        // TODO: Clear `socket`?
 
         self.refresh(now);
     }
@@ -262,12 +263,14 @@ impl Allocation {
         if self.is_suspended() {
             tracing::debug!("Attempting to make a new allocation");
 
+            // TODO: Send binding requests instead?
             self.authenticate_and_queue(make_allocate_request(), None);
             return;
         }
 
         tracing::debug!("Refreshing allocation");
 
+        // TODO: Send binding requests?
         self.authenticate_and_queue(make_refresh_request(), None);
     }
 
@@ -743,6 +746,8 @@ impl Allocation {
         self.channel_bindings.clear();
         self.allocation_lifetime = None;
         self.sent_requests.clear();
+
+        // TODO: Invalidate `server`?
     }
 
     /// Checks whether the given socket is part of this allocation.
