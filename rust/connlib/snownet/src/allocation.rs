@@ -485,7 +485,7 @@ impl Allocation {
         packet: &'p [u8],
         now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], Socket)> {
-        if Some(from) != self.active_socket {
+        if from != self.active_socket? {
             return None;
         }
 
