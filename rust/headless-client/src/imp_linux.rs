@@ -41,7 +41,6 @@ pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
-
     tracing::info!(git_version = crate::GIT_VERSION);
 
     match cli.command() {
@@ -64,6 +63,15 @@ pub async fn run() -> Result<()> {
         }
         Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
     }
+}
+
+pub async fn run_only_ipc_service() -> Result<()> {
+    let cli = Cli::parse();
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    setup_global_subscriber(layer);
+    tracing::info!(git_version = crate::GIT_VERSION);
+
+    run_ipc_service(cli).await
 }
 
 /// Try to retrieve the token from CLI arg, env var, or disk
