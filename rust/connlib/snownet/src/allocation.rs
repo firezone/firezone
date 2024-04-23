@@ -195,18 +195,18 @@ impl Allocation {
         };
 
         if let Some(v4) = server.as_v4() {
-            allocation.buffered_transmits.push_back(Transmit {
-                src: None,
-                dst: (*v4).into(),
-                payload: encode(make_binding_request()).into(),
-            })
+            let backoff = allocation
+                .backoff
+                .next_backoff()
+                .expect("to have backoff on startup");
+            allocation.queue((*v4).into(), make_binding_request(), backoff);
         }
         if let Some(v6) = server.as_v6() {
-            allocation.buffered_transmits.push_back(Transmit {
-                src: None,
-                dst: (*v6).into(),
-                payload: encode(make_binding_request()).into(),
-            })
+            let backoff = allocation
+                .backoff
+                .next_backoff()
+                .expect("to have backoff on startup");
+            allocation.queue((*v6).into(), make_binding_request(), backoff);
         }
 
         allocation
