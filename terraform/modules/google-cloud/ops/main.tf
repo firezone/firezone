@@ -220,7 +220,7 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
       }
 
       aggregations {
-        alignment_period     = "300s"
+        alignment_period     = "600s"
         cross_series_reducer = "REDUCE_NONE"
         per_series_aligner   = "ALIGN_MEAN"
       }
