@@ -272,13 +272,15 @@ async fn set_iface_config(
 
     res_v4.or(res_v6)?;
 
-    match dns_control_method {
-        None => {}
+    if let Err(error) = match dns_control_method {
+        None => Ok(()),
         Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config)
             .await
-            .map_err(Error::ResolvConf)?,
-        Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config)?,
-        Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await?,
+            .map_err(Error::ResolvConf),
+        Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config),
+        Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await,
+    } {
+        panic!("Failed to control DNS: {error}");
     }
 
     // TODO: Having this inside the library is definitely wrong. I think `set_iface_config`
