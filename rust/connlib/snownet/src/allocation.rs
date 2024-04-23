@@ -297,7 +297,8 @@ impl Allocation {
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
-        let Some((_, original_request, sent_at, _, _)) = self.sent_requests.remove(&transaction_id)
+        let Some((original_dst, original_request, sent_at, _, _)) =
+            self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
@@ -397,6 +398,29 @@ impl Allocation {
         );
 
         match message.method() {
+            BINDING => {
+                // First, process the binding request itself.
+                let current_srflx_candidate = match original_dst {
+                    SocketAddr::V4(_) => &mut self.ip4_srflx_candidate,
+                    SocketAddr::V6(_) => &mut self.ip6_srflx_candidate,
+                };
+
+                let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
+                update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events);
+
+                self.log_update();
+
+                // Second, check if we have already determined which socket to use for this relay.
+                // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
+                // Thus, if we already have a socket set, we are done with processing this binding request.
+
+                if self.active_socket.is_some() {
+                    return true;
+                }
+
+                // If the socket isn't set yet, use the `original_dst` as the primary socket.
+                self.active_socket = Some(original_dst);
+            }
             ALLOCATE => {
                 let Some(lifetime) = message.get_attribute::<Lifetime>().map(|l| l.lifetime())
                 else {
@@ -428,12 +452,7 @@ impl Allocation {
                     &mut self.events,
                 );
 
-                tracing::info!(
-                    relay_ip4 = ?self.ip4_allocation,
-                    relay_ip6 = ?self.ip6_allocation,
-                    ?lifetime,
-                    "Updated candidates of allocation"
-                );
+                self.log_update();
 
                 while let Some(peer) = self.buffered_channel_bindings.pop() {
                     debug_assert!(
@@ -451,12 +470,7 @@ impl Allocation {
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
-                tracing::info!(
-                    relay_ip4 = ?self.ip4_allocation,
-                    relay_ip6 = ?self.ip6_allocation,
-                    ?lifetime,
-                    "Updated lifetime of allocation"
-                );
+                self.log_update();
             }
             CHANNEL_BIND => {
                 let Some(channel) = original_request
@@ -676,6 +690,17 @@ impl Allocation {
     /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events.
     pub fn can_be_freed(&self) -> bool {
         self.credentials.is_none() && self.events.is_empty()
+    }
+
+    fn log_update(&self) {
+        tracing::info!(
+            srflx_ip4 = ?self.ip4_srflx_candidate,
+            srflx_ip6 = ?self.ip6_srflx_candidate,
+            relay_ip4 = ?self.ip4_allocation,
+            relay_ip6 = ?self.ip6_allocation,
+            lifetime = ?self.allocation_lifetime,
+            "Updated allocation"
+        );
     }
 
     fn refresh_allocation_at(&self) -> Option<Instant> {
@@ -2097,6 +2122,21 @@ mod tests {
 
     #[test]
     fn relay_socket_matches_v6_socket() {
+        todo!()
+    }
+
+    #[test]
+    fn first_binding_response_sets_socket_to_use() {
+        todo!()
+    }
+
+    #[test]
+    fn both_stun_responses_are_returned_as_candidates() {
+        todo!()
+    }
+
+    #[test]
+    fn second_stun_request_gives_up_eventually() {
         todo!()
     }
 
