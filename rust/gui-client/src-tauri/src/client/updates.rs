@@ -24,10 +24,15 @@ pub(crate) async fn check() -> Result<Release> {
     // We used to send this to Github, couldn't hurt to send it to our own site, too
     let user_agent = format!("Firezone Client/{:?} ({os}; {arch})", current_version());
 
-    let mut latest_url = url::Url::parse("https://www.firezone.dev").context("Impossible: Hard-coded URL should always be parsable")?;
+    let mut latest_url = url::Url::parse("https://www.firezone.dev")
+        .context("Impossible: Hard-coded URL should always be parsable")?;
     latest_url.set_path(&format!("/dl/firezone-client-gui-{os}/latest/{arch}"));
 
-    let response = client.head(latest_url).header("User-Agent", user_agent).send().await?;
+    let response = client
+        .head(latest_url)
+        .header("User-Agent", user_agent)
+        .send()
+        .await?;
     let status = response.status();
     if status != reqwest::StatusCode::OK {
         // Should be 200 OK after all the redirects are followed
@@ -49,7 +54,10 @@ fn parse_version_from_url(url: &Url) -> Result<semver::Version> {
         .context("URL must have a path")?
         .last()
         .context("URL path must have a last segment")?;
-    let version_str = filename.split('_').nth(1).context("Filename must have 3 parts separated by underscores")?;
+    let version_str = filename
+        .split('_')
+        .nth(1)
+        .context("Filename must have 3 parts separated by underscores")?;
     Ok(semver::Version::parse(version_str)?)
 }
 
