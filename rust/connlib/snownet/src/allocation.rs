@@ -108,6 +108,17 @@ impl RelaySocket {
             Self::Dual { v6, .. } => Some(v6),
         }
     }
+
+    pub fn matches(&self, candidate: SocketAddr) -> bool {
+        let matches_v4 = self
+            .as_v4()
+            .is_some_and(|v4| SocketAddr::V4(*v4) == candidate);
+        let matches_v6 = self
+            .as_v6()
+            .is_some_and(|v6| SocketAddr::V6(*v6) == candidate);
+
+        matches_v4 || matches_v6
+    }
 }
 
 impl From<SocketAddr> for RelaySocket {
@@ -267,8 +278,10 @@ impl Allocation {
     ) -> bool {
         self.update_now(now);
 
-        if Some(from) != self.active_socket {
-            return false;
+        match self.active_socket {
+            Some(active_socket) if active_socket != from => return false,
+            None if !self.server.matches(from) => return false,
+            Some(_) | None => {}
         }
 
         let Ok(Ok(message)) = decode(packet) else {
@@ -2071,6 +2084,16 @@ mod tests {
         let allocation = Allocation::for_test(Instant::now());
 
         assert!(!allocation.can_be_freed());
+    }
+
+    #[test]
+    fn relay_socket_matches_v4_socket() {
+        todo!()
+    }
+
+    #[test]
+    fn relay_socket_matches_v6_socket() {
+        todo!()
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {

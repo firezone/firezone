@@ -550,20 +550,7 @@ impl TestRelay {
         other: &mut TestNode,
         now: Instant,
     ) {
-        if self
-            .listen_addr
-            .as_v4()
-            .is_some_and(|v4| SocketAddr::V4(*v4) == dst)
-        {
-            self.handle_client_input(payload, ClientSocket::new(sender), other, now);
-            return;
-        }
-
-        if self
-            .listen_addr
-            .as_v6()
-            .is_some_and(|v6| SocketAddr::V6(*v6) == dst)
-        {
+        if self.listen_addr.matches(dst) {
             self.handle_client_input(payload, ClientSocket::new(sender), other, now);
             return;
         }
