@@ -59,6 +59,11 @@ pub struct Allocation {
 
     last_now: Instant,
 
+    credentials: Option<Credentials>,
+}
+
+#[derive(Debug, Clone)]
+struct Credentials {
     username: Username,
     password: String,
     realm: Realm,
@@ -97,10 +102,12 @@ impl Allocation {
             buffered_transmits: Default::default(),
             events: Default::default(),
             sent_requests: Default::default(),
-            username,
-            password,
-            realm,
-            nonce: Default::default(),
+            credentials: Some(Credentials {
+                username,
+                password,
+                realm,
+                nonce: Default::default(),
+            }),
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
@@ -135,9 +142,12 @@ impl Allocation {
         now: Instant,
     ) {
         self.server = socket;
-        self.username = username;
-        self.realm = realm;
-        self.password = password.to_owned();
+        self.credentials = Some(Credentials {
+            username,
+            realm,
+            password: password.to_owned(),
+            nonce: None,
+        });
 
         self.refresh(now);
     }
@@ -209,6 +219,7 @@ impl Allocation {
                     "Invalid credentials, refusing to re-authenticate {}",
                     original_request.method()
                 );
+                self.credentials = None;
                 self.invalidate_allocation();
 
                 return true;
@@ -216,13 +227,17 @@ impl Allocation {
 
             // Check if we need to re-authenticate the original request
             if error.code() == Unauthorized::CODEPOINT || error.code() == StaleNonce::CODEPOINT {
-                if let Some(nonce) = message.get_attribute::<Nonce>() {
-                    self.nonce = Some(nonce.clone());
+                let Some(Credentials { nonce, realm, .. }) = &mut self.credentials else {
+                    return true;
+                };
+
+                if let Some(new_nonce) = message.get_attribute::<Nonce>() {
+                    let _ = nonce.insert(new_nonce.clone());
                 };
 
                 if let Some(offered_realm) = message.get_attribute::<Realm>() {
-                    if offered_realm != &self.realm {
-                        tracing::warn!(allowed_realm = %self.realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
+                    if offered_realm != realm {
+                        tracing::warn!(allowed_realm = %realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
                         return true; // We still handled our message correctly.
                     }
                 };
@@ -555,6 +570,13 @@ impl Allocation {
         Some(channel_data)
     }
 
+    /// Whether this [`Allocation`] can be freed.
+    ///
+    /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events.
+    pub fn can_be_freed(&self) -> bool {
+        self.credentials.is_none() && self.events.is_empty()
+    }
+
     fn refresh_allocation_at(&self) -> Option<Instant> {
         let (received_at, lifetime) = self.allocation_lifetime?;
 
@@ -669,40 +691,6 @@ impl Allocation {
         no_allocation && nothing_in_flight && nothing_buffered && waiting_on_nothing
     }
 
-    fn authenticate(&self, message: Message<Attribute>) -> Message<Attribute> {
-        let attributes = message
-            .attributes()
-            .filter(|a| !matches!(a, Attribute::Nonce(_)))
-            .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
-            .filter(|a| !matches!(a, Attribute::Realm(_)))
-            .filter(|a| !matches!(a, Attribute::Username(_)))
-            .cloned()
-            .chain([
-                Attribute::Username(self.username.clone()),
-                Attribute::Realm(self.realm.clone()),
-            ])
-            .chain(self.nonce.clone().map(Attribute::Nonce));
-
-        let transaction_id = TransactionId::new(random());
-        let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
-
-        for attribute in attributes {
-            message.add_attribute(attribute.to_owned());
-        }
-
-        let message_integrity = MessageIntegrity::new_long_term_credential(
-            &message,
-            &self.username,
-            &self.realm,
-            &self.password,
-        )
-        .expect("signing never fails");
-
-        message.add_attribute(message_integrity);
-
-        message
-    }
-
     /// Returns: Whether we actually queued a message.
     fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
         let Some(backoff) = self.backoff.next_backoff() else {
@@ -713,7 +701,15 @@ impl Allocation {
             return false;
         };
 
-        let authenticated_message = self.authenticate(message);
+        let Some(credentials) = &self.credentials else {
+            tracing::debug!(
+                "Unable to queue {} because we don't have credentials",
+                message.method()
+            );
+            return false;
+        };
+
+        let authenticated_message = authenticate(message, credentials);
         let id = authenticated_message.transaction_id();
 
         self.sent_requests
@@ -742,6 +738,40 @@ impl Allocation {
             self.backoff.reset();
         }
     }
+}
+
+fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
+    let attributes = message
+        .attributes()
+        .filter(|a| !matches!(a, Attribute::Nonce(_)))
+        .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
+        .filter(|a| !matches!(a, Attribute::Realm(_)))
+        .filter(|a| !matches!(a, Attribute::Username(_)))
+        .cloned()
+        .chain([
+            Attribute::Username(credentials.username.clone()),
+            Attribute::Realm(credentials.realm.clone()),
+        ])
+        .chain(credentials.nonce.clone().map(Attribute::Nonce));
+
+    let transaction_id = TransactionId::new(random());
+    let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
+
+    for attribute in attributes {
+        message.add_attribute(attribute.to_owned());
+    }
+
+    let message_integrity = MessageIntegrity::new_long_term_credential(
+        &message,
+        &credentials.username,
+        &credentials.realm,
+        &credentials.password,
+    )
+    .expect("signing never fails");
+
+    message.add_attribute(message_integrity);
+
+    message
 }
 
 fn update_candidate(
@@ -1880,7 +1910,8 @@ mod tests {
         let mut allocation =
             Allocation::for_test(now).with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6]);
         let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
-        allocation.nonce = Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
+        allocation.credentials.as_mut().unwrap().nonce =
+            Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
 
         let now = now + Duration::from_secs(1);
         allocation.refresh(now);
@@ -1901,7 +1932,8 @@ mod tests {
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
-        )
+        );
+        assert!(allocation.can_be_freed());
     }
 
     #[test]
@@ -1910,15 +1942,24 @@ mod tests {
         let mut allocation = Allocation::for_test(now).with_allocate_response(&[RELAY_ADDR_IP4]);
         let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
 
+        let existing_credentials = allocation.credentials.clone().unwrap();
+
         allocation.update_credentials(
             RELAY2,
-            allocation.username.clone(),
-            &allocation.password.clone(),
-            allocation.realm.clone(),
+            existing_credentials.username,
+            &existing_credentials.password,
+            existing_credentials.realm,
             now,
         );
 
         assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY2)
+    }
+
+    #[test]
+    fn allocation_is_not_freed_on_startup() {
+        let allocation = Allocation::for_test(Instant::now());
+
+        assert!(!allocation.can_be_freed());
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
