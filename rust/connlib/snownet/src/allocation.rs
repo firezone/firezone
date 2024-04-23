@@ -204,12 +204,7 @@ impl Allocation {
             buffered_channel_bindings: RingBuffer::new(100),
         };
 
-        if let Some(v4) = server.as_v4() {
-            allocation.queue((*v4).into(), make_binding_request(), None);
-        }
-        if let Some(v6) = server.as_v6() {
-            allocation.queue((*v6).into(), make_binding_request(), None);
-        }
+        allocation.send_binding_requests();
 
         allocation
     }
@@ -249,15 +244,11 @@ impl Allocation {
 
             return;
         }
+        self.server = socket;
 
         // Server isn't the same, let's pick a new socket.
         self.active_socket = None;
-        if let Some(v4) = socket.as_v4() {
-            self.queue((*v4).into(), make_binding_request(), None);
-        }
-        if let Some(v6) = socket.as_v6() {
-            self.queue((*v6).into(), make_binding_request(), None);
-        }
+        self.send_binding_requests();
     }
 
     /// Refresh this allocation.
@@ -275,14 +266,16 @@ impl Allocation {
         if self.is_suspended() {
             tracing::debug!("Attempting to make a new allocation");
 
-            // TODO: Send binding requests instead?
-            self.authenticate_and_queue(make_allocate_request(), None);
+            self.active_socket = None;
+            self.send_binding_requests();
             return;
         }
 
         tracing::debug!("Refreshing allocation");
 
-        self.authenticate_and_queue(make_refresh_request(), None);
+        // Allocation is not suspended here, we check as part of `handle_input` whether we need to `ALLOCATE` or `REFRESH`
+        self.active_socket = None;
+        self.send_binding_requests();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
@@ -439,8 +432,12 @@ impl Allocation {
 
                 // If the socket isn't set yet, use the `original_dst` as the primary socket.
                 self.active_socket = Some(original_dst);
-                // Make an allocation using the chosen socket.
-                self.authenticate_and_queue(make_allocate_request(), None);
+
+                if self.has_allocation() {
+                    self.authenticate_and_queue(make_refresh_request(), None);
+                } else {
+                    self.authenticate_and_queue(make_allocate_request(), None);
+                }
             }
             ALLOCATE => {
                 let Some(lifetime) = message.get_attribute::<Lifetime>().map(|l| l.lifetime())
@@ -585,7 +582,7 @@ impl Allocation {
                 tracing::debug!("Allocation is due for a refresh");
                 let queued = self.authenticate_and_queue(make_refresh_request(), None);
 
-                // If we fail to queue the refresh message because we've exceeded our backoff, give
+                // If we fail to queue the refresh message because we've exceeded our backoff, give up.
                 if !queued {
                     self.invalidate_allocation();
                 }
@@ -757,8 +754,6 @@ impl Allocation {
         self.channel_bindings.clear();
         self.allocation_lifetime = None;
         self.sent_requests.clear();
-
-        // TODO: Invalidate `server`?
     }
 
     /// Checks whether the given socket is part of this allocation.
@@ -845,6 +840,15 @@ impl Allocation {
         let waiting_on_nothing = self.poll_timeout().is_none();
 
         no_allocation && nothing_in_flight && nothing_buffered && waiting_on_nothing
+    }
+
+    fn send_binding_requests(&mut self) {
+        if let Some(v4) = self.server.as_v4() {
+            self.queue((*v4).into(), make_binding_request(), None);
+        }
+        if let Some(v6) = self.server.as_v6() {
+            self.queue((*v6).into(), make_binding_request(), None);
+        }
     }
 
     /// Returns: Whether we actually queued a message.
@@ -1740,6 +1744,10 @@ mod tests {
 
         allocation.refresh_with_same_credentials();
 
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
+
         let refresh = allocation.next_message().unwrap();
         assert_eq!(refresh.method(), REFRESH);
 
@@ -1836,6 +1844,10 @@ mod tests {
 
         allocation.refresh_with_same_credentials();
 
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
+
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
 
@@ -1911,6 +1923,10 @@ mod tests {
 
         allocation.refresh_with_same_credentials();
 
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
+
         let next_msg = allocation.next_message().unwrap();
         assert_eq!(next_msg.method(), ALLOCATE)
     }
@@ -1925,6 +1941,10 @@ mod tests {
         allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
 
         allocation.refresh_with_same_credentials();
+
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(
@@ -2109,6 +2129,10 @@ mod tests {
 
         let now = now + Duration::from_secs(1);
         allocation.refresh(now);
+
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         // If the relay is restarted, our current credentials will be invalid. Simulate with an "unauthorized" response".
         let now = now + Duration::from_secs(1);
