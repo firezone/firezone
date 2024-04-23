@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source "./scripts/tests/lib.sh"
+set -euo pipefail
 
 hostname=$(hostname)
 FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
@@ -57,21 +57,9 @@ set -ue
 if [ ! -e /usr/local/bin/firezone-gateway ]; then
   echo "/usr/local/bin/firezone-gateway not found. Downloading latest version..."
   arch=\$(uname -m)
-  case \$arch in
-    aarch64)
-      bin="gateway-arm64"
-      ;;
-    armv7l)
-      bin="gateway-arm"
-      ;;
-    x86_64)
-      bin="gateway-x64"
-      ;;
-    *)
-      echo "Unsupported architecture"
-      exit 1
-  esac
-  curl -Ls https://github.com/firezone/firezone/releases/latest/download/\$bin -o /usr/local/bin/firezone-gateway
+
+  # See https://www.github.com/firezone/firezone/releases for available binaries
+  curl -fsSL https://www.firezone.dev/dl/firezone-gateway/latest/\$arch -o /usr/local/bin/firezone-gateway
 else
   echo "/usr/local/bin/firezone-gateway found. Skipping download."
 fi
