@@ -1461,11 +1461,12 @@ where
                     source,
                     ..
                 } => {
-                    let candidate = self
+                    let nominated_candidate = self
                         .local_candidate(source)
-                        .expect("to only nominate existing candidates");
+                        .expect("to only nominate existing candidates")
+                        .clone();
 
-                    let remote_socket = match candidate.kind() {
+                    let remote_socket = match nominated_candidate.kind() {
                         CandidateKind::Relayed => {
                             let relay = allocations.iter().find_map(|(relay, allocation)| {
                                 allocation.has_socket(source).then_some(*relay)
@@ -1537,7 +1538,7 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.invalidate_candiates(id, allocations, pending_events);
+                    self.invalidate_candiates(id, nominated_candidate, pending_events);
                     self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1712,27 +1713,11 @@ where
     fn invalidate_candiates<TId>(
         &mut self,
         id: TId,
-        allocations: &HashMap<RId, Allocation>,
+        nominated: Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: Copy + fmt::Display,
     {
-        let Some(socket) = self.socket() else {
-            return;
-        };
-
-        let socket = match socket {
-            PeerSocket::Direct { source, .. } => source,
-            PeerSocket::Relay { relay, .. } => match allocations.get(&relay) {
-                Some(r) => r.server(),
-                None => return,
-            },
-        };
-
-        let Some(nominated) = self.local_candidate(socket).cloned() else {
-            return;
-        };
-
         Span::current().record("nominated_prio", field::display(&nominated.prio()));
 
         let irrelevant_candidates = self
