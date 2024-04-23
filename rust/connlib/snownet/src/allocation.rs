@@ -49,8 +49,10 @@ pub struct Allocation {
     /// Whatever comes back first, wins.
     active_socket: Option<SocketAddr>,
 
-    /// If present, the last address the relay observed for us.
-    last_srflx_candidate: Option<Candidate>,
+    /// If present, the IPv4 address the relay observed for us.
+    ip4_srflx_candidate: Option<Candidate>,
+    /// If present, the IPv6 address the relay observed for us.
+    ip6_srflx_candidate: Option<Candidate>,
     /// If present, the IPv4 socket the relay allocated for us.
     ip4_allocation: Option<Candidate>,
     /// If present, the IPv6 socket the relay allocated for us.
@@ -175,7 +177,8 @@ impl Allocation {
         let mut allocation = Self {
             server,
             active_socket: None,
-            last_srflx_candidate: Default::default(),
+            ip4_srflx_candidate: Default::default(),
+            ip6_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
             ip6_allocation: Default::default(),
             buffered_transmits: Default::default(),
@@ -214,7 +217,8 @@ impl Allocation {
 
     pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
         [
-            self.last_srflx_candidate.clone(),
+            self.ip4_srflx_candidate.clone(),
+            self.ip6_srflx_candidate.clone(),
             self.ip4_allocation.clone(),
             self.ip6_allocation.clone(),
         ]
@@ -403,9 +407,6 @@ impl Allocation {
                     return true;
                 };
 
-                let maybe_srflx_candidate = message
-                    .attributes()
-                    .find_map(|addr| srflx_candidate(local, addr));
                 let maybe_ip4_relay_candidate = message
                     .attributes()
                     .find_map(relay_candidate(|s| s.is_ipv4()));
@@ -420,11 +421,6 @@ impl Allocation {
 
                 self.allocation_lifetime = Some((now, lifetime));
                 update_candidate(
-                    maybe_srflx_candidate,
-                    &mut self.last_srflx_candidate,
-                    &mut self.events,
-                );
-                update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
                     &mut self.events,
@@ -436,7 +432,6 @@ impl Allocation {
                 );
 
                 tracing::info!(
-                    srflx = ?self.last_srflx_candidate,
                     relay_ip4 = ?self.ip4_allocation,
                     relay_ip6 = ?self.ip6_allocation,
                     ?lifetime,
@@ -460,7 +455,6 @@ impl Allocation {
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
                 tracing::info!(
-                    srflx = ?self.last_srflx_candidate,
                     relay_ip4 = ?self.ip4_allocation,
                     relay_ip6 = ?self.ip6_allocation,
                     ?lifetime,
