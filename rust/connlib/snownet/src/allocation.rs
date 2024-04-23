@@ -2159,7 +2159,20 @@ mod tests {
 
     #[test]
     fn first_binding_response_sets_socket_to_use() {
-        todo!()
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_dual(now);
+
+        let _ = allocation.next_message().unwrap(); // Discard the first one.
+
+        let binding = allocation.next_message().unwrap();
+        allocation.handle_input(
+            RELAY_V6.into(),
+            PEER2_IP6,
+            &binding_response(&binding, PEER2_IP6),
+            now,
+        );
+
+        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY_V6.into());
     }
 
     #[test]
