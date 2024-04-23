@@ -31,7 +31,7 @@ dpkg --listfiles firezone-client-gui
 
 # Confirm that both binaries and at least one icon were installed
 which firezone-client-gui firezone-client-ipc
-stat /usr/share/icons/hicolor/512x512/apps/firezone.png
+stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 
 # Make sure the binary got built, packaged, and installed, and at least
 # knows its own name
