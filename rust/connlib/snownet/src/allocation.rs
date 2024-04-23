@@ -63,7 +63,7 @@ pub struct Allocation {
     events: VecDeque<CandidateEvent>,
 
     backoff: ExponentialBackoff,
-    sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
+    sent_requests: HashMap<TransactionId, (SocketAddr, Message<Attribute>, Instant, Duration)>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: RingBuffer<SocketAddr>,
@@ -294,7 +294,7 @@ impl Allocation {
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
-        let Some((original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
+        let Some((_, original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
@@ -533,11 +533,11 @@ impl Allocation {
         while let Some((timed_out_request, backoff)) =
             self.sent_requests
                 .iter()
-                .find_map(|(id, (_, sent_at, backoff))| {
+                .find_map(|(id, (_, _, sent_at, backoff))| {
                     (now.duration_since(*sent_at) >= *backoff).then_some((*id, *backoff))
                 })
         {
-            let (request, _, _) = self
+            let (_, request, _, _) = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
@@ -592,7 +592,7 @@ impl Allocation {
             None
         };
 
-        for (_, (_, sent_at, backoff)) in self.sent_requests.iter() {
+        for (_, (_, _, sent_at, backoff)) in self.sent_requests.iter() {
             earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
         }
 
@@ -755,7 +755,7 @@ impl Allocation {
     }
 
     fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(r, _, _)| {
+        self.sent_requests.values().any(|(_, r, _, _)| {
             r.method() == CHANNEL_BIND
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
@@ -766,7 +766,7 @@ impl Allocation {
         let sent_requests = self
             .sent_requests
             .values()
-            .map(|(r, _, _)| r)
+            .map(|(_, r, _, _)| r)
             .filter(|message| message.method() == CHANNEL_BIND)
             .filter_map(|message| message.get_attribute::<XorPeerAddress>())
             .map(|a| a.address());
@@ -780,13 +780,13 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(r, _, _)| r.method() == ALLOCATE)
+            .any(|(_, r, _, _)| r.method() == ALLOCATE)
     }
 
     fn refresh_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(r, _, _)| r.method() == REFRESH)
+            .any(|(_, r, _, _)| r.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
@@ -830,8 +830,10 @@ impl Allocation {
         let authenticated_message = authenticate(message, credentials);
         let id = authenticated_message.transaction_id();
 
-        self.sent_requests
-            .insert(id, (authenticated_message.clone(), self.last_now, backoff));
+        self.sent_requests.insert(
+            id,
+            (dst, authenticated_message.clone(), self.last_now, backoff),
+        );
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
