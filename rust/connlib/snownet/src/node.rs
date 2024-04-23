@@ -1091,15 +1091,11 @@ where
     let allocation = allocations
         .get_mut(&relay)
         .ok_or(EncodeError::NoAllocation)?;
-    let payload = allocation
-        .encode_to_vec(dest, contents, now)
+    let transmit = allocation
+        .encode_to_owned_transmit(dest, contents, now)
         .ok_or(EncodeError::NoChannel)?;
 
-    Ok(Transmit {
-        src: None,
-        dst: allocation.server(),
-        payload: Cow::Owned(payload),
-    })
+    Ok(transmit)
 }
 
 #[derive(Debug)]
@@ -1568,19 +1564,15 @@ where
             };
 
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
-            let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
+            let Some(channel_data) = allocation.encode_to_owned_transmit(dst, &packet, now) else {
                 // Unlikely edge-case, drop the packet and continue.
                 tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
 
-            self.stats.stun_bytes_to_peer_relayed += channel_data.len();
+            self.stats.stun_bytes_to_peer_relayed += channel_data.payload.len();
 
-            transmits.push_back(Transmit {
-                src: None,
-                dst: allocation.server(),
-                payload: Cow::Owned(channel_data),
-            });
+            transmits.push_back(channel_data);
         }
     }
 

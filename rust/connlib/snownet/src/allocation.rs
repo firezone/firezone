@@ -8,6 +8,7 @@ use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{
+    borrow::Cow,
     collections::{HashMap, VecDeque},
     net::SocketAddr,
     time::{Duration, Instant},
@@ -558,16 +559,20 @@ impl Allocation {
         Some(total_length)
     }
 
-    pub fn encode_to_vec(
+    pub fn encode_to_owned_transmit(
         &mut self,
         peer: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Option<Vec<u8>> {
+    ) -> Option<Transmit<'static>> {
         let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
         let channel_data = crate::channel_data::encode(channel_number, packet);
 
-        Some(channel_data)
+        Some(Transmit {
+            src: None,
+            dst: self.server,
+            payload: Cow::Owned(channel_data),
+        })
     }
 
     /// Whether this [`Allocation`] can be freed.
@@ -1312,11 +1317,13 @@ mod tests {
             Instant::now(),
         );
 
-        let payload = allocation
-            .encode_to_vec(PEER2_IP4, b"foobar", Instant::now())
+        let transmit = allocation
+            .encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now())
             .unwrap();
 
-        assert_eq!(&payload[4..], b"foobar");
+        assert_eq!(&transmit.payload[4..], b"foobar");
+        assert_eq!(transmit.src, None);
+        assert_eq!(transmit.dst, RELAY);
     }
 
     #[test]
@@ -1325,7 +1332,7 @@ mod tests {
             Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
-        let message = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        let message = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
 
         assert!(message.is_none())
     }
@@ -1609,7 +1616,7 @@ mod tests {
             Instant::now(),
         );
 
-        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_some(), "expect to have a channel to peer");
 
         allocation.refresh_with_same_credentials();
@@ -1617,7 +1624,7 @@ mod tests {
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
 
-        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
     }
 
