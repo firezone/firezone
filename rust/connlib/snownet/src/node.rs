@@ -1216,7 +1216,7 @@ pub enum Event<TId> {
     ConnectionFailed(TId),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///

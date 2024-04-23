@@ -560,12 +560,12 @@ impl Allocation {
                     (now.duration_since(*sent_at) >= *backoff).then_some(*id)
                 })
         {
-            let (original_dst, request, _, backoff_duration, backoff) = self
+            let (dst, request, _, backoff_duration, backoff) = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff_duration:?}, re-sending");
+            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), %dst, "Request timed out after {backoff_duration:?}, re-sending");
 
             let needs_auth = request.method() != BINDING;
 
@@ -574,7 +574,7 @@ impl Allocation {
                 continue;
             }
 
-            self.queue(original_dst, request, Some(backoff));
+            self.queue(dst, request, Some(backoff));
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
@@ -1282,6 +1282,7 @@ mod tests {
         rfc5389::errors::{BadRequest, ServerError},
         rfc5766::errors::AllocationMismatch,
     };
+    use tracing_subscriber::util::SubscriberInitExt;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -2288,7 +2289,37 @@ mod tests {
 
     #[test]
     fn second_stun_request_gives_up_eventually() {
-        todo!()
+        let _guard = tracing_subscriber::fmt()
+            .with_env_filter("trace")
+            .with_test_writer()
+            .set_default();
+
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test_dual(start);
+
+        // We respond to the BINDING request on IPv4.
+        let binding = allocation.next_message().unwrap();
+        allocation.handle_input(
+            RELAY_V4.into(),
+            PEER2_IP4,
+            &binding_response(&binding, PEER2_IP4),
+            start,
+        );
+
+        loop {
+            let Some(timeout) = allocation.poll_timeout() else {
+                break;
+            };
+
+            allocation.handle_timeout(timeout);
+
+            // We expect two transmits.
+            // The order is not deterministic because internally it is a `HashMap`.
+            let _ = allocation.poll_transmit().unwrap();
+            let _ = allocation.poll_transmit().unwrap();
+        }
+
+        assert_eq!(allocation.poll_transmit(), None);
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
