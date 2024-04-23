@@ -38,4 +38,5 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 firezone-client-gui --help | grep "Usage: firezone-client-gui"
 
 # Try to start the IPC service
+sudo groupadd --force firezone
 sudo systemctl start firezone-client-ipc || systemctl status firezone-client-ipc
