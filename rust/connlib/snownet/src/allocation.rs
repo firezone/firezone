@@ -279,10 +279,15 @@ impl Allocation {
         packet: &[u8],
         now: Instant,
     ) -> bool {
+        debug_assert_eq!(
+            from.is_ipv4(),
+            local.is_ipv4(),
+            "`from` and `local` to have the same IP version"
+        );
+
         self.update_now(now);
 
         match self.active_socket {
-            Some(active_socket) if active_socket != from => return false,
             None if !self.server.matches(from) => return false,
             Some(_) | None => {}
         }
@@ -2154,7 +2159,39 @@ mod tests {
 
     #[test]
     fn both_stun_responses_are_returned_as_candidates() {
-        todo!()
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_dual(now);
+
+        let binding = allocation.next_message().unwrap();
+        let handled = allocation.handle_input(
+            RELAY_V4.into(),
+            PEER2_IP4,
+            &binding_response(&binding, PEER2_IP4),
+            now,
+        );
+        assert!(handled);
+
+        let binding = allocation.next_message().unwrap();
+        let handled = allocation.handle_input(
+            RELAY_V6.into(),
+            PEER2_IP6,
+            &binding_response(&binding, PEER2_IP6),
+            now,
+        );
+        assert!(handled);
+
+        let events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+        assert_eq!(
+            events,
+            vec![
+                CandidateEvent::New(
+                    Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, Protocol::Udp).unwrap()
+                ),
+                CandidateEvent::New(
+                    Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, Protocol::Udp).unwrap()
+                )
+            ]
+        )
     }
 
     #[test]
@@ -2275,6 +2312,19 @@ mod tests {
         fn for_test_ip4(start: Instant) -> Self {
             Allocation::new(
                 RelaySocket::V4(RELAY_V4),
+                Username::new("foobar".to_owned()).unwrap(),
+                "baz".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                start,
+            )
+        }
+
+        fn for_test_dual(start: Instant) -> Self {
+            Allocation::new(
+                RelaySocket::Dual {
+                    v4: RELAY_V4,
+                    v6: RELAY_V6,
+                },
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
