@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 
-pub use imp::{default_token_path, run};
+pub use imp::{default_token_path, run, run_only_ipc_service};
 
 #[cfg(target_os = "linux")]
 mod imp_linux;
@@ -28,6 +28,12 @@ mod imp_windows {
     pub async fn run() -> anyhow::Result<()> {
         let cli = super::Cli::parse();
         let _cmd = cli.command();
+        tracing::info!(git_version = crate::GIT_VERSION);
+        Ok(())
+    }
+
+    pub async fn run_only_ipc_service() -> anyhow::Result<()> {
+        let cli = super::Cli::parse();
         tracing::info!(git_version = crate::GIT_VERSION);
         Ok(())
     }
