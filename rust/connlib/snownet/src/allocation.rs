@@ -2149,12 +2149,29 @@ mod tests {
 
     #[test]
     fn relay_socket_matches_v4_socket() {
-        todo!()
+        let socket = RelaySocket::V4(RELAY_V4);
+
+        assert!(socket.matches(SocketAddr::V4(RELAY_V4)));
+        assert!(!socket.matches(SocketAddr::V6(RELAY_V6)));
     }
 
     #[test]
     fn relay_socket_matches_v6_socket() {
-        todo!()
+        let socket = RelaySocket::V6(RELAY_V6);
+
+        assert!(socket.matches(SocketAddr::V6(RELAY_V6)));
+        assert!(!socket.matches(SocketAddr::V4(RELAY_V4)));
+    }
+
+    #[test]
+    fn relay_socket_matches_dual_socket() {
+        let socket = RelaySocket::Dual {
+            v4: RELAY_V4,
+            v6: RELAY_V6,
+        };
+
+        assert!(socket.matches(SocketAddr::V4(RELAY_V4)));
+        assert!(socket.matches(SocketAddr::V6(RELAY_V6)));
     }
 
     #[test]
