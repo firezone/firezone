@@ -282,7 +282,6 @@ impl Allocation {
 
         tracing::debug!("Refreshing allocation");
 
-        // TODO: Send binding requests?
         self.authenticate_and_queue(make_refresh_request(), None);
     }
 
