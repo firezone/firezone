@@ -159,7 +159,7 @@ jobs:
             shortname: armv7
         name:
           - package: firezone-linux-client
-            artifact: firezone-client-linux-headless
+            artifact: firezone-client-headless-linux
             image_name: client
           - package: firezone-relay
             artifact: firezone-relay
