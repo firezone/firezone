@@ -1,4 +1,4 @@
-use crate::allocation::{Allocation, Socket};
+use crate::allocation::{Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
@@ -485,7 +485,7 @@ where
     pub fn update_relays(
         &mut self,
         to_remove: HashSet<RId>,
-        to_add: &HashSet<(RId, SocketAddr, String, String, String)>,
+        to_add: &HashSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         // First, invalidate all candidates from relays that we should stop using.
@@ -527,7 +527,7 @@ where
                 Allocation::new(*server, username, password.clone(), realm, now),
             );
 
-            tracing::info!(%id, address = %server, "Added new TURN server");
+            tracing::info!(%id, address = ?server, "Added new TURN server");
         }
     }
 
@@ -637,7 +637,10 @@ where
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
-                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                let Some(allocation) = self
+                    .allocations
+                    .values_mut()
+                    .find(|a| a.server().is_some_and(|s| s == from))
                 else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
@@ -654,7 +657,10 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                let Some(allocation) = self
+                    .allocations
+                    .values_mut()
+                    .find(|a| a.server().is_some_and(|s| s == from))
                 else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
@@ -802,7 +808,7 @@ where
         &mut self,
         id: TId,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, RelaySocket, String, String, String)>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Offer {
@@ -904,7 +910,7 @@ where
         offer: Offer,
         remote: PublicKey,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) -> Answer {
         debug_assert!(

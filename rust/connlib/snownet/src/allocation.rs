@@ -10,7 +10,7 @@ use rand::random;
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
-    net::SocketAddr,
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
 use str0m::{net::Protocol, Candidate};
@@ -18,6 +18,7 @@ use stun_codec::{
     rfc5389::{
         attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress},
         errors::{StaleNonce, Unauthorized},
+        methods::BINDING,
     },
     rfc5766::{
         attributes::{
@@ -37,7 +38,16 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
 #[derive(Debug)]
 pub struct Allocation {
-    server: SocketAddr,
+    /// The known sockets of the relay.
+    server: RelaySocket,
+    /// The socket we have chosen to use to communicate with the relay.
+    ///
+    /// A relay may be reachable on IPv4, IPv6 or both.
+    /// At the same time, we may have an IPv4 or IPv6 interface or both.
+    ///
+    /// To figure out, how to communicate with the relay, we start by sending a BINDING request on all known sockets.
+    /// Whatever comes back first, wins.
+    active_socket: Option<SocketAddr>,
 
     /// If present, the last address the relay observed for us.
     last_srflx_candidate: Option<Candidate>,
@@ -71,6 +81,62 @@ struct Credentials {
     nonce: Option<Nonce>,
 }
 
+/// Describes the socket address(es) we know about the relay.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum RelaySocket {
+    /// The relay is only reachable via IPv4.
+    V4(SocketAddrV4),
+    /// The relay is only reachable via IPv6.
+    V6(SocketAddrV6),
+    /// The relay is reachable via IPv4 and IPv6.
+    Dual { v4: SocketAddrV4, v6: SocketAddrV6 },
+}
+
+impl RelaySocket {
+    pub fn as_v4(&self) -> Option<&SocketAddrV4> {
+        match self {
+            Self::V4(v4) => Some(v4),
+            Self::V6(_) => None,
+            Self::Dual { v4, .. } => Some(v4),
+        }
+    }
+
+    pub fn as_v6(&self) -> Option<&SocketAddrV6> {
+        match self {
+            Self::V4(_) => None,
+            Self::V6(v6) => Some(v6),
+            Self::Dual { v6, .. } => Some(v6),
+        }
+    }
+}
+
+impl From<SocketAddr> for RelaySocket {
+    fn from(value: SocketAddr) -> Self {
+        match value {
+            SocketAddr::V4(inner) => RelaySocket::V4(inner),
+            SocketAddr::V6(inner) => RelaySocket::V6(inner),
+        }
+    }
+}
+
+impl From<SocketAddrV4> for RelaySocket {
+    fn from(value: SocketAddrV4) -> Self {
+        RelaySocket::V4(value)
+    }
+}
+
+impl From<SocketAddrV6> for RelaySocket {
+    fn from(value: SocketAddrV6) -> Self {
+        RelaySocket::V6(value)
+    }
+}
+
+impl From<(SocketAddrV4, SocketAddrV6)> for RelaySocket {
+    fn from((v4, v6): (SocketAddrV4, SocketAddrV6)) -> Self {
+        RelaySocket::Dual { v4, v6 }
+    }
+}
+
 /// A socket that has been allocated on a TURN server.
 ///
 /// Note that any combination of IP versions is possible here.
@@ -89,7 +155,7 @@ impl Socket {
 
 impl Allocation {
     pub fn new(
-        server: SocketAddr,
+        server: RelaySocket,
         username: Username,
         password: String,
         realm: Realm,
@@ -97,6 +163,7 @@ impl Allocation {
     ) -> Self {
         let mut allocation = Self {
             server,
+            active_socket: None,
             last_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
             ip6_allocation: Default::default(),
@@ -116,7 +183,20 @@ impl Allocation {
             backoff: backoff::new(now, REQUEST_TIMEOUT),
         };
 
-        allocation.authenticate_and_queue(make_allocate_request());
+        if let Some(v4) = server.as_v4() {
+            allocation.buffered_transmits.push_back(Transmit {
+                src: None,
+                dst: (*v4).into(),
+                payload: encode(make_binding_request()).into(),
+            })
+        }
+        if let Some(v6) = server.as_v6() {
+            allocation.buffered_transmits.push_back(Transmit {
+                src: None,
+                dst: (*v6).into(),
+                payload: encode(make_binding_request()).into(),
+            })
+        }
 
         allocation
     }
@@ -136,7 +216,7 @@ impl Allocation {
     /// This will implicitly trigger a [`refresh`](Allocation::refresh) to ensure these credentials are valid.
     pub fn update_credentials(
         &mut self,
-        socket: SocketAddr,
+        socket: RelaySocket,
         username: Username,
         password: &str,
         realm: Realm,
@@ -156,7 +236,7 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
     pub fn refresh(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -187,7 +267,7 @@ impl Allocation {
     ) -> bool {
         self.update_now(now);
 
-        if from != self.server {
+        if Some(from) != self.active_socket {
             return false;
         }
 
@@ -405,7 +485,7 @@ impl Allocation {
         packet: &'p [u8],
         now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], Socket)> {
-        if from != self.server {
+        if Some(from) != self.active_socket {
             return None;
         }
 
@@ -424,7 +504,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -506,7 +586,7 @@ impl Allocation {
         earliest_timeout
     }
 
-    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = %self.server))]
+    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
@@ -566,7 +646,7 @@ impl Allocation {
 
         Some(Transmit {
             src: None,
-            dst: self.server,
+            dst: self.active_socket?,
             payload: Cow::Borrowed(&buffer[..total_length]),
         })
     }
@@ -582,7 +662,7 @@ impl Allocation {
 
         Some(Transmit {
             src: None,
-            dst: self.server,
+            dst: self.active_socket?,
             payload: Cow::Owned(channel_data),
         })
     }
@@ -630,8 +710,8 @@ impl Allocation {
         is_ip4 || is_ip6
     }
 
-    pub fn server(&self) -> SocketAddr {
-        self.server
+    pub fn server(&self) -> Option<SocketAddr> {
+        self.active_socket
     }
 
     pub fn ip4_socket(&self) -> Option<Socket> {
@@ -718,6 +798,14 @@ impl Allocation {
             return false;
         };
 
+        let Some(dst) = self.active_socket else {
+            tracing::debug!(
+                "Unable to queue {} because we haven't nominated a socket yet",
+                message.method()
+            );
+            return false;
+        };
+
         let Some(credentials) = &self.credentials else {
             tracing::debug!(
                 "Unable to queue {} because we don't have credentials",
@@ -733,7 +821,7 @@ impl Allocation {
             .insert(id, (authenticated_message.clone(), self.last_now, backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
-            dst: self.server,
+            dst,
             payload: encode(authenticated_message).into(),
         });
 
@@ -808,6 +896,10 @@ fn update_candidate(
         }
         _ => {}
     }
+}
+
+fn make_binding_request() -> Message<Attribute> {
+    Message::new(MessageClass::Request, BINDING, TransactionId::new(random()))
 }
 
 fn make_allocate_request() -> Message<Attribute> {
@@ -1120,8 +1212,8 @@ mod tests {
     const PEER2_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
     const PEER2_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 20000);
 
-    const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
-    const RELAY2: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 3478);
+    const RELAY_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478);
+    const RELAY_V6: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::LOCALHOST, 3478, 0, 0);
     const RELAY_ADDR_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
     const RELAY_ADDR_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 9999);
 
@@ -1335,7 +1427,7 @@ mod tests {
 
         assert_eq!(&transmit.payload[4..], b"foobar");
         assert_eq!(transmit.src, None);
-        assert_eq!(transmit.dst, RELAY);
+        assert_eq!(transmit.dst, RELAY_V4.into());
     }
 
     #[test]
@@ -1964,14 +2056,14 @@ mod tests {
         let existing_credentials = allocation.credentials.clone().unwrap();
 
         allocation.update_credentials(
-            RELAY2,
+            RelaySocket::V6(RELAY_V6),
             existing_credentials.username,
             &existing_credentials.password,
             existing_credentials.realm,
             now,
         );
 
-        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY2)
+        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY_V6.into())
     }
 
     #[test]
@@ -2082,7 +2174,7 @@ mod tests {
     impl Allocation {
         fn for_test(start: Instant) -> Self {
             Allocation::new(
-                RELAY,
+                RelaySocket::V4(RELAY_V4),
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
@@ -2105,7 +2197,7 @@ mod tests {
 
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
         fn handle_test_input(&mut self, packet: &[u8], now: Instant) -> bool {
-            self.handle_input(RELAY, PEER1, packet, now)
+            self.handle_input(RELAY_V4.into(), PEER1, packet, now)
         }
 
         fn advance_to_next_timeout(&mut self) {
