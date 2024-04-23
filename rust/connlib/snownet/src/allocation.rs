@@ -294,9 +294,8 @@ impl Allocation {
 
         self.update_now(now);
 
-        match self.active_socket {
-            None if !self.server.matches(from) => return false,
-            Some(_) | None => {}
+        if !self.server.matches(from) {
+            return false;
         }
 
         let Ok(Ok(message)) = decode(packet) else {
