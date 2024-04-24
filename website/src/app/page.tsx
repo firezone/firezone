@@ -2,6 +2,7 @@ import CodeBlock from "@/components/CodeBlock";
 import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
+import BattleCard from "@/components/BattleCard";
 import { Metadata } from "next";
 import CustomerLogos from "@/components/CustomerLogos";
 import {
@@ -390,13 +391,17 @@ export default function Page() {
       </section>
 
       <section className="border-t border-neutral-200 py-24 bg-white">
+        <BattleCard />
+      </section>
+
+      <section className="border-t border-neutral-200 py-24 bg-neutral-100">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 justify-center text-center text-4xl tracking-tight font-bold text-neutral-900 ">
             How customers are using Firezone
           </h2>
         </div>
         <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl md:grid md:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900">
@@ -435,7 +440,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiRocketLaunch className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -474,7 +479,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiGlobeAlt className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -513,7 +518,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiHome className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">

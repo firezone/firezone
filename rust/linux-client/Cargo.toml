@@ -10,7 +10,6 @@ authors = ["Firezone, Inc."]
 [dependencies]
 anyhow = { version = "1.0" }
 firezone-headless-client = { path = "../headless-client" }
-tokio = { version = "1.36.0", features = ["macros", "signal"] }
 
 [lints]
 workspace = true
