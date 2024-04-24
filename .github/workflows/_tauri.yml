@@ -33,17 +33,23 @@ jobs:
             binary-dest-path: firezone-client-gui-linux_1.0.1_x86_64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
-            exe-artifact: rust/gui-client/firezone-linux-gui-client-amd64
-            syms-artifact: rust/gui-client/firezone-linux-gui-client-amd64.dwp
-            pkg-artifact: rust/gui-client/firezone-linux-gui-client_amd64.deb
+            # mark:automatic-version
+            exe-artifact: rust/gui-client/firezone-client-gui-linux_1.0.1_x86_64
+            # mark:automatic-version
+            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.0.1_x86_64.dwp
+            # mark:automatic-version
+            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.0.1_x86_64.deb
           - runs-on: windows-2019
             # mark:automatic-version
             binary-dest-path: firezone-client-gui-windows_1.0.1_x86_64
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
-            exe-artifact: rust/gui-client/firezone-client-gui-windows-x86_64.exe
-            syms-artifact: rust/gui-client/firezone-client-gui-windows-x86_64.pdb
-            pkg-artifact: rust/gui-client/firezone-client-gui-windows-x86_64.msi
+            # mark:automatic-version
+            exe-artifact: rust/gui-client/firezone-client-gui-windows_1.0.1_x86_64.exe
+            # mark:automatic-version
+            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.0.1_x86_64.pdb
+            # mark:automatic-version
+            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.0.1_x86_64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
