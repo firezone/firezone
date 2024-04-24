@@ -4,6 +4,7 @@
 //! [Tunnel] is the main entry-point for this crate.
 
 use boringtun::x25519::StaticSecret;
+use chrono::Utc;
 use connlib_shared::{
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
     Callbacks, Result,
@@ -201,7 +202,7 @@ where
                 self.device_read_buf.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout);
+                    self.role_state.handle_timeout(timeout, &Utc::now());
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
