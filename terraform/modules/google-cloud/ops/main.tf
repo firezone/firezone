@@ -318,7 +318,8 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
       resource.type="gce_instance"
       (severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
       -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
-      -logName="projects/firezone-prod/logs/GCEGuestAgent"
+      -logName:"/logs/GCEGuestAgent"
+      -logName:"/logs/OSConfigAgent"
       EOT
     }
   }
