@@ -4,14 +4,78 @@ use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::{ClientId, DnsServer, GatewayId, ResourceId};
+use connlib_shared::messages::{ClientId, DnsServer, Filter, Filters, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use ip_packet::{MutableIpPacket, Packet};
+use ip_packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
+use ip_packet::{IpPacket, MutableIpPacket, Packet};
+use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
 
-type ExpiryingResource = (ResourceId, Option<DateTime<Utc>>);
+type ExpiryingResource = (ResourceId, FilterEngine, Option<DateTime<Utc>>);
+
+#[derive(Debug)]
+struct FilterEngine {
+    udp: RangeInclusiveSet<u16>,
+    tcp: RangeInclusiveSet<u16>,
+    icmp: bool,
+}
+
+impl FilterEngine {
+    fn new() -> FilterEngine {
+        FilterEngine {
+            udp: RangeInclusiveSet::new(),
+            tcp: RangeInclusiveSet::new(),
+            icmp: false,
+        }
+    }
+
+    fn is_allowed(&self, packet: &IpPacket) -> bool {
+        // TODO: allow all
+        match packet.next_header() {
+            // Note: possible optimization here
+            // if we want to get the port here, and we assume correct formatting
+            // we can do packet.payload()[2..=3] (for UDP and TCP bytes 2 and 3 are the port)
+            // but it might be a bit harder to read
+            IpNextHeaderProtocols::Tcp => packet
+                .as_tcp()
+                .is_some_and(|p| self.tcp.contains(&p.get_destination())),
+            IpNextHeaderProtocols::Udp => packet
+                .as_udp()
+                .is_some_and(|p| self.udp.contains(&p.get_destination())),
+            IpNextHeaderProtocols::Icmp => todo!(),
+            _ => todo!(),
+        }
+    }
+}
+
+impl From<&Filters> for FilterEngine {
+    fn from(filters: &Filters) -> Self {
+        let mut filter_engine = FilterEngine::new();
+        // TODO: ICMP is not handled by the portal yet!
+        for Filter {
+            protocol,
+            port_range_end,
+            port_range_start,
+        } in filters
+        {
+            let range = *port_range_start..=*port_range_end;
+            match protocol {
+                connlib_shared::messages::Protocol::Tcp => {
+                    filter_engine.tcp.insert(dbg!(range));
+                }
+                connlib_shared::messages::Protocol::Udp => {
+                    filter_engine.udp.insert(dbg!(range));
+                }
+                // Note: this wouldn't have the port_range
+                connlib_shared::messages::Protocol::Icmp => todo!(),
+            }
+        }
+
+        filter_engine
+    }
+}
 
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
@@ -103,20 +167,23 @@ impl ClientOnGateway {
 
     pub(crate) fn expire_resources(&mut self) {
         self.resources
-            .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
+            .retain(|_, (_, _, e)| !e.is_some_and(|e| e <= Utc::now()));
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.retain(|_, (r, _)| r != resource)
+        self.resources.retain(|_, (r, _, _)| r != resource)
     }
 
     pub(crate) fn add_resource(
         &mut self,
         ip: IpNetwork,
         resource: ResourceId,
+        // TODO: resource updates
+        filters: &Filters,
         expires_at: Option<DateTime<Utc>>,
     ) {
-        self.resources.insert(ip, (resource, expires_at));
+        self.resources
+            .insert(ip, (resource, filters.into(), expires_at));
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
@@ -129,8 +196,13 @@ impl ClientOnGateway {
         }
 
         let dst = packet.destination();
-        if self.resources.longest_match(dst).is_none() {
+        let Some((_, (_, filtering_engine, _))) = self.resources.longest_match(dst) else {
             tracing::warn!(%dst, "unallowed packet");
+            return Err(connlib_shared::Error::InvalidDst);
+        };
+
+        if !filtering_engine.is_allowed(&packet.to_immutable()) {
+            tracing::warn!(%dst, "filtered packet");
             return Err(connlib_shared::Error::InvalidDst);
         }
 

@@ -169,44 +169,6 @@ impl PartialEq for RequestConnection {
 
 impl Eq for RequestConnection {}
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
-    Dns(TDNS),
-    Cidr(ResourceDescriptionCidr),
-}
-
-impl ResourceDescription<ResourceDescriptionDns> {
-    pub fn into_resolved(
-        self,
-        addresses: Vec<IpNetwork>,
-    ) -> ResourceDescription<ResolvedResourceDescriptionDns> {
-        match self {
-            ResourceDescription::Dns(ResourceDescriptionDns { id, address, name }) => {
-                ResourceDescription::Dns(ResolvedResourceDescriptionDns {
-                    id,
-                    domain: address,
-                    name,
-                    addresses,
-                })
-            }
-            ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
-        }
-    }
-}
-
-impl PartialOrd for ResourceDescription {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ResourceDescription {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.name(), self.id()).cmp(&(other.name(), other.id()))
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
     pub domain: Dname,
@@ -255,18 +217,17 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 }
 
-/// Description of a resource that maps to a DNS record which had its domain already resolved.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ResolvedResourceDescriptionDns {
+/// Description of a resource that maps to a CIDR.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResourceDescriptionCidr {
+    /// Resource's id.
     pub id: ResourceId,
-    /// Internal resource's domain name.
-    pub domain: String,
+    /// CIDR that this resource points to.
+    pub address: IpNetwork,
     /// Name of the resource.
     ///
     /// Used only for display.
     pub name: String,
-
-    pub addresses: Vec<IpNetwork>,
 }
 
 impl ResourceDescription {
@@ -313,17 +274,23 @@ impl ResourceDescription {
     }
 }
 
-/// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ResourceDescriptionCidr {
-    /// Resource's id.
-    pub id: ResourceId,
-    /// CIDR that this resource points to.
-    pub address: IpNetwork,
-    /// Name of the resource.
-    ///
-    /// Used only for display.
-    pub name: String,
+impl PartialOrd for ResourceDescription {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ResourceDescription {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.name(), self.id()).cmp(&(other.name(), other.id()))
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResourceDescription {
+    Dns(ResourceDescriptionDns),
+    Cidr(ResourceDescriptionCidr),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -422,6 +389,108 @@ pub struct RelaysPresence {
     pub connected: Vec<Relay>,
 }
 
+// ==== TODO ====
+
+/*
+"resource":
+    {
+        "id":"d63f11f7-399d-4358-9b33-3d383deeebbc","name":"10.0.0.0/24","type":"cidr","address":"10.0.0.0/24",
+    "filters":[{"protocol":"tcp","port_range_end":80,"port_range_start":80},{"protocol":"tcp","port_range_end":120,"port_range_start":100},{"protocol":"tcp","port_range_end":110,"port_range_start":110},{"protocol":"tcp","port_range_end":115,"port_range_start":109}]
+    },"ref":"SFMyNTY.g2gDbQAAAVhnMmdFV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEdGdBQUFBQm1LQUlDYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFPMEFBQUFBR1lvQWdKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVJwaEFHMEFBQUFrWkRZelpqRXhaamN0TXprNVpDMDBNelU0TFRsaU16TXRNMlF6T0ROa1pXVmxZbUpqYkFBQUFBRm9BbTBBQUFBTGRISmhZMlZ3WVhKbGJuUnRBQUFBTnpBd0xUZ3dORGMwTlROa05HWTJOR0l4WVRFMk56TmhZVE13Tm1RNVpUYzNaV0ZtTFdNM1lqRm1PVEk1T0RrM1lUUTNaall0TURGcW4GAEr4UgyPAWIAAVGA.2j38rsHpg3jmWieZ3GRNiH-qZvYfd0g3R746DHbmXhw","expires_at":1714502746,"actor":{"id":"65855db1-b765-458a-93c8-c96ce43e865b"}
+*/
+pub type Filters = Vec<Filter>;
+
+/// Description of a resource that maps to a DNS record.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+pub struct GatewayResourceDescriptionDns {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub address: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub filters: Filters,
+}
+
+/// Description of a resource that maps to a CIDR.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GatewayResourceDescriptionCidr {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// CIDR that this resource points to.
+    pub address: IpNetwork,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub filters: Filters,
+}
+
+/// Description of a resource that maps to a DNS record which had its domain already resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedResourceDescriptionDns {
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub domain: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub addresses: Vec<IpNetwork>,
+
+    pub filters: Filters,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum GatewayResourceDescription<TDNS = GatewayResourceDescriptionDns> {
+    Dns(TDNS),
+    Cidr(GatewayResourceDescriptionCidr),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Filter {
+    pub protocol: Protocol,
+    pub port_range_end: u16,
+    pub port_range_start: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum Protocol {
+    Tcp,
+    Udp,
+    Icmp,
+}
+
+impl GatewayResourceDescription<GatewayResourceDescriptionDns> {
+    pub fn into_resolved(
+        self,
+        addresses: Vec<IpNetwork>,
+    ) -> GatewayResourceDescription<ResolvedResourceDescriptionDns> {
+        match self {
+            GatewayResourceDescription::Dns(GatewayResourceDescriptionDns {
+                id,
+                address,
+                name,
+                filters,
+            }) => GatewayResourceDescription::Dns(ResolvedResourceDescriptionDns {
+                id,
+                domain: address,
+                name,
+                addresses,
+                filters,
+            }),
+            GatewayResourceDescription::Cidr(c) => GatewayResourceDescription::Cidr(c),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -435,6 +504,7 @@ mod tests {
             id: ResourceId::from_str(uuid).unwrap(),
             name: name.to_string(),
             address: "unused.example.com".to_string(),
+            filters: vec![],
         })
     }
 

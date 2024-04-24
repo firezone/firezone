@@ -56,6 +56,8 @@ pub enum ConnlibError {
     /// Invalid destination for packet
     #[error("Invalid dest address")]
     InvalidDst,
+    #[error("Packet is filtered by the filtering engine")]
+    FilteredPacket,
     /// Connection is still being established, retry later
     #[error("Pending connection")]
     PendingConnection,
