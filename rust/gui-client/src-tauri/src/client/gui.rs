@@ -610,14 +610,11 @@ impl Controller {
             }
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 if self.session.is_some() {
-                    // If the user opened the menu, then sign-in completed, then they
-                    // click "cancel sign in", don't sign out - They can click Sign Out
-                    // if they want to sign out. "Cancel" may mean "Give up waiting,
-                    // but if you already got in, don't make me sign in all over again."
-                    //
-                    // Also, by amazing coincidence, it doesn't work in Tauri anyway.
-                    // We'd have to reuse the `sign_out` ID to make it work.
-                    tracing::info!("This can never happen. Tauri doesn't pass us a system tray event if the menu no longer has any item with that ID.");
+                    if self.tunnel_ready {
+                        tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
+                    } else {
+                        tracing::warn!("Can't cancel sign-in, connlib is already raising the tunnel");
+                    }
                 } else {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
                     self.sign_out()?;
