@@ -207,9 +207,33 @@ defmodule Web.Resources.Components do
   attr :account, :any, required: true
   attr :gateway_groups, :list, required: true
   attr :resource, :any, default: nil
+  attr :multiple, :boolean, required: true
   attr :rest, :global
 
-  def connections_form(assigns) do
+  def connections_form(%{multiple: false} = assigns) do
+    ~H"""
+    <% connected_gateway_group_id = @form |> connected_gateway_group_ids() |> List.first() %>
+
+    <.input type="hidden" name={"#{@form.name}[0][enabled]"} value="true" />
+    <.input :if={@resource} type="hidden" name={"#{@form.name}[0][resource_id]"} value={@resource.id} />
+
+    <.input
+      type="select"
+      label="Site"
+      name={"#{@form.name}[0][gateway_group_id]"}
+      options={
+        Enum.map(@gateway_groups, fn gateway_group ->
+          {gateway_group.name, gateway_group.id}
+        end)
+      }
+      value={connected_gateway_group_id}
+      placeholder="Select a Site"
+      required
+    />
+    """
+  end
+
+  def connections_form(%{multiple: true} = assigns) do
     assigns = assign(assigns, :errors, Enum.map(assigns.form.errors, &translate_error(&1)))
 
     ~H"""
