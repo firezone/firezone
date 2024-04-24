@@ -6,6 +6,7 @@ HTTPBIN=http://dns.httpbin
 docker compose stop relay-2
 
 install_iptables_drop_rules
+bootstrap_browser_test_harness
 start_chromium
 
 echo "# Make sure webpage is loaded once"
