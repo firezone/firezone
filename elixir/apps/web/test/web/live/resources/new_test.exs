@@ -1,4 +1,5 @@
 defmodule Web.Live.Resources.NewTest do
+  alias Domain.Fixtures
   use Web.ConnCase, async: true
 
   setup do
@@ -48,12 +49,58 @@ defmodule Web.Live.Resources.NewTest do
     assert breadcrumbs =~ "Add Resource"
   end
 
-  test "renders form", %{
+  test "renders form when multi-site resources are disabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account =
+      Fixtures.Accounts.update_account(account,
+        features: %{
+          traffic_filters: false,
+          multi_site_resources: false
+        }
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new")
+
+    form = form(lv, "form")
+
+    connection_inputs = [
+      "resource[connections][0][enabled]",
+      "resource[connections][0][gateway_group_id]"
+    ]
+
+    expected_inputs =
+      (connection_inputs ++
+         [
+           "resource[address]",
+           "resource[address_description]",
+           "resource[name]",
+           "resource[type]"
+         ])
+      |> Enum.sort()
+
+    assert find_inputs(form) == expected_inputs
+  end
+
+  test "renders form when multi-site resources are enabled", %{
     account: account,
     identity: identity,
     group: group,
     conn: conn
   } do
+    account =
+      Fixtures.Accounts.update_account(account,
+        features: %{
+          traffic_filters: true,
+          multi_site_resources: true
+        }
+      )
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
@@ -81,6 +128,43 @@ defmodule Web.Live.Resources.NewTest do
            "resource[filters][udp][enabled]",
            "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
+           "resource[name]",
+           "resource[type]"
+         ])
+      |> Enum.sort()
+
+    assert find_inputs(form) == expected_inputs
+  end
+
+  test "renders form when traffic filters are enabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account =
+      Fixtures.Accounts.update_account(account,
+        features: %{
+          traffic_filters: false
+        }
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new")
+
+    form = form(lv, "form")
+
+    connection_inputs = [
+      "resource[connections][0][enabled]",
+      "resource[connections][0][gateway_group_id]"
+    ]
+
+    expected_inputs =
+      (connection_inputs ++
+         [
+           "resource[address]",
+           "resource[address_description]",
            "resource[name]",
            "resource[type]"
          ])
