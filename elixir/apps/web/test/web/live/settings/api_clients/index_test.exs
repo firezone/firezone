@@ -27,6 +27,21 @@ defmodule Web.Live.Settings.ApiClients.IndexTest do
                }}}
   end
 
+  test "does not display API clients link when feature disabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:rest_api, false)
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites")
+
+    assert Floki.find(html, "a[href=\"/#{account.slug}/settings/api_clients\"]") == []
+  end
+
   test "renders breadcrumbs item", %{
     account: account,
     identity: identity,

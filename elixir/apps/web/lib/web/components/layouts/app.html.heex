@@ -72,7 +72,12 @@
       Identity Providers
     </:item>
     <:item navigate={~p"/#{@account}/settings/dns"}>DNS</:item>
-    <:item navigate={~p"/#{@account}/settings/api_clients"}>API Clients</:item>
+    <:item
+      :if={Domain.Accounts.rest_api_enabled?(@account)}
+      navigate={~p"/#{@account}/settings/api_clients"}
+    >
+      API Clients
+    </:item>
   </.sidebar_item_group>
 
   <:bottom>
