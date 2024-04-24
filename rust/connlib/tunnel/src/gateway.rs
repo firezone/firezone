@@ -12,7 +12,7 @@ use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::ServerNode;
+use snownet::{RelaySocket, ServerNode};
 use std::collections::{HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -85,7 +85,7 @@ where
             },
             client,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays),
             Instant::now(),
         );
 
@@ -321,7 +321,7 @@ impl GatewayState {
     pub(crate) fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);

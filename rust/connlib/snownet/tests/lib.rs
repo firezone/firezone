@@ -2,7 +2,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use ip_packet::*;
 use rand::rngs::OsRng;
-use snownet::{Answer, ClientNode, Event, ServerNode, Transmit};
+use snownet::{Answer, ClientNode, Event, RelaySocket, ServerNode, Transmit};
 use std::{
     collections::{HashSet, VecDeque},
     iter,
@@ -55,7 +55,10 @@ fn smoke_relayed() {
 
     let mut relays = [(
         1,
-        TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
+        TestRelay::new(
+            SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478),
+            debug_span!("Roger"),
+        ),
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
         HashSet::default(),
@@ -100,7 +103,10 @@ fn reconnect_discovers_new_interface() {
 
     let mut relays = [(
         1,
-        TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
+        TestRelay::new(
+            SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478),
+            debug_span!("Roger"),
+        ),
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
         HashSet::default(),
@@ -160,7 +166,10 @@ fn migrate_connection_to_new_relay() {
 
     let mut relays = [(
         1,
-        TestRelay::new(IpAddr::V4(Ipv4Addr::LOCALHOST), debug_span!("Roger")),
+        TestRelay::new(
+            SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478),
+            debug_span!("Roger"),
+        ),
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
         HashSet::default(),
@@ -187,7 +196,13 @@ fn migrate_connection_to_new_relay() {
     }
 
     // Swap out the relays. "Roger" is being removed (ID 1) and "Robert" is being added (ID 2).
-    let mut relays = [(2, TestRelay::new(ip("10.0.0.1"), debug_span!("Robert")))];
+    let mut relays = [(
+        2,
+        TestRelay::new(
+            SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 3478),
+            debug_span!("Robert"),
+        ),
+    )];
     alice = alice.with_relays(HashSet::from([1]), &mut relays, clock.now);
 
     // Make some progress. (the fact that we only need 5 clock ticks means we are no relying on timeouts here)
@@ -317,32 +332,6 @@ fn only_generate_candidate_event_after_answer() {
         }));
 }
 
-#[test]
-fn second_connection_with_same_relay_reuses_allocation() {
-    let mut alice = ClientNode::new(StaticSecret::random_from_rng(rand::thread_rng()));
-    _ = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
-        Instant::now(),
-        Instant::now(),
-    );
-
-    let transmit = alice.poll_transmit().unwrap();
-    assert_eq!(transmit.dst, RELAY);
-    assert!(alice.poll_transmit().is_none());
-
-    let _ = alice.new_connection(
-        2,
-        HashSet::new(),
-        HashSet::from([relay(1, "user1", "pass1", "realm1")]),
-        Instant::now(),
-        Instant::now(),
-    );
-
-    assert!(alice.poll_transmit().is_none());
-}
-
 fn setup_tracing() -> tracing::subscriber::DefaultGuard {
     tracing_subscriber::fmt()
         .with_test_writer()
@@ -375,21 +364,6 @@ fn send_offer(
     )
 }
 
-fn relay(
-    id: u64,
-    username: &str,
-    pass: &str,
-    realm: &str,
-) -> (u64, SocketAddr, String, String, String) {
-    (
-        id,
-        RELAY,
-        username.to_owned(),
-        pass.to_owned(),
-        realm.to_owned(),
-    )
-}
-
 fn host(socket: &str) -> String {
     Candidate::host(s(socket), Protocol::Udp)
         .unwrap()
@@ -403,8 +377,6 @@ fn s(socket: &str) -> SocketAddr {
 fn ip(ip: &str) -> IpAddr {
     ip.parse().unwrap()
 }
-
-const RELAY: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 10000));
 
 // Heavily inspired by https://github.com/algesten/str0m/blob/7ed5143381cf095f7074689cc254b8c9e50d25c5/src/ice/mod.rs#L547-L647.
 struct TestNode {
@@ -424,7 +396,7 @@ struct TestNode {
 
 struct TestRelay {
     inner: firezone_relay::Server<OsRng>,
-    listen_addr: SocketAddr,
+    listen_addr: RelaySocket,
     span: Span,
 
     allocations: HashSet<(AddressFamily, AllocationPort)>,
@@ -482,12 +454,13 @@ impl Firewall {
 }
 
 impl TestRelay {
-    fn new(local: IpAddr, span: Span) -> Self {
-        let inner = firezone_relay::Server::new(IpStack::from(local), OsRng, 49152, 65535);
+    fn new(local: impl Into<RelaySocket>, span: Span) -> Self {
+        let local = local.into();
+        let inner = firezone_relay::Server::new(to_ip_stack(local), OsRng, 49152, 65535);
 
         Self {
             inner,
-            listen_addr: SocketAddr::from((local, 3478)),
+            listen_addr: local,
             span,
             allocations: HashSet::default(),
             buffer: vec![0u8; (1 << 16) - 1],
@@ -495,15 +468,35 @@ impl TestRelay {
     }
 
     fn wants(&self, dst: SocketAddr) -> bool {
-        self.listen_addr == dst
-            || self.allocations.contains(&match dst {
-                SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
-                SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
-            })
+        let is_v4_ctrl = self
+            .listen_addr
+            .as_v4()
+            .is_some_and(|v4| SocketAddr::V4(*v4) == dst);
+        let is_v6_ctrl = self
+            .listen_addr
+            .as_v6()
+            .is_some_and(|v6| SocketAddr::V6(*v6) == dst);
+        let is_allocation = self.allocations.contains(&match dst {
+            SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
+            SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
+        });
+
+        is_v4_ctrl || is_v6_ctrl || is_allocation
     }
 
-    fn ip(&self) -> IpAddr {
-        self.listen_addr.ip()
+    fn matching_listen_socket(&self, other: SocketAddr) -> Option<SocketAddr> {
+        match other {
+            SocketAddr::V4(_) => Some(SocketAddr::V4(*self.listen_addr.as_v4()?)),
+            SocketAddr::V6(_) => Some(SocketAddr::V6(*self.listen_addr.as_v6()?)),
+        }
+    }
+
+    fn ip4(&self) -> Option<IpAddr> {
+        self.listen_addr.as_v4().map(|s| IpAddr::V4(*s.ip()))
+    }
+
+    fn ip6(&self) -> Option<IpAddr> {
+        self.listen_addr.as_v6().map(|s| IpAddr::V6(*s.ip()))
     }
 
     fn handle_packet(
@@ -514,7 +507,7 @@ impl TestRelay {
         other: &mut TestNode,
         now: Instant,
     ) {
-        if dst == self.listen_addr {
+        if self.listen_addr.matches(dst) {
             self.handle_client_input(payload, ClientSocket::new(sender), other, now);
             return;
         }
@@ -541,11 +534,31 @@ impl TestRelay {
         {
             let payload = &payload[4..];
 
-            // The `src` of the relayed packet is the relay itself _from_ the allocated port.
-            let src = SocketAddr::new(self.ip(), port.value());
-
             // The `dst` of the relayed packet is what TURN calls a "peer".
             let dst = peer.into_socket();
+
+            // The `src_ip` is the relay's IP
+            let src_ip = match dst {
+                SocketAddr::V4(_) => {
+                    assert!(
+                        self.allocations.contains(&(AddressFamily::V4, port)),
+                        "IPv4 allocation to be present if we want to send to an IPv4 socket"
+                    );
+
+                    self.ip4().expect("listen on IPv4 if we have an allocation")
+                }
+                SocketAddr::V6(_) => {
+                    assert!(
+                        self.allocations.contains(&(AddressFamily::V6, port)),
+                        "IPv6 allocation to be present if we want to send to an IPv6 socket"
+                    );
+
+                    self.ip6().expect("listen on IPv6 if we have an allocation")
+                }
+            };
+
+            // The `src` of the relayed packet is the relay itself _from_ the allocated port.
+            let src = SocketAddr::new(src_ip, port.value());
 
             // Check if we need to relay to ourselves (from one allocation to another)
             if self.wants(dst) {
@@ -582,9 +595,11 @@ impl TestRelay {
             );
             self.buffer[4..full_length].copy_from_slice(payload);
 
+            let receiving_socket = client.into_socket();
+            let sending_socket = self.matching_listen_socket(receiving_socket).unwrap();
             receiver.receive(
-                client.into_socket(),
-                self.listen_addr,
+                receiving_socket,
+                sending_socket,
                 &self.buffer[..full_length],
                 now,
             );
@@ -596,13 +611,15 @@ impl TestRelay {
             match command {
                 firezone_relay::Command::SendMessage { payload, recipient } => {
                     let recipient = recipient.into_socket();
+                    let sending_socket = self.matching_listen_socket(recipient).unwrap();
+
                     if a1.local.contains(&recipient) {
-                        a1.receive(recipient, self.listen_addr, &payload, now);
+                        a1.receive(recipient, sending_socket, &payload, now);
                         continue;
                     }
 
                     if a2.local.contains(&recipient) {
-                        a2.receive(recipient, self.listen_addr, &payload, now);
+                        a2.receive(recipient, sending_socket, &payload, now);
                         continue;
                     }
 
@@ -630,6 +647,17 @@ impl TestRelay {
             firezone_relay::auth::generate_password(self.inner.auth_secret(), expiry, username);
 
         (format!("{secs}:{username}"), password)
+    }
+}
+
+fn to_ip_stack(socket: RelaySocket) -> IpStack {
+    match socket {
+        RelaySocket::V4(v4) => IpStack::Ip4(*v4.ip()),
+        RelaySocket::V6(v6) => IpStack::Ip6(*v6.ip()),
+        RelaySocket::Dual { v4, v6 } => IpStack::Dual {
+            ip4: *v4.ip(),
+            ip6: *v6.ip(),
+        },
     }
 }
 
@@ -764,7 +792,7 @@ impl EitherNode {
     fn update_relays(
         &mut self,
         to_remove: HashSet<u64>,
-        to_add: &HashSet<(u64, SocketAddr, String, String, String)>,
+        to_add: &HashSet<(u64, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         match self {

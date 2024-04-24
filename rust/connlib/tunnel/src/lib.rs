@@ -175,11 +175,8 @@ where
     }
 
     pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
-        self.role_state.update_relays(
-            to_remove,
-            turn(&to_add, |addr| self.io.sockets_ref().can_handle(addr)),
-            Instant::now(),
-        )
+        self.role_state
+            .update_relays(to_remove, turn(&to_add), Instant::now())
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {

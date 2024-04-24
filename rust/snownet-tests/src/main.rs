@@ -1,6 +1,6 @@
 use std::{
     future::poll_fn,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     str::FromStr,
     task::{Context, Poll},
     time::Instant,
@@ -13,7 +13,7 @@ use ip_packet::IpPacket;
 use pnet_packet::{ip::IpNextHeaderProtocols, ipv4::Ipv4Packet};
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{Answer, ClientNode, Credentials, Node, Offer, ServerNode};
+use snownet::{Answer, ClientNode, Credentials, Node, Offer, RelaySocket, ServerNode};
 use tokio::{io::ReadBuf, net::UdpSocket};
 use tracing_subscriber::EnvFilter;
 
@@ -48,13 +48,13 @@ async fn main() -> Result<()> {
         .map(|ip| SocketAddr::new(ip, 3478));
     let turn_server = std::env::var("TURN_SERVER")
         .ok()
-        .map(|a| a.parse::<IpAddr>())
+        .map(|a| a.parse::<Ipv4Addr>())
         .transpose()
         .context("Failed to parse `TURNERVER`")?
         .map(|ip| {
             (
                 1,
-                SocketAddr::new(ip, 3478),
+                RelaySocket::V4(SocketAddrV4::new(ip, 3478)),
                 "2000000000:client".to_owned(), // TODO: Use different credentials per role.
                 "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
                 "firezone".to_owned(),

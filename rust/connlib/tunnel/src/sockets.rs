@@ -112,17 +112,17 @@ impl Sockets {
 
     pub fn try_send(&mut self, transmit: quinn_udp::Transmit) -> io::Result<()> {
         match transmit.destination {
-            SocketAddr::V4(_) => {
+            SocketAddr::V4(dst) => {
                 let socket = self.socket_v4.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
-                    "no IPv4 socket",
+                    format!("failed send packet to {dst}: no IPv4 socket"),
                 ))?;
                 socket.send(transmit);
             }
-            SocketAddr::V6(_) => {
+            SocketAddr::V6(dst) => {
                 let socket = self.socket_v6.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
-                    "no IPv6 socket",
+                    format!("failed send packet to {dst}: no IPv6 socket"),
                 ))?;
                 socket.send(transmit);
             }
