@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import rehypeStringify from "rehype-stringify";
 import rehypeHighlight from "rehype-highlight";
+import redirects from "./redirects.js";
 
 // Add IDs to headings
 import rehypeSlug from "rehype-slug";
@@ -33,6 +34,9 @@ const highlightLanguages = {
 const nextConfig = {
   experimental: {
     typedRoutes: true,
+  },
+  async redirects() {
+    return redirects;
   },
   // Proxy GitHub requests to avoid CORS issues
   async rewrites() {
