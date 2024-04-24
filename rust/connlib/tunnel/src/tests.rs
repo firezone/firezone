@@ -259,65 +259,48 @@ impl StateMachineTest for TunnelTest {
                         .state
                         .add_resources(&[ResourceDescription::Cidr(r)]);
                 });
-                state.handle_timeout(state.now);
             }
             Transition::SendICMPPacketToRandomIp { src, dst } => {
                 state.send_icmp_packet_client_to_gateway(src, dst);
-                state.handle_timeout(state.now);
             }
             Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
                 let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
 
                 state.send_icmp_packet_client_to_gateway(src, dst);
-                state.handle_timeout(state.now);
             }
             Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
                 let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
 
                 state.send_icmp_packet_client_to_gateway(src, dst);
-                state.handle_timeout(state.now);
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
-                state.utc_now += Duration::from_millis(millis);
-                state.handle_timeout(state.now, state.utc_now);
             }
         };
 
         // 2. Drain all resulting transmits / events
-        let mut busy = true;
-
-        while busy {
-            busy = false;
-
+        loop {
             if let Some(transmit) = state.client.state.poll_transmit() {
-                busy = true;
                 let sending_socket = state.client.sending_socket_for(transmit.dst);
 
-                state.dispatch_transmit(transmit, sending_socket)
+                state.dispatch_transmit(transmit, sending_socket);
+                continue;
             }
             if let Some(event) = state.client.state.poll_event() {
-                busy = true;
-                // state
-                //     .client_emitted_events
-                //     .push_back((state.now, event.clone()));
-                state.on_client_event(state.client.id, event, &ref_state.client_cidr_resources)
+                state.on_client_event(state.client.id, event, &ref_state.client_cidr_resources);
+                continue;
             }
             if let Some(transmit) = state.gateway.state.poll_transmit() {
-                busy = true;
                 let sending_socket = state.gateway.sending_socket_for(transmit.dst);
 
-                state.dispatch_transmit(transmit, sending_socket)
+                state.dispatch_transmit(transmit, sending_socket);
+                continue;
             }
             if let Some(event) = state.gateway.state.poll_event() {
-                busy = true;
-                // state
-                //     .gateway_emitted_events
-                //     .push_back((state.now, event.clone()));
-                state.on_gateway_event(state.gateway.id, event)
+                state.on_gateway_event(state.gateway.id, event);
+                continue;
             }
             if let Some(message) = state.relay.state.next_command() {
-                busy = true;
                 match message {
                     firezone_relay::Command::SendMessage { payload, recipient } => {
                         let dst = recipient.into_socket();
@@ -340,7 +323,14 @@ impl StateMachineTest for TunnelTest {
                     firezone_relay::Command::CreateAllocation { .. } => {}
                     firezone_relay::Command::FreeAllocation { .. } => {}
                 }
+                continue;
             }
+
+            if state.handle_timeout(state.now) {
+                continue;
+            }
+
+            break;
         }
 
         // 3. Assert expected state
@@ -435,21 +425,31 @@ impl TunnelTest {
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
     ///
     /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
-    fn handle_timeout(&mut self, now: Instant) {
+    fn handle_timeout(&mut self, now: Instant) -> bool {
+        let mut any_advanced = false;
+
         if self.client.state.poll_timeout().is_some_and(|t| t <= now) {
+            any_advanced = true;
+
             self.client_span
                 .in_scope(|| self.client.state.handle_timeout(now))
         };
 
         if self.gateway.state.poll_timeout().is_some_and(|t| t <= now) {
+            any_advanced = true;
+
             self.gateway_span
                 .in_scope(|| self.gateway.state.handle_timeout(now))
         };
 
         if self.relay.state.poll_timeout().is_some_and(|t| t <= now) {
+            any_advanced = true;
+
             self.relay_span
                 .in_scope(|| self.relay.state.handle_timeout(now))
         };
+
+        any_advanced
     }
 
     fn send_icmp_packet_client_to_gateway(
