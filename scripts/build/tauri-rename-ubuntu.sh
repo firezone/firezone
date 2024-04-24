@@ -7,7 +7,7 @@ ls ../target/release ../target/release/bundle/deb
 # Used for release artifact
 # In release mode the name comes from tauri.conf.json
 # Using a glob for the source, there will only be one exe and one deb anyway
-cp ../target/release/firezone "$BINARY_DEST_PATH"
+cp ../target/release/firezone-client-gui "$BINARY_DEST_PATH"
 cp ../target/release/firezone-gui-client.dwp "$BINARY_DEST_PATH.dwp"
 cp ../target/release/bundle/deb/*_amd64.deb "$BINARY_DEST_PATH.deb"
 # TODO: Debug symbols for Linux
