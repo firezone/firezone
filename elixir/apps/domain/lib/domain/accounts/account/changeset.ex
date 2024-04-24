@@ -16,14 +16,15 @@ defmodule Domain.Accounts.Account.Changeset do
 
   def create(attrs) do
     %Account{}
-    |> cast(attrs, [:name, :slug])
+    |> cast(attrs, [:name, :legal_name, :slug])
     |> changeset()
   end
 
   def update_profile_and_config(%Account{} = account, attrs) do
     account
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :legal_name])
     |> validate_name()
+    |> validate_legal_name()
     |> cast_embed(:config, with: &Config.Changeset.changeset/2)
   end
 
@@ -32,6 +33,7 @@ defmodule Domain.Accounts.Account.Changeset do
     |> cast(attrs, [
       :slug,
       :name,
+      :legal_name,
       :disabled_reason,
       :disabled_at,
       :warning,
@@ -44,6 +46,7 @@ defmodule Domain.Accounts.Account.Changeset do
   defp changeset(changeset) do
     changeset
     |> validate_name()
+    |> validate_legal_name()
     |> validate_slug()
     |> prepare_changes(&put_default_slug/1)
     |> cast_embed(:config, with: &Config.Changeset.changeset/2)
@@ -57,6 +60,13 @@ defmodule Domain.Accounts.Account.Changeset do
     |> validate_required([:name])
     |> trim_change(:name)
     |> validate_length(:name, min: 3, max: 64)
+  end
+
+  defp validate_legal_name(changeset) do
+    changeset
+    |> put_default_value(:legal_name, from: :name)
+    |> trim_change(:legal_name)
+    |> validate_length(:legal_name, min: 1, max: 255)
   end
 
   defp validate_slug(changeset) do
