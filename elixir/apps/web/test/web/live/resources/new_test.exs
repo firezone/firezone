@@ -1,5 +1,4 @@
 defmodule Web.Live.Resources.NewTest do
-  alias Domain.Fixtures
   use Web.ConnCase, async: true
 
   setup do
