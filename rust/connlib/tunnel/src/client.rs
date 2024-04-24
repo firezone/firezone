@@ -1105,7 +1105,7 @@ impl ClientState {
         true
     }
 
-    fn update_relays(
+    pub fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
         to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,

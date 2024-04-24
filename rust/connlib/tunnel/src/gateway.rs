@@ -373,7 +373,7 @@ impl GatewayState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn update_relays(
+    pub fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
         to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,

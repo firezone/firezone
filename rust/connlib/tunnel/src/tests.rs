@@ -8,6 +8,7 @@ use connlib_shared::{
     proptest::cidr_resource,
     StaticSecret,
 };
+use firezone_relay::ClientSocket;
 use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -21,14 +22,15 @@ use proptest::{
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::{rngs::StdRng, SeedableRng};
 use secrecy::ExposeSecret;
-use snownet::Transmit;
+use snownet::{RelaySocket, Transmit};
 use std::{
     collections::{HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    ops::ControlFlow,
     time::{Duration, Instant, SystemTime},
 };
-use tracing::{info_span, subscriber::DefaultGuard, Span};
+use tracing::{error_span, subscriber::DefaultGuard, Span};
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 proptest_state_machine::prop_state_machine! {
@@ -56,6 +58,7 @@ struct TunnelTest {
 
     client_span: Span,
     gateway_span: Span,
+    relay_span: Span,
 
     client_received_packets: VecDeque<IpPacket<'static>>,
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
@@ -101,16 +104,57 @@ impl<ID, S> SimNode<ID, S> {
         self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
             || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
     }
+
+    fn sending_socket_for(&self, dst: SocketAddr) -> Option<SocketAddr> {
+        Some(match dst {
+            SocketAddr::V4(_) => self.ip4_socket?.into(),
+            SocketAddr::V6(_) => self.ip6_socket?.into(),
+        })
+    }
 }
 
 impl SimRelay<firezone_relay::Server<StdRng>> {
-    // fn explode_ip4(&self, username: &str) -> Option<(RelayId, SocketAddr, String, String, String)> {
-    //     let ipv4_addr = self.ip_stack.as_v4()?;
+    fn wants(&self, dst: SocketAddr) -> bool {
+        self.ip_stack
+            .as_v4()
+            .is_some_and(|s| IpAddr::V4(*s) == dst.ip())
+            || self
+                .ip_stack
+                .as_v6()
+                .is_some_and(|s| IpAddr::V6(*s) == dst.ip())
+    }
 
-    //     let (username, password) = self.make_credentials(username);
+    fn sending_socket_for(&self, dst: SocketAddr, port: u16) -> Option<SocketAddr> {
+        Some(match dst {
+            SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(*self.ip_stack.as_v4()?, port)),
+            SocketAddr::V6(_) => {
+                SocketAddr::V6(SocketAddrV6::new(*self.ip_stack.as_v6()?, port, 0, 0))
+            }
+        })
+    }
 
-    //     Some((self.id, ))
-    // }
+    fn explode(&self, username: &str) -> (RelayId, RelaySocket, String, String, String) {
+        let relay_socket = match self.ip_stack {
+            firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
+            firezone_relay::IpStack::Ip6(ip6) => {
+                RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
+            }
+            firezone_relay::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
+                v4: SocketAddrV4::new(ip4, 3478),
+                v6: SocketAddrV6::new(ip6, 3478, 0, 0),
+            },
+        };
+
+        let (username, password) = self.make_credentials(username);
+
+        (
+            self.id,
+            relay_socket,
+            username,
+            password,
+            "firezone".to_owned(),
+        )
+    }
 
     fn make_credentials(&self, username: &str) -> (String, String) {
         let expiry = SystemTime::now() + Duration::from_secs(60);
@@ -153,15 +197,38 @@ impl StateMachineTest for TunnelTest {
     fn init_test(
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) -> Self::SystemUnderTest {
+        let mut client = ref_state
+            .client
+            .map_state(|key| ClientState::new(StaticSecret::from(key)));
+        let mut gateway = ref_state
+            .gateway
+            .map_state(|key| GatewayState::new(StaticSecret::from(key)));
+        let relay = SimRelay {
+            state: firezone_relay::Server::new(
+                ref_state.relay.ip_stack,
+                rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
+                49152,
+                65535,
+            ),
+            ip_stack: ref_state.relay.ip_stack,
+            id: ref_state.relay.id,
+        };
+        client.state.update_relays(
+            HashSet::default(),
+            HashSet::from([relay.explode("client")]),
+            ref_state.now,
+        );
+        gateway.state.update_relays(
+            HashSet::default(),
+            HashSet::from([relay.explode("gateway")]),
+            ref_state.now,
+        );
+
         Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
-            client: ref_state
-                .client
-                .map_state(|key| ClientState::new(StaticSecret::from(key))),
-            gateway: ref_state
-                .gateway
-                .map_state(|key| GatewayState::new(StaticSecret::from(key))),
+            client,
+            gateway,
             logger: tracing_subscriber::fmt()
                 .with_test_writer()
                 .with_env_filter("debug")
@@ -170,18 +237,10 @@ impl StateMachineTest for TunnelTest {
             buffer: Box::new([0u8; 10_000]),
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
-            client_span: info_span!("client"),
-            gateway_span: info_span!("gateway"),
-            relay: SimRelay {
-                state: firezone_relay::Server::new(
-                    ref_state.relay.ip_stack,
-                    rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
-                    49152,
-                    65535,
-                ),
-                ip_stack: ref_state.relay.ip_stack,
-                id: ref_state.relay.id,
-            },
+            client_span: error_span!("client"),
+            gateway_span: error_span!("gateway"),
+            relay_span: error_span!("relay"),
+            relay,
         }
     }
 
@@ -193,51 +252,95 @@ impl StateMachineTest for TunnelTest {
     ) -> Self::SystemUnderTest {
         // 1. Apply the transition
         match transition {
-            Transition::AddCidrResource(r) => state.client_span.in_scope(|| {
-                state
-                    .client
-                    .state
-                    .add_resources(&[ResourceDescription::Cidr(r)])
-            }),
+            Transition::AddCidrResource(r) => {
+                state.client_span.in_scope(|| {
+                    state
+                        .client
+                        .state
+                        .add_resources(&[ResourceDescription::Cidr(r)]);
+                });
+                state.handle_timeout(state.now);
+            }
             Transition::SendICMPPacketToRandomIp { src, dst } => {
                 state.send_icmp_packet_client_to_gateway(src, dst);
+                state.handle_timeout(state.now);
             }
             Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
                 let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
 
                 state.send_icmp_packet_client_to_gateway(src, dst);
+                state.handle_timeout(state.now);
             }
             Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
                 let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
 
                 state.send_icmp_packet_client_to_gateway(src, dst);
+                state.handle_timeout(state.now);
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
                 state.utc_now += Duration::from_millis(millis);
-                state.client.state.handle_timeout(state.now);
-                state.gateway.state.handle_timeout(state.now, state.utc_now);
+                state.handle_timeout(state.now, state.utc_now);
             }
         };
 
         // 2. Drain all resulting transmits / events
-        while let Some(transmit) = state.client.state.poll_transmit() {
-            state.dispatch_transmit(transmit)
-        }
-        while let Some(event) = state.client.state.poll_event() {
-            // state
-            //     .client_emitted_events
-            //     .push_back((state.now, event.clone()));
-            state.on_client_event(state.client.id, event, &ref_state.client_cidr_resources)
-        }
-        while let Some(transmit) = state.gateway.state.poll_transmit() {
-            state.dispatch_transmit(transmit)
-        }
-        while let Some(event) = state.gateway.state.poll_event() {
-            // state
-            //     .gateway_emitted_events
-            //     .push_back((state.now, event.clone()));
-            state.on_gateway_event(state.gateway.id, event)
+        let mut busy = true;
+
+        while busy {
+            busy = false;
+
+            if let Some(transmit) = state.client.state.poll_transmit() {
+                busy = true;
+                let sending_socket = state.client.sending_socket_for(transmit.dst);
+
+                state.dispatch_transmit(transmit, sending_socket)
+            }
+            if let Some(event) = state.client.state.poll_event() {
+                busy = true;
+                // state
+                //     .client_emitted_events
+                //     .push_back((state.now, event.clone()));
+                state.on_client_event(state.client.id, event, &ref_state.client_cidr_resources)
+            }
+            if let Some(transmit) = state.gateway.state.poll_transmit() {
+                busy = true;
+                let sending_socket = state.gateway.sending_socket_for(transmit.dst);
+
+                state.dispatch_transmit(transmit, sending_socket)
+            }
+            if let Some(event) = state.gateway.state.poll_event() {
+                busy = true;
+                // state
+                //     .gateway_emitted_events
+                //     .push_back((state.now, event.clone()));
+                state.on_gateway_event(state.gateway.id, event)
+            }
+            if let Some(message) = state.relay.state.next_command() {
+                busy = true;
+                match message {
+                    firezone_relay::Command::SendMessage { payload, recipient } => {
+                        let dst = recipient.into_socket();
+                        let src = state
+                            .relay
+                            .sending_socket_for(dst, 3478)
+                            .expect("relay to never emit packets without a matching socket");
+
+                        if let ControlFlow::Break(_) = state.try_handle_client(dst, src, &payload) {
+                            continue;
+                        }
+
+                        if let ControlFlow::Break(_) = state.try_handle_gateway(dst, src, &payload)
+                        {
+                            continue;
+                        }
+
+                        panic!("Unhandled packet: {src} -> {dst}")
+                    }
+                    firezone_relay::Command::CreateAllocation { .. } => {}
+                    firezone_relay::Command::FreeAllocation { .. } => {}
+                }
+            }
         }
 
         // 3. Assert expected state
@@ -329,6 +432,26 @@ impl ReferenceState {
 }
 
 impl TunnelTest {
+    /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
+    ///
+    /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
+    fn handle_timeout(&mut self, now: Instant) {
+        if self.client.state.poll_timeout().is_some_and(|t| t <= now) {
+            self.client_span
+                .in_scope(|| self.client.state.handle_timeout(now))
+        };
+
+        if self.gateway.state.poll_timeout().is_some_and(|t| t <= now) {
+            self.gateway_span
+                .in_scope(|| self.gateway.state.handle_timeout(now))
+        };
+
+        if self.relay.state.poll_timeout().is_some_and(|t| t <= now) {
+            self.relay_span
+                .in_scope(|| self.relay.state.handle_timeout(now))
+        };
+    }
+
     fn send_icmp_packet_client_to_gateway(
         &mut self,
         src: impl Into<IpAddr>,
@@ -343,34 +466,80 @@ impl TunnelTest {
             return;
         };
         let transmit = transmit.into_owned();
+        let sending_socket = self.client.sending_socket_for(transmit.dst);
 
-        self.dispatch_transmit(transmit);
+        self.dispatch_transmit(transmit, sending_socket);
     }
 
-    fn dispatch_transmit(&mut self, transmit: Transmit) {
-        let Some(from) = transmit.src else {
-            tracing::debug!("Dropping packet without `src`");
-            return;
-        };
+    fn dispatch_transmit(&mut self, transmit: Transmit, sending_socket: Option<SocketAddr>) {
         let dst = transmit.dst;
         let payload = &transmit.payload;
 
+        let Some(src) = sending_socket else {
+            tracing::warn!("Dropping packet to {dst}: no socket");
+            return;
+        };
+
+        if self.relay.wants(dst) {
+            if dst.port() == 3478 {
+                let _maybe_relay =
+                    self.relay
+                        .state
+                        .handle_client_input(payload, ClientSocket::new(src), self.now);
+
+                // TODO: Handle relaying
+            }
+
+            return;
+        }
+
+        let src = transmit
+            .src
+            .expect("to have handled all packets without src via relays");
+
+        if let ControlFlow::Break(_) = self.try_handle_client(dst, src, payload) {
+            return;
+        }
+
+        if let ControlFlow::Break(_) = self.try_handle_gateway(dst, src, payload) {
+            return;
+        }
+
+        panic!("Unhandled packet: {src} -> {dst}")
+    }
+
+    fn try_handle_client(
+        &mut self,
+        dst: SocketAddr,
+        src: SocketAddr,
+        payload: &[u8],
+    ) -> ControlFlow<()> {
         if self.client.wants(dst) {
             if let Some(packet) = self.client_span.in_scope(|| {
                 self.client
                     .state
-                    .decapsulate(dst, from, payload, self.now, self.buffer.as_mut())
+                    .decapsulate(dst, src, payload, self.now, self.buffer.as_mut())
             }) {
                 self.client_received_packets.push_back(packet.to_owned());
             };
-            return;
+
+            return ControlFlow::Break(());
         }
 
+        ControlFlow::Continue(())
+    }
+
+    fn try_handle_gateway(
+        &mut self,
+        dst: SocketAddr,
+        src: SocketAddr,
+        payload: &[u8],
+    ) -> ControlFlow<()> {
         if self.gateway.wants(dst) {
             if let Some(packet) = self.gateway_span.in_scope(|| {
                 self.gateway
                     .state
-                    .decapsulate(dst, from, payload, self.now, self.buffer.as_mut())
+                    .decapsulate(dst, src, payload, self.now, self.buffer.as_mut())
             }) {
                 // TODO: Assert that it is an ICMP packet.
 
@@ -380,10 +549,11 @@ impl TunnelTest {
                     packet.destination(),
                 ));
             };
-            return;
+
+            return ControlFlow::Break(());
         }
 
-        panic!("Unhandled packet: {from} -> {dst}")
+        ControlFlow::Continue(())
     }
 
     fn on_client_event(
@@ -650,6 +820,26 @@ impl ReferenceStateMachine for ReferenceState {
             .prop_filter(
                 "client and gateway priv key must be different",
                 |(c, g, _, _, _)| c.state != g.state,
+            )
+            .prop_filter(
+                "viable network path must exist",
+                |(client, gateway, relay, _)| {
+                    if client.ip4_socket.is_some()
+                        && relay.ip_stack.as_v4().is_none()
+                        && gateway.ip4_socket.is_none()
+                    {
+                        return false;
+                    }
+
+                    if client.ip6_socket.is_some()
+                        && relay.ip_stack.as_v6().is_none()
+                        && gateway.ip6_socket.is_none()
+                    {
+                        return false;
+                    }
+
+                    true
+                },
             )
             .prop_map(|(client, gateway, relay, now, utc_now)| Self {
                 now,
