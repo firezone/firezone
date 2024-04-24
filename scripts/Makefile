@@ -1,11 +1,11 @@
 # Format: Semver
 # See discussion here: https://github.com/firezone/firezone/issues/2041
 # and PR changing it here: https://github.com/firezone/firezone/pull/2949
-apple-version = 1.0.2
-android-version = 1.0.1
-cargo-version = 1.0.0
-elixir-version = 1.0.0
-ci-version = 1.0.0
+apple-version = 1.0.3
+android-version = 1.0.2
+cargo-version = 1.0.1
+elixir-version = 1.0.1
+ci-version = 1.0.1
 
 .PHONY: version apple-version android-version cargo-version ci-version elixir-version
 
