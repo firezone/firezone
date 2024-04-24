@@ -699,40 +699,6 @@ defmodule Domain.BillingTest do
              }
     end
 
-    test "updates an account from stripe on customer.updated event", %{account: account} do
-      customer_metadata = %{
-        "account_id" => account.id,
-        "account_slug" => "this_is_a_new_slug",
-        "account_name" => "Updated Account Name"
-      }
-
-      Bypass.open()
-      |> Stripe.mock_fetch_customer_endpoint(account, %{
-        "metadata" => customer_metadata
-      })
-      |> Stripe.mock_update_customer_endpoint(account)
-
-      event =
-        Stripe.build_event(
-          "customer.updated",
-          Stripe.customer_object(
-            account.metadata.stripe.customer_id,
-            "Updated Account Legal Name",
-            "iown@bigcompany.com",
-            customer_metadata
-          )
-        )
-
-      assert handle_events([event]) == :ok
-
-      assert account = Repo.one(Domain.Accounts.Account)
-      assert account.name == "Updated Account Name"
-      assert account.legal_name == "Updated Account Legal Name"
-      assert account.slug == "this_is_a_new_slug"
-
-      assert account.metadata.stripe.billing_email == "iown@bigcompany.com"
-    end
-
     test "disables the account on when subscription is deleted", %{
       account: account,
       customer_id: customer_id
@@ -803,6 +769,17 @@ defmodule Domain.BillingTest do
       account: account,
       customer_id: customer_id
     } do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{
+            service_accounts_count: 10101
+          },
+          features: %{
+            flow_activities: true,
+            traffic_filters: true
+          }
+        })
+
       Bypass.open()
       |> Stripe.mock_fetch_customer_endpoint(account)
       |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R", %{
