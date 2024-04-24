@@ -17,7 +17,8 @@ pub(crate) struct Release {
 
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release> {
-    let client = reqwest::Client::builder().build()?;
+    // Don't follow any redirects, just tell us what the Firezone site says the URL is
+    let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build()?;
     let arch = std::env::consts::ARCH;
     let os = std::env::consts::OS;
 
@@ -34,12 +35,12 @@ pub(crate) async fn check() -> Result<Release> {
         .send()
         .await?;
     let status = response.status();
-    if status != reqwest::StatusCode::OK {
-        // Should be 200 OK after all the redirects are followed
+    if status != reqwest::StatusCode::TEMPORARY_REDIRECT {
         anyhow::bail!("HTTP status: {status}");
     }
-    // Reqwest follows up to 10 redirects by default, so just grab the final URL
-    let download_url = response.url().clone();
+    let download_url = response.headers().get(reqwest::header::LOCATION).context("this URL should always have a redirect")?.to_str()?;
+    tracing::debug!(?download_url);
+    let download_url = Url::parse(download_url)?;
     let version = parse_version_from_url(&download_url)?;
     Ok(Release {
         download_url,
@@ -49,6 +50,7 @@ pub(crate) async fn check() -> Result<Release> {
 
 #[allow(clippy::print_stderr)]
 fn parse_version_from_url(url: &Url) -> Result<semver::Version> {
+    tracing::debug!(?url);
     let filename = url
         .path_segments()
         .context("URL must have a path")?
