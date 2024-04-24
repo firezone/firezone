@@ -413,10 +413,7 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
         // We don't necessarily need to route through the Controller here, but if we
         // want a persistent "Click here to download the new MSI" button, this would allow that.
         ctlr_tx
-            .send(ControllerRequest::UpdateAvailable {
-                download_url: download_url.clone(),
-                version_to_download: release.tag_name,
-            })
+            .send(ControllerRequest::UpdateAvailable(release))
             .await
             .context("Error while sending UpdateAvailable to Controller")?;
         return Ok(());
