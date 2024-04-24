@@ -227,7 +227,7 @@ defmodule Web.Resources.Components do
         end)
       }
       value={connected_gateway_group_id}
-      placeholder="Site"
+      placeholder="Select a Site"
       required
     />
     """
