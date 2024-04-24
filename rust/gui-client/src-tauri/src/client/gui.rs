@@ -613,7 +613,9 @@ impl Controller {
                     if self.tunnel_ready {
                         tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
                     } else {
-                        tracing::warn!("Connlib is already raising the tunnel, calling `sign_out` anyway");
+                        tracing::warn!(
+                            "Connlib is already raising the tunnel, calling `sign_out` anyway"
+                        );
                         self.sign_out()?;
                     }
                 } else {
