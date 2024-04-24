@@ -862,31 +862,20 @@ impl ReferenceStateMachine for ReferenceState {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
 
-        match state.client_cidr_resources.len() {
-            (0, 0) => prop_oneof![add_cidr_resource, tick, icmp_to_random_ip()].boxed(),
-            (0, _) => prop_oneof![
-                add_cidr_resource,
-                tick,
-                icmp_to_random_ip(),
-                icmp_to_ipv6_cidr_resource()
-            ]
-            .boxed(),
-            (_, 0) => prop_oneof![
-                add_cidr_resource,
-                tick,
-                icmp_to_random_ip(),
-                icmp_to_ipv4_cidr_resource()
-            ]
-            .boxed(),
-            (_, _) => prop_oneof![
-                add_cidr_resource,
-                tick,
-                icmp_to_random_ip(),
-                icmp_to_ipv4_cidr_resource(),
-                icmp_to_ipv6_cidr_resource()
-            ]
-            .boxed(),
-        }
+        let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
+
+        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 1 };
+        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 1 };
+
+        // Note: We use weighted strategies here to conditionally only include the ICMP strategies if we have a resource.
+        prop_oneof![
+            1 => add_cidr_resource,
+            1 => tick,
+            1 => icmp_to_random_ip(),
+            weight_ip4 => icmp_to_ipv4_cidr_resource(),
+            weight_ip6 => icmp_to_ipv6_cidr_resource()
+        ]
+        .boxed()
     }
 
     /// Apply the transition to our reference state.
