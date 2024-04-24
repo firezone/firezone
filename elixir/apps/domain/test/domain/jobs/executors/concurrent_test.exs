@@ -1,6 +1,5 @@
 defmodule Domain.Jobs.Executors.ConcurrentTest do
   use Domain.DataCase, async: true
-  alias Domain.Fixtures
   import Domain.Jobs.Executors.Concurrent
 
   def state(config) do

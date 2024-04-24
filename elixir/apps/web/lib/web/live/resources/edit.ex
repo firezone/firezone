@@ -77,6 +77,7 @@ defmodule Web.Resources.Edit do
             <.connections_form
               :if={is_nil(@params["site_id"])}
               id="connections_form"
+              multiple={Domain.Accounts.multi_site_resources_enabled?(@account)}
               form={@form[:connections]}
               account={@account}
               resource={@resource}

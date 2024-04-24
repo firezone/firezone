@@ -58,11 +58,8 @@ defmodule Web.Resources.Index do
         in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
       </:help>
       <:action>
-        <.add_button
-          :if={Domain.Accounts.multi_site_resources_enabled?(@account)}
-          navigate={~p"/#{@account}/resources/new"}
-        >
-          Add Multi-Site Resource
+        <.add_button navigate={~p"/#{@account}/resources/new"}>
+          Add Resource
         </.add_button>
       </:action>
       <:content>
