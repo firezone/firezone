@@ -18,6 +18,8 @@ defmodule API.Client.Views.Relay do
       %{
         id: relay.id,
         type: :stun,
+        # TODO: remove the `addr` field in the next major version
+        addr: ipv4_addr || ipv6_addr,
         ipv4_addr: ipv4_addr,
         ipv6_addr: ipv6_addr
       }
@@ -38,6 +40,7 @@ defmodule API.Client.Views.Relay do
       %{
         id: relay.id,
         type: :turn,
+        # TODO: remove the `addr` field in the next major version
         addr: ipv4_addr || ipv6_addr,
         ipv4_addr: ipv4_addr,
         ipv6_addr: ipv6_addr,
