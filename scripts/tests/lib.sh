@@ -13,7 +13,7 @@ function client() {
 function bootstrap_browser_test_harness() {
     client which chromium-browser || (
         client apk add --no-cache nodejs npm chromium &&
-            docker compose cp ./scripts/tests/browser/* client:/bin &&
+            docker compose cp ./scripts/tests/browser client:/bin &&
             client npm install --prefix /bin
     )
 }
