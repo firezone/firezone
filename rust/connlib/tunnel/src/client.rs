@@ -18,7 +18,7 @@ use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::ClientNode;
+use snownet::{ClientNode, RelaySocket};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter;
@@ -74,11 +74,8 @@ where
     }
 
     pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
-        self.role_state.update_relays(
-            to_remove,
-            turn(&to_add, |addr| self.io.sockets_ref().can_handle(addr)),
-            Instant::now(),
-        )
+        self.role_state
+            .update_relays(to_remove, turn(&to_add), Instant::now())
     }
 
     /// Adds a the given resource to the tunnel.
@@ -199,7 +196,7 @@ where
             resource_id,
             gateway_id,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays),
         )
     }
 
@@ -438,7 +435,7 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         allowed_stun_servers: HashSet<SocketAddr>,
-        allowed_turn_servers: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        allowed_turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
     ) -> connlib_shared::Result<Request> {
         tracing::trace!("create_or_reuse_connection");
 
@@ -1006,7 +1003,7 @@ impl ClientState {
     fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);

@@ -81,4 +81,41 @@ mod tests {
             assert_eq!(actual, expected);
         }
     }
+
+    #[test]
+    fn pick_asset() {
+        let asset_names = [
+            "firezone-client-gui-linux_1.0.0-pre.14_aarch64.deb",
+            "firezone-client-gui-linux_1.0.0-pre.14_x86_64.deb",
+            "firezone-client-gui-windows_1.0.0-pre.14_aarch64.msi",
+            "firezone-client-gui-windows_1.0.0-pre.14_x86_64.msi",
+            "firezone-client-headless-linux_1.0.0-pre.14_aarch64.deb",
+            "firezone-client-headless-linux_1.0.0-pre.14_x86_64.deb",
+            "firezone-client-headless-windows_1.0.0-pre.14_aarch64.msi",
+            "firezone-client-headless-windows_1.0.0-pre.14_x86_64.msi",
+            "firezone-gateway-linux_1.0.0-pre.14_aarch64.deb",
+            "firezone-gateway-linux_1.0.0-pre.14_x86_64.deb",
+            "firezone-gateway-windows_1.0.0-pre.14_aarch64.msi",
+            "firezone-gateway-windows_1.0.0-pre.14_x86_64.msi",
+        ];
+
+        let product = "client-gui";
+        let arch = "x86_64";
+        let os = "windows";
+        let package = "msi";
+
+        let prefix = format!("firezone-{product}-{os}_");
+        let suffix = format!("_{arch}.{package}");
+
+        let mut iter = asset_names
+            .into_iter()
+            .filter(|x| x.starts_with(&prefix) && x.ends_with(&suffix));
+        let asset_name = iter.next().unwrap();
+        assert!(iter.next().is_none());
+
+        assert_eq!(
+            asset_name,
+            "firezone-client-gui-windows_1.0.0-pre.14_x86_64.msi"
+        );
+    }
 }

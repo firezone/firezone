@@ -22,17 +22,17 @@ into an **app connector** for SaaS applications that support IP allowlists.
 
 ## Prerequisites
 
-- Any SaaS app that supports IP allowlists, configured to allow the public IP
-  address(es) of the NAT Gateway(s) you deployed above.
 - A Site with a descriptive name to use for deploying Gateways for this use
   case, for example `SaaS connectors`. [Create a Site](/kb/deploy/sites) if you
   haven't already.
 - One or more Gateways deployed within the Site in a NAT Gateway configuration.
   See [Route traffic through a public IP](/kb/use-cases/nat-gateway) for how to
   deploy a single NAT Gateway, or see our
-  [Terraform examples](https://www.github.com/firezone/firezone/tree/main/terrraform/examples)
+  [Terraform examples](https://www.github.com/firezone/firezone/tree/main/terraform/examples)
   for examples on how to automate deploying multiple Gateways to various cloud
   providers.
+- Any SaaS app that supports IP allowlists, configured to allow the public IP
+  address(es) of the Gateway(s) you want to use.
 
 <Alert color="warning">
   For reliable access to your SaaS apps, we always recommend deploying multiple
