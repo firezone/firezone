@@ -7,7 +7,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.0"
+  VERSION: "1.0.1"
 
 concurrency:
   group: "publish-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
