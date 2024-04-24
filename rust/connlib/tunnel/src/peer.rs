@@ -63,7 +63,6 @@ impl FilterEngineInner {
     }
 
     fn is_allowed(&self, packet: &IpPacket) -> bool {
-        // TODO: allow all
         match packet.next_header() {
             // Note: possible optimization here
             // if we want to get the port here, and we assume correct formatting
@@ -230,10 +229,6 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    // TODO: instead of recalculating all the filters
-    // we know what ip is being modified
-    // we could use that to make this more optimized --
-    // think about what's easier to implement
     fn recalculate_filters(&mut self) {
         for resource in self.resources.values() {
             if let Some(filter_engine) = self.filters.exact_match_mut(resource.ip) {
@@ -255,15 +250,14 @@ impl ClientOnGateway {
         }
 
         let dst = packet.destination();
-        let Some((_, filtering_engine)) = self.filters.longest_match(dst) else {
+        if !self
+            .filters
+            .longest_match(dst)
+            .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
+        {
             tracing::warn!(%dst, "unallowed packet");
             return Err(connlib_shared::Error::InvalidDst);
         };
-
-        if !filtering_engine.is_allowed(&packet.to_immutable()) {
-            tracing::warn!(%dst, "filtered packet");
-            return Err(connlib_shared::Error::FilteredPacket);
-        }
 
         Ok(())
     }
