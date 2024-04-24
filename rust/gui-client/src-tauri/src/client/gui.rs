@@ -17,6 +17,7 @@ use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tunnel_wrapper::CallbackHandler;
+use url::Url;
 
 use ControllerRequest as Req;
 
@@ -403,16 +404,22 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
     let release = client::updates::check()
         .await
         .context("Error in client::updates::check")?;
+    let Some(download_url) = release.download_url() else {
+        tracing::warn!("No installer for this OS/arch online");
+        return Ok(());
+    };
 
     let our_version = client::updates::current_version()?;
-    let github_version = &release.tag_name;
 
     if always_show_update_notification || (our_version < release.tag_name) {
-        tracing::info!(?our_version, ?github_version, "Github has a new release");
+        tracing::info!(?our_version, ?release.tag_name, "There is a new release");
         // We don't necessarily need to route through the Controller here, but if we
         // want a persistent "Click here to download the new MSI" button, this would allow that.
         ctlr_tx
-            .send(ControllerRequest::UpdateAvailable(release))
+            .send(ControllerRequest::UpdateAvailable {
+                download_url: download_url.clone(),
+                version_to_download: release.tag_name,
+            })
             .await
             .context("Error while sending UpdateAvailable to Controller")?;
         return Ok(());
@@ -420,8 +427,8 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 
     tracing::info!(
         ?our_version,
-        ?github_version,
-        "Our release is newer than, or the same as Github's latest"
+        ?release.tag_name,
+        "Our release is newer than, or the same as, the latest"
     );
     Ok(())
 }
@@ -474,8 +481,11 @@ pub(crate) enum ControllerRequest {
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
-    UpdateAvailable(client::updates::Release),
-    UpdateNotificationClicked(client::updates::Release),
+    UpdateAvailable {
+        download_url: Url,
+        version_to_download: semver::Version,
+    },
+    UpdateNotificationClicked(Url),
 }
 
 struct Controller {
@@ -655,8 +665,11 @@ impl Controller {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
             }
-            Req::UpdateAvailable(release) => {
-                let title = format!("Firezone {} available for download", release.tag_name);
+            Req::UpdateAvailable {
+                download_url,
+                version_to_download,
+            } => {
+                let title = format!("Firezone {} available for download", version_to_download);
 
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
@@ -665,16 +678,12 @@ impl Controller {
                     &title,
                     "Click here to download the new version.",
                     self.ctlr_tx.clone(),
-                    Req::UpdateNotificationClicked(release),
+                    Req::UpdateNotificationClicked(download_url),
                 )?;
             }
-            Req::UpdateNotificationClicked(release) => {
+            Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
-                tauri::api::shell::open(
-                    &self.app.shell_scope(),
-                    release.browser_download_url,
-                    None,
-                )?;
+                tauri::api::shell::open(&self.app.shell_scope(), download_url, None)?;
             }
         }
         Ok(())
