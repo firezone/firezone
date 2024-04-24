@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, Cmd};
+use super::{Cli, Cmd, TOKEN_ENV_KEY};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
@@ -37,8 +37,27 @@ pub fn default_token_path() -> PathBuf {
         .join("token")
 }
 
-pub async fn run() -> Result<()> {
-    let cli = Cli::parse();
+pub fn run() -> Result<()> {
+    let mut cli = Cli::parse();
+
+    // Modifying the environment of a running process is unsafe. If any other
+    // thread is reading or writing the environment, something bad can happen.
+    // So `run` must take over as early as possible during startup, and
+    // take the token env var before any other threads spawn.
+
+    let token_env_var = cli.token.take().map(SecretString::from);
+    let cli = cli;
+
+    // Docs indicate that `remove_var` should actually be marked unsafe
+    // SAFETY: We haven't spawned any other threads, this code should be the first
+    // thing to run after entering `main`. So nobody else is reading the environment.
+    #[allow(unused_unsafe)]
+    unsafe {
+        // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
+        std::env::remove_var(TOKEN_ENV_KEY);
+    }
+    assert!(std::env::var(TOKEN_ENV_KEY).is_err());
+
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
@@ -46,47 +65,65 @@ pub async fn run() -> Result<()> {
 
     match cli.command() {
         Cmd::Auto => {
-            if let Some(token) = token(&cli)? {
-                run_standalone(cli, &token).await
+            if let Some(token) = get_token(token_env_var, &cli)? {
+                run_standalone(cli, &token)
             } else {
-                run_ipc_service(cli).await
+                run_ipc_service(cli)
             }
         }
-        Cmd::IpcService => run_ipc_service(cli).await,
+        Cmd::IpcService => run_ipc_service(cli),
         Cmd::Standalone => {
-            let token = token(&cli)?.with_context(|| {
+            let token = get_token(token_env_var, &cli)?.with_context(|| {
                 format!(
-                    "Can't find the Firezone token in $FIREZONE_TOKEN or in `{}`",
+                    "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
                     cli.token_path
                 )
             })?;
-            run_standalone(cli, &token).await
+            run_standalone(cli, &token)
         }
-        Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
+        Cmd::StubIpcClient => run_debug_ipc_client(cli),
     }
 }
 
-/// Try to retrieve the token from CLI arg, env var, or disk
+/// Read the token from disk if it was not in the environment
+///
+/// # Returns
+/// - `Ok(None)` if there is no token to be found
+/// - `Ok(Some(_))` if we found the token
+/// - `Err(_)` if we found the token on disk but failed to read it
+fn get_token(token_env_var: Option<SecretString>, cli: &Cli) -> Result<Option<SecretString>> {
+    // This is very simple but I don't want to write it twice
+    if let Some(token) = token_env_var {
+        return Ok(Some(token));
+    }
+    read_token_file(cli)
+}
+
+/// Try to retrieve the token from disk
 ///
 /// Sync because we do blocking file I/O
-fn token(cli: &Cli) -> Result<Option<SecretString>> {
+fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
     let path = PathBuf::from(&cli.token_path);
 
-    if let Some(token) = &cli.token {
-        // Token was provided in CLI args or env var
-        // Not very secure, but we do get the token
+    if let Ok(token) = std::env::var(TOKEN_ENV_KEY) {
+        std::env::remove_var(TOKEN_ENV_KEY);
+
+        let token = SecretString::from(token);
+        // Token was provided in env var
         tracing::info!(
             ?path,
-            "Found token in environment or CLI args, ignoring any token that may be on disk."
+            ?TOKEN_ENV_KEY,
+            "Found token in env var, ignoring any token that may be on disk."
         );
-        return Ok(Some(token.clone().into()));
+        return Ok(Some(token));
     }
 
     let Ok(stat) = nix::sys::stat::fstatat(None, &path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read
         tracing::info!(
             ?path,
-            "No token found in CLI args, in environment, or on disk"
+            ?TOKEN_ENV_KEY,
+            "No token found in env var or on disk"
         );
         return Ok(None);
     };
@@ -115,18 +152,20 @@ fn token(cli: &Cli) -> Result<Option<SecretString>> {
         tracing::info!(?path, "Token file existed but now is unreadable");
         return Ok(None);
     };
-    let s = String::from_utf8(bytes)?;
-    let token = s.trim().to_string();
+    let token = String::from_utf8(bytes)?.trim().to_string();
+    let token = SecretString::from(token);
 
     tracing::info!(?path, "Loaded token from disk");
-    Ok(Some(token.into()))
+    Ok(Some(token))
 }
 
-async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
+fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     tracing::info!("Running in standalone mode");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
-
-    let callbacks = CallbackHandler;
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -147,9 +186,9 @@ async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         Sockets::new(),
         private_key,
         None,
-        callbacks.clone(),
+        CallbackHandler,
         max_partition_time,
-        tokio::runtime::Handle::current(),
+        rt.handle().clone(),
     );
     // TODO: this should be added dynamically
     session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
@@ -157,27 +196,29 @@ async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
 
-    future::poll_fn(|cx| loop {
-        if sigint.poll_recv(cx).is_ready() {
-            tracing::debug!("Received SIGINT");
+    let result = rt.block_on(async {
+        future::poll_fn(|cx| loop {
+            if sigint.poll_recv(cx).is_ready() {
+                tracing::debug!("Received SIGINT");
 
-            return Poll::Ready(std::io::Result::Ok(()));
-        }
+                return Poll::Ready(std::io::Result::Ok(()));
+            }
 
-        if sighup.poll_recv(cx).is_ready() {
-            tracing::debug!("Received SIGHUP");
+            if sighup.poll_recv(cx).is_ready() {
+                tracing::debug!("Received SIGHUP");
 
-            session.reconnect();
-            continue;
-        }
+                session.reconnect();
+                continue;
+            }
 
-        return Poll::Pending;
-    })
-    .await?;
+            return Poll::Pending;
+        })
+        .await
+    });
 
     session.disconnect();
 
-    Ok(())
+    Ok(result?)
 }
 
 fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
@@ -258,20 +299,25 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
-    tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
-    let stream = UnixStream::connect(SOCK_PATH)
-        .await
-        .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
-    let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
+fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
+        let stream = UnixStream::connect(SOCK_PATH)
+            .await
+            .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
+        let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
 
-    stream.send(serde_json::to_string("Hello")?.into()).await?;
+        stream.send(serde_json::to_string("Hello")?.into()).await?;
+        Ok::<_, anyhow::Error>(())
+    })?;
     Ok(())
 }
 
-async fn run_ipc_service(_cli: Cli) -> Result<()> {
+fn run_ipc_service(_cli: Cli) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
     tracing::info!("run_daemon");
-    ipc_listen().await
+    rt.block_on(async { ipc_listen().await })
 }
 
 async fn ipc_listen() -> Result<()> {
