@@ -77,7 +77,7 @@ pub fn run() -> Result<()> {
     }
 }
 
-pub async fn run_only_ipc_service() -> Result<()> {
+pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
@@ -86,7 +86,7 @@ pub async fn run_only_ipc_service() -> Result<()> {
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
-    run_ipc_service(cli).await
+    run_ipc_service(cli)
 }
 
 /// Read the token from disk if it was not in the environment
