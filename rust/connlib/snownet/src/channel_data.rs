@@ -47,9 +47,8 @@ pub fn encode(channel: u16, data: &[u8]) -> Vec<u8> {
 /// Encode the channel data header (number + length) to the given slice.
 ///
 /// Returns the total length of the packet (i.e. the encoded header + data).
-pub fn encode_header_to_slice(mut slice: &mut [u8], channel: u16, data: &[u8]) -> usize {
+pub fn encode_header_to_slice(mut slice: &mut [u8], channel: u16, payload_length: usize) -> usize {
     assert_eq!(slice.len(), HEADER_LEN);
-    let payload_length = data.len();
 
     debug_assert!(channel > 0x400);
     debug_assert!(channel < 0x7FFF);
