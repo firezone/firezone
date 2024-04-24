@@ -1,4 +1,5 @@
 use crate::{ClientEvent, ClientState, GatewayState};
+use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{client::ResourceDescription, client::ResourceDescriptionCidr, ResourceId},
     proptest::cidr_resource,
@@ -38,6 +39,7 @@ proptest_state_machine::prop_state_machine! {
 /// [`proptest`] manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
 struct TunnelTest {
     now: Instant,
+    utc_now: DateTime<Utc>,
 
     client: ClientState,
     gateway: GatewayState,
@@ -52,6 +54,7 @@ struct TunnelTest {
 #[derive(Clone, Debug)]
 struct ReferenceState {
     now: Instant,
+    utc_now: DateTime<Utc>,
     client_priv_key: [u8; 32],
     gateway_priv_key: [u8; 32],
 
@@ -73,6 +76,7 @@ impl StateMachineTest for TunnelTest {
     ) -> Self::SystemUnderTest {
         Self {
             now: ref_state.now,
+            utc_now: ref_state.utc_now,
             client: ClientState::new(StaticSecret::from(ref_state.client_priv_key)),
             gateway: GatewayState::new(StaticSecret::from(ref_state.gateway_priv_key)),
             logger: tracing_subscriber::fmt()
@@ -108,8 +112,9 @@ impl StateMachineTest for TunnelTest {
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
+                state.utc_now += Duration::from_millis(millis);
                 state.client.handle_timeout(state.now);
-                state.gateway.handle_timeout(state.now);
+                state.gateway.handle_timeout(state.now, &state.utc_now);
             }
         };
 
@@ -257,13 +262,19 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
-        (any::<[u8; 32]>(), any::<[u8; 32]>(), Just(Instant::now()))
+        (
+            any::<[u8; 32]>(),
+            any::<[u8; 32]>(),
+            Just(Instant::now()),
+            Just(Utc::now()),
+        )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _)| c != g,
+                |(c, g, _, _)| c != g,
             )
-            .prop_map(|(client_priv_key, gateway_priv_key, now)| Self {
+            .prop_map(|(client_priv_key, gateway_priv_key, now, utc_now)| Self {
                 now,
+                utc_now,
                 client_priv_key,
                 gateway_priv_key,
                 client_resources: IpNetworkTable::new(),
