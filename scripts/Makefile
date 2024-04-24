@@ -24,7 +24,7 @@ android-version:
 
 website-version:
 	@# The website hosts permalinks to our published packages and binaries
-	@find website/ -name "redirects.js" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(cargo-version)/g;}' {} \;
+	@find website/ -name "redirects.js" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(website-version)/g;}' {} \;
 
 cargo-version:
 	@find rust/ -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:automatic-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(cargo-version)/;}' {} \;
