@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use connlib_shared::messages::{ClientId, DnsServer, Filter, Filters, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use ip_packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
+use ip_packet::ip::IpNextHeaderProtocols;
 use ip_packet::{IpPacket, MutableIpPacket, Packet};
 use rangemap::RangeInclusiveSet;
 
@@ -16,15 +16,36 @@ use crate::client::IpProvider;
 type ExpiryingResource = (ResourceId, FilterEngine, Option<DateTime<Utc>>);
 
 #[derive(Debug)]
-struct FilterEngine {
+enum FilterEngine {
+    PermitAll,
+    PermitSome(FilterEngineInner),
+}
+
+#[derive(Debug)]
+struct FilterEngineInner {
     udp: RangeInclusiveSet<u16>,
     tcp: RangeInclusiveSet<u16>,
     icmp: bool,
 }
 
+impl From<&Filters> for FilterEngine {
+    fn from(value: &Filters) -> Self {
+        FilterEngine::PermitSome(value.into())
+    }
+}
+
 impl FilterEngine {
-    fn new() -> FilterEngine {
-        FilterEngine {
+    fn is_allowed(&self, packet: &IpPacket) -> bool {
+        match self {
+            FilterEngine::PermitAll => true,
+            FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
+        }
+    }
+}
+
+impl FilterEngineInner {
+    fn new() -> FilterEngineInner {
+        FilterEngineInner {
             udp: RangeInclusiveSet::new(),
             tcp: RangeInclusiveSet::new(),
             icmp: false,
@@ -45,14 +66,14 @@ impl FilterEngine {
                 .as_udp()
                 .is_some_and(|p| self.udp.contains(&p.get_destination())),
             IpNextHeaderProtocols::Icmp => self.icmp,
-            _ => todo!(),
+            _ => false,
         }
     }
 }
 
-impl From<&Filters> for FilterEngine {
+impl From<&Filters> for FilterEngineInner {
     fn from(filters: &Filters) -> Self {
-        let mut filter_engine = FilterEngine::new();
+        let mut filter_engine = FilterEngineInner::new();
         // TODO: ICMP is not handled by the portal yet!
         for Filter {
             protocol,
@@ -63,10 +84,10 @@ impl From<&Filters> for FilterEngine {
             let range = *port_range_start..=*port_range_end;
             match protocol {
                 connlib_shared::messages::Protocol::Tcp => {
-                    filter_engine.tcp.insert(dbg!(range));
+                    filter_engine.tcp.insert(range);
                 }
                 connlib_shared::messages::Protocol::Udp => {
-                    filter_engine.udp.insert(dbg!(range));
+                    filter_engine.udp.insert(range);
                 }
                 // Note: this wouldn't have the port_range
                 connlib_shared::messages::Protocol::Icmp => todo!(),
