@@ -1,4 +1,4 @@
-use crate::allocation::{Allocation, Socket};
+use crate::allocation::{Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
@@ -8,7 +8,7 @@ use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
-use core::{fmt, slice};
+use core::fmt;
 use ip_packet::ipv4::MutableIpv4Packet;
 use ip_packet::ipv6::MutableIpv6Packet;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -150,6 +150,12 @@ where
 
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
+        }
+
+        for candidate in self.host_candidates.drain() {
+            for (id, agent) in self.connections.agents_mut() {
+                remove_local_candidate(id, agent, &candidate, &mut self.pending_events)
+            }
         }
     }
 
@@ -329,42 +335,46 @@ where
         // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
         let socket = conn.socket().ok_or(Error::NotConnected)?;
 
-        let (header, payload) = self.buffer.as_mut().split_at_mut(4);
-
-        let Some(packet) = conn.encapsulate(packet.packet(), payload)? else {
+        // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
+        let Some(packet_len) = conn
+            .encapsulate(packet.packet(), &mut self.buffer[4..])?
+            .map(|p| p.len())
+        // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
+        else {
             return Ok(None);
         };
+
+        let packet_start = 4;
+        let packet_end = 4 + packet_len;
 
         match socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
-            } => Ok(Some(Transmit {
-                src: Some(source),
-                dst: remote,
-                payload: Cow::Borrowed(packet),
-            })),
+            } => {
+                // Re-borrow the actual packet.
+                let packet = &self.buffer[packet_start..packet_end];
+
+                Ok(Some(Transmit {
+                    src: Some(source),
+                    dst: remote,
+                    payload: Cow::Borrowed(packet),
+                }))
+            }
             PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(total_length) = allocation.encode_to_slice(peer, packet, header, now)
+                let packet = &mut self.buffer.as_mut()[..packet_end];
+
+                let Some(transmit) = allocation.encode_to_borrowed_transmit(peer, packet, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                // Safety: We split the slice before, but the borrow-checker doesn't allow us to re-borrow `self.buffer`.
-                // Safety: `total_length` < `buffer.len()` because it is returned from `Tunn::encapsulate`.
-                let channel_data_packet =
-                    unsafe { slice::from_raw_parts(header.as_ptr(), total_length) };
-
-                Ok(Some(Transmit {
-                    src: None,
-                    dst: allocation.server(),
-                    payload: Cow::Borrowed(channel_data_packet),
-                }))
+                Ok(Some(transmit))
             }
         }
     }
@@ -481,7 +491,7 @@ where
     pub fn update_relays(
         &mut self,
         to_remove: HashSet<RId>,
-        to_add: &HashSet<(RId, SocketAddr, String, String, String)>,
+        to_add: &HashSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         // First, invalidate all candidates from relays that we should stop using.
@@ -523,7 +533,7 @@ where
                 Allocation::new(*server, username, password.clone(), realm, now),
             );
 
-            tracing::info!(%id, address = %server, "Added new TURN server");
+            tracing::info!(%id, address = ?server, "Added new TURN server");
         }
     }
 
@@ -633,7 +643,10 @@ where
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
-                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                let Some(allocation) = self
+                    .allocations
+                    .values_mut()
+                    .find(|a| a.server().matches(from))
                 else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
@@ -650,7 +663,10 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Some(allocation) = self.allocations.values_mut().find(|a| a.server() == from)
+                let Some(allocation) = self
+                    .allocations
+                    .values_mut()
+                    .find(|a| a.server().matches(from))
                 else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
@@ -798,7 +814,7 @@ where
         &mut self,
         id: TId,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, RelaySocket, String, String, String)>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Offer {
@@ -900,7 +916,7 @@ where
         offer: Offer,
         remote: PublicKey,
         stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RId, SocketAddr, String, String, String)>,
+        turn_servers: HashSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) -> Answer {
         debug_assert!(
@@ -1091,15 +1107,11 @@ where
     let allocation = allocations
         .get_mut(&relay)
         .ok_or(EncodeError::NoAllocation)?;
-    let payload = allocation
-        .encode_to_vec(dest, contents, now)
+    let transmit = allocation
+        .encode_to_owned_transmit(dest, contents, now)
         .ok_or(EncodeError::NoChannel)?;
 
-    Ok(Transmit {
-        src: None,
-        dst: allocation.server(),
-        payload: Cow::Owned(payload),
-    })
+    Ok(transmit)
 }
 
 #[derive(Debug)]
@@ -1210,7 +1222,7 @@ pub enum Event<TId> {
     ConnectionFailed(TId),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///
@@ -1461,11 +1473,12 @@ where
                     source,
                     ..
                 } => {
-                    let candidate = self
+                    let nominated_candidate = self
                         .local_candidate(source)
-                        .expect("to only nominate existing candidates");
+                        .expect("to only nominate existing candidates")
+                        .clone();
 
-                    let remote_socket = match candidate.kind() {
+                    let remote_socket = match nominated_candidate.kind() {
                         CandidateKind::Relayed => {
                             let relay = allocations.iter().find_map(|(relay, allocation)| {
                                 allocation.has_socket(source).then_some(*relay)
@@ -1537,7 +1550,7 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.invalidate_candiates(id, allocations, pending_events);
+                    self.invalidate_candiates(id, nominated_candidate, pending_events);
                     self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1567,19 +1580,15 @@ where
             };
 
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
-            let Some(channel_data) = allocation.encode_to_vec(dst, &packet, now) else {
+            let Some(channel_data) = allocation.encode_to_owned_transmit(dst, &packet, now) else {
                 // Unlikely edge-case, drop the packet and continue.
                 tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
 
-            self.stats.stun_bytes_to_peer_relayed += channel_data.len();
+            self.stats.stun_bytes_to_peer_relayed += channel_data.payload.len();
 
-            transmits.push_back(Transmit {
-                src: None,
-                dst: allocation.server(),
-                payload: Cow::Owned(channel_data),
-            });
+            transmits.push_back(channel_data);
         }
     }
 
@@ -1712,27 +1721,11 @@ where
     fn invalidate_candiates<TId>(
         &mut self,
         id: TId,
-        allocations: &HashMap<RId, Allocation>,
+        nominated: Candidate,
         pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: Copy + fmt::Display,
     {
-        let Some(socket) = self.socket() else {
-            return;
-        };
-
-        let socket = match socket {
-            PeerSocket::Direct { source, .. } => source,
-            PeerSocket::Relay { relay, .. } => match allocations.get(&relay) {
-                Some(r) => r.server(),
-                None => return,
-            },
-        };
-
-        let Some(nominated) = self.local_candidate(socket).cloned() else {
-            return;
-        };
-
         Span::current().record("nominated_prio", field::display(&nominated.prio()));
 
         let irrelevant_candidates = self
