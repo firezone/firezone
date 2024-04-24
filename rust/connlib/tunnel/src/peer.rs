@@ -13,8 +13,6 @@ use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
 
-type ExpiryingResource = (ResourceId, FilterEngine, Option<DateTime<Utc>>);
-
 #[derive(Debug)]
 enum FilterEngine {
     PermitAll,
@@ -39,6 +37,18 @@ impl FilterEngine {
         match self {
             FilterEngine::PermitAll => true,
             FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
+        }
+    }
+
+    fn permit_all(&mut self) {
+        *self = FilterEngine::PermitAll;
+    }
+
+    // TODO: if some filter is permit all just call permit_all
+    fn add_filters(&mut self, filters: &Filters) {
+        match self {
+            FilterEngine::PermitAll => {}
+            FilterEngine::PermitSome(filter_engine) => filter_engine.add_filters(filters),
         }
     }
 }
@@ -69,11 +79,8 @@ impl FilterEngineInner {
             _ => false,
         }
     }
-}
 
-impl From<&Filters> for FilterEngineInner {
-    fn from(filters: &Filters) -> Self {
-        let mut filter_engine = FilterEngineInner::new();
+    fn add_filters(&mut self, filters: &Filters) {
         // TODO: ICMP is not handled by the portal yet!
         for Filter {
             protocol,
@@ -84,16 +91,22 @@ impl From<&Filters> for FilterEngineInner {
             let range = *port_range_start..=*port_range_end;
             match protocol {
                 connlib_shared::messages::Protocol::Tcp => {
-                    filter_engine.tcp.insert(range);
+                    self.tcp.insert(range);
                 }
                 connlib_shared::messages::Protocol::Udp => {
-                    filter_engine.udp.insert(range);
+                    self.udp.insert(range);
                 }
                 // Note: this wouldn't have the port_range
                 connlib_shared::messages::Protocol::Icmp => todo!(),
             }
         }
+    }
+}
 
+impl From<&Filters> for FilterEngineInner {
+    fn from(filters: &Filters) -> Self {
+        let mut filter_engine = FilterEngineInner::new();
+        filter_engine.add_filters(filters);
         filter_engine
     }
 }
@@ -178,7 +191,8 @@ impl ClientOnGateway {
         ClientOnGateway {
             id,
             allowed_ips,
-            resources: IpNetworkTable::new(),
+            resources: HashMap::new(),
+            filters: IpNetworkTable::new(),
         }
     }
 
@@ -188,11 +202,13 @@ impl ClientOnGateway {
 
     pub(crate) fn expire_resources(&mut self) {
         self.resources
-            .retain(|_, (_, _, e)| !e.is_some_and(|e| e <= Utc::now()));
+            .retain(|_, r| !r.expires_at.is_some_and(|e| e <= Utc::now()));
+        self.recalculate_filters();
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.resources.retain(|_, (r, _, _)| r != resource)
+        self.resources.remove(resource);
+        self.recalculate_filters();
     }
 
     pub(crate) fn add_resource(
@@ -200,11 +216,33 @@ impl ClientOnGateway {
         ip: IpNetwork,
         resource: ResourceId,
         // TODO: resource updates
-        filters: &Filters,
+        filters: Filters,
         expires_at: Option<DateTime<Utc>>,
     ) {
-        self.resources
-            .insert(ip, (resource, filters.into(), expires_at));
+        self.resources.insert(
+            resource,
+            GatewayResource {
+                ip,
+                filters,
+                expires_at,
+            },
+        );
+        self.recalculate_filters();
+    }
+
+    // TODO: instead of recalculating all the filters
+    // we know what ip is being modified
+    // we could use that to make this more optimized --
+    // think about what's easier to implement
+    fn recalculate_filters(&mut self) {
+        for resource in self.resources.values() {
+            if let Some(filter_engine) = self.filters.exact_match_mut(resource.ip) {
+                filter_engine.add_filters(&resource.filters);
+                continue;
+            }
+
+            self.filters.insert(resource.ip, (&resource.filters).into());
+        }
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
@@ -217,14 +255,14 @@ impl ClientOnGateway {
         }
 
         let dst = packet.destination();
-        let Some((_, (_, filtering_engine, _))) = self.resources.longest_match(dst) else {
+        let Some((_, filtering_engine)) = self.filters.longest_match(dst) else {
             tracing::warn!(%dst, "unallowed packet");
             return Err(connlib_shared::Error::InvalidDst);
         };
 
         if !filtering_engine.is_allowed(&packet.to_immutable()) {
             tracing::warn!(%dst, "filtered packet");
-            return Err(connlib_shared::Error::InvalidDst);
+            return Err(connlib_shared::Error::FilteredPacket);
         }
 
         Ok(())
@@ -300,9 +338,16 @@ impl GatewayOnClient {
     }
 }
 
+struct GatewayResource {
+    ip: IpNetwork,
+    filters: Filters,
+    expires_at: Option<DateTime<Utc>>,
+}
+
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
     allowed_ips: IpNetworkTable<()>,
-    resources: IpNetworkTable<ExpiryingResource>,
+    resources: HashMap<ResourceId, GatewayResource>,
+    filters: IpNetworkTable<FilterEngine>,
 }

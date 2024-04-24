@@ -145,7 +145,7 @@ where
         };
 
         for address in &addresses {
-            peer.add_resource(*address, resource_id, &filters, expires_at);
+            peer.add_resource(*address, resource_id, filters.clone(), expires_at);
         }
 
         tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
@@ -198,7 +198,7 @@ where
         let mut peer = ClientOnGateway::new(client_id, &ips);
 
         for address in resource_addresses {
-            peer.add_resource(address, resource, &filters, expires_at);
+            peer.add_resource(address, resource, filters.clone(), expires_at);
         }
 
         self.role_state.peers.insert(peer, &ips);
