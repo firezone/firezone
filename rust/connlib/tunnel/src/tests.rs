@@ -231,7 +231,7 @@ impl StateMachineTest for TunnelTest {
             gateway,
             logger: tracing_subscriber::fmt()
                 .with_test_writer()
-                .with_env_filter("debug")
+                .with_env_filter("debug,str0m=trace")
                 .finish()
                 .set_default(),
             buffer: Box::new([0u8; 10_000]),

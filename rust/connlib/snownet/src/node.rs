@@ -393,6 +393,9 @@ where
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
+        for (_, c) in self.connections.iter_initial_mut() {
+            connection_timeout = earliest(connection_timeout, c.poll_timeout());
+        }
         for (_, c) in self.connections.iter_established_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
@@ -1076,6 +1079,10 @@ where
         self.established.get_mut(id)
     }
 
+    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection)> {
+        self.initial.iter_mut().map(|(id, conn)| (*id, conn))
+    }
+
     fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
         self.established.iter().map(|(id, conn)| (*id, conn))
     }
@@ -1269,10 +1276,23 @@ impl InitialConnection {
     where
         TId: fmt::Display,
     {
-        if now.duration_since(self.created_at) >= HANDSHAKE_TIMEOUT {
+        self.agent.handle_timeout(now);
+
+        if now >= self.no_answer_received_timeout() {
             tracing::info!("Connection setup timed out (no answer received)");
             self.is_failed = true;
         }
+    }
+
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        earliest(
+            self.agent.poll_timeout(),
+            Some(self.no_answer_received_timeout()),
+        )
+    }
+
+    fn no_answer_received_timeout(&self) -> Instant {
+        self.created_at + HANDSHAKE_TIMEOUT
     }
 
     fn duration_since_intent(&self, now: Instant) -> Duration {
