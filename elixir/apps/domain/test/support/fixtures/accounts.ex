@@ -8,6 +8,7 @@ defmodule Domain.Fixtures.Accounts do
 
     Enum.into(attrs, %{
       name: "acc-#{unique_num}",
+      legal_name: "l-acc-#{unique_num}",
       slug: "acc_#{unique_num}",
       config: %{
         clients_upstream_dns: [

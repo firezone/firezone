@@ -111,9 +111,15 @@ defmodule Domain.Billing do
     email = get_customer_email(account)
 
     with {:ok, %{"id" => customer_id, "email" => customer_email}} <-
-           APIClient.create_customer(secret_key, account.id, account.name, account.slug, email) do
+           APIClient.create_customer(secret_key, account.legal_name, email, %{
+             account_id: account.id,
+             account_name: account.name,
+             account_slug: account.slug
+           }) do
       Accounts.update_account(account, %{
-        metadata: %{stripe: %{customer_id: customer_id, billing_email: customer_email}}
+        metadata: %{
+          stripe: %{customer_id: customer_id, billing_email: customer_email}
+        }
       })
     else
       {:ok, {status, body}} ->
@@ -146,9 +152,12 @@ defmodule Domain.Billing do
            APIClient.update_customer(
              secret_key,
              customer_id,
-             account.id,
-             account.name,
-             account.slug
+             account.legal_name,
+             %{
+               account_id: account.id,
+               account_name: account.name,
+               account_slug: account.slug
+             }
            ) do
       {:ok, account}
     else
