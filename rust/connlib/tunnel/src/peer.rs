@@ -44,7 +44,7 @@ impl FilterEngine {
             IpNextHeaderProtocols::Udp => packet
                 .as_udp()
                 .is_some_and(|p| self.udp.contains(&p.get_destination())),
-            IpNextHeaderProtocols::Icmp => todo!(),
+            IpNextHeaderProtocols::Icmp => self.icmp,
             _ => todo!(),
         }
     }
