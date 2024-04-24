@@ -243,7 +243,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
-         {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
+         {:ok, userinfo} <- fetch_userinfo(config, tokens) do
       expires_at =
         cond do
           not is_nil(tokens["expires_in"]) ->
@@ -289,6 +289,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         )
 
         {:error, :internal_error}
+    end
+  end
+
+  defp fetch_userinfo(config, tokens) do
+    case OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
+      {:ok, userinfo} -> {:ok, userinfo}
+      {:error, :userinfo_endpoint_is_not_implemented} -> {:ok, %{}}
+      {:error, _reason} -> {:error, :invalid_token}
     end
   end
 
