@@ -274,7 +274,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {:error, :invalid_token}
 
       {:error, {status, _reason} = other} when status in 400..499 ->
-        Logger.info("Failed to connect OpenID Connect provider",
+        Logger.info("Failed to fetch OpenID Connect state",
           provider_id: provider.id,
           reason: inspect(other)
         )
@@ -282,7 +282,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {:error, :invalid_token}
 
       {:error, other} ->
-        Logger.error("Failed to connect OpenID Connect provider",
+        Logger.error("Failed to fetch OpenID Connect state",
           provider_id: provider.id,
           account_id: provider.account_id,
           reason: inspect(other)
