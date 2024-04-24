@@ -151,6 +151,12 @@ where
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
+
+        for candidate in self.host_candidates.drain() {
+            for (id, agent) in self.connections.agents_mut() {
+                remove_local_candidate(id, agent, &candidate, &mut self.pending_events)
+            }
+        }
     }
 
     pub fn public_key(&self) -> PublicKey {
