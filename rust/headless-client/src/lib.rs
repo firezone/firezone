@@ -35,11 +35,11 @@ mod imp_windows {
         anyhow::bail!("`headless-client` is not implemented for Windows yet");
     }
 
-    pub async fn run_only_ipc_service() -> anyhow::Result<()> {
+    pub fn run_only_ipc_service() -> anyhow::Result<()> {
         let cli = super::Cli::parse();
         let _cmd = cli.command();
         tracing::info!(git_version = crate::GIT_VERSION);
-        Ok(())
+        anyhow::bail!("IPC service is not implemented for Windows yet");
     }
 }
 #[cfg(target_os = "windows")]
