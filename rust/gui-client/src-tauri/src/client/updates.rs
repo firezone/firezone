@@ -18,7 +18,9 @@ pub(crate) struct Release {
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release> {
     // Don't follow any redirects, just tell us what the Firezone site says the URL is
-    let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build()?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
     let arch = std::env::consts::ARCH;
     let os = std::env::consts::OS;
 
@@ -38,7 +40,11 @@ pub(crate) async fn check() -> Result<Release> {
     if status != reqwest::StatusCode::TEMPORARY_REDIRECT {
         anyhow::bail!("HTTP status: {status}");
     }
-    let download_url = response.headers().get(reqwest::header::LOCATION).context("this URL should always have a redirect")?.to_str()?;
+    let download_url = response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .context("this URL should always have a redirect")?
+        .to_str()?;
     tracing::debug!(?download_url);
     let download_url = Url::parse(download_url)?;
     let version = parse_version_from_url(&download_url)?;
