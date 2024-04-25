@@ -3,7 +3,6 @@ Description=Firezone Client
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
-# TODO: Get rid of `CAP_CHOWN` here by asking systemd to make our runtime dir on our behalf
 CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 LockPersonality=true
@@ -23,23 +22,23 @@ ProtectKernelModules=true
 ProtectKernelTunables=true
 # Docs say it's useless when running as root, but defense-in-depth
 ProtectProc=invisible
-ProtectSystem=full
+ProtectSystem=strict
 RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
+RuntimeDirectory=dev.firezone.client
+StateDirectory=dev.firezone.client
 SystemCallArchitectures=native
 # TODO: Minimize
 SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal @system-service
-UMask=177
+UMask=077
 
 Environment="FIREZONE_API_URL=ws://localhost:8081"
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
-Environment="FIREZONE_ID=D0455FDE-8F65-4960-A778-B934E4E85A5F"
 Environment="RUST_LOG=info"
 
-# TODO: Make subcommands explicit once PR #4628 merges
-ExecStart=firezone-linux-client
+ExecStart=firezone-linux-client ipc-service
 Type=notify
 # Unfortunately we may need root to control DNS
 User=root
