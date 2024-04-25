@@ -190,7 +190,7 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         Sockets::new(),
         private_key,
         None,
-        callback_handler.clone(),
+        callback_handler,
         max_partition_time,
         rt.handle().clone(),
     );
