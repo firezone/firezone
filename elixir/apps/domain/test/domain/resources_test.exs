@@ -1002,7 +1002,8 @@ defmodule Domain.ResourcesTest do
 
       assert [
                %Domain.Resources.Resource.Filter{ports: ["80", "433"], protocol: :tcp},
-               %Domain.Resources.Resource.Filter{ports: ["100 - 200"], protocol: :udp}
+               %Domain.Resources.Resource.Filter{ports: ["100 - 200"], protocol: :udp},
+               %Domain.Resources.Resource.Filter{protocol: :icmp}
              ] = resource.filters
     end
 
@@ -1042,7 +1043,8 @@ defmodule Domain.ResourcesTest do
 
       assert [
                %Domain.Resources.Resource.Filter{ports: ["80", "433"], protocol: :tcp},
-               %Domain.Resources.Resource.Filter{ports: ["100 - 200"], protocol: :udp}
+               %Domain.Resources.Resource.Filter{ports: ["100 - 200"], protocol: :udp},
+               %Domain.Resources.Resource.Filter{protocol: :icmp}
              ] = resource.filters
 
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
