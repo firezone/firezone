@@ -220,7 +220,7 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
       }
 
       aggregations {
-        alignment_period     = "300s"
+        alignment_period     = "600s"
         cross_series_reducer = "REDUCE_NONE"
         per_series_aligner   = "ALIGN_MEAN"
       }
@@ -317,8 +317,9 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
       filter = <<-EOT
       resource.type="gce_instance"
       (severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
-      -"invalid ssh key entry - expired key"
       -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
+      -logName:"/logs/GCEGuestAgent"
+      -logName:"/logs/OSConfigAgent"
       EOT
     }
   }

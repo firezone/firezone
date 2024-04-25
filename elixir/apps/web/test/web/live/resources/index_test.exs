@@ -49,7 +49,7 @@ defmodule Web.Live.Resources.IndexTest do
       |> live(~p"/#{account}/resources")
 
     assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
-    assert Floki.text(button) =~ "Add Multi-Site Resource"
+    assert Floki.text(button) =~ "Add Resource"
   end
 
   test "hides resource button when feature is disabled", %{

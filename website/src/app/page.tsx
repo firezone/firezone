@@ -2,6 +2,7 @@ import CodeBlock from "@/components/CodeBlock";
 import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
+import BattleCard from "@/components/BattleCard";
 import { Metadata } from "next";
 import CustomerLogos from "@/components/CustomerLogos";
 import {
@@ -26,13 +27,13 @@ function ActionButtons() {
     <div className="w-full max-w-screen-sm flex justify-between mt-8">
       <button
         type="button"
-        className="w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
+        className="w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
       >
         <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
       </button>
       <button
         type="button"
-        className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
+        className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
       >
         <Link href="/contact/sales">Request demo</Link>
         <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -56,14 +57,6 @@ export default function Page() {
             Firezone is a fast, flexible VPN replacement built on WireGuard®
             that <span className="text-primary-450 font-bold">eliminates</span>{" "}
             tedious configuration and integrates with your identity provider.
-            Oh, and it's{" "}
-            <Link
-              href="https://github.com/firezone/firezone"
-              className="hover:underline text-accent-500 inline-block"
-            >
-              100% open source
-            </Link>
-            .
           </h2>
           <div className="mb-12 flex flex-col px-4 justify-center items-center">
             <ActionButtons />
@@ -398,13 +391,17 @@ export default function Page() {
       </section>
 
       <section className="border-t border-neutral-200 py-24 bg-white">
+        <BattleCard />
+      </section>
+
+      <section className="border-t border-neutral-200 py-24 bg-neutral-100">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="mb-4 justify-center text-center text-4xl tracking-tight font-bold text-neutral-900 ">
             How customers are using Firezone
           </h2>
         </div>
         <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl md:grid md:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900">
@@ -443,7 +440,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiRocketLaunch className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -482,7 +479,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiGlobeAlt className=" lex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
@@ -521,7 +518,7 @@ export default function Page() {
               </li>
             </ul>
           </div>
-          <div className="bg-neutral-100 p-8 border border-neutral-200">
+          <div className="bg-neutral-50 p-8 border border-neutral-200">
             <div className="flex items-center space-x-2.5">
               <HiHome className="flex-shrink-0 w-6 h-6 text-accent-600" />
               <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">

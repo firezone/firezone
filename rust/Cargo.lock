@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1846,7 +1846,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "tracing",
@@ -1857,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1943,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1968,16 +1968,15 @@ dependencies = [
 
 [[package]]
 name = "firezone-linux-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "firezone-headless-client",
- "tokio",
 ]
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2018,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2848,7 +2847,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2863,7 +2862,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3122,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "pnet_packet",
 ]
@@ -3388,7 +3387,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.5",
 ]
 
 [[package]]
@@ -4431,7 +4430,7 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "backoff",
  "base64 0.22.0",
@@ -5195,9 +5194,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.22.3"
+version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99008d7ad0bbbea527ec27bddbc0e432c5b87d8175178cee68d2eec9c4a1813c"
+checksum = "bf4ef73721ac7bcd79b2b315da7779d8fc09718c6b3d2d1b2d94850eb8c18432"
 dependencies = [
  "log",
  "ring",
@@ -5688,7 +5687,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5709,7 +5708,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "boringtun",
@@ -5809,7 +5808,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.5.0"
-source = "git+https://github.com/firezone/str0m?branch=main#aeb62dfe53270d29d2cc72b03930a462e55b2e88"
+source = "git+https://github.com/firezone/str0m?branch=main#44b616945145033ade739f30cdce004728011619"
 dependencies = [
  "combine",
  "crc",
@@ -6370,9 +6369,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.34"
+version = "0.3.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8248b6521bb14bc45b4067159b9b6ad792e2d6d754d6c41fb50e29fefe38749"
+checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
 dependencies = [
  "deranged",
  "itoa 1.0.11",
@@ -6391,9 +6390,9 @@ checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "time-macros"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ba3a3ef41e6672a2f0f001392bb5dcd3ff0a9992d618ca761a11c3121547774"
+checksum = "3f252a68540fde3a3877aeea552b832b40ab9a69e318efd078774a01ddee1ccf"
 dependencies = [
  "num-conv",
  "time-core",

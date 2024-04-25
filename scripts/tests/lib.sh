@@ -2,16 +2,44 @@
 
 set -euox pipefail
 
+CHROMIUM_PORT=9222
+
 function client() {
     docker compose exec -it client "$@"
+}
+
+# Release images (by design) don't include our browser test harness,
+# so install it here if it's not already present.
+function bootstrap_browser_test_harness() {
+    client which chromium-browser || (
+        client apk add --no-cache nodejs npm chromium &&
+            docker compose cp ./scripts/tests/browser/. client:/bin &&
+            client npm install --prefix /bin
+    )
+}
+
+function start_chromium() {
+    docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=$CHROMIUM_PORT
+}
+
+function load_page() {
+    client npm run load -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
+}
+
+function refresh_page() {
+    client npm run refresh -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
 }
 
 function gateway() {
     docker compose exec -it gateway "$@"
 }
 
-function relay() {
-    docker compose exec -it relay "$@"
+function relay1() {
+    docker compose exec -it relay-1 "$@"
+}
+
+function relay2() {
+    docker compose exec -it relay-2 "$@"
 }
 
 function install_iptables_drop_rules() {
@@ -26,7 +54,7 @@ function remove_iptables_drop_rules() {
 }
 
 function client_curl_resource() {
-    client curl --fail "$1" > /dev/null
+    client curl --fail "$1" >/dev/null
 }
 
 function client_ping_resource() {
@@ -41,8 +69,8 @@ function client_nslookup() {
 }
 
 function assert_equals() {
-    local expected="$1"
-    local actual="$2"
+    local actual="$1"
+    local expected="$2"
 
     if [[ "$expected" != "$actual" ]]; then
         echo "Expected $expected but got $actual"
@@ -70,7 +98,7 @@ function create_token_file {
     sudo mkdir "$CONFIG_DIR"
     sudo touch "$TOKEN_PATH"
     sudo chmod 600 "$TOKEN_PATH"
-    echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" > /dev/null
+    echo "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE" | sudo tee "$TOKEN_PATH" >/dev/null
 
     # Also put it in `token.txt` for backwards compat, until pull #4666 merges and is
     # cut into a release.

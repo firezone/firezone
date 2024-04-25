@@ -1,19 +1,19 @@
 use crate::{
     messages::{
-        BroadcastGatewayIceCandidates, Connect, ConnectionDetails, EgressMessages,
-        GatewayIceCandidates, IngressMessages, InitClient, ReplyMessages,
+        Connect, ConnectionDetails, EgressMessages, GatewayIceCandidates, GatewaysIceCandidates,
+        IngressMessages, InitClient, ReplyMessages,
     },
     PHOENIX_TOPIC,
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayResponse, ResourceAccepted, ResourceId},
+    messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -99,15 +99,29 @@ where
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::ClientEvent::SignalIceCandidate {
+            firezone_tunnel::ClientEvent::NewIceCandidate {
                 conn_id: gateway,
                 candidate,
             } => {
-                tracing::debug!(%gateway, %candidate, "Sending ICE candidate to gateway");
+                tracing::debug!(%gateway, %candidate, "Sending new ICE candidate to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(BroadcastGatewayIceCandidates {
+                    EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
+                        gateway_ids: vec![gateway],
+                        candidates: vec![candidate],
+                    }),
+                );
+            }
+            firezone_tunnel::ClientEvent::InvalidatedIceCandidate {
+                conn_id: gateway,
+                candidate,
+            } => {
+                tracing::debug!(%gateway, %candidate, "Sending invalidated ICE candidate to gateway");
+
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gateway],
                         candidates: vec![candidate],
                     }),
@@ -188,7 +202,7 @@ where
 
                 tracing::info!("Firezone Started!");
                 let _ = self.tunnel.set_resources(resources);
-                self.tunnel.upsert_relays(relays)
+                self.tunnel.update_relays(HashSet::default(), relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 let resource_id = resource.id();
@@ -199,6 +213,20 @@ where
             }
             IngressMessages::ResourceDeleted(resource) => {
                 self.tunnel.remove_resources(&[resource]);
+            }
+            IngressMessages::RelaysPresence(RelaysPresence {
+                disconnected_ids,
+                connected,
+            }) => self
+                .tunnel
+                .update_relays(HashSet::from_iter(disconnected_ids), connected),
+            IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
+                gateway_id,
+                candidates,
+            }) => {
+                for candidate in candidates {
+                    self.tunnel.add_ice_candidate(gateway_id, candidate)
+                }
             }
         }
     }

@@ -158,6 +158,10 @@ where
                     callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;
                 }
+                if let Some(msg) = panic.downcast_ref::<String>() {
+                    callbacks.on_disconnect(&Error::Panic(msg.to_string()));
+                    return;
+                }
 
                 callbacks.on_disconnect(&Error::PanicNonStringPayload);
             }

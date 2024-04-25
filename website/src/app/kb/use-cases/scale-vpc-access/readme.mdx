@@ -1,0 +1,76 @@
+import SupportOptions from "@/components/SupportOptions";
+import Link from "next/link";
+import Alert from "@/components/DocsAlert";
+import Image from "next/image";
+import PlanBadge from "@/components/PlanBadge";
+
+<PlanBadge plans={["starter", "team", "enterprise"]}>
+
+# Scale Access to a VPC
+
+</PlanBadge>
+
+In this guide, we'll use Firezone to scale your team's access to a VPC.
+
+This is commonly used when you need fast, reliable access to your cloud
+computing resources which are located behind a cloud firewall.
+
+After completing this guide, your team's traffic into the VPC will be load
+balanced across multiple Gateways for high availability.
+
+<Alert color="warning">
+  Opening ports on your network firewall is **not** necessary or recommended.
+  Firezone Gateways perform secure NAT traversal for you.
+</Alert>
+
+## Prerequisites
+
+- A Site reserved for this use case. [Create a Site](/kb/deploy/sites) if you
+  haven't already.
+- Two or more Gateways deployed within the Site.
+  [Deploy a Gateway](/kb/deploy/gateways) if you haven't done so yet.
+
+<Alert color="info">
+  See our [Terraform
+  examples](https://www.github.com/firezone/firezone/tree/main/terraform/examples)
+  for examples on how to automate deploying multiple Gateways to various cloud
+  providers.
+</Alert>
+
+## Step 1: Create a Resource
+
+1. In your [admin portal](https://app.firezone.dev), go to `Sites -> <site>` and
+   click the `Add Resource` button.
+1. Select `CIDR` as the Resource type.
+1. Enter the CIDR range of the VPC you want to secure access to. This should be
+   a range of IPv4 or IPv6 addresses that's directly reachable from the
+   Gateway(s) in your Site.
+1. Name the Resource something descriptive, like `SJC demo net`. You'll refer to
+   this name when creating a Policy in the next step.
+1. Click `Save`.
+
+<Link
+  href="/images/kb/use-cases/scale-vpc-access/step1.png"
+  target="_blank"
+  rel="nofollow"
+>
+  <Image
+    src="/images/kb/use-cases/scale-vpc-access/step1.png"
+    alt="Create a Resource"
+    width={1200}
+    height={1200}
+  />
+</Link>
+
+## Step 2: Create a Policy
+
+1. In the `Policies` tab, click the `Add Policy` button.
+1. Select an appropriate Group and the the Resource you created in Step (1).
+1. Click `Save`.
+
+## Step 3: Done!
+
+You should now be able to access hosts and services in the VPC you specified in
+Step (1).
+
+<SupportOptions />
