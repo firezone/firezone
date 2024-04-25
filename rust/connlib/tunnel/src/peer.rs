@@ -241,12 +241,18 @@ impl ClientOnGateway {
                 .resources
                 .values()
                 // Here we are using that ip_a/a contains ip_b/b <=> ip_a/a contains ip_b
+                // Also we use that that ip_a/a contains ip_a
                 .filter_map(|r| {
                     r.ip.contains(resource.ip.network_address())
                         .then_some(&r.filters)
-                })
-                .flatten();
-            filter_engine.add_filters(filters);
+                });
+
+            // Empty filters means permit all
+            if filters.clone().any(|f| f.is_empty()) {
+                filter_engine.permit_all();
+            }
+
+            filter_engine.add_filters(filters.flatten());
             self.filters.insert(resource.ip, filter_engine);
         }
     }
