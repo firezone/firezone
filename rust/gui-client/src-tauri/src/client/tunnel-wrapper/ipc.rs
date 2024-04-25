@@ -1,20 +1,21 @@
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, ResourceDescription};
-use firezone_headless_client::IpcClientMsg;
-use futures::SinkExt;
+use connlib_client_shared::{file_logger, Callbacks, ResourceDescription};
+use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
+use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
 };
-use tokio::{net::UnixStream, sync::Notify};
-use tokio_util::codec::LengthDelimitedCodec;
+use tokio::{
+    net::{unix::OwnedWriteHalf, UnixStream},
+    sync::Notify,
+};
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use super::ControllerRequest;
 use super::CtlrTx;
-
-type IpcStream = tokio_util::codec::Framed<UnixStream, LengthDelimitedCodec>;
 
 // TODO: DRY
 const SOCK_PATH: &str = "/run/firezone-client.sock";
@@ -29,14 +30,18 @@ pub(crate) struct CallbackHandler {
 
 /// Forwards events to and from connlib
 pub(crate) struct TunnelWrapper {
-    // TODO: IPC client
-    stream: IpcStream,
+    recv_task: tokio::task::JoinHandle<Result<()>>,
+    tx: FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>,
 }
 
 impl TunnelWrapper {
-    pub(crate) async fn disconnect(self) -> Result<()> {
-        // TODO: Send IPC message, close gracefully
-        todo!()
+    pub(crate) async fn disconnect(mut self) -> Result<()> {
+        self.send_msg(&IpcClientMsg::Disconnect)
+            .await
+            .context("Couldn't send Disconnect")?;
+        self.tx.close().await?;
+        self.recv_task.abort();
+        Ok(())
     }
 
     pub(crate) async fn reconnect(&mut self) -> Result<()> {
@@ -57,7 +62,7 @@ impl TunnelWrapper {
     }
 
     async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
-        self.stream
+        self.tx
             .send(
                 serde_json::to_string(msg)
                     .context("Couldn't encode IPC message as JSON")?
@@ -73,15 +78,35 @@ pub async fn connect(
     api_url: &str,
     token: SecretString,
     callback_handler: CallbackHandler,
-    _tokio_handle: tokio::runtime::Handle, // Needed in `in_proc`
+    tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
     // TODO: Connect to the IPC service, send over the API URL and token
     tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
     let stream = UnixStream::connect(SOCK_PATH)
         .await
         .context("Couldn't connect to UDS")?;
-    let stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-    let mut client = TunnelWrapper { stream };
+    let (rx, tx) = stream.into_split();
+    let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
+    let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+
+    // TODO: Make sure this joins / drops somewhere
+    let recv_task = tokio_handle.spawn(async move {
+        while let Some(msg) = rx.next().await {
+            let msg = msg?;
+            let msg: IpcServerMsg = serde_json::from_slice(&msg)?;
+            match msg {
+                IpcServerMsg::Ok => {}
+                IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
+                    &connlib_client_shared::Error::Other("errors can't be serialized"),
+                ),
+                IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
+                IpcServerMsg::TunnelReady => callback_handler.on_tunnel_ready(),
+            }
+        }
+        Ok(())
+    });
+
+    let mut client = TunnelWrapper { recv_task, tx };
     let token = token.expose_secret().clone();
     client
         .send_msg(&IpcClientMsg::Connect {
@@ -105,16 +130,20 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
-        tracing::info!("on_set_interface_config");
-        self.ctlr_tx
-            .try_send(ControllerRequest::TunnelReady)
-            .expect("controller channel failed");
-        None
+        unimplemented!()
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
+    }
+}
+
+impl CallbackHandler {
+    fn on_tunnel_ready(&self) {
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
     }
 }

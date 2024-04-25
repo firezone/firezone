@@ -8,6 +8,7 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
+use connlib_client_shared::ResourceDescription;
 use std::{net::IpAddr, path::PathBuf};
 
 pub use imp::{default_token_path, run};
@@ -140,4 +141,7 @@ pub enum IpcClientMsg {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
+    OnDisconnect,
+    OnUpdateResources(Vec<ResourceDescription>),
+    TunnelReady,
 }

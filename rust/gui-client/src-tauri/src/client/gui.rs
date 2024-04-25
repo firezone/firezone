@@ -828,9 +828,12 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(error) = controller.refresh_system_tray_menu() {
-                tracing::error!(?error, "Failed to reload resource list");
-            },
+            () = controller.notify_controller.notified() => {
+                tracing::debug!("Controller notified of new resources");
+                if let Err(error) = controller.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to reload resource list");
+                }
+            }
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
