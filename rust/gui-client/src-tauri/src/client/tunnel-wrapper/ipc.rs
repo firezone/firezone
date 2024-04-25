@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription};
-use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{imp::SOCK_PATH, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -16,9 +16,6 @@ use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use super::ControllerRequest;
 use super::CtlrTx;
-
-// TODO: DRY
-const SOCK_PATH: &str = "/run/firezone-client.sock";
 
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {

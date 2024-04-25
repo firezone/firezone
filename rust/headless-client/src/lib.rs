@@ -14,9 +14,9 @@ use std::{net::IpAddr, path::PathBuf};
 pub use imp::{default_token_path, run};
 
 #[cfg(target_os = "linux")]
-mod imp_linux;
+pub mod imp_linux;
 #[cfg(target_os = "linux")]
-use imp_linux as imp;
+pub use imp_linux as imp;
 
 #[cfg(target_os = "windows")]
 mod imp_windows {

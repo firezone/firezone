@@ -44,7 +44,7 @@ const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 /// Docker keeps theirs in `/run` and also appears to use filesystem permissions
 /// for security, so we're following their lead. `/run` and `/var/run` are symlinked
 /// on some systems, `/run` should be the newer version.
-const SOCK_PATH: &str = "/run/firezone-client.sock";
+pub const SOCK_PATH: &str = "/run/firezone-client.sock";
 
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
