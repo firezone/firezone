@@ -77,7 +77,6 @@ pub async fn connect(
     callback_handler: CallbackHandler,
     tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
-    // TODO: Connect to the IPC service, send over the API URL and token
     tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
     let stream = UnixStream::connect(SOCK_PATH)
         .await
