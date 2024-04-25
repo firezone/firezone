@@ -146,7 +146,8 @@ mod test {
                     "id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
                     "name": "172.20.0.1/16",
                     "type": "cidr",
-                    "address": "172.20.0.0/16"
+                    "address": "172.20.0.0/16",
+                    "filters": []
                 },
                 "ref": "78e1159d-9dc6-480d-b2ef-1fcec2cd5730",
                 "expires_at": 1719367575,
