@@ -16,6 +16,7 @@ use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
 use tokio::{
     net::{UnixListener, UnixStream},
     signal::unix::SignalKind,
+    sync::mpsc,
 };
 use tokio_util::codec::LengthDelimitedCodec;
 
@@ -181,7 +182,8 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         return Ok(());
     }
 
-    let callback_handler = CallbackHandler;
+    let (on_disconnect_tx, mut on_disconnect_rx) = mpsc::channel(1);
+    let callback_handler = CallbackHandler { on_disconnect_tx };
 
     let session = Session::connect(
         login,
@@ -205,6 +207,11 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     let result = rt.block_on(async {
         future::poll_fn(|cx| loop {
+            if on_disconnect_rx.poll_recv(cx).is_ready() {
+                tracing::info!("Got on_disconnect in main thread");
+                return Poll::Ready(std::io::Result::Ok(()));
+            }
+
             if sigint.poll_recv(cx).is_ready() {
                 tracing::debug!("Received SIGINT");
 
@@ -238,13 +245,16 @@ fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<
 }
 
 #[derive(Clone)]
-struct CallbackHandler;
+struct CallbackHandler {
+    on_disconnect_tx: mpsc::Sender<()>,
+}
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!("Disconnected: {error}");
-
-        std::process::exit(1);
+        self.on_disconnect_tx
+            .try_send(())
+            .expect("should be able to tell the main thread that we disconnected");
     }
 
     fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {
