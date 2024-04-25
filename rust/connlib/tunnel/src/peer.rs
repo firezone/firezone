@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::gateway::Protocol;
 use connlib_shared::messages::{
     gateway::Filter, gateway::Filters, ClientId, DnsServer, GatewayId, ResourceId,
 };
@@ -88,22 +87,19 @@ impl FilterEngineInner {
 
     fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
         // TODO: ICMP is not handled by the portal yet!
-        for Filter {
-            protocol,
-            port_range_end,
-            port_range_start,
-        } in filters
-        {
-            let range = *port_range_start..=*port_range_end;
-            match protocol {
-                Protocol::Tcp => {
-                    self.tcp.insert(range);
+        for filter in filters {
+            match filter {
+                Filter::Udp(range) => {
+                    self.udp
+                        .insert(range.port_range_start..=range.port_range_end);
                 }
-                Protocol::Udp => {
-                    self.udp.insert(range);
+                Filter::Tcp(range) => {
+                    self.tcp
+                        .insert(range.port_range_start..=range.port_range_end);
                 }
-                // Note: this wouldn't have the port_range
-                Protocol::Icmp => todo!(),
+                Filter::Icmp => {
+                    self.icmp = true;
+                }
             }
         }
     }
