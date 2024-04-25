@@ -181,12 +181,14 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         return Ok(());
     }
 
+    let callback_handler = CallbackHandler;
+
     let session = Session::connect(
         login,
         Sockets::new(),
         private_key,
         None,
-        CallbackHandler,
+        callback_handler.clone(),
         max_partition_time,
         rt.handle().clone(),
     );
@@ -195,6 +197,11 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
+
+    rt.spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        callback_handler.on_disconnect(&connlib_client_shared::Error::Other("fault injection"));
+    });
 
     let result = rt.block_on(async {
         future::poll_fn(|cx| loop {
