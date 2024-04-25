@@ -48,17 +48,20 @@ pub(crate) struct TunnelWrapper {
 }
 
 impl TunnelWrapper {
+    #[allow(clippy::unused_async)]
     pub(crate) async fn disconnect(self) -> Result<()> {
         self.session.disconnect();
         Ok(())
     }
 
-    pub(crate) async fn reconnect(&self) {
+    #[allow(clippy::unused_async)]
+    pub(crate) async fn reconnect(&mut self) -> Result<()> {
         self.session.reconnect();
         Ok(())
     }
 
-    pub(crate) async fn set_dns(&self, dns: Vec<IpAddr>) -> Result<()> {
+    #[allow(clippy::unused_async)]
+    pub(crate) async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
         self.session.set_dns(dns);
         Ok(())
     }
@@ -67,6 +70,7 @@ impl TunnelWrapper {
 /// Starts connlib in-process
 ///
 /// This is `async` because the IPC version is async
+#[allow(clippy::unused_async)]
 pub async fn connect(
     api_url: &str,
     token: SecretString,
