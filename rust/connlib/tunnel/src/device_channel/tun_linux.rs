@@ -67,6 +67,7 @@ impl Drop for Tun {
     fn drop(&mut self) {
         unsafe { close(self.fd.as_raw_fd()) };
         self.connection.abort();
+        tracing::debug!("Reverting DNS control...");
         if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
             etc_resolv_conf::revert().ok();

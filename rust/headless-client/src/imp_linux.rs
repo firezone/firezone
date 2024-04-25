@@ -16,6 +16,7 @@ use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
 use tokio::{
     net::{UnixListener, UnixStream},
     signal::unix::SignalKind,
+    sync::mpsc,
 };
 use tokio_util::codec::LengthDelimitedCodec;
 
@@ -181,12 +182,15 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         return Ok(());
     }
 
+    let (on_disconnect_tx, mut on_disconnect_rx) = mpsc::channel(1);
+    let callback_handler = CallbackHandler { on_disconnect_tx };
+
     let session = Session::connect(
         login,
         Sockets::new(),
         private_key,
         None,
-        CallbackHandler,
+        callback_handler,
         max_partition_time,
         rt.handle().clone(),
     );
@@ -198,10 +202,20 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     let result = rt.block_on(async {
         future::poll_fn(|cx| loop {
+            match on_disconnect_rx.poll_recv(cx) {
+                Poll::Ready(Some(error)) => return Poll::Ready(Err(anyhow::anyhow!(error))),
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "on_disconnect_rx unexpectedly ran empty"
+                    )))
+                }
+                Poll::Pending => {}
+            }
+
             if sigint.poll_recv(cx).is_ready() {
                 tracing::debug!("Received SIGINT");
 
-                return Poll::Ready(std::io::Result::Ok(()));
+                return Poll::Ready(Ok(()));
             }
 
             if sighup.poll_recv(cx).is_ready() {
@@ -218,7 +232,7 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     session.disconnect();
 
-    Ok(result?)
+    result
 }
 
 fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
@@ -231,13 +245,17 @@ fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<
 }
 
 #[derive(Clone)]
-struct CallbackHandler;
+struct CallbackHandler {
+    /// Channel for an error message if connlib disconnects due to an error
+    on_disconnect_tx: mpsc::Sender<String>,
+}
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::error!("Disconnected: {error}");
-
-        std::process::exit(1);
+        // Convert the error to a String since we can't clone it
+        self.on_disconnect_tx
+            .try_send(error.to_string())
+            .expect("should be able to tell the main thread that we disconnected");
     }
 
     fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {
