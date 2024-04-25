@@ -35,7 +35,7 @@ defmodule API.Gateway.Views.Resource do
     }
   end
 
-  def render_filter(%Resources.Resource.Filter{} = filter) do
+  def render_filter(%Resources.Resource.Filter{ports: ports} = filter) when length(ports) > 0 do
     Enum.map(filter.ports, fn port ->
       case String.split(port, "-") do
         [port_start, port_end] ->
@@ -58,6 +58,14 @@ defmodule API.Gateway.Views.Resource do
           }
       end
     end)
+  end
+
+  def render_filter(%Resources.Resource.Filter{} = filter) do
+    [
+      %{
+        protocol: filter.protocol
+      }
+    ]
   end
 
   defp port_to_number(port) do
