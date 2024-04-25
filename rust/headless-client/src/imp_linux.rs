@@ -207,15 +207,20 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     let result = rt.block_on(async {
         future::poll_fn(|cx| loop {
-            if on_disconnect_rx.poll_recv(cx).is_ready() {
-                tracing::info!("Got on_disconnect in main thread");
-                return Poll::Ready(std::io::Result::Ok(()));
+            match on_disconnect_rx.poll_recv(cx) {
+                Poll::Ready(Some(error)) => return Poll::Ready(Err(anyhow::anyhow!(error))),
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "on_disconnect_rx unexpectedly ran empty"
+                    )))
+                }
+                Poll::Pending => {}
             }
 
             if sigint.poll_recv(cx).is_ready() {
                 tracing::debug!("Received SIGINT");
 
-                return Poll::Ready(std::io::Result::Ok(()));
+                return Poll::Ready(Ok(()));
             }
 
             if sighup.poll_recv(cx).is_ready() {
@@ -232,7 +237,7 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     session.disconnect();
 
-    Ok(result?)
+    result
 }
 
 fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
@@ -246,14 +251,15 @@ fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<
 
 #[derive(Clone)]
 struct CallbackHandler {
-    on_disconnect_tx: mpsc::Sender<()>,
+    /// Channel for an error message if connlib disconnects due to an error
+    on_disconnect_tx: mpsc::Sender<String>,
 }
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::error!("Disconnected: {error}");
+        // Convert the error to a String since we can't clone it
         self.on_disconnect_tx
-            .try_send(())
+            .try_send(error.to_string())
             .expect("should be able to tell the main thread that we disconnected");
     }
 
