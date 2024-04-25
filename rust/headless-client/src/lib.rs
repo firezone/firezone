@@ -8,7 +8,7 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
-use std::path::PathBuf;
+use std::{net::IpAddr, path::PathBuf};
 
 pub use imp::{default_token_path, run};
 
@@ -127,4 +127,17 @@ enum Cmd {
     /// Act as an IPC client for development
     #[command(hide = true)]
     StubIpcClient,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum IpcClientMsg {
+    Connect { api_url: String, token: String },
+    Disconnect,
+    Reconnect,
+    SetDns(Vec<IpAddr>),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum IpcServerMsg {
+    Ok,
 }

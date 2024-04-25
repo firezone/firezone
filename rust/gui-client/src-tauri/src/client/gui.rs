@@ -48,11 +48,19 @@ mod tunnel_wrapper_ipc;
 #[cfg(target_os = "linux")]
 use tunnel_wrapper_ipc as tunnel_wrapper;
 */
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 #[path = "tunnel-wrapper/in_proc.rs"]
 mod tunnel_wrapper_in_proc;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+
+#[cfg(target_os = "linux")]
+#[path = "tunnel-wrapper/ipc.rs"]
+mod tunnel_wrapper_ipc;
+
+#[cfg(target_os = "windows")]
 use tunnel_wrapper_in_proc as tunnel_wrapper;
+
+#[cfg(target_os = "linux")]
+use tunnel_wrapper_ipc as tunnel_wrapper;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
@@ -513,7 +521,7 @@ struct Session {
 impl Controller {
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
-    fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, token: SecretString) -> Result<()> {
         if self.session.is_some() {
             bail!("can't start session, we're already in a session");
         }
@@ -531,14 +539,17 @@ impl Controller {
             "Calling connlib Session::connect"
         );
 
-        let connlib = tunnel_wrapper::connect(
+        let mut connlib = tunnel_wrapper::connect(
             api_url.as_str(),
             token,
             callback_handler.clone(),
             tokio::runtime::Handle::current(),
-        )?;
+        )
+        .await?;
 
-        connlib.set_dns(client::resolvers::get().unwrap_or_default());
+        connlib
+            .set_dns(client::resolvers::get().unwrap_or_default())
+            .await?;
 
         self.session = Some(Session {
             callback_handler,
@@ -567,7 +578,7 @@ impl Controller {
         Ok(())
     }
 
-    fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -575,6 +586,7 @@ impl Controller {
         // Uses `std::fs`
         let token = self.auth.handle_response(auth_response)?;
         self.start_session(token)
+            .await
             .context("Couldn't start connlib session")?;
         Ok(())
     }
@@ -591,7 +603,7 @@ impl Controller {
             }
             Req::Disconnected => {
                 tracing::info!("Disconnected by connlib");
-                self.sign_out()?;
+                self.sign_out().await?;
                 os::show_notification(
                     "Firezone disconnected",
                     "To access resources, sign in again.",
@@ -606,6 +618,7 @@ impl Controller {
             }
             Req::SchemeRequest(url) => self
                 .handle_deep_link(&url)
+                .await
                 .context("Couldn't handle deep link")?,
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self.auth.start_sign_in()? {
@@ -626,11 +639,11 @@ impl Controller {
                         tracing::warn!(
                             "Connlib is already raising the tunnel, calling `sign_out` anyway"
                         );
-                        self.sign_out()?;
+                        self.sign_out().await?;
                     }
                 } else {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
-                    self.sign_out()?;
+                    self.sign_out().await?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -650,7 +663,7 @@ impl Controller {
                 .context("Couldn't copy resource to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
                 tracing::info!("User asked to sign out");
-                self.sign_out()?;
+                self.sign_out().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
@@ -726,14 +739,14 @@ impl Controller {
     }
 
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
-    fn sign_out(&mut self) -> Result<()> {
+    async fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
         self.tunnel_ready = false;
         if let Some(session) = self.session.take() {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.
-            session.connlib.disconnect();
+            session.connlib.disconnect().await?;
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.
@@ -798,6 +811,7 @@ async fn run_controller(
     {
         controller
             .start_session(token)
+            .await
             .context("Failed to restart session during app start")?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
@@ -823,7 +837,7 @@ async fn run_controller(
                     have_internet = new_have_internet;
                     if let Some(session) = controller.session.as_mut() {
                         tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        session.connlib.reconnect();
+                        session.connlib.reconnect().await?;
                     }
                 }
             },
@@ -831,7 +845,7 @@ async fn run_controller(
                 r?;
                 if let Some(session) = controller.session.as_mut() {
                     tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default());
+                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default()).await?;
                 }
             },
             req = rx.recv() => {

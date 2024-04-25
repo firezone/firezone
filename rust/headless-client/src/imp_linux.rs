@@ -12,7 +12,9 @@ use connlib_shared::{
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{SinkExt, StreamExt};
 use secrecy::SecretString;
-use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
+use std::{
+    future, net::IpAddr, os::unix::fs::PermissionsExt, path::PathBuf, str::FromStr, task::Poll,
+};
 use tokio::{
     net::{UnixListener, UnixStream},
     signal::unix::SignalKind,
@@ -332,6 +334,8 @@ async fn ipc_listen() -> Result<()> {
     let listener = UnixListener::bind(SOCK_PATH).context("Couldn't bind UDS")?;
     std::os::unix::fs::chown(SOCK_PATH, Some(ROOT_USER), Some(fz_gid.into()))
         .context("can't set firezone as the group for the UDS")?;
+    let perms = std::fs::Permissions::from_mode(0o660);
+    std::fs::set_permissions(SOCK_PATH, perms)?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
@@ -359,18 +363,18 @@ async fn ipc_listen() -> Result<()> {
 type IpcStream = tokio_util::codec::Framed<UnixStream, LengthDelimitedCodec>;
 
 async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
-    tracing::info!("Waiting for an IPC message from the GUI...");
+    loop {
+        let v = stream
+            .next()
+            .await
+            .context("Error while reading IPC message")?
+            .context("IPC stream empty")?;
+        let decoded: super::IpcClientMsg = serde_json::from_slice(&v)?;
 
-    let v = stream
-        .next()
-        .await
-        .context("Error while reading IPC message")?
-        .context("IPC stream empty")?;
-    let decoded: String = serde_json::from_slice(&v)?;
-
-    tracing::debug!(?decoded, "Received message");
-    stream.send("OK".to_string().into()).await?;
-    tracing::info!("Replied. Connection will close");
+        tracing::debug!(?decoded, "Received IPC message");
+        let resp = super::IpcServerMsg::Ok;
+        stream.send(serde_json::to_string(&resp)?.into()).await?;
+    }
     Ok(())
 }
 

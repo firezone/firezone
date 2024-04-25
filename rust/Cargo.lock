@@ -1927,6 +1927,7 @@ dependencies = [
  "tauri-winrt-notification",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-log",
  "tracing-panic",
