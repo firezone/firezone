@@ -69,7 +69,6 @@ windows-core = "0.56.0"
 windows-implement = "0.56.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
-ipconfig = "0.3.2"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.56.0"

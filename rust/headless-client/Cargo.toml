@@ -11,26 +11,29 @@ authors = ["Firezone, Inc."]
 anyhow = { version = "1.0" }
 clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
+firezone-cli-utils = { workspace = true }
 git-version = "0.3.9"
 humantime = "2.1"
-serde = { version = "1.0.197", features = ["derive"] }
-tracing = { workspace = true }
-url = { version = "2.3.1", default-features = false }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-connlib-shared = { workspace = true }
-dirs = "5.0.1"
-firezone-cli-utils = { workspace = true }
-futures = "0.3.30"
-nix = { version =  "0.28.0", features = ["fs", "user"] }
-resolv-conf = "0.7.0"
-sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
-serde_json = "1.0.115"
 secrecy = { workspace = true }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
 tokio = { version = "1.36.0", features = ["macros", "signal"] }
 tokio-util = { version = "0.7.10", features = ["codec"] }
+tracing = { workspace = true }
+url = { version = "2.3.1", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dirs = "5.0.1"
+futures = "0.3.30"
+nix = { version =  "0.28.0", features = ["fs", "user"] }
+resolv-conf = "0.7.0"
+sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ipconfig = "0.3.2"
 
 [lints]
 workspace = true
