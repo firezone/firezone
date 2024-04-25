@@ -299,22 +299,19 @@ pub struct RelaysPresence {
     pub connected: Vec<Relay>,
 }
 
-// ==== TODO ====
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
     use itertools::Itertools;
 
-    use super::{ResourceDescription, ResourceDescriptionDns, ResourceId};
+    use super::{client::ResourceDescription, client::ResourceDescriptionDns, ResourceId};
 
     fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
         ResourceDescription::Dns(ResourceDescriptionDns {
             id: ResourceId::from_str(uuid).unwrap(),
             name: name.to_string(),
             address: "unused.example.com".to_string(),
-            filters: vec![],
         })
     }
 
