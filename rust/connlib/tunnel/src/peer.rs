@@ -33,6 +33,10 @@ impl From<&Filters> for FilterEngine {
 }
 
 impl FilterEngine {
+    fn new() -> FilterEngine {
+        Self::PermitSome(FilterEngineInner::new())
+    }
+
     fn is_allowed(&self, packet: &IpPacket) -> bool {
         match self {
             FilterEngine::PermitAll => true,
@@ -45,7 +49,7 @@ impl FilterEngine {
     }
 
     // TODO: if some filter is permit all just call permit_all
-    fn add_filters(&mut self, filters: &Filters) {
+    fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
         match self {
             FilterEngine::PermitAll => {}
             FilterEngine::PermitSome(filter_engine) => filter_engine.add_filters(filters),
@@ -79,7 +83,7 @@ impl FilterEngineInner {
         }
     }
 
-    fn add_filters(&mut self, filters: &Filters) {
+    fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
         // TODO: ICMP is not handled by the portal yet!
         for Filter {
             protocol,
@@ -105,7 +109,7 @@ impl FilterEngineInner {
 impl From<&Filters> for FilterEngineInner {
     fn from(filters: &Filters) -> Self {
         let mut filter_engine = FilterEngineInner::new();
-        filter_engine.add_filters(filters);
+        filter_engine.add_filters(filters.iter());
         filter_engine
     }
 }
@@ -230,13 +234,20 @@ impl ClientOnGateway {
     }
 
     fn recalculate_filters(&mut self) {
+        self.filters = IpNetworkTable::new();
         for resource in self.resources.values() {
-            if let Some(filter_engine) = self.filters.exact_match_mut(resource.ip) {
-                filter_engine.add_filters(&resource.filters);
-                continue;
-            }
-
-            self.filters.insert(resource.ip, (&resource.filters).into());
+            let mut filter_engine = FilterEngine::new();
+            let filters = self
+                .resources
+                .values()
+                // Here we are using that ip_a/a contains ip_b/b <=> ip_a/a contains ip_b
+                .filter_map(|r| {
+                    r.ip.contains(resource.ip.network_address())
+                        .then_some(&r.filters)
+                })
+                .flatten();
+            filter_engine.add_filters(filters);
+            self.filters.insert(resource.ip, filter_engine);
         }
     }
 
