@@ -4,7 +4,10 @@ use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::{ClientId, DnsServer, Filter, Filters, GatewayId, ResourceId};
+use connlib_shared::messages::gateway::Protocol;
+use connlib_shared::messages::{
+    gateway::Filter, gateway::Filters, ClientId, DnsServer, GatewayId, ResourceId,
+};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::ip::IpNextHeaderProtocols;
@@ -93,14 +96,14 @@ impl FilterEngineInner {
         {
             let range = *port_range_start..=*port_range_end;
             match protocol {
-                connlib_shared::messages::Protocol::Tcp => {
+                Protocol::Tcp => {
                     self.tcp.insert(range);
                 }
-                connlib_shared::messages::Protocol::Udp => {
+                Protocol::Udp => {
                     self.udp.insert(range);
                 }
                 // Note: this wouldn't have the port_range
-                connlib_shared::messages::Protocol::Icmp => todo!(),
+                Protocol::Icmp => todo!(),
             }
         }
     }

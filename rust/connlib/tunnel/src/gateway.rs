@@ -5,9 +5,9 @@ use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
-    Answer, ClientId, ConnectionAccepted, DomainResponse, Filters, GatewayResourceDescription,
-    Interface as InterfaceConfig, Key, Offer, Relay, RelayId, ResolvedResourceDescriptionDns,
-    ResourceId,
+    gateway::Filters, gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription,
+    Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
+    Relay, RelayId, ResourceId,
 };
 use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
@@ -58,10 +58,10 @@ where
         relays: Vec<Relay>,
         domain: Option<Dname>,
         expires_at: Option<DateTime<Utc>>,
-        resource: GatewayResourceDescription<ResolvedResourceDescriptionDns>,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
         let (resource_addresses, id, filters) = match &resource {
-            GatewayResourceDescription::Dns(r) => {
+            ResourceDescription::Dns(r) => {
                 let Some(domain) = domain.clone() else {
                     return Err(Error::ControlProtocolError);
                 };
@@ -72,7 +72,7 @@ where
 
                 (r.addresses.clone(), r.id, r.filters.clone())
             }
-            GatewayResourceDescription::Cidr(ref cidr) => {
+            ResourceDescription::Cidr(ref cidr) => {
                 (vec![cidr.address], cidr.id, cidr.filters.clone())
             }
         };
@@ -122,7 +122,7 @@ where
 
     pub fn allow_access(
         &mut self,
-        resource: GatewayResourceDescription<ResolvedResourceDescriptionDns>,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
@@ -130,7 +130,7 @@ where
         let peer = self.role_state.peers.get_mut(&client)?;
 
         let (addresses, resource_id, filters) = match &resource {
-            GatewayResourceDescription::Dns(r) => {
+            ResourceDescription::Dns(r) => {
                 let domain = domain.clone()?;
 
                 if !crate::dns::is_subdomain(&domain, &r.domain) {
@@ -139,9 +139,7 @@ where
 
                 (r.addresses.clone(), r.id, r.filters.clone())
             }
-            GatewayResourceDescription::Cidr(cidr) => {
-                (vec![cidr.address], cidr.id, cidr.filters.clone())
-            }
+            ResourceDescription::Cidr(cidr) => (vec![cidr.address], cidr.id, cidr.filters.clone()),
         };
 
         for address in &addresses {

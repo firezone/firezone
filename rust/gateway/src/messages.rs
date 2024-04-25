@@ -1,12 +1,11 @@
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
-        ClientId, ClientPayload, GatewayResourceDescription, GatewayResponse, Interface, Peer,
+        gateway::ResourceDescription, ClientId, ClientPayload, GatewayResponse, Interface, Peer,
         Relay, RelaysPresence, ResourceId,
     },
     Dname,
 };
-use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 
 // TODO: Should this have a resource?
@@ -34,7 +33,7 @@ pub struct Client {
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct RequestConnection {
     pub relays: Vec<Relay>,
-    pub resource: GatewayResourceDescription,
+    pub resource: ResourceDescription,
     pub client: Client,
     #[serde(rename = "ref")]
     pub reference: String,
@@ -50,7 +49,7 @@ pub struct RemoveResource {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct AllowAccess {
     pub client_id: ClientId,
-    pub resource: GatewayResourceDescription,
+    pub resource: ResourceDescription,
     #[serde(with = "ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
     pub payload: Option<Dname>,

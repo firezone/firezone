@@ -1,5 +1,5 @@
 use crate::client::DnsResource;
-use connlib_shared::messages::{DnsServer, ResourceDescriptionDns};
+use connlib_shared::messages::{client::ResourceDescriptionDns, DnsServer};
 use connlib_shared::Dname;
 use domain::base::RelativeDname;
 use domain::base::{
@@ -494,7 +494,7 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
 
 #[cfg(test)]
 mod test {
-    use connlib_shared::{messages::ResourceDescriptionDns, Dname};
+    use connlib_shared::{messages::client::ResourceDescriptionDns, Dname};
 
     use crate::dns::is_subdomain;
 
