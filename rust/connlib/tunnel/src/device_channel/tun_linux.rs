@@ -11,8 +11,8 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
-    close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
-    O_NONBLOCK, O_RDWR, S_IFCHR,
+    close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
+    S_IFCHR,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
@@ -439,7 +439,7 @@ impl ioctl::Request<SetTunFlagsPayload> {
         Self {
             name,
             payload: SetTunFlagsPayload {
-                flags: (IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE) as _,
+                flags: (IFF_TUN | IFF_NO_PI) as _,
             },
         }
     }
