@@ -61,7 +61,7 @@ if [ ! -e /usr/local/bin/firezone-gateway ]; then
   # See https://www.github.com/firezone/firezone/releases for available binaries
   curl -fsSL https://www.firezone.dev/dl/firezone-gateway/latest/\$arch -o /tmp/firezone-gateway
 
-  if [ -x /tmp/firezone-gateway ]; then
+  if file /tmp/firezone-gateway | grep -q "executable"; then
     mv /tmp/firezone-gateway /usr/local/bin/firezone-gateway
   else
     echo "/tmp/firezone-gateway is not an executable!"
