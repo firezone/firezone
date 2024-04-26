@@ -125,7 +125,7 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
-fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
+pub fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //
