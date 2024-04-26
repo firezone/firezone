@@ -51,7 +51,6 @@ impl FilterEngine {
         *self = FilterEngine::PermitAll;
     }
 
-    // TODO: if some filter is permit all just call permit_all
     fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
         match self {
             FilterEngine::PermitAll => {}
@@ -87,7 +86,6 @@ impl FilterEngineInner {
     }
 
     fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
-        // TODO: ICMP is not handled by the portal yet!
         for filter in filters {
             match filter {
                 Filter::Udp(range) => {
