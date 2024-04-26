@@ -14,6 +14,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet};
 use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
+use crate::utils::contains;
 
 #[derive(Debug)]
 enum FilterEngine {
@@ -217,7 +218,6 @@ impl ClientOnGateway {
         &mut self,
         ip: IpNetwork,
         resource: ResourceId,
-        // TODO: resource updates
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
     ) {
@@ -239,12 +239,7 @@ impl ClientOnGateway {
             let filters = self
                 .resources
                 .values()
-                // Here we are using that ip_a/a contains ip_b/b <=> ip_a/a contains ip_b
-                // Also we use that that ip_a/a contains ip_a
-                .filter_map(|r| {
-                    r.ip.contains(resource.ip.network_address())
-                        .then_some(&r.filters)
-                });
+                .filter_map(|r| contains(r.ip, resource.ip).then_some(&r.filters));
 
             // Empty filters means permit all
             if filters.clone().any(|f| f.is_empty()) {
@@ -360,4 +355,435 @@ pub struct ClientOnGateway {
     allowed_ips: IpNetworkTable<()>,
     resources: HashMap<ResourceId, GatewayResource>,
     filters: IpNetworkTable<FilterEngine>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+
+    use connlib_shared::messages::{
+        gateway::{Filter, FilterInner},
+        ClientId, ResourceId,
+    };
+    use ip_network::Ipv4Network;
+
+    use super::ClientOnGateway;
+
+    #[test]
+    fn gateway_accept_icmp_without_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(cidr_v4_resource().into(), resource_id(), Vec::new(), None);
+
+        let packet = ip_packet::make::icmp_request_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_tcp_without_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(cidr_v4_resource().into(), resource_id(), Vec::new(), None);
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_udp_without_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(cidr_v4_resource().into(), resource_id(), Vec::new(), None);
+
+        let packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_icmp_with_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Icmp],
+            None,
+        );
+
+        let packet = ip_packet::make::icmp_request_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_tcp_with_filters_single_port_range() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 80,
+                port_range_end: 80,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_udp_with_filters_single_port_range() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Udp(FilterInner {
+                port_range_start: 80,
+                port_range_end: 80,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_tcp_with_filters_multi_port_range() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 20,
+                port_range_end: 100,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_multiple_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![
+                Filter::Tcp(FilterInner {
+                    port_range_start: 20,
+                    port_range_end: 100,
+                }),
+                Filter::Icmp,
+            ],
+            None,
+        );
+
+        let tcp_packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        let udp_packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        let icmp_packet = ip_packet::make::icmp_request_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+        );
+
+        assert!(peer.ensure_allowed(&tcp_packet).is_ok());
+        assert!(peer.ensure_allowed(&icmp_packet).is_ok());
+        assert!(matches!(
+            peer.ensure_allowed(&udp_packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test]
+    // Note: this is a special case that is correctly handled by the gateway
+    // but there are still problems for the control protocol and client to support this
+    // See: #4789
+    fn gateway_filters_work_for_subranges() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            "10.0.0.0/24".parse().unwrap(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 20,
+                port_range_end: 100,
+            })],
+            None,
+        );
+        peer.add_resource(
+            "10.0.0.0/16".parse().unwrap(),
+            resource2_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 100,
+                port_range_end: 200,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            "10.0.0.1".parse().unwrap(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+        assert!(peer.ensure_allowed(&packet).is_ok());
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            "10.0.0.1".parse().unwrap(),
+            5401,
+            120,
+            vec![0; 100],
+        );
+        assert!(peer.ensure_allowed(&packet).is_ok());
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            "10.0.1.1".parse().unwrap(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            "10.0.1.1".parse().unwrap(),
+            5401,
+            120,
+            vec![0; 100],
+        );
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_accept_udp_with_filters_multi_port_range() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Udp(FilterInner {
+                port_range_start: 20,
+                port_range_end: 100,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
+    fn gateway_reject_tcp_with_filters_outside_range() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 100,
+                port_range_end: 200,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test]
+    fn gateway_reject_udp_with_filters_outside_range() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Udp(FilterInner {
+                port_range_start: 100,
+                port_range_end: 200,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test]
+    fn gateway_reject_udp_with_tcp_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 1,
+                port_range_end: 200,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test]
+    fn gateway_reject_tcp_with_icmp_filters() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Icmp],
+            None,
+        );
+
+        let packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test]
+    fn gateway_reject_icmp_without_allowed_icmp_filter() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Udp(FilterInner {
+                port_range_start: 0,
+                port_range_end: u16::MAX,
+            })],
+            None,
+        );
+
+        let packet = ip_packet::make::icmp_request_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+        );
+
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    fn source_v4_addr() -> IpAddr {
+        "100.64.0.1".parse().unwrap()
+    }
+
+    fn cidr_v4_resource() -> Ipv4Network {
+        "10.0.0.0/24".parse().unwrap()
+    }
+
+    fn resource_id() -> ResourceId {
+        "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
+    }
+
+    fn resource2_id() -> ResourceId {
+        "ed29c148-2acf-4ceb-8db5-d796c2671631".parse().unwrap()
+    }
+
+    fn client_id() -> ClientId {
+        "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
+    }
 }

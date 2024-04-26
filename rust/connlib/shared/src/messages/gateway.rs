@@ -98,3 +98,44 @@ impl ResourceDescription<ResourceDescriptionDns> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_deserialize_udp_filter() {
+        let msg = r#"{ "protocol": "udp", "port_range_start": 10, "port_range_end": 20 }"#;
+        let expected_filter = Filter::Udp(FilterInner {
+            port_range_start: 10,
+            port_range_end: 20,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_tcp_filter() {
+        let msg = r#"{ "protocol": "tcp", "port_range_start": 10, "port_range_end": 20 }"#;
+        let expected_filter = Filter::Tcp(FilterInner {
+            port_range_start: 10,
+            port_range_end: 20,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_icmp_filter() {
+        let msg = r#"{ "protocol": "icmp" }"#;
+        let expected_filter = Filter::Icmp;
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+}

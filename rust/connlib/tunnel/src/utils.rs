@@ -1,5 +1,6 @@
 use crate::REALM;
 use connlib_shared::messages::{Relay, RelayId};
+use ip_network::IpNetwork;
 use itertools::Itertools;
 use snownet::RelaySocket;
 use std::{collections::HashSet, net::SocketAddr, time::Instant};
@@ -77,4 +78,8 @@ pub fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant
         (Some(left), None) => Some(left),
         (None, Some(right)) => Some(right),
     }
+}
+
+pub(crate) fn contains(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
+    ip_a.contains(ip_b.network_address()) && ip_a.netmask() <= ip_b.netmask()
 }
