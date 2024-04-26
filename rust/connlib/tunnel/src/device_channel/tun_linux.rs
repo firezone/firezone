@@ -130,7 +130,11 @@ impl Tun {
             )?;
         }
 
+        // Safety: We just opened the file descriptor.
+        unsafe {}
+
         set_non_blocking(fd)?;
+        set_buffer_sizes(fd)?;
 
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
@@ -355,6 +359,39 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
             _ => Ok(()),
         },
     }
+}
+
+fn set_buffer_sizes(fd: RawFd) -> Result<()> {
+    let snd = 8 * 1024 * 1024;
+    let rcv = 8 * 1024 * 1024;
+
+    let ret = unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVBUF,
+            &rcv,
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
+    if ret != 0 {
+        return Err(get_last_error());
+    }
+
+    let ret = unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_SNDBUF,
+            &snd,
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
+    if ret != 0 {
+        return Err(get_last_error());
+    }
+
+    Ok(())
 }
 
 fn create_tun_device() -> Result<()> {
