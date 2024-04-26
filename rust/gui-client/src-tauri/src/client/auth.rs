@@ -270,6 +270,8 @@ mod tests {
 
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
+    // Also, the Linux CI is headless so it's hard to test keyrings in it
+    #[cfg(not(target_os = "linux"))]
     #[test]
     fn everything() {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
