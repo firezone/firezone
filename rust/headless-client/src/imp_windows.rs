@@ -26,7 +26,7 @@ impl Signals {
     }
 }
 
-pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
+pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     // TODO
     Ok(())
 }
