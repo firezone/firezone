@@ -340,6 +340,10 @@ fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
     #[cfg(target_os = "linux")]
     {
         socket.set_mark(crate::FIREZONE_MARK)?;
+
+        // Set socket buffer size to 8MB
+        socket.set_send_buf_size(8 * 1024 * 1024)?;
+        socket.set_recv_buf_size(8 * 1024 * 1024)?;
     }
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
