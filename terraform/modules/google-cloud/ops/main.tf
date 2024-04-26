@@ -317,8 +317,9 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
       filter = <<-EOT
       resource.type="gce_instance"
       (severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
-      -"invalid ssh key entry - expired key"
       -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
+      -logName:"/logs/GCEGuestAgent"
+      -logName:"/logs/OSConfigAgent"
       EOT
     }
   }

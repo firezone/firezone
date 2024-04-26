@@ -8,6 +8,7 @@ defmodule Domain.Fixtures.Accounts do
 
     Enum.into(attrs, %{
       name: "acc-#{unique_num}",
+      legal_name: "l-acc-#{unique_num}",
       slug: "acc_#{unique_num}",
       config: %{
         clients_upstream_dns: [
@@ -21,7 +22,8 @@ defmodule Domain.Fixtures.Accounts do
         multi_site_resources: true,
         traffic_filters: true,
         self_hosted_relays: true,
-        idp_sync: true
+        idp_sync: true,
+        rest_api: true
       },
       limits: %{
         monthly_active_users_count: 100

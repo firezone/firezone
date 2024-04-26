@@ -13,6 +13,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  version-check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version is up to date
+        run: |
+          make -f scripts/Makefile version
+          if [ -z "$(git status --porcelain)" ]; then
+            # Working directory clean
+            echo "Version manifests up to date"
+          else
+            # Uncommitted changes
+            echo '`make version` found outdated files! Showing diff'
+            git diff
+            exit 1
+          fi
+
   link-check:
     runs-on: ubuntu-22.04
     steps:

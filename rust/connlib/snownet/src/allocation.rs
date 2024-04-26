@@ -8,8 +8,9 @@ use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{
+    borrow::Cow,
     collections::{HashMap, VecDeque},
-    net::SocketAddr,
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
 use str0m::{net::Protocol, Candidate};
@@ -17,6 +18,7 @@ use stun_codec::{
     rfc5389::{
         attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress},
         errors::{StaleNonce, Unauthorized},
+        methods::BINDING,
     },
     rfc5766::{
         attributes::{
@@ -36,10 +38,21 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
 #[derive(Debug)]
 pub struct Allocation {
-    server: SocketAddr,
+    /// The known sockets of the relay.
+    server: RelaySocket,
+    /// The socket we have chosen to use to communicate with the relay.
+    ///
+    /// A relay may be reachable on IPv4, IPv6 or both.
+    /// At the same time, we may have an IPv4 or IPv6 interface or both.
+    ///
+    /// To figure out, how to communicate with the relay, we start by sending a BINDING request on all known sockets.
+    /// Whatever comes back first, wins.
+    active_socket: Option<SocketAddr>,
 
-    /// If present, the last address the relay observed for us.
-    last_srflx_candidate: Option<Candidate>,
+    /// If present, the IPv4 address the relay observed for us.
+    ip4_srflx_candidate: Option<Candidate>,
+    /// If present, the IPv6 address the relay observed for us.
+    ip6_srflx_candidate: Option<Candidate>,
     /// If present, the IPv4 socket the relay allocated for us.
     ip4_allocation: Option<Candidate>,
     /// If present, the IPv6 socket the relay allocated for us.
@@ -51,18 +64,98 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<CandidateEvent>,
 
-    backoff: ExponentialBackoff,
-    sent_requests: HashMap<TransactionId, (Message<Attribute>, Instant, Duration)>,
+    sent_requests: HashMap<
+        TransactionId,
+        (
+            SocketAddr,
+            Message<Attribute>,
+            Instant,
+            Duration,
+            ExponentialBackoff,
+        ),
+    >,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: RingBuffer<SocketAddr>,
 
     last_now: Instant,
 
+    credentials: Option<Credentials>,
+}
+
+#[derive(Debug, Clone)]
+struct Credentials {
     username: Username,
     password: String,
     realm: Realm,
     nonce: Option<Nonce>,
+}
+
+/// Describes the socket address(es) we know about the relay.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum RelaySocket {
+    /// The relay is only reachable via IPv4.
+    V4(SocketAddrV4),
+    /// The relay is only reachable via IPv6.
+    V6(SocketAddrV6),
+    /// The relay is reachable via IPv4 and IPv6.
+    Dual { v4: SocketAddrV4, v6: SocketAddrV6 },
+}
+
+impl RelaySocket {
+    pub fn as_v4(&self) -> Option<&SocketAddrV4> {
+        match self {
+            Self::V4(v4) => Some(v4),
+            Self::V6(_) => None,
+            Self::Dual { v4, .. } => Some(v4),
+        }
+    }
+
+    pub fn as_v6(&self) -> Option<&SocketAddrV6> {
+        match self {
+            Self::V4(_) => None,
+            Self::V6(v6) => Some(v6),
+            Self::Dual { v6, .. } => Some(v6),
+        }
+    }
+
+    pub fn matches(&self, candidate: SocketAddr) -> bool {
+        let matches_v4 = self
+            .as_v4()
+            .is_some_and(|v4| SocketAddr::V4(*v4) == candidate);
+        let matches_v6 = self
+            .as_v6()
+            .is_some_and(|v6| SocketAddr::V6(*v6) == candidate);
+
+        matches_v4 || matches_v6
+    }
+}
+
+impl From<SocketAddr> for RelaySocket {
+    fn from(value: SocketAddr) -> Self {
+        match value {
+            SocketAddr::V4(inner) => RelaySocket::V4(inner),
+            SocketAddr::V6(inner) => RelaySocket::V6(inner),
+        }
+    }
+}
+
+impl From<SocketAddrV4> for RelaySocket {
+    fn from(value: SocketAddrV4) -> Self {
+        RelaySocket::V4(value)
+    }
+}
+
+impl From<SocketAddrV6> for RelaySocket {
+    fn from(value: SocketAddrV6) -> Self {
+        RelaySocket::V6(value)
+    }
+}
+
+impl From<(SocketAddrV4, SocketAddrV6)> for RelaySocket {
+    fn from((v4, v6): (SocketAddrV4, SocketAddrV6)) -> Self {
+        RelaySocket::Dual { v4, v6 }
+    }
 }
 
 /// A socket that has been allocated on a TURN server.
@@ -83,7 +176,7 @@ impl Socket {
 
 impl Allocation {
     pub fn new(
-        server: SocketAddr,
+        server: RelaySocket,
         username: Username,
         password: String,
         realm: Realm,
@@ -91,31 +184,35 @@ impl Allocation {
     ) -> Self {
         let mut allocation = Self {
             server,
-            last_srflx_candidate: Default::default(),
+            active_socket: None,
+            ip4_srflx_candidate: Default::default(),
+            ip6_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
             ip6_allocation: Default::default(),
             buffered_transmits: Default::default(),
             events: Default::default(),
             sent_requests: Default::default(),
-            username,
-            password,
-            realm,
-            nonce: Default::default(),
+            credentials: Some(Credentials {
+                username,
+                password,
+                realm,
+                nonce: Default::default(),
+            }),
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
             buffered_channel_bindings: RingBuffer::new(100),
-            backoff: backoff::new(now, REQUEST_TIMEOUT),
         };
 
-        allocation.authenticate_and_queue(make_allocate_request());
+        allocation.send_binding_requests();
 
         allocation
     }
 
     pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
         [
-            self.last_srflx_candidate.clone(),
+            self.ip4_srflx_candidate.clone(),
+            self.ip6_srflx_candidate.clone(),
             self.ip4_allocation.clone(),
             self.ip6_allocation.clone(),
         ]
@@ -128,24 +225,36 @@ impl Allocation {
     /// This will implicitly trigger a [`refresh`](Allocation::refresh) to ensure these credentials are valid.
     pub fn update_credentials(
         &mut self,
-        socket: SocketAddr,
+        socket: RelaySocket,
         username: Username,
         password: &str,
         realm: Realm,
         now: Instant,
     ) {
-        self.server = socket;
-        self.username = username;
-        self.realm = realm;
-        self.password = password.to_owned();
+        self.credentials = Some(Credentials {
+            username,
+            realm,
+            password: password.to_owned(),
+            nonce: None,
+        });
 
-        self.refresh(now);
+        // If the server is the same, just `refresh` the allocation.
+        if self.server == socket {
+            self.refresh(now);
+
+            return;
+        }
+        self.server = socket;
+
+        // Server isn't the same, let's pick a new socket.
+        self.active_socket = None;
+        self.send_binding_requests();
     }
 
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
     pub fn refresh(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -157,13 +266,16 @@ impl Allocation {
         if self.is_suspended() {
             tracing::debug!("Attempting to make a new allocation");
 
-            self.authenticate_and_queue(make_allocate_request());
+            self.active_socket = None;
+            self.send_binding_requests();
             return;
         }
 
         tracing::debug!("Refreshing allocation");
 
-        self.authenticate_and_queue(make_refresh_request());
+        // Allocation is not suspended here, we check as part of `handle_input` whether we need to `ALLOCATE` or `REFRESH`
+        self.active_socket = None;
+        self.send_binding_requests();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
@@ -174,9 +286,15 @@ impl Allocation {
         packet: &[u8],
         now: Instant,
     ) -> bool {
+        debug_assert_eq!(
+            from.is_ipv4(),
+            local.is_ipv4(),
+            "`from` and `local` to have the same IP version"
+        );
+
         self.update_now(now);
 
-        if from != self.server {
+        if !self.server.matches(from) {
             return false;
         }
 
@@ -190,12 +308,11 @@ impl Allocation {
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
-        let Some((original_request, sent_at, _)) = self.sent_requests.remove(&transaction_id)
+        let Some((original_dst, original_request, sent_at, _, _)) =
+            self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
-
-        self.backoff.reset();
 
         let rtt = now.duration_since(sent_at);
         Span::current().record("rtt", field::debug(rtt));
@@ -209,6 +326,7 @@ impl Allocation {
                     "Invalid credentials, refusing to re-authenticate {}",
                     original_request.method()
                 );
+                self.credentials = None;
                 self.invalidate_allocation();
 
                 return true;
@@ -216,13 +334,17 @@ impl Allocation {
 
             // Check if we need to re-authenticate the original request
             if error.code() == Unauthorized::CODEPOINT || error.code() == StaleNonce::CODEPOINT {
-                if let Some(nonce) = message.get_attribute::<Nonce>() {
-                    self.nonce = Some(nonce.clone());
+                let Some(Credentials { nonce, realm, .. }) = &mut self.credentials else {
+                    return true;
+                };
+
+                if let Some(new_nonce) = message.get_attribute::<Nonce>() {
+                    let _ = nonce.insert(new_nonce.clone());
                 };
 
                 if let Some(offered_realm) = message.get_attribute::<Realm>() {
-                    if offered_realm != &self.realm {
-                        tracing::warn!(allowed_realm = %self.realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
+                    if offered_realm != realm {
+                        tracing::warn!(allowed_realm = %realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
                         return true; // We still handled our message correctly.
                     }
                 };
@@ -232,7 +354,7 @@ impl Allocation {
                     "Request failed, re-authenticating"
                 );
 
-                self.authenticate_and_queue(original_request);
+                self.authenticate_and_queue(original_request, None);
 
                 return true;
             }
@@ -265,7 +387,7 @@ impl Allocation {
                 }
                 REFRESH => {
                     self.invalidate_allocation();
-                    self.authenticate_and_queue(make_allocate_request());
+                    self.authenticate_and_queue(make_allocate_request(), None);
                 }
                 _ => {}
             }
@@ -287,6 +409,35 @@ impl Allocation {
         );
 
         match message.method() {
+            BINDING => {
+                // First, process the binding request itself.
+                let current_srflx_candidate = match original_dst {
+                    SocketAddr::V4(_) => &mut self.ip4_srflx_candidate,
+                    SocketAddr::V6(_) => &mut self.ip6_srflx_candidate,
+                };
+
+                let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
+                update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events);
+
+                self.log_update();
+
+                // Second, check if we have already determined which socket to use for this relay.
+                // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
+                // Thus, if we already have a socket set, we are done with processing this binding request.
+
+                if self.active_socket.is_some() {
+                    return true;
+                }
+
+                // If the socket isn't set yet, use the `original_dst` as the primary socket.
+                self.active_socket = Some(original_dst);
+
+                if self.has_allocation() {
+                    self.authenticate_and_queue(make_refresh_request(), None);
+                } else {
+                    self.authenticate_and_queue(make_allocate_request(), None);
+                }
+            }
             ALLOCATE => {
                 let Some(lifetime) = message.get_attribute::<Lifetime>().map(|l| l.lifetime())
                 else {
@@ -294,9 +445,6 @@ impl Allocation {
                     return true;
                 };
 
-                let maybe_srflx_candidate = message
-                    .attributes()
-                    .find_map(|addr| srflx_candidate(local, addr));
                 let maybe_ip4_relay_candidate = message
                     .attributes()
                     .find_map(relay_candidate(|s| s.is_ipv4()));
@@ -311,11 +459,6 @@ impl Allocation {
 
                 self.allocation_lifetime = Some((now, lifetime));
                 update_candidate(
-                    maybe_srflx_candidate,
-                    &mut self.last_srflx_candidate,
-                    &mut self.events,
-                );
-                update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
                     &mut self.events,
@@ -326,13 +469,7 @@ impl Allocation {
                     &mut self.events,
                 );
 
-                tracing::info!(
-                    srflx = ?self.last_srflx_candidate,
-                    relay_ip4 = ?self.ip4_allocation,
-                    relay_ip6 = ?self.ip6_allocation,
-                    ?lifetime,
-                    "Updated candidates of allocation"
-                );
+                self.log_update();
 
                 while let Some(peer) = self.buffered_channel_bindings.pop() {
                     debug_assert!(
@@ -350,13 +487,7 @@ impl Allocation {
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
-                tracing::info!(
-                    srflx = ?self.last_srflx_candidate,
-                    relay_ip4 = ?self.ip4_allocation,
-                    relay_ip6 = ?self.ip6_allocation,
-                    ?lifetime,
-                    "Updated lifetime of allocation"
-                );
+                self.log_update();
             }
             CHANNEL_BIND => {
                 let Some(channel) = original_request
@@ -389,7 +520,7 @@ impl Allocation {
         packet: &'p [u8],
         now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], Socket)> {
-        if from != self.server {
+        if from != self.active_socket? {
             return None;
         }
 
@@ -408,7 +539,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = %self.server))]
+    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -421,29 +552,36 @@ impl Allocation {
             self.invalidate_allocation();
         }
 
-        while let Some((timed_out_request, backoff)) =
+        while let Some(timed_out_request) =
             self.sent_requests
                 .iter()
-                .find_map(|(id, (_, sent_at, backoff))| {
-                    (now.duration_since(*sent_at) >= *backoff).then_some((*id, *backoff))
+                .find_map(|(id, (_, _, sent_at, backoff, _))| {
+                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
                 })
         {
-            let (request, _, _) = self
+            let (dst, request, _, backoff_duration, backoff) = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), "Request timed out after {backoff:?}, re-sending");
+            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), %dst, "Request timed out after {backoff_duration:?}, re-sending");
 
-            self.authenticate_and_queue(request);
+            let needs_auth = request.method() != BINDING;
+
+            if needs_auth {
+                self.authenticate_and_queue(request, Some(backoff));
+                continue;
+            }
+
+            self.queue(dst, request, Some(backoff));
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
             if (now >= refresh_at) && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
-                let queued = self.authenticate_and_queue(make_refresh_request());
+                let queued = self.authenticate_and_queue(make_refresh_request(), None);
 
-                // If we fail to queue the refresh message because we've exceeded our backoff, give
+                // If we fail to queue the refresh message because we've exceeded our backoff, give up.
                 if !queued {
                     self.invalidate_allocation();
                 }
@@ -462,14 +600,18 @@ impl Allocation {
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
         for message in channel_refresh_messages {
-            self.authenticate_and_queue(message);
+            self.authenticate_and_queue(message, None);
         }
 
         // TODO: Clean up unused channels
     }
 
     pub fn poll_event(&mut self) -> Option<CandidateEvent> {
-        self.events.pop_front()
+        let next_event = self.events.pop_front()?;
+
+        tracing::debug!(?next_event);
+
+        Some(next_event)
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
@@ -483,14 +625,14 @@ impl Allocation {
             None
         };
 
-        for (_, (_, sent_at, backoff)) in self.sent_requests.iter() {
+        for (_, (_, _, sent_at, backoff, _)) in self.sent_requests.iter() {
             earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
         }
 
         earliest_timeout
     }
 
-    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = %self.server))]
+    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
@@ -526,33 +668,67 @@ impl Allocation {
             return;
         };
 
-        self.authenticate_and_queue(make_channel_bind_request(peer, channel));
+        self.authenticate_and_queue(make_channel_bind_request(peer, channel), None);
     }
 
-    pub fn encode_to_slice(
+    /// Encodes the packet contained in the given buffer into a [`Transmit`].
+    ///
+    /// This function assumes that the first 4 bytes of `buffer` have been reserved for the header of the channel-data message.
+    pub fn encode_to_borrowed_transmit<'b>(
         &self,
         peer: SocketAddr,
-        packet: &[u8],
-        header: &mut [u8],
+        buffer: &'b mut [u8],
         now: Instant,
-    ) -> Option<usize> {
-        let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
-        let total_length =
-            crate::channel_data::encode_header_to_slice(header, channel_number, packet);
+    ) -> Option<Transmit<'b>> {
+        let buffer_len = buffer.len();
+        let packet_len = buffer_len - 4;
 
-        Some(total_length)
+        let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
+        let total_length = crate::channel_data::encode_header_to_slice(
+            &mut buffer[..4],
+            channel_number,
+            packet_len,
+        );
+
+        Some(Transmit {
+            src: None,
+            dst: self.active_socket?,
+            payload: Cow::Borrowed(&buffer[..total_length]),
+        })
     }
 
-    pub fn encode_to_vec(
+    pub fn encode_to_owned_transmit(
         &mut self,
         peer: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Option<Vec<u8>> {
+    ) -> Option<Transmit<'static>> {
         let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
         let channel_data = crate::channel_data::encode(channel_number, packet);
 
-        Some(channel_data)
+        Some(Transmit {
+            src: None,
+            dst: self.active_socket?,
+            payload: Cow::Owned(channel_data),
+        })
+    }
+
+    /// Whether this [`Allocation`] can be freed.
+    ///
+    /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events.
+    pub fn can_be_freed(&self) -> bool {
+        self.credentials.is_none() && self.events.is_empty()
+    }
+
+    fn log_update(&self) {
+        tracing::info!(
+            srflx_ip4 = ?self.ip4_srflx_candidate,
+            srflx_ip6 = ?self.ip6_srflx_candidate,
+            relay_ip4 = ?self.ip4_allocation,
+            relay_ip6 = ?self.ip6_allocation,
+            lifetime = ?self.allocation_lifetime,
+            "Updated allocation"
+        );
     }
 
     fn refresh_allocation_at(&self) -> Option<Instant> {
@@ -591,7 +767,7 @@ impl Allocation {
         is_ip4 || is_ip6
     }
 
-    pub fn server(&self) -> SocketAddr {
+    pub fn server(&self) -> RelaySocket {
         self.server
     }
 
@@ -623,7 +799,7 @@ impl Allocation {
     }
 
     fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(r, _, _)| {
+        self.sent_requests.values().any(|(_, r, _, _, _)| {
             r.method() == CHANNEL_BIND
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
@@ -634,7 +810,7 @@ impl Allocation {
         let sent_requests = self
             .sent_requests
             .values()
-            .map(|(r, _, _)| r)
+            .map(|(_, r, _, _, _)| r)
             .filter(|message| message.method() == CHANNEL_BIND)
             .filter_map(|message| message.get_attribute::<XorPeerAddress>())
             .map(|a| a.address());
@@ -648,13 +824,13 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(r, _, _)| r.method() == ALLOCATE)
+            .any(|(_, r, _, _, _)| r.method() == ALLOCATE)
     }
 
     fn refresh_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(r, _, _)| r.method() == REFRESH)
+            .any(|(_, r, _, _, _)| r.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
@@ -669,59 +845,67 @@ impl Allocation {
         no_allocation && nothing_in_flight && nothing_buffered && waiting_on_nothing
     }
 
-    fn authenticate(&self, message: Message<Attribute>) -> Message<Attribute> {
-        let attributes = message
-            .attributes()
-            .filter(|a| !matches!(a, Attribute::Nonce(_)))
-            .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
-            .filter(|a| !matches!(a, Attribute::Realm(_)))
-            .filter(|a| !matches!(a, Attribute::Username(_)))
-            .cloned()
-            .chain([
-                Attribute::Username(self.username.clone()),
-                Attribute::Realm(self.realm.clone()),
-            ])
-            .chain(self.nonce.clone().map(Attribute::Nonce));
-
-        let transaction_id = TransactionId::new(random());
-        let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
-
-        for attribute in attributes {
-            message.add_attribute(attribute.to_owned());
+    fn send_binding_requests(&mut self) {
+        if let Some(v4) = self.server.as_v4() {
+            self.queue((*v4).into(), make_binding_request(), None);
         }
-
-        let message_integrity = MessageIntegrity::new_long_term_credential(
-            &message,
-            &self.username,
-            &self.realm,
-            &self.password,
-        )
-        .expect("signing never fails");
-
-        message.add_attribute(message_integrity);
-
-        message
+        if let Some(v6) = self.server.as_v6() {
+            self.queue((*v6).into(), make_binding_request(), None);
+        }
     }
 
     /// Returns: Whether we actually queued a message.
-    fn authenticate_and_queue(&mut self, message: Message<Attribute>) -> bool {
-        let Some(backoff) = self.backoff.next_backoff() else {
+    fn authenticate_and_queue(
+        &mut self,
+        message: Message<Attribute>,
+        backoff: Option<ExponentialBackoff>,
+    ) -> bool {
+        let Some(dst) = self.active_socket else {
             tracing::debug!(
-                "Unable to queue {} because we've exceeded our backoffs",
+                "Unable to queue {} because we haven't nominated a socket yet",
                 message.method()
             );
             return false;
         };
 
-        let authenticated_message = self.authenticate(message);
-        let id = authenticated_message.transaction_id();
+        let Some(credentials) = &self.credentials else {
+            tracing::debug!(
+                "Unable to queue {} because we don't have credentials",
+                message.method()
+            );
+            return false;
+        };
+
+        let authenticated_message = authenticate(message, credentials);
+        self.queue(dst, authenticated_message, backoff);
+
+        true
+    }
+
+    fn queue(
+        &mut self,
+        dst: SocketAddr,
+        message: Message<Attribute>,
+        backoff: Option<ExponentialBackoff>,
+    ) -> bool {
+        let mut backoff = backoff.unwrap_or(backoff::new(self.last_now, REQUEST_TIMEOUT));
+
+        let Some(duration) = backoff.next_backoff() else {
+            tracing::debug!(
+                "Unable to queue {} because we've exceeded its backoffs",
+                message.method()
+            );
+            return false;
+        };
+
+        let id = message.transaction_id();
 
         self.sent_requests
-            .insert(id, (authenticated_message.clone(), self.last_now, backoff));
+            .insert(id, (dst, message.clone(), self.last_now, duration, backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
-            dst: self.server,
-            payload: encode(authenticated_message).into(),
+            dst,
+            payload: encode(message).into(),
         });
 
         true
@@ -733,15 +917,45 @@ impl Allocation {
         }
 
         self.last_now = now;
-        self.backoff.clock.now = now;
 
-        // The backoff always counts from the last reset.
-        // If we don't have any pending requests, reset it.
-        // This allows any newly queued messages to start at the correct time.
-        if self.sent_requests.is_empty() {
-            self.backoff.reset();
+        for (_, _, _, _, backoff) in self.sent_requests.values_mut() {
+            backoff.clock.now = now;
         }
     }
+}
+
+fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
+    let attributes = message
+        .attributes()
+        .filter(|a| !matches!(a, Attribute::Nonce(_)))
+        .filter(|a| !matches!(a, Attribute::MessageIntegrity(_)))
+        .filter(|a| !matches!(a, Attribute::Realm(_)))
+        .filter(|a| !matches!(a, Attribute::Username(_)))
+        .cloned()
+        .chain([
+            Attribute::Username(credentials.username.clone()),
+            Attribute::Realm(credentials.realm.clone()),
+        ])
+        .chain(credentials.nonce.clone().map(Attribute::Nonce));
+
+    let transaction_id = TransactionId::new(random());
+    let mut message = Message::new(MessageClass::Request, message.method(), transaction_id);
+
+    for attribute in attributes {
+        message.add_attribute(attribute.to_owned());
+    }
+
+    let message_integrity = MessageIntegrity::new_long_term_credential(
+        &message,
+        &credentials.username,
+        &credentials.realm,
+        &credentials.password,
+    )
+    .expect("signing never fails");
+
+    message.add_attribute(message_integrity);
+
+    message
 }
 
 fn update_candidate(
@@ -761,6 +975,10 @@ fn update_candidate(
         }
         _ => {}
     }
+}
+
+fn make_binding_request() -> Message<Attribute> {
+    Message::new(MessageClass::Request, BINDING, TransactionId::new(random()))
 }
 
 fn make_allocate_request() -> Message<Attribute> {
@@ -1067,14 +1285,15 @@ mod tests {
         rfc5389::errors::{BadRequest, ServerError},
         rfc5766::errors::AllocationMismatch,
     };
+    use tracing_subscriber::util::SubscriberInitExt;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
     const PEER2_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 20000);
     const PEER2_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 20000);
 
-    const RELAY: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3478);
-    const RELAY2: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 3478);
+    const RELAY_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478);
+    const RELAY_V6: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::LOCALHOST, 3478, 0, 0);
     const RELAY_ADDR_IP4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9999);
     const RELAY_ADDR_IP6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 9999);
 
@@ -1250,7 +1469,7 @@ mod tests {
 
     #[test]
     fn buffer_channel_bind_requests_until_we_have_allocation() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
@@ -1261,7 +1480,7 @@ mod tests {
             "no messages to be sent if we don't have an allocation"
         );
 
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
             Instant::now(),
         );
@@ -1272,43 +1491,48 @@ mod tests {
 
     #[test]
     fn does_not_relay_to_with_unbound_channel() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
         let channel_bind_msg = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &encode(channel_bind_success(&channel_bind_msg)),
             Instant::now(),
         );
 
-        let payload = allocation
-            .encode_to_vec(PEER2_IP4, b"foobar", Instant::now())
+        let transmit = allocation
+            .encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now())
             .unwrap();
 
-        assert_eq!(&payload[4..], b"foobar");
+        assert_eq!(&transmit.payload[4..], b"foobar");
+        assert_eq!(transmit.src, None);
+        assert_eq!(transmit.dst, RELAY_V4.into());
     }
 
     #[test]
     fn does_relay_to_with_bound_channel() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
-        let message = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        let message = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
 
         assert!(message.is_none())
     }
 
     #[test]
     fn failed_channel_binding_removes_state() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
         let channel_bind_msg = allocation.next_message().unwrap();
 
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &encode(channel_bind_bad_request(&channel_bind_msg)),
             Instant::now(),
         );
@@ -1325,12 +1549,13 @@ mod tests {
 
     #[test]
     fn rebinding_existing_channel_send_no_message() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
         let channel_bind_msg = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &encode(channel_bind_success(&channel_bind_msg)),
             Instant::now(),
         );
@@ -1344,7 +1569,7 @@ mod tests {
     #[test]
     fn retries_requests_using_backoff_and_gives_up_eventually() {
         let start = Instant::now();
-        let mut allocation = Allocation::for_test(start);
+        let mut allocation = Allocation::for_test_ip4(start);
 
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
@@ -1366,8 +1591,9 @@ mod tests {
 
     #[test]
     fn given_no_ip6_allocation_does_not_attempt_to_bind_channel_to_ip6_address() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
 
         allocation.bind_channel(PEER2_IP6, Instant::now());
         let next_msg = allocation.next_message();
@@ -1377,8 +1603,9 @@ mod tests {
 
     #[test]
     fn given_no_ip4_allocation_does_not_attempt_to_bind_channel_to_ip4_address() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP6]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP6]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
         let next_msg = allocation.next_message();
@@ -1387,7 +1614,7 @@ mod tests {
 
     #[test]
     fn given_only_ip4_allocation_when_binding_channel_to_ip6_does_not_emit_buffered_binding() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         // Attempt to allocate
         let allocate = allocation.next_message().unwrap();
@@ -1401,7 +1628,7 @@ mod tests {
         );
 
         // Allocation succeeds but only for IPv4
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
             Instant::now(),
         );
@@ -1412,7 +1639,7 @@ mod tests {
 
     #[test]
     fn initial_allocate_has_username_realm_and_message_integrity_set() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
 
@@ -1429,7 +1656,7 @@ mod tests {
 
     #[test]
     fn initial_allocate_is_missing_nonce() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
 
@@ -1438,10 +1665,10 @@ mod tests {
 
     #[test]
     fn upon_stale_nonce_reauthorizes_using_new_nonce() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &stale_nonce_response(&allocate, Nonce::new("nonce2".to_owned()).unwrap()),
             Instant::now(),
         );
@@ -1458,11 +1685,12 @@ mod tests {
 
     #[test]
     fn given_a_request_with_nonce_and_we_are_unauthorized_dont_retry() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         // Attempt to authenticate without a nonce
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce1"), Instant::now());
+        allocation
+            .handle_test_input_ip4(&unauthorized_response(&allocate, "nonce1"), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(
@@ -1471,7 +1699,8 @@ mod tests {
             "expect next message to include nonce from error response"
         );
 
-        allocation.handle_test_input(&unauthorized_response(&allocate, "nonce2"), Instant::now());
+        allocation
+            .handle_test_input_ip4(&unauthorized_response(&allocate, "nonce2"), Instant::now());
 
         assert!(
             allocation.next_message().is_none(),
@@ -1481,10 +1710,10 @@ mod tests {
 
     #[test]
     fn returns_new_candidates_on_successful_allocation() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
             Instant::now(),
         );
@@ -1509,15 +1738,19 @@ mod tests {
 
     #[test]
     fn calling_refresh_with_same_credentials_will_trigger_refresh() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
             Instant::now(),
         );
 
         allocation.refresh_with_same_credentials();
+
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         let refresh = allocation.next_message().unwrap();
         assert_eq!(refresh.method(), REFRESH);
@@ -1528,10 +1761,10 @@ mod tests {
 
     #[test]
     fn failed_refresh_will_invalidate_relay_candiates() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
@@ -1540,7 +1773,7 @@ mod tests {
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
 
         assert_eq!(
             allocation.poll_event(),
@@ -1564,36 +1797,36 @@ mod tests {
 
     #[test]
     fn failed_refresh_clears_all_channel_bindings() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
 
         allocation.bind_channel(PEER2_IP4, Instant::now());
         let channel_bind_msg = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &encode(channel_bind_success(&channel_bind_msg)),
             Instant::now(),
         );
 
-        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_some(), "expect to have a channel to peer");
 
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
 
-        let msg = allocation.encode_to_vec(PEER2_IP4, b"foobar", Instant::now());
+        let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
     }
 
     #[test]
     fn refresh_does_nothing_if_we_dont_have_an_allocation_yet() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let _allocate = allocation.next_message().unwrap();
 
@@ -1605,18 +1838,22 @@ mod tests {
 
     #[test]
     fn failed_refresh_attempts_to_make_new_allocation() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
 
         allocation.refresh_with_same_credentials();
 
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
+
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
@@ -1624,13 +1861,13 @@ mod tests {
 
     #[test]
     fn allocation_is_refreshed_after_half_its_lifetime() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
 
         let received_at = Instant::now();
 
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             received_at,
         );
@@ -1645,10 +1882,10 @@ mod tests {
 
     #[test]
     fn allocation_is_refreshed_only_once() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
@@ -1662,10 +1899,10 @@ mod tests {
 
     #[test]
     fn failed_refresh_resets_allocation_lifetime() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
@@ -1673,22 +1910,26 @@ mod tests {
         allocation.advance_to_next_timeout();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&server_error(&allocate), Instant::now()); // These ones are not retried.
+        allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // These ones are not retried.
 
         assert_eq!(allocation.poll_timeout(), None);
     }
 
     #[test]
     fn when_refreshed_with_no_allocation_after_failed_response_tries_to_allocate() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&server_error(&allocate), Instant::now());
+        allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now());
 
         allocation.refresh_with_same_credentials();
+
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         let next_msg = allocation.next_message().unwrap();
         assert_eq!(next_msg.method(), ALLOCATE)
@@ -1696,17 +1937,21 @@ mod tests {
 
     #[test]
     fn failed_allocation_clears_buffered_channel_bindings() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         allocation.bind_channel(PEER1, Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+        allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
 
         allocation.refresh_with_same_credentials();
 
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
+
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
             Instant::now(),
         );
@@ -1717,13 +1962,13 @@ mod tests {
 
     #[test]
     fn dont_buffer_channel_bindings_twice() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         allocation.bind_channel(PEER1, Instant::now());
         allocation.bind_channel(PEER1, Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
             Instant::now(),
         );
@@ -1737,13 +1982,13 @@ mod tests {
 
     #[test]
     fn buffered_channel_bindings_to_different_peers_work() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
         allocation.bind_channel(PEER1, Instant::now());
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(
+        allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4]),
             Instant::now(),
         );
@@ -1760,8 +2005,9 @@ mod tests {
 
     #[test]
     fn dont_send_channel_binding_if_inflight() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
 
         allocation.bind_channel(PEER1, Instant::now());
 
@@ -1775,8 +2021,9 @@ mod tests {
 
     #[test]
     fn send_channel_binding_to_second_peer_if_inflight_for_other() {
-        let mut allocation =
-            Allocation::for_test(Instant::now()).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
 
         allocation.bind_channel(PEER1, Instant::now());
 
@@ -1792,10 +2039,10 @@ mod tests {
 
     #[test]
     fn failed_allocation_is_suspended() {
-        let mut allocation = Allocation::for_test(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+        allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
 
         assert!(allocation.is_suspended())
     }
@@ -1803,12 +2050,12 @@ mod tests {
     #[test]
     fn timed_out_refresh_requests_invalid_candidates() {
         let start = Instant::now();
-        let mut allocation = Allocation::for_test(start);
+        let mut allocation = Allocation::for_test_ip4(start).with_binding_response(PEER1);
 
         // Make an allocation
         {
             let allocate = allocation.next_message().unwrap();
-            allocation.handle_test_input(
+            allocation.handle_test_input_ip4(
                 &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
                 start,
             );
@@ -1849,12 +2096,12 @@ mod tests {
     #[test]
     fn expires_allocation_invalidates_candidaets() {
         let start = Instant::now();
-        let mut allocation = Allocation::for_test(start);
+        let mut allocation = Allocation::for_test_ip4(start).with_binding_response(PEER1);
 
         // Make an allocation
         {
             let allocate = allocation.next_message().unwrap();
-            allocation.handle_test_input(
+            allocation.handle_test_input_ip4(
                 &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
                 start,
             );
@@ -1877,18 +2124,24 @@ mod tests {
     #[test]
     fn invalid_credentials_invalidates_existing_allocation() {
         let now = Instant::now();
-        let mut allocation =
-            Allocation::for_test(now).with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6]);
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6]);
         let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
-        allocation.nonce = Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
+        allocation.credentials.as_mut().unwrap().nonce =
+            Some(Nonce::new("nonce1".to_owned()).unwrap()); // Assume we had a nonce.
 
         let now = now + Duration::from_secs(1);
         allocation.refresh(now);
 
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
+
         // If the relay is restarted, our current credentials will be invalid. Simulate with an "unauthorized" response".
         let now = now + Duration::from_secs(1);
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input(&unauthorized_response(&refresh, "nonce2"), now);
+        allocation.handle_test_input_ip4(&unauthorized_response(&refresh, "nonce2"), now);
 
         assert!(
             allocation.next_message().is_none(),
@@ -1901,24 +2154,175 @@ mod tests {
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
-        )
+        );
+        assert!(allocation.can_be_freed());
     }
 
     #[test]
     fn new_address_is_used_for_new_messages() {
         let now = Instant::now();
-        let mut allocation = Allocation::for_test(now).with_allocate_response(&[RELAY_ADDR_IP4]);
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
         let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
 
+        let existing_credentials = allocation.credentials.clone().unwrap();
+
         allocation.update_credentials(
-            RELAY2,
-            allocation.username.clone(),
-            &allocation.password.clone(),
-            allocation.realm.clone(),
+            RelaySocket::V6(RELAY_V6),
+            existing_credentials.username,
+            &existing_credentials.password,
+            existing_credentials.realm,
             now,
         );
 
-        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY2)
+        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY_V6.into())
+    }
+
+    #[test]
+    fn allocation_is_not_freed_on_startup() {
+        let allocation = Allocation::for_test_ip4(Instant::now());
+
+        assert!(!allocation.can_be_freed());
+    }
+
+    #[test]
+    fn new_address_sends_binding_requests() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
+        let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
+
+        let existing_credentials = allocation.credentials.clone().unwrap();
+
+        allocation.update_credentials(
+            RelaySocket::V6(RELAY_V6),
+            existing_credentials.username,
+            &existing_credentials.password,
+            existing_credentials.realm,
+            now,
+        );
+
+        let message = allocation.next_message().unwrap();
+        assert_eq!(message.method(), BINDING)
+    }
+
+    #[test]
+    fn relay_socket_matches_v4_socket() {
+        let socket = RelaySocket::V4(RELAY_V4);
+
+        assert!(socket.matches(SocketAddr::V4(RELAY_V4)));
+        assert!(!socket.matches(SocketAddr::V6(RELAY_V6)));
+    }
+
+    #[test]
+    fn relay_socket_matches_v6_socket() {
+        let socket = RelaySocket::V6(RELAY_V6);
+
+        assert!(socket.matches(SocketAddr::V6(RELAY_V6)));
+        assert!(!socket.matches(SocketAddr::V4(RELAY_V4)));
+    }
+
+    #[test]
+    fn relay_socket_matches_dual_socket() {
+        let socket = RelaySocket::Dual {
+            v4: RELAY_V4,
+            v6: RELAY_V6,
+        };
+
+        assert!(socket.matches(SocketAddr::V4(RELAY_V4)));
+        assert!(socket.matches(SocketAddr::V6(RELAY_V6)));
+    }
+
+    #[test]
+    fn first_binding_response_sets_socket_to_use() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_dual(now);
+
+        let _ = allocation.next_message().unwrap(); // Discard the first one.
+
+        let binding = allocation.next_message().unwrap();
+        allocation.handle_input(
+            RELAY_V6.into(),
+            PEER2_IP6,
+            &binding_response(&binding, PEER2_IP6),
+            now,
+        );
+
+        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY_V6.into());
+    }
+
+    #[test]
+    fn both_stun_responses_are_returned_as_candidates() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_dual(now);
+
+        let binding = allocation.next_message().unwrap();
+        let handled = allocation.handle_input(
+            RELAY_V4.into(),
+            PEER2_IP4,
+            &binding_response(&binding, PEER2_IP4),
+            now,
+        );
+        assert!(handled);
+
+        let binding = allocation.next_message().unwrap();
+        let handled = allocation.handle_input(
+            RELAY_V6.into(),
+            PEER2_IP6,
+            &binding_response(&binding, PEER2_IP6),
+            now,
+        );
+        assert!(handled);
+
+        let events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
+        assert_eq!(
+            events,
+            vec![
+                CandidateEvent::New(
+                    Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, Protocol::Udp).unwrap()
+                ),
+                CandidateEvent::New(
+                    Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, Protocol::Udp).unwrap()
+                )
+            ]
+        )
+    }
+
+    #[test]
+    fn second_stun_request_gives_up_eventually() {
+        let _guard = tracing_subscriber::fmt()
+            .with_env_filter("trace")
+            .with_test_writer()
+            .set_default();
+
+        let start = Instant::now();
+        let mut allocation = Allocation::for_test_dual(start);
+
+        // We respond to the BINDING request on IPv4.
+        let binding = allocation.next_message().unwrap();
+        allocation.handle_input(
+            RELAY_V4.into(),
+            PEER2_IP4,
+            &binding_response(&binding, PEER2_IP4),
+            start,
+        );
+
+        loop {
+            let Some(timeout) = allocation.poll_timeout() else {
+                break;
+            };
+
+            allocation.handle_timeout(timeout);
+
+            // We expect two transmits.
+            // The order is not deterministic because internally it is a `HashMap`.
+            let _ = allocation.poll_transmit().unwrap();
+            let _ = allocation.poll_transmit().unwrap();
+        }
+
+        assert_eq!(allocation.poll_transmit(), None);
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
@@ -1944,6 +2348,17 @@ mod tests {
         }
 
         message.add_attribute(Lifetime::new(ALLOCATION_LIFETIME).unwrap());
+
+        encode(message)
+    }
+
+    fn binding_response(request: &Message<Attribute>, srflx_addr: SocketAddr) -> Vec<u8> {
+        let mut message = Message::new(
+            MessageClass::SuccessResponse,
+            BINDING,
+            request.transaction_id(),
+        );
+        message.add_attribute(XorMappedAddress::new(srflx_addr));
 
         encode(message)
     }
@@ -2020,9 +2435,9 @@ mod tests {
     }
 
     impl Allocation {
-        fn for_test(start: Instant) -> Self {
+        fn for_test_ip4(start: Instant) -> Self {
             Allocation::new(
-                RELAY,
+                RelaySocket::V4(RELAY_V4),
                 Username::new("foobar".to_owned()).unwrap(),
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
@@ -2030,9 +2445,29 @@ mod tests {
             )
         }
 
+        fn for_test_dual(start: Instant) -> Self {
+            Allocation::new(
+                RelaySocket::Dual {
+                    v4: RELAY_V4,
+                    v6: RELAY_V6,
+                },
+                Username::new("foobar".to_owned()).unwrap(),
+                "baz".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                start,
+            )
+        }
+
+        fn with_binding_response(mut self, srflx_addr: SocketAddr) -> Self {
+            let binding = self.next_message().unwrap();
+            self.handle_test_input_ip4(&binding_response(&binding, srflx_addr), Instant::now());
+
+            self
+        }
+
         fn with_allocate_response(mut self, relay_addrs: &[SocketAddr]) -> Self {
             let allocate = self.next_message().unwrap();
-            self.handle_test_input(&allocate_response(&allocate, relay_addrs), Instant::now());
+            self.handle_test_input_ip4(&allocate_response(&allocate, relay_addrs), Instant::now());
 
             self
         }
@@ -2044,8 +2479,8 @@ mod tests {
         }
 
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
-        fn handle_test_input(&mut self, packet: &[u8], now: Instant) -> bool {
-            self.handle_input(RELAY, PEER1, packet, now)
+        fn handle_test_input_ip4(&mut self, packet: &[u8], now: Instant) -> bool {
+            self.handle_input(RELAY_V4.into(), PEER1, packet, now)
         }
 
         fn advance_to_next_timeout(&mut self) {
