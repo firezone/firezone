@@ -1,4 +1,6 @@
-use crate::messages::{ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId};
+use crate::messages::{
+    client::ResourceDescriptionCidr, client::ResourceDescriptionDns, ResourceId,
+};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},

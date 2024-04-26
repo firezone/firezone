@@ -615,6 +615,31 @@ mod tests {
     }
 
     #[test]
+
+    fn gateway_filters_work_for_subranges_with_permit_all() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        peer.add_resource(
+            "10.0.0.0/24".parse().unwrap(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 20,
+                port_range_end: 100,
+            })],
+            None,
+        );
+        peer.add_resource("10.0.0.0/16".parse().unwrap(), resource2_id(), vec![], None);
+
+        let packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            "10.0.0.1".parse().unwrap(),
+            5401,
+            200,
+            vec![0; 100],
+        );
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test]
     fn gateway_accept_udp_with_filters_multi_port_range() {
         let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
         peer.add_resource(

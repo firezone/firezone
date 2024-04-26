@@ -1,6 +1,6 @@
 use crate::{ClientEvent, ClientState, GatewayState};
 use connlib_shared::{
-    messages::{ResourceDescription, ResourceDescriptionCidr, ResourceId},
+    messages::{client::ResourceDescription, client::ResourceDescriptionCidr, ResourceId},
     proptest::cidr_resource,
     StaticSecret,
 };
