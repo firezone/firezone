@@ -7,13 +7,6 @@ use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
 
-// TODO: Put this behind a "CI tests only" flag so that
-// official CI builds, and default local builds won't get the mock
-#[cfg(target_os = "linux")]
-#[path = "auth/token_storage_mock.rs"]
-mod token_storage;
-
-#[cfg(not(target_os = "linux"))]
 #[path = "auth/token_storage_keyring.rs"]
 mod token_storage;
 
