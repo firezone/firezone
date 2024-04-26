@@ -363,28 +363,12 @@ fn set_buffer_sizes(fd: RawFd) -> Result<()> {
     let snd = 8 * 1024 * 1024;
     let rcv = 8 * 1024 * 1024;
 
-    let ret = unsafe {
-        libc::setsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_RCVBUF,
-            &rcv as *const _ as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        )
-    };
+    let ret = unsafe { libc::ioctl(fd, libc::TUNSETSNDBUF, &snd) };
     if ret != 0 {
         return Err(get_last_error());
     }
 
-    let ret = unsafe {
-        libc::setsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_SNDBUF,
-            &snd as *const _ as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        )
-    };
+    let ret = unsafe { libc::ioctl(fd, libc::TUNSETSNDBUF, &rcv) };
     if ret != 0 {
         return Err(get_last_error());
     }
