@@ -32,18 +32,6 @@ mod imp {
     use std::net::IpAddr;
 
     pub fn get() -> Result<Vec<IpAddr>> {
-        let resolvers = ipconfig::get_adapters()?
-            .iter()
-            .flat_map(|adapter| adapter.dns_servers())
-            .filter(|ip| match ip {
-                IpAddr::V4(_) => true,
-                // Filter out bogus DNS resolvers on my dev laptop that start with fec0:
-                IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
-            })
-            .copied()
-            .collect();
-        // This is private, so keep it at `debug` or `trace`
-        tracing::debug!(?resolvers);
-        Ok(resolvers)
+        firezone_headless_client::imp::system_resolvers()
     }
 }

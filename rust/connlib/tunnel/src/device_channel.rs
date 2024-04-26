@@ -71,7 +71,9 @@ impl Device {
         dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
-        self.tun = Some(Tun::new(config, dns_config, callbacks)?);
+        self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
+
+        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         if let Some(waker) = self.waker.take() {
             waker.wake();
