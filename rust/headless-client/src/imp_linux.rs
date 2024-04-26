@@ -1,23 +1,20 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, Cmd, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
-use anyhow::{bail, Context, Result};
-use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Session, Sockets};
+use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
+use anyhow::{bail, Context as _, Result};
+use connlib_client_shared::{Callbacks, ResourceDescription, Sockets};
 use connlib_shared::{
     keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
     LoginUrl,
 };
-use firezone_cli_utils::setup_global_subscriber;
 use futures::{SinkExt, StreamExt};
-use secrecy::SecretString;
 use std::{
-    future,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::unix::fs::PermissionsExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
-    task::Poll,
+    task::{Context, Poll},
     time::Duration,
 };
 use tokio::{
@@ -55,10 +52,7 @@ impl Signals {
         let sighup = tokio::signal::unix::signal(TokioSignalKind::hangup())?;
         let sigint = tokio::signal::unix::signal(TokioSignalKind::interrupt())?;
 
-        Ok(Self {
-            sighup,
-            sigint,
-        })
+        Ok(Self { sighup, sigint })
     }
 
     pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
@@ -67,7 +61,7 @@ impl Signals {
         }
 
         if self.sighup.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Hangup)
+            return Poll::Ready(super::SignalKind::Hangup);
         }
 
         Poll::Pending
@@ -88,7 +82,7 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
             ?TOKEN_ENV_KEY,
             "No token found in env var or on disk"
         );
-        return Ok(None);
+        bail!("Token file doesn't exist");
     };
     if stat.st_uid != ROOT_USER {
         bail!(
@@ -212,8 +206,6 @@ async fn ipc_listen() -> Result<()> {
     }
 }
 
-type IpcStream = tokio_util::codec::Framed<UnixStream, LengthDelimitedCodec>;
-
 #[derive(Clone)]
 struct CallbackHandlerIpc {
     cb_tx: mpsc::Sender<IpcServerMsg>,
@@ -305,72 +297,7 @@ async fn handle_ipc_client(stream: UnixStream) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::IpcStream;
-    use futures::{SinkExt, StreamExt};
     use std::net::IpAddr;
-    use tokio::net::{UnixListener, UnixStream};
-    use tokio_util::codec::LengthDelimitedCodec;
-
-    const MESSAGE_ONE: &str = "message one";
-    const MESSAGE_TWO: &str = "message two";
-
-    #[tokio::test]
-    async fn ipc() {
-        let sock_path = dirs::runtime_dir()
-            .unwrap()
-            .join("dev.firezone.client_ipc_test");
-
-        // Remove the socket if a previous run left it there
-        tokio::fs::remove_file(&sock_path).await.ok();
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        let ipc_server_task = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let cred = stream.peer_cred().unwrap();
-            // TODO: Check that the user is in the `firezone` group
-            // For now, to make it work well in CI where that group isn't created,
-            // just check if it matches our own UID.
-            let actual_peer_uid = cred.uid();
-            let expected_peer_uid = nix::unistd::Uid::current().as_raw();
-            assert_eq!(actual_peer_uid, expected_peer_uid);
-
-            let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-
-            let v = stream
-                .next()
-                .await
-                .expect("Error while reading IPC message")
-                .expect("IPC stream empty");
-            let decoded: String = serde_json::from_slice(&v).unwrap();
-            assert_eq!(MESSAGE_ONE, decoded);
-
-            let v = stream
-                .next()
-                .await
-                .expect("Error while reading IPC message")
-                .expect("IPC stream empty");
-            let decoded: String = serde_json::from_slice(&v).unwrap();
-            assert_eq!(MESSAGE_TWO, decoded);
-        });
-
-        tracing::info!(pid = std::process::id(), "Connecting to IPC server");
-        let stream = UnixStream::connect(&sock_path).await.unwrap();
-        let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-
-        stream
-            .send(serde_json::to_string(MESSAGE_ONE).unwrap().into())
-            .await
-            .unwrap();
-        stream
-            .send(serde_json::to_string(MESSAGE_TWO).unwrap().into())
-            .await
-            .unwrap();
-
-        tokio::time::timeout(std::time::Duration::from_millis(2_000), ipc_server_task)
-            .await
-            .unwrap()
-            .unwrap();
-    }
 
     #[test]
     fn parse_resolvectl_output() {

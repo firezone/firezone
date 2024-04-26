@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::Cli;
+use anyhow::Result;
 use std::{
     net::IpAddr,
     path::{Path, PathBuf},
@@ -13,9 +13,7 @@ pub(crate) struct Signals {
 impl Signals {
     pub(crate) fn new() -> Result<Self> {
         let sigint = tokio::signal::windows::ctrl_c()?;
-        Ok(Self {
-            sigint,
-        })
+        Ok(Self { sigint })
     }
 
     pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {

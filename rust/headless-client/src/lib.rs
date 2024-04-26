@@ -10,7 +10,9 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{Callbacks, file_logger, keypair, LoginUrl, ResourceDescription, Session, Sockets};
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, LoginUrl, ResourceDescription, Session, Sockets,
+};
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{future, net::IpAddr, path::PathBuf, task::Poll};
@@ -292,6 +294,9 @@ fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
         return Ok(Some(token));
     }
 
+    if std::fs::metadata(&path).is_err() {
+        return Ok(None);
+    }
     imp::check_token_permissions(&path)?;
 
     let Ok(bytes) = std::fs::read(&path) else {
