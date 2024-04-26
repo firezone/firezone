@@ -7,17 +7,9 @@ use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
 
-// TODO: Put this behind a "CI tests only" flag so that
-// official CI builds, and default local builds won't get the mock
-#[cfg(target_os = "linux")]
-#[path = "auth/token_storage_mock.rs"]
-mod token_storage;
+mod token_storage_keyring;
 
-#[cfg(not(target_os = "linux"))]
-#[path = "auth/token_storage_keyring.rs"]
-mod token_storage;
-
-use token_storage::TokenStorage;
+use token_storage_keyring::TokenStorage;
 
 const NONCE_LENGTH: usize = 32;
 
@@ -259,6 +251,10 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     a.ct_eq(b).into()
 }
 
+// The Linux CI is headless so it's hard to test keyrings in it
+// There is a trick, but it requires some setup outside of `cargo test`:
+// <https://github.com/hwchen/keyring-rs/blob/master/linux-test.sh>
+#[cfg(not(target_os = "linux"))]
 #[cfg(test)]
 mod tests {
     use super::*;

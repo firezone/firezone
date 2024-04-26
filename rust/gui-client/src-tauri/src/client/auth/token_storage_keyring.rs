@@ -48,9 +48,10 @@ impl TokenStorage {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "windows")]
     #[test]
     fn test_keyring() -> anyhow::Result<()> {
-        // I used this test to find that `service` is not used - We have to namespace on our own.
+        // I used this test to find that `service` is not used on Windows - We have to namespace on our own.
 
         let name_1 = "dev.firezone.client/test_1/token";
         let name_2 = "dev.firezone.client/test_2/token";
