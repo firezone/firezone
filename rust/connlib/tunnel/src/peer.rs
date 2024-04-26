@@ -101,9 +101,9 @@ impl ClientOnGateway {
         self.resources.is_empty()
     }
 
-    pub(crate) fn expire_resources(&mut self) {
+    pub(crate) fn expire_resources(&mut self, now: DateTime<Utc>) {
         self.resources
-            .retain(|_, (_, e)| !e.is_some_and(|e| e <= Utc::now()));
+            .retain(|_, (_, e)| !e.is_some_and(|e| e <= now));
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
