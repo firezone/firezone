@@ -359,8 +359,9 @@ pub struct ClientOnGateway {
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
+    use std::{net::IpAddr, time::Duration};
 
+    use chrono::Utc;
     use connlib_shared::messages::{
         gateway::{Filter, FilterInner},
         ClientId, ResourceId,
@@ -543,6 +544,73 @@ mod tests {
 
         assert!(peer.ensure_allowed(&tcp_packet).is_ok());
         assert!(peer.ensure_allowed(&icmp_packet).is_ok());
+        assert!(matches!(
+            peer.ensure_allowed(&udp_packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test]
+    fn gateway_filters_expire_individually() {
+        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        let now = Utc::now();
+        let then = now + Duration::from_secs(10);
+        let after_then = then + Duration::from_secs(10);
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource_id(),
+            vec![Filter::Tcp(FilterInner {
+                port_range_start: 20,
+                port_range_end: 100,
+            })],
+            Some(then),
+        );
+
+        peer.add_resource(
+            cidr_v4_resource().into(),
+            resource2_id(),
+            vec![Filter::Udp(FilterInner {
+                port_range_start: 20,
+                port_range_end: 100,
+            })],
+            Some(after_then),
+        );
+
+        let tcp_packet = ip_packet::make::tcp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        let udp_packet = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap().into(),
+            5401,
+            80,
+            vec![0; 100],
+        );
+
+        peer.expire_resources(&now);
+
+        assert!(peer.ensure_allowed(&tcp_packet).is_ok());
+        assert!(peer.ensure_allowed(&udp_packet).is_ok());
+
+        peer.expire_resources(&then);
+
+        assert!(matches!(
+            peer.ensure_allowed(&tcp_packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+        assert!(peer.ensure_allowed(&udp_packet).is_ok());
+
+        peer.expire_resources(&after_then);
+
+        assert!(matches!(
+            peer.ensure_allowed(&tcp_packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
         assert!(matches!(
             peer.ensure_allowed(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
