@@ -252,6 +252,10 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     a.ct_eq(b).into()
 }
 
+// The Linux CI is headless so it's hard to test keyrings in it
+// There is a trick, but it requires some setup outside of `cargo test`:
+// <https://github.com/hwchen/keyring-rs/blob/master/linux-test.sh>
+#[cfg(not(target_os = "linux"))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,8 +274,6 @@ mod tests {
 
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
-    // Also, the Linux CI is headless so it's hard to test keyrings in it
-    #[cfg(not(target_os = "linux"))]
     #[test]
     fn everything() {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
