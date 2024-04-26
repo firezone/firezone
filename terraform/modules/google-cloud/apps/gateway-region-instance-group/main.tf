@@ -108,7 +108,7 @@ resource "google_compute_instance_template" "application" {
 
       content {
         network_tier = "PREMIUM"
-        # Ephimerical IP address
+        # Ephemeral IP address
       }
     }
 
@@ -117,7 +117,7 @@ resource "google_compute_instance_template" "application" {
 
       content {
         network_tier = "PREMIUM"
-        # Ephimerical IP address
+        # Ephemeral IP address
       }
     }
   }

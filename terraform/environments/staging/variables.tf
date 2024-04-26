@@ -51,3 +51,8 @@ variable "stripe_webhook_signing_secret" {
 variable "stripe_default_price_id" {
   type = string
 }
+
+variable "firezone_client_token" {
+  type      = string
+  sensitive = true
+}
