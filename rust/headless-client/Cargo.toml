@@ -25,7 +25,7 @@ futures = "0.3.30"
 nix = { version =  "0.28.0", features = ["fs", "user"] }
 resolv-conf = "0.7.0"
 sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
-serde_json = "1.0.115"
+serde_json = "1.0.116"
 secrecy = { workspace = true }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
