@@ -370,7 +370,7 @@ fn set_buffer_sizes(fd: RawFd) -> Result<()> {
             fd,
             libc::SOL_SOCKET,
             libc::SO_RCVBUF,
-            &rcv,
+            &rcv as *const _ as *const libc::c_void,
             std::mem::size_of::<libc::c_int>() as libc::socklen_t,
         )
     };
@@ -383,7 +383,7 @@ fn set_buffer_sizes(fd: RawFd) -> Result<()> {
             fd,
             libc::SOL_SOCKET,
             libc::SO_SNDBUF,
-            &snd,
+            &snd as *const _ as *const libc::c_void,
             std::mem::size_of::<libc::c_int>() as libc::socklen_t,
         )
     };
