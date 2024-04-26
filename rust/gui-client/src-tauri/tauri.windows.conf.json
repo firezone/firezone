@@ -1,5 +1,5 @@
 {
   "build": {
-    "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/Firezone.exe'"
+    "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/firezone-client-gui.exe'"
   }
 }

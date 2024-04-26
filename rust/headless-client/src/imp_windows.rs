@@ -1,5 +1,8 @@
 use crate::Cli;
 use anyhow::Result;
+use clap::Parser;
+use connlib_client_shared::file_logger;
+use firezone_cli_utils::setup_global_subscriber;
 use std::{
     net::IpAddr,
     path::{Path, PathBuf},
@@ -34,6 +37,15 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
 pub(crate) fn default_token_path() -> std::path::PathBuf {
     // TODO: System-wide default token path for Windows
     PathBuf::from("token.txt")
+}
+
+pub fn run_only_ipc_service() -> Result<()> {
+    let cli = Cli::parse();
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    setup_global_subscriber(layer);
+    tracing::info!(git_version = crate::GIT_VERSION);
+
+    run_ipc_service(cli)
 }
 
 pub(crate) fn run_ipc_service(_cli: Cli) -> Result<()> {

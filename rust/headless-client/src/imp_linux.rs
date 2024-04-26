@@ -2,12 +2,14 @@
 
 use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
-use connlib_client_shared::{Callbacks, ResourceDescription, Sockets};
+use clap::Parser;
+use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
 use connlib_shared::{
     keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
     LoginUrl,
 };
+use firezone_cli_utils::setup_global_subscriber;
 use futures::{SinkExt, StreamExt};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -59,6 +61,18 @@ pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
         .join("token")
+}
+
+pub fn run_only_ipc_service() -> Result<()> {
+    let cli = Cli::parse();
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    setup_global_subscriber(layer);
+    tracing::info!(git_version = crate::GIT_VERSION);
+
+    if !nix::unistd::getuid().is_root() {
+        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+    }
+    run_ipc_service(cli)
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
