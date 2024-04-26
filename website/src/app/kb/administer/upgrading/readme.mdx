@@ -43,28 +43,6 @@ curl -fsSL \
   </Link>
 </div>)}
 
-### Verification
-
-After running the upgrade, you can verify the Gateway is running the latest
-version by ensuring the sha256 hash of the pulled image matches the latest
-[artifact published on GitHub](https://github.com/firezone/firezone/pkgs/container/gateway/184806062?tag=latest):
-
-<Image
-  src="/images/kb/administer/upgrading/gateway-upgrade-verify.png"
-  width={500}
-  height={500}
-  className="mx-auto"
-  alt="Gateway upgrade verification"
-/>
-
-```
-# Get the sha256 hash of the gateway image running on your system
-> docker inspect ghcr.io/firezone/gateway:1.0 --format='{{index .RepoDigests 0}}'
-
-# Ensure this hash matches the latest available image above
-ghcr.io/firezone/gateway@sha256:0516fa4a305fac10571238db2b7bf02e6adeda0fb5afc1fe7e8d0c4d0a93ebc6
-```
-
 </TabsItem>
 <TabsItem title="systemd">
 
@@ -73,12 +51,53 @@ necessary to upgrade the Gateway on service start. Simply move the old binary
 and restart the service to trigger the upgrade:
 
 ```
+# Stop the Gateway service. WARNING: This will cause brief downtime for this Gateway.
+sudo systemctl stop firezone-gateway
+
+# Move the old binary to a backup location
 sudo mv /usr/local/bin/firezone-gateway /usr/local/bin/firezone-gateway.bak
-sudo systemctl restart firezone-gateway
+
+# Start the Gateway service to trigger the upgrade
+sudo systemctl start firezone-gateway
 ```
+
+### Rollback in case of issues
+
+If something goes wrong during the upgrade, you can always revert to the old
+binary by stopping the service and moving the backup binary back to its original
+location:
+
+```
+# Restore the old binary and restart the service
+
+sudo systemctl stop firezone-gateway
+
+sudo mv /usr/local/bin/firezone-gateway.bak /usr/local/bin/firezone-gateway
+
+sudo systemctl start firezone-gateway
+```
+
+Please
+[file a GitHub issue](https://www.github.com/firezone/firezone/issues/new/choose)
+if you consistently encounter issues with the upgrade process.
 
 </TabsItem>
 </TabsGroup>
+
+### Verification
+
+After running the upgrade, check that the version reported by the Gateway in the
+admin portal matches the latest published version on our
+[GitHub releases page](https://github.com/firezone/firezone/releases) to ensure
+it's up to date:
+
+<Image
+  src="/images/kb/administer/upgrading/gateway-upgrade-verify.png"
+  width={500}
+  height={500}
+  className="mx-auto"
+  alt="Gateway upgrade verification"
+/>
 
 ### Downtime considerations
 

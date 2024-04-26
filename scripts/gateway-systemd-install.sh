@@ -59,7 +59,16 @@ if [ ! -e /usr/local/bin/firezone-gateway ]; then
   arch=\$(uname -m)
 
   # See https://www.github.com/firezone/firezone/releases for available binaries
-  curl -fsSL https://www.firezone.dev/dl/firezone-gateway/latest/\$arch -o /usr/local/bin/firezone-gateway
+  curl -fsSL https://www.firezone.dev/dl/firezone-gateway/latest/\$arch -o /tmp/firezone-gateway
+
+  if file /tmp/firezone-gateway | grep -q "executable"; then
+    mv /tmp/firezone-gateway /usr/local/bin/firezone-gateway
+  else
+    echo "/tmp/firezone-gateway is not an executable!"
+    echo "Ensure 'https://www.firezone.dev/dl/firezone-gateway/latest/\$arch' is accessible from this machine,"
+    echo "or download binary manually and install to /usr/local/bin/firezone-gateway."
+    exit 1
+  fi
 else
   echo "/usr/local/bin/firezone-gateway found. Skipping download."
 fi

@@ -11,8 +11,8 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
-    close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_MULTI_QUEUE, IFF_NO_PI, IFF_TUN,
-    O_NONBLOCK, O_RDWR, S_IFCHR,
+    close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
+    S_IFCHR,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
@@ -67,6 +67,7 @@ impl Drop for Tun {
     fn drop(&mut self) {
         unsafe { close(self.fd.as_raw_fd()) };
         self.connection.abort();
+        tracing::debug!("Reverting DNS control...");
         if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
             etc_resolv_conf::revert().ok();
@@ -438,7 +439,7 @@ impl ioctl::Request<SetTunFlagsPayload> {
         Self {
             name,
             payload: SetTunFlagsPayload {
-                flags: (IFF_TUN | IFF_NO_PI | IFF_MULTI_QUEUE) as _,
+                flags: (IFF_TUN | IFF_NO_PI) as _,
             },
         }
     }

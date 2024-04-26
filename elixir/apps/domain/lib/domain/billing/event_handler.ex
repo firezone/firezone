@@ -31,7 +31,8 @@ defmodule Domain.Billing.EventHandler do
       }) do
     attrs =
       %{
-        name: customer_name,
+        name: customer_metadata["account_name"] || customer_name,
+        legal_name: customer_name,
         metadata: %{stripe: %{billing_email: customer_email}}
       }
       |> put_if_not_nil(:slug, customer_metadata["account_slug"])
@@ -239,7 +240,8 @@ defmodule Domain.Billing.EventHandler do
       end
 
     attrs = %{
-      name: customer_name,
+      name: metadata["account_name"] || customer_name,
+      legal_name: customer_name,
       slug: account_slug,
       metadata: %{
         stripe: %{
@@ -340,6 +342,7 @@ defmodule Domain.Billing.EventHandler do
          subscription_metadata,
          stripe_metadata_overrides
        ) do
+    # feature_fields = Accounts.Features.__schema__(:fields) |> Enum.map(&to_string/1)
     limit_fields = Accounts.Limits.__schema__(:fields) |> Enum.map(&to_string/1)
     metadata_fields = ["support_type"]
 

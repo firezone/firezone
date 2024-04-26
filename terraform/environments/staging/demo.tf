@@ -67,7 +67,12 @@ resource "google_compute_instance" "demo" {
     && sudo systemctl start docker \
     && sudo docker run -d --restart always --name=httpbin -p 80:80 kennethreitz/httpbin \
     && echo ${module.metabase.internal_ip} metabase.fz >> /etc/hosts \
-    && echo 127.0.0.1 host.firezone.local >> /etc/hosts
+    && echo 127.0.0.1 host.firezone.local >> /etc/hosts \
+    && curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh \
+    && sudo bash add-google-cloud-ops-agent-repo.sh \
+    && sudo apt-get update \
+    && sudo apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install google-cloud-ops-agent
+
 EOT
 
   allow_stopping_for_update = true
