@@ -131,8 +131,6 @@ impl Tun {
         }
 
         // Safety: We just opened the file descriptor.
-        unsafe {}
-
         set_non_blocking(fd)?;
         set_buffer_sizes(fd)?;
 
