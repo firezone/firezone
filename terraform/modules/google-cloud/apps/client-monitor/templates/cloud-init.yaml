@@ -73,7 +73,9 @@ write_files:
     owner: root
     content: |
       * * * * * root /usr/local/bin/firezone-monitor/tunnel.sh 2>&1 >> /var/log/firezone_monitor/tunnel.log
-      */2 * * * * root /usr/local/bin/firezone-monitor/ping.sh 10.0.32.100 2>&1 >> /var/log/firezone_monitor/ping.log
+      */2 * * * * root /usr/local/bin/firezone-monitor/ping.sh 10.0.32.100 2>&1 >> /var/log/firezone_monitor/ping_internal.log
+      */2 * * * * root /usr/local/bin/firezone-monitor/ping.sh 8.8.4.4 2>&1 >> /var/log/firezone_monitor/ping_google_dns_ipv4.log
+      */2 * * * * root /usr/local/bin/firezone-monitor/ping6.sh 2001:4860:4860::8844 2>&1 >> /var/log/firezone_monitor/ping_google_dns_ipv6.log
       */10 * * * * root /usr/local/bin/firezone-monitor/iperf.sh 10.0.32.101 2>&1 >> /var/log/firezone_monitor/iperf.log
 
   - path: /usr/local/bin/firezone-monitor/common.sh
@@ -137,7 +139,38 @@ write_files:
 
       run_test() {
         log "Test output:"
-        ping -c 10 -W 5 "$PING_HOST"
+        ping -4 -c 10 -W 5 -I "tun-firezone" "$PING_HOST"
+      }
+
+      main() {
+        log "Start Firezone Monitor Test: $TEST_NAME"
+        check_tunnel
+        run_test
+      }
+
+      finish() {
+        log "Finish Firezone Monitor Test: $TEST_NAME"
+      }
+
+      trap finish EXIT
+      main
+
+  - path: /usr/local/bin/firezone-monitor/ping6.sh
+    permissions: "0555"
+    owner: root
+    content: |
+      #!/bin/bash
+
+      set -euo pipefail
+
+      source $(dirname "$0")/common.sh
+
+      TEST_NAME="ping6"
+      PING_HOST=$1
+
+      run_test() {
+        log "Test output:"
+        ping -6 -c 10 -W 5 -I "tun-firezone" "$PING_HOST"
       }
 
       main() {
