@@ -38,7 +38,7 @@ impl ResourceId {
     }
 
     #[cfg(any(feature = "proptest"))]
-    pub fn from_u128(v: u128) -> Self {
+    pub(crate) fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
 }
