@@ -34,7 +34,6 @@ use tokio::io::unix::AsyncFd;
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
-const TUNSETSNDBUF: libc::c_ulong = 0x4004_54d4;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 const DEFAULT_MTU: u32 = 1280;
@@ -131,9 +130,7 @@ impl Tun {
             )?;
         }
 
-        // Safety: We just opened the file descriptor.
         set_non_blocking(fd)?;
-        set_send_buffer_size(fd, 8 * 1024 * 1024)?;
 
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
@@ -358,16 +355,6 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
             _ => Ok(()),
         },
     }
-}
-
-fn set_send_buffer_size(fd: RawFd, size: std::ffi::c_int) -> Result<()> {
-    let ret = unsafe { libc::ioctl(fd, TUNSETSNDBUF as _, &size) };
-
-    if ret != 0 {
-        return Err(get_last_error());
-    }
-
-    Ok(())
 }
 
 fn create_tun_device() -> Result<()> {

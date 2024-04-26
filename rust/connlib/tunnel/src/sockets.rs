@@ -348,8 +348,6 @@ fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
     }
 
     socket.set_nonblocking(true)?;
-    socket.set_send_buffer_size(8 * 1024 * 1024)?;
-    socket.set_recv_buffer_size(8 * 1024 * 1024)?;
     socket.bind(&addr)?;
 
     Ok(socket.into())
