@@ -205,8 +205,8 @@ impl ClientOnGateway {
 
     pub(crate) fn expire_resources(&mut self, now: &DateTime<Utc>) {
         self.resources
-            .retain(|_, (_, e)| !e.is_some_and(|e| e <= *now));
-       self.recalculate_filters();
+            .retain(|_, r| !r.expires_at.is_some_and(|e| e <= *now));
+        self.recalculate_filters();
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
