@@ -114,7 +114,7 @@ impl StateMachineTest for TunnelTest {
                 state.now += Duration::from_millis(millis);
                 state.utc_now += Duration::from_millis(millis);
                 state.client.handle_timeout(state.now);
-                state.gateway.handle_timeout(state.now, &state.utc_now);
+                state.gateway.handle_timeout(state.now, state.utc_now);
             }
         };
 
