@@ -27,16 +27,17 @@ impl Signals {
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
-    // TODO
+    // TODO: Make sure the token is only readable by admin / our service user on Windows
     Ok(())
 }
 
 pub(crate) fn default_token_path() -> std::path::PathBuf {
-    // TODO
+    // TODO: System-wide default token path for Windows
     PathBuf::from("token.txt")
 }
 
 pub(crate) fn run_ipc_service(_cli: Cli) -> Result<()> {
+    // TODO: Process split on Windows
     todo!()
 }
 
