@@ -16,6 +16,7 @@ use connlib_client_shared::{
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{future, net::IpAddr, path::PathBuf, task::Poll};
+use tokio::sync::mpsc;
 
 use imp::default_token_path;
 
@@ -193,6 +194,7 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         .enable_all()
         .build()?;
     let _guard = rt.enter();
+    // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     // AKA "Device ID", not the Firezone slug
@@ -209,12 +211,15 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
         return Ok(());
     }
 
+    let (on_disconnect_tx, mut on_disconnect_rx) = mpsc::channel(1);
+    let callback_handler = CallbackHandler { on_disconnect_tx };
+
     let session = Session::connect(
         login,
         Sockets::new(),
         private_key,
         None,
-        CallbackHandler,
+        callback_handler,
         max_partition_time,
         rt.handle().clone(),
     );
@@ -225,12 +230,22 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     let result = rt.block_on(async {
         future::poll_fn(|cx| loop {
+            match on_disconnect_rx.poll_recv(cx) {
+                Poll::Ready(Some(error)) => return Poll::Ready(Err(anyhow::anyhow!(error))),
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "on_disconnect_rx unexpectedly ran empty"
+                    )))
+                }
+                Poll::Pending => {}
+            }
+
             match signals.poll(cx) {
                 Poll::Ready(SignalKind::Hangup) => {
                     session.reconnect();
                     continue;
                 }
-                Poll::Ready(SignalKind::Interrupt) => return Poll::Ready(std::io::Result::Ok(())),
+                Poll::Ready(SignalKind::Interrupt) => return Poll::Ready(Ok(())),
                 Poll::Pending => return Poll::Pending,
             }
         })
@@ -239,17 +254,21 @@ fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
 
     session.disconnect();
 
-    Ok(result?)
+    result
 }
 
 #[derive(Clone)]
-struct CallbackHandler;
+struct CallbackHandler {
+    /// Channel for an error message if connlib disconnects due to an error
+    on_disconnect_tx: mpsc::Sender<String>,
+}
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::error!("Disconnected: {error}");
-
-        std::process::exit(1);
+        // Convert the error to a String since we can't clone it
+        self.on_disconnect_tx
+            .try_send(error.to_string())
+            .expect("should be able to tell the main thread that we disconnected");
     }
 
     fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {

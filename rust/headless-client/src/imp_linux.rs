@@ -15,7 +15,6 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     task::{Context, Poll},
-    time::Duration,
 };
 use tokio::{
     net::{UnixListener, UnixStream},
@@ -29,11 +28,6 @@ use url::Url;
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
-
-/// We have valid use cases for headless Windows clients
-/// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
-/// been a partition.
-const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
 /// The path for our Unix Domain Socket
 ///
@@ -164,13 +158,26 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-pub(crate) fn run_ipc_service(_cli: Cli) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()?;
-    tracing::info!("run_daemon");
-    rt.block_on(async { ipc_listen().await })
+/// The path for our Unix Domain Socket
+///
+/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
+/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
+/// on some systems, `/run` should be the newer version.
+///
+/// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
+fn sock_path() -> PathBuf {
+    PathBuf::from("/run")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("ipc.sock")
 }
 
-async fn ipc_listen() -> Result<()> {
+pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    tracing::info!("run_daemon");
+    rt.block_on(async { ipc_listen(cli).await })
+}
+
+async fn ipc_listen(cli: Cli) -> Result<()> {
     // Find the `firezone` group
     let fz_gid = nix::unistd::Group::from_name("firezone")
         .context("can't get group by name")?
@@ -178,9 +185,10 @@ async fn ipc_listen() -> Result<()> {
         .gid;
 
     // Remove the socket if a previous run left it there
-    tokio::fs::remove_file(SOCK_PATH).await.ok();
-    let listener = UnixListener::bind(SOCK_PATH).context("Couldn't bind UDS")?;
-    std::os::unix::fs::chown(SOCK_PATH, Some(ROOT_USER), Some(fz_gid.into()))
+    let sock_path = sock_path();
+    tokio::fs::remove_file(&sock_path).await.ok();
+    let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
+    std::os::unix::fs::chown(&sock_path, Some(ROOT_USER), Some(fz_gid.into()))
         .context("can't set firezone as the group for the UDS")?;
     let perms = std::fs::Permissions::from_mode(0o660);
     std::fs::set_permissions(SOCK_PATH, perms)?;
@@ -200,7 +208,7 @@ async fn ipc_listen() -> Result<()> {
         // I'm not sure if we can enforce group membership here - Docker
         // might just be enforcing it with filesystem permissions.
         // Checking the secondary groups of another user looks complicated.
-        if let Err(error) = handle_ipc_client(stream).await {
+        if let Err(error) = handle_ipc_client(&cli, stream).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
     }
@@ -234,7 +242,7 @@ impl Callbacks for CallbackHandlerIpc {
     }
 }
 
-async fn handle_ipc_client(stream: UnixStream) -> Result<()> {
+async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
     connlib_shared::deactivate_dns_control()?;
     let (rx, tx) = stream.into_split();
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
@@ -276,7 +284,7 @@ async fn handle_ipc_client(stream: UnixStream) -> Result<()> {
                     private_key,
                     None,
                     callback_handler.clone(),
-                    Some(MAX_PARTITION_TIME),
+                    cli.max_partition_time.map(|t| t.into()),
                     tokio::runtime::Handle::try_current()?,
                 ));
             }
