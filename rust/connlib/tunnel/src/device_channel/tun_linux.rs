@@ -34,6 +34,7 @@ use tokio::io::unix::AsyncFd;
 
 const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
+const TUNSETSNDBUF: libc::c_ulong = 0x4004_54d4;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 const DEFAULT_MTU: u32 = 1280;
@@ -361,14 +362,8 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
 
 fn set_buffer_sizes(fd: RawFd) -> Result<()> {
     let snd = 8 * 1024 * 1024;
-    let rcv = 8 * 1024 * 1024;
 
-    let ret = unsafe { libc::ioctl(fd, libc::TUNSETSNDBUF, &snd) };
-    if ret != 0 {
-        return Err(get_last_error());
-    }
-
-    let ret = unsafe { libc::ioctl(fd, libc::TUNSETSNDBUF, &rcv) };
+    let ret = unsafe { libc::ioctl(fd, TUNSETSNDBUF, &snd) };
     if ret != 0 {
         return Err(get_last_error());
     }
