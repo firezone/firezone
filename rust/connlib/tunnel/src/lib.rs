@@ -202,7 +202,7 @@ where
                 self.device_read_buf.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout, &Utc::now());
+                    self.role_state.handle_timeout(timeout, Utc::now());
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
