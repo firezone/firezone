@@ -264,7 +264,7 @@ defmodule Web.Sites.Show do
       <:action>
         <.delete_button
           phx-click="delete"
-          data-confirm="Are you sure want to delete this gateway group and disconnect all it's gateways?"
+          data-confirm="Are you sure want to delete this Site and disconnect all it's Gateways?"
         >
           Delete Site
         </.delete_button>
