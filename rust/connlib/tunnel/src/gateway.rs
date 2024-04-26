@@ -12,7 +12,7 @@ use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::ServerNode;
+use snownet::{RelaySocket, ServerNode};
 use std::collections::{HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -85,7 +85,7 @@ where
             },
             client,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
+            turn(&relays),
             Instant::now(),
         );
 
@@ -266,12 +266,14 @@ impl GatewayState {
         earliest(self.next_expiry_resources_check, self.node.poll_timeout())
     }
 
-    pub fn handle_timeout(&mut self, now: Instant) {
+    pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
-                self.peers.iter_mut().for_each(|p| p.expire_resources());
+                self.peers
+                    .iter_mut()
+                    .for_each(|p| p.expire_resources(utc_now));
                 self.peers.retain(|_, p| !p.is_emptied());
 
                 self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
@@ -321,7 +323,7 @@ impl GatewayState {
     pub(crate) fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, SocketAddr, String, String, String)>,
+        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);

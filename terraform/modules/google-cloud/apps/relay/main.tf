@@ -187,12 +187,12 @@ resource "google_compute_instance_template" "application" {
 
     ipv6_access_config {
       network_tier = "PREMIUM"
-      # Ephimerical IP address
+      # Ephemeral IP address
     }
 
     access_config {
       network_tier = "PREMIUM"
-      # Ephimerical IP address
+      # Ephemeral IP address
     }
   }
 

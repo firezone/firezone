@@ -5,6 +5,8 @@ defmodule Domain.Accounts.Account do
     field :name, :string
     field :slug, :string
 
+    field :legal_name, :string
+
     # Updated by the billing subscription metadata fields
     embeds_one :features, Domain.Accounts.Features, on_replace: :delete
     embeds_one :limits, Domain.Accounts.Limits, on_replace: :delete

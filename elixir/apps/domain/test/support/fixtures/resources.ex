@@ -12,7 +12,8 @@ defmodule Domain.Fixtures.Resources do
       type: :dns,
       filters: [
         %{protocol: :tcp, ports: [80, 433]},
-        %{protocol: :udp, ports: [100..200]}
+        %{protocol: :udp, ports: [100..200]},
+        %{protocol: :icmp}
       ]
     })
   end

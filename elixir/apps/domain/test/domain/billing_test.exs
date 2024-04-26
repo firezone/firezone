@@ -375,9 +375,10 @@ defmodule Domain.BillingTest do
       assert_receive {:bypass_request, %{request_path: "/v1/customers"} = conn}
 
       assert conn.params == %{
-               "name" => account.name,
+               "name" => account.legal_name,
                "metadata" => %{
                  "account_id" => account.id,
+                 "account_name" => account.name,
                  "account_slug" => account.slug
                }
              }
@@ -527,6 +528,8 @@ defmodule Domain.BillingTest do
       assert handle_events([event]) == :ok
 
       assert account = Repo.get_by(Domain.Accounts.Account, slug: "bigcompany")
+      assert account.name == "New Account Name"
+      assert account.legal_name == "New Account Name"
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.billing_email == "iown@bigcompany.com"
       assert account.metadata.stripe.subscription_id
@@ -545,8 +548,12 @@ defmodule Domain.BillingTest do
                       %{request_path: "/v1/customers/" <> ^customer_id, params: params}}
 
       assert params == %{
-               "metadata" => %{"account_id" => account.id, "account_slug" => account.slug},
-               "name" => "New Account Name"
+               "metadata" => %{
+                 "account_id" => account.id,
+                 "account_name" => account.name,
+                 "account_slug" => account.slug
+               },
+               "name" => account.legal_name
              }
 
       assert_receive {:bypass_request, %{request_path: "/v1/subscriptions", params: params}}
@@ -647,6 +654,8 @@ defmodule Domain.BillingTest do
       assert handle_events([event]) == :ok
 
       assert account = Repo.get_by(Domain.Accounts.Account, slug: "bigcompany")
+      assert account.name == "New Account Name"
+      assert account.legal_name == "New Account Name"
       assert account.metadata.stripe.customer_id == customer_id
       assert account.metadata.stripe.billing_email == "iown@bigcompany.com"
       assert account.metadata.stripe.subscription_id
@@ -669,8 +678,12 @@ defmodule Domain.BillingTest do
                       }}
 
       assert params == %{
-               "metadata" => %{"account_id" => account.id, "account_slug" => account.slug},
-               "name" => "New Account Name"
+               "metadata" => %{
+                 "account_id" => account.id,
+                 "account_name" => account.name,
+                 "account_slug" => account.slug
+               },
+               "name" => account.legal_name
              }
 
       assert_receive {:bypass_request,
@@ -684,38 +697,6 @@ defmodule Domain.BillingTest do
                "customer" => customer_id,
                "items" => %{"0" => %{"price" => "price_1OkUIcADeNU9NGxvTNA4PPq6"}}
              }
-    end
-
-    test "updates an account from stripe on customer.updated event", %{account: account} do
-      customer_metadata = %{
-        "account_id" => account.id,
-        "account_slug" => "this_is_a_new_slug"
-      }
-
-      Bypass.open()
-      |> Stripe.mock_fetch_customer_endpoint(account, %{
-        "metadata" => customer_metadata
-      })
-      |> Stripe.mock_update_customer_endpoint(account)
-
-      event =
-        Stripe.build_event(
-          "customer.updated",
-          Stripe.customer_object(
-            account.metadata.stripe.customer_id,
-            "Updated Account Name",
-            "iown@bigcompany.com",
-            customer_metadata
-          )
-        )
-
-      assert handle_events([event]) == :ok
-
-      assert account = Repo.one(Domain.Accounts.Account)
-      assert account.name == "Updated Account Name"
-      assert account.slug == "this_is_a_new_slug"
-
-      assert account.metadata.stripe.billing_email == "iown@bigcompany.com"
     end
 
     test "disables the account on when subscription is deleted", %{
@@ -788,6 +769,17 @@ defmodule Domain.BillingTest do
       account: account,
       customer_id: customer_id
     } do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{
+            service_accounts_count: 10101
+          },
+          features: %{
+            flow_activities: true,
+            traffic_filters: true
+          }
+        })
+
       Bypass.open()
       |> Stripe.mock_fetch_customer_endpoint(account)
       |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R", %{

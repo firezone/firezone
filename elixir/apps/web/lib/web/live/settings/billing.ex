@@ -84,6 +84,13 @@ defmodule Web.Settings.Billing do
               <%= @account.metadata.stripe.billing_email %>
             </:value>
           </.vertical_table_row>
+
+          <.vertical_table_row>
+            <:label>Billing Name</:label>
+            <:value>
+              <%= @account.legal_name %>
+            </:value>
+          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>
