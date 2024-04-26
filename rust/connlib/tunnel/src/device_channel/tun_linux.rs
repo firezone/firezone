@@ -133,7 +133,7 @@ impl Tun {
 
         // Safety: We just opened the file descriptor.
         set_non_blocking(fd)?;
-        set_send_buffer_size(fd, (8 * 1024 * 1024).into())?;
+        set_send_buffer_size(fd, 8 * 1024 * 1024)?;
 
         let (connection, handle, _) = new_connection()?;
         let join_handle = tokio::spawn(connection);
@@ -361,7 +361,7 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
 }
 
 fn set_send_buffer_size(fd: RawFd, size: std::ffi::c_int) -> Result<()> {
-    let ret = unsafe { libc::ioctl(fd, TUNSETSNDBUF, &size) };
+    let ret = unsafe { libc::ioctl(fd, TUNSETSNDBUF as _, &size) };
 
     if ret != 0 {
         return Err(get_last_error());
