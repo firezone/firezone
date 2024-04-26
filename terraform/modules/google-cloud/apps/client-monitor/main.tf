@@ -101,7 +101,6 @@ resource "google_compute_instance" "client_monitor" {
     enable_vtpm                 = true
   }
 
-  # us-east1-docker.pkg.dev/firezone-staging/firezone/client:1.0.0-3e457fbd3c9252ba4c5b7a7cc943bceae8c3c827
   metadata = {
     user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
       client_container_image    = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
