@@ -7,10 +7,9 @@ use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
 
-#[path = "auth/token_storage_keyring.rs"]
-mod token_storage;
+mod token_storage_keyring;
 
-use token_storage::TokenStorage;
+use token_storage_keyring::TokenStorage;
 
 const NONCE_LENGTH: usize = 32;
 
