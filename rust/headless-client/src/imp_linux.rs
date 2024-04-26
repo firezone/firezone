@@ -29,13 +29,6 @@ use url::Url;
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-/// The path for our Unix Domain Socket
-///
-/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
-/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
-/// on some systems, `/run` should be the newer version.
-pub const SOCK_PATH: &str = "/run/firezone-client.sock";
-
 pub(crate) struct Signals {
     sighup: tokio::signal::unix::Signal,
     sigint: tokio::signal::unix::Signal,
@@ -165,7 +158,7 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
 /// on some systems, `/run` should be the newer version.
 ///
 /// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
-fn sock_path() -> PathBuf {
+pub fn sock_path() -> PathBuf {
     PathBuf::from("/run")
         .join(connlib_shared::BUNDLE_ID)
         .join("ipc.sock")
@@ -191,7 +184,7 @@ async fn ipc_listen(cli: Cli) -> Result<()> {
     std::os::unix::fs::chown(&sock_path, Some(ROOT_USER), Some(fz_gid.into()))
         .context("can't set firezone as the group for the UDS")?;
     let perms = std::fs::Permissions::from_mode(0o660);
-    std::fs::set_permissions(SOCK_PATH, perms)?;
+    std::fs::set_permissions(sock_path, perms)?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription};
-use firezone_headless_client::{imp::SOCK_PATH, IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -78,7 +78,7 @@ pub async fn connect(
     tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
     tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
-    let stream = UnixStream::connect(SOCK_PATH)
+    let stream = UnixStream::connect(sock_path())
         .await
         .context("Couldn't connect to UDS")?;
     let (rx, tx) = stream.into_split();
