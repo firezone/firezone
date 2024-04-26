@@ -370,7 +370,7 @@ defmodule Domain.Auth.Adapter.DirectorySync do
     end)
     |> Enum.reduce({:ok, %{}}, fn
       {_name, task}, {:error, reason} ->
-        Task.Supervisor.terminate_child(supervisor, task.pid)
+        Task.ignore(task)
         {:error, reason}
 
       {name, task}, {:ok, acc} ->
