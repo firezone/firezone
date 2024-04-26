@@ -277,7 +277,7 @@ impl GatewayState {
         earliest(self.next_expiry_resources_check, self.node.poll_timeout())
     }
 
-    pub fn handle_timeout(&mut self, now: Instant, utc_now: &DateTime<Utc>) {
+    pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
 
         match self.next_expiry_resources_check {

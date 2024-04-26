@@ -7,7 +7,7 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "Firezone"
+    "productName": "firezone-client-gui"
   },
   "tauri": {
     "allowlist": {
@@ -19,6 +19,11 @@
     },
     "bundle": {
       "active": true,
+      "deb": {
+        "files": {
+          "/usr/lib/systemd/system/firezone-client-ipc.service": "./firezone-client-ipc.service"
+        }
+      },
       "targets": ["deb", "msi"],
       "identifier": "dev.firezone.client",
       "icon": [
