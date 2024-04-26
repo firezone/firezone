@@ -24,6 +24,8 @@ impl Signals {
     }
 }
 
+// The return value is useful on Linux
+#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     // TODO
     Ok(())
