@@ -76,11 +76,11 @@ impl FilterEngineInner {
             // but it might be a bit harder to read
             IpNextHeaderProtocols::Tcp => packet
                 .as_tcp()
-                .is_some_and(|p| self.tcp.contains(&p.get_destination())),
+                .is_some_and(|p| dbg!(self.tcp.contains(&p.get_destination()))),
             IpNextHeaderProtocols::Udp => packet
                 .as_udp()
-                .is_some_and(|p| self.udp.contains(&p.get_destination())),
-            IpNextHeaderProtocols::Icmp => self.icmp,
+                .is_some_and(|p| dbg!(self.udp.contains(&p.get_destination()))),
+            IpNextHeaderProtocols::Icmp | IpNextHeaderProtocols::Icmpv6 => self.icmp,
             _ => false,
         }
     }
@@ -245,7 +245,7 @@ impl ClientOnGateway {
             }
 
             filter_engine.add_filters(filters.flatten());
-            self.filters.insert(resource.ip, filter_engine);
+            self.filters.insert(resource.ip, dbg!(filter_engine));
         }
     }
 
@@ -262,7 +262,7 @@ impl ClientOnGateway {
         if !self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
+            .is_some_and(|(_, filter)| dbg!(filter.is_allowed(&packet.to_immutable())))
         {
             tracing::warn!(%dst, "unallowed packet");
             return Err(connlib_shared::Error::InvalidDst);
@@ -709,13 +709,15 @@ mod proptests {
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,
-        collection, prop_oneof,
+        collection,
+        prelude::ProptestConfig,
+        prop_oneof,
         strategy::{Just, Strategy},
     };
     use test_strategy::Arbitrary;
 
-    #[test_strategy::proptest]
-    fn gateway_accepts_any_packet_with_empty_filters(
+    #[test_strategy::proptest(ProptestConfig {max_shrink_iters: 10_000, ..Default::default()})]
+    fn gateway_accepts_packet_with_filters(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
         #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
@@ -733,7 +735,7 @@ mod proptests {
             Protocol::Icmp => icmp_request_packet(src, dest),
         };
 
-        assert!(peer.ensure_allowed(&packet).is_ok());
+        assert!(dbg!(peer.ensure_allowed(&packet)).is_ok());
     }
 
     // Note: for these tests we don't really care that it's a valid host

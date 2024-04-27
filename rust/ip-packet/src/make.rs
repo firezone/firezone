@@ -165,10 +165,11 @@ fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &
 }
 
 fn ipv6_header(src: Ipv6Addr, dst: Ipv6Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {
+    let payload_len = buf.len() as u16 - 40;
     let mut ipv6_packet = MutableIpv6Packet::new(buf).unwrap();
 
     ipv6_packet.set_version(6);
-    ipv6_packet.set_payload_length(16);
+    ipv6_packet.set_payload_length(payload_len);
     ipv6_packet.set_next_header(proto);
     ipv6_packet.set_hop_limit(64);
     ipv6_packet.set_source(src);
