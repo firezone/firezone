@@ -1,5 +1,5 @@
 use crate::messages::{
-    client::ResourceDescriptionCidr, client::ResourceDescriptionDns, ResourceId,
+    client::ResourceDescriptionCidr, client::ResourceDescriptionDns, gateway, ClientId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
@@ -23,6 +23,10 @@ pub fn resource_id() -> impl Strategy<Value = ResourceId> {
     any::<u128>().prop_map(ResourceId::from_u128)
 }
 
+pub fn client_id() -> impl Strategy<Value = ClientId> {
+    any::<u128>().prop_map(ClientId::from_u128)
+}
+
 pub fn resource_name() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
@@ -30,6 +34,28 @@ pub fn resource_name() -> impl Strategy<Value = String> {
 pub fn dns_resource_address() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
+
+// pub fn gateway_resource(
+// ) -> impl Strategy<Value = gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns>> {
+//     (any::<bool>()).prop_map(|is_dns| {
+//         if is_dns {
+//             gateway::ResourceDescription::Dns(gateway::ResolvedResourceDescriptionDns {
+//                 id: todo!(),
+//                 domain: todo!(),
+//                 name: todo!(),
+//                 filters: todo!(),
+//                 addresses: todo!(),
+//             })
+//         } else {
+//             gateway::ResourceDescription::Cidr(gateway::ResourceDescriptionCidr {
+//                 id: todo!(),
+//                 address: todo!(),
+//                 name: todo!(),
+//                 filters: todo!(),
+//             })
+//         }
+//     })
+// }
 
 /// A strategy of IP networks, configurable by the size of the host mask.
 ///

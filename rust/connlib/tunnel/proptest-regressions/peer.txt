@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 313cf7ba9e733d7dfbe6463bc7880a4f70b9f32c578bc7a5ed383b7311ef9d11 # shrinks to input = _GatewayAcceptsAnyPacketWithEmptyFiltersArgs { client_id: ClientId(00000000-0000-0000-0000-000000000000), source_addr: 0.0.0.0, resource_id: ResourceId(00000000-0000-0000-0000-000000000000), resource_addr: Ipv4Network { network_address: 0.0.0.0, netmask: 32 } }

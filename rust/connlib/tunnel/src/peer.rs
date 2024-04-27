@@ -590,12 +590,12 @@ mod tests {
             vec![0; 100],
         );
 
-        peer.expire_resources(&now);
+        peer.expire_resources(now);
 
         assert!(peer.ensure_allowed(&tcp_packet).is_ok());
         assert!(peer.ensure_allowed(&udp_packet).is_ok());
 
-        peer.expire_resources(&then);
+        peer.expire_resources(then);
 
         assert!(matches!(
             peer.ensure_allowed(&tcp_packet),
@@ -603,7 +603,7 @@ mod tests {
         ));
         assert!(peer.ensure_allowed(&udp_packet).is_ok());
 
-        peer.expire_resources(&after_then);
+        peer.expire_resources(after_then);
 
         assert!(matches!(
             peer.ensure_allowed(&tcp_packet),
@@ -876,5 +876,99 @@ mod tests {
 
     fn client_id() -> ClientId {
         "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
+    }
+}
+
+#[cfg(all(test, feature = "proptest"))]
+mod proptests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
+    use connlib_shared::proptest::*;
+    use ip_network::{Ipv4Network, Ipv6Network};
+    use proptest::{arbitrary::any, strategy::Strategy};
+
+    #[test_strategy::proptest]
+    fn gateway_accepts_any_packet_with_empty_filters(
+        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(resource_id())] resource_id: ResourceId,
+        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+    ) {
+        let (src, resource_addr, dest) = config;
+        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        peer.add_resource(resource_addr, resource_id, Vec::new(), None);
+
+        let packet = ip_packet::make::icmp_request_packet(src, dest);
+
+        assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    // Note: for these tests we don't really care that it's a valid host
+    // we only need a host.
+    // If we filter valid hosts it generates too many rejects
+    fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
+        (0u32..2u32.pow(32 - ip.netmask() as u32)).prop_map(move |n| {
+            if ip.netmask() == 32 {
+                ip.network_address()
+            } else {
+                ip.subnets_with_prefix(32)
+                    .nth(n as usize)
+                    .unwrap()
+                    .network_address()
+            }
+        })
+        // .prop_filter("not a valid host", |ip| {
+        //     !ip.is_unspecified() && !ip.is_broadcast()
+        // })
+    }
+
+    // Note: for these tests we don't really care that it's a valid host
+    // we only need a host.
+    // If we filter valid hosts it generates too many rejects
+    fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> {
+        (0u128..2u128.pow(128 - ip.netmask() as u32)).prop_map(move |n| {
+            if ip.netmask() == 128 {
+                ip.network_address()
+            } else {
+                ip.subnets_with_prefix(128)
+                    .nth(n as usize)
+                    .unwrap()
+                    .network_address()
+            }
+        })
+        // .prop_filter("not a valid host", |ip| !ip.is_unspecified())
+    }
+
+    fn source_resource_and_host_within() -> impl Strategy<Value = (IpAddr, IpNetwork, IpAddr)> {
+        any::<bool>().prop_flat_map(|is_v4| {
+            if is_v4 {
+                cidrv4_with_host()
+                    .prop_flat_map(|(net, dst)| {
+                        any::<Ipv4Addr>().prop_map(move |src| (src.into(), net.into(), dst.into()))
+                    })
+                    .boxed()
+            } else {
+                cidrv6_with_host()
+                    .prop_flat_map(|(net, dst)| {
+                        any::<Ipv6Addr>().prop_map(move |src| (src.into(), net.into(), dst.into()))
+                    })
+                    .boxed()
+            }
+        })
+    }
+
+    // max netmask here picked arbitrarily since using max size made the tests run for too long
+    fn cidrv6_with_host() -> impl Strategy<Value = (Ipv6Network, Ipv6Addr)> {
+        (1usize..=8).prop_flat_map(|host_mask| {
+            ip6_network(host_mask)
+                .prop_flat_map(|net| host_v6(net).prop_map(move |host| (net, host)))
+        })
+    }
+
+    fn cidrv4_with_host() -> impl Strategy<Value = (Ipv4Network, Ipv4Addr)> {
+        (1usize..=8).prop_flat_map(|host_mask| {
+            ip4_network(host_mask)
+                .prop_flat_map(|net| host_v4(net).prop_map(move |host| (net, host)))
+        })
     }
 }
