@@ -884,21 +884,34 @@ mod proptests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     use super::*;
-    use connlib_shared::proptest::*;
+    use connlib_shared::{messages::gateway::FilterInner, proptest::*};
     use ip_network::{Ipv4Network, Ipv6Network};
-    use proptest::{arbitrary::any, strategy::Strategy};
+    use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
+    use proptest::{
+        arbitrary::any,
+        collection, prop_oneof,
+        strategy::{Just, Strategy},
+    };
+    use test_strategy::Arbitrary;
 
     #[test_strategy::proptest]
     fn gateway_accepts_any_packet_with_empty_filters(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
         #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(filters_with_protocol())] protocol_config: (Filters, Protocol),
+        #[strategy(any::<u16>())] sport: u16,
     ) {
         let (src, resource_addr, dest) = config;
+        let (filters, protocol) = protocol_config;
         let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
-        peer.add_resource(resource_addr, resource_id, Vec::new(), None);
+        peer.add_resource(resource_addr, resource_id, filters, None);
 
-        let packet = ip_packet::make::icmp_request_packet(src, dest);
+        let packet = match protocol {
+            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, vec![0u8; 100]),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, vec![0u8; 100]),
+            Protocol::Icmp => icmp_request_packet(src, dest),
+        };
 
         assert!(peer.ensure_allowed(&packet).is_ok());
     }
@@ -970,5 +983,60 @@ mod proptests {
             ip4_network(host_mask)
                 .prop_flat_map(|net| host_v4(net).prop_map(move |host| (net, host)))
         })
+    }
+
+    fn filters_with_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
+        filters().prop_flat_map(|f| {
+            (0..f.len()).prop_flat_map(move |i| {
+                // TODO: ????? why was this needed shouuld be able to access f from the inner closure here...
+                // anyways there should be a better way to write this composed strategies
+                (Just(f.clone()), protocol_from_filter(f[i])).prop_map(move |(f, p)| (f, p))
+            })
+        })
+    }
+
+    fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
+        match f {
+            Filter::Udp(FilterInner {
+                port_range_end,
+                port_range_start,
+            }) => (port_range_start..=port_range_end)
+                .prop_map(|dport| Protocol::Udp { dport })
+                .boxed(),
+            Filter::Tcp(FilterInner {
+                port_range_end,
+                port_range_start,
+            }) => (port_range_start..=port_range_end)
+                .prop_map(|dport| Protocol::Tcp { dport })
+                .boxed(),
+            Filter::Icmp => Just(Protocol::Icmp).boxed(),
+        }
+    }
+
+    fn filters() -> impl Strategy<Value = Filters> {
+        collection::vec(
+            prop_oneof![
+                Just(Filter::Icmp),
+                port_range().prop_map(|inner| Filter::Udp(inner)),
+                port_range().prop_map(|inner| Filter::Tcp(inner)),
+            ],
+            0..=100,
+        )
+    }
+
+    fn port_range() -> impl Strategy<Value = FilterInner> {
+        any::<u16>().prop_flat_map(|s| {
+            (s..=u16::MAX).prop_map(move |d| FilterInner {
+                port_range_end: d,
+                port_range_start: s,
+            })
+        })
+    }
+
+    #[derive(Debug, Clone, Copy, Arbitrary)]
+    enum Protocol {
+        Tcp { dport: u16 },
+        Udp { dport: u16 },
+        Icmp,
     }
 }

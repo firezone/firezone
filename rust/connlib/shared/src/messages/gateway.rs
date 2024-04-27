@@ -60,7 +60,7 @@ pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Cidr(ResourceDescriptionCidr),
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum Filter {
     Udp(FilterInner),
@@ -68,7 +68,7 @@ pub enum Filter {
     Icmp,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub struct FilterInner {
     // TODO: we can use a custom deserializer
     // or maybe change the control plane to use start and end would suffice
