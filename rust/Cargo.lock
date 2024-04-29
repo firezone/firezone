@@ -5334,9 +5334,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
+checksum = "c5dce177d0b09fa4f0a5388d15a0ed889b45411ade9406c9aa71dd1fdcb407d0"
 dependencies = [
  "bytes",
  "crc",
@@ -5833,8 +5833,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.5.0"
-source = "git+https://github.com/firezone/str0m?branch=main#44b616945145033ade739f30cdce004728011619"
+version = "0.5.1"
+source = "git+https://github.com/firezone/str0m?branch=main#49b9ac85679fdcdd050dad856bc5df63616fa065"
 dependencies = [
  "combine",
  "crc",
@@ -6124,9 +6124,9 @@ checksum = "e1fc403891a21bcfb7c37834ba66a547a8f402146eba7265b5a6d88059c9ff2f"
 
 [[package]]
 name = "tauri"
-version = "1.6.1"
+version = "1.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f078117725e36d55d29fafcbb4b1e909073807ca328ae8deb8c0b3843aac0fed"
+checksum = "047aefcc7721bfb8024a9bc39d4719112262610502de7a224fa62c4570cd78d4"
 dependencies = [
  "anyhow",
  "cocoa 0.24.1",
@@ -6139,7 +6139,7 @@ dependencies = [
  "glib",
  "glob",
  "gtk",
- "heck 0.4.1",
+ "heck 0.5.0",
  "http 0.2.12",
  "ignore",
  "nix 0.26.4",
@@ -6772,9 +6772,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-panic"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaf80030ce049691c9922d75be63cadf345110a245cd4581833c66f87c02ad25"
+checksum = "7bf1298a179837099f9309243af3b554e840f7f67f65e9f55294913299bd4cc5"
 dependencies = [
  "tracing",
  "tracing-subscriber",

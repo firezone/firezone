@@ -56,7 +56,7 @@ android {
         targetSdk = 34
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:automatic-version
-        versionName = "1.0.2"
+        versionName = "1.0.1"
         multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
