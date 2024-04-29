@@ -76,10 +76,10 @@ impl FilterEngineInner {
             // but it might be a bit harder to read
             IpNextHeaderProtocols::Tcp => packet
                 .as_tcp()
-                .is_some_and(|p| dbg!(self.tcp.contains(&p.get_destination()))),
+                .is_some_and(|p| self.tcp.contains(&p.get_destination())),
             IpNextHeaderProtocols::Udp => packet
                 .as_udp()
-                .is_some_and(|p| dbg!(self.udp.contains(&p.get_destination()))),
+                .is_some_and(|p| self.udp.contains(&p.get_destination())),
             IpNextHeaderProtocols::Icmp | IpNextHeaderProtocols::Icmpv6 => self.icmp,
             _ => false,
         }
@@ -245,7 +245,7 @@ impl ClientOnGateway {
             }
 
             filter_engine.add_filters(filters.flatten());
-            self.filters.insert(resource.ip, dbg!(filter_engine));
+            self.filters.insert(resource.ip, filter_engine);
         }
     }
 
@@ -262,7 +262,7 @@ impl ClientOnGateway {
         if !self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| dbg!(filter.is_allowed(&packet.to_immutable())))
+            .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
         {
             tracing::warn!(%dst, "unallowed packet");
             return Err(connlib_shared::Error::InvalidDst);
@@ -735,7 +735,7 @@ mod proptests {
             Protocol::Icmp => icmp_request_packet(src, dest),
         };
 
-        assert!(dbg!(peer.ensure_allowed(&packet)).is_ok());
+        assert!(peer.ensure_allowed(&packet).is_ok());
     }
 
     // Note: for these tests we don't really care that it's a valid host
@@ -824,7 +824,7 @@ mod proptests {
     }
 
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
-        match dbg!(f) {
+        match f {
             Filter::Udp(FilterInner {
                 port_range_end,
                 port_range_start,
