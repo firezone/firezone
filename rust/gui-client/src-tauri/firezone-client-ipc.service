@@ -6,6 +6,7 @@ AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 LockPersonality=true
+LogsDirectory=dev.firezone.client
 MemoryDenyWriteExecute=true
 NoNewPrivileges=true
 PrivateMounts=true
@@ -35,6 +36,7 @@ SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal 
 UMask=077
 
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
+Environment="LOG_DIR=/var/log/dev.firezone.client"
 Environment="RUST_LOG=info"
 
 ExecStart=firezone-client-ipc
