@@ -35,28 +35,6 @@ pub fn dns_resource_address() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
 
-// pub fn gateway_resource(
-// ) -> impl Strategy<Value = gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns>> {
-//     (any::<bool>()).prop_map(|is_dns| {
-//         if is_dns {
-//             gateway::ResourceDescription::Dns(gateway::ResolvedResourceDescriptionDns {
-//                 id: todo!(),
-//                 domain: todo!(),
-//                 name: todo!(),
-//                 filters: todo!(),
-//                 addresses: todo!(),
-//             })
-//         } else {
-//             gateway::ResourceDescription::Cidr(gateway::ResourceDescriptionCidr {
-//                 id: todo!(),
-//                 address: todo!(),
-//                 name: todo!(),
-//                 filters: todo!(),
-//             })
-//         }
-//     })
-// }
-
 /// A strategy of IP networks, configurable by the size of the host mask.
 ///
 /// For the full range of networks, specify 0.

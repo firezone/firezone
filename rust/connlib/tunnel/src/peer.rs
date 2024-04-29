@@ -809,16 +809,22 @@ mod proptests {
 
     fn filters_with_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
         filters().prop_flat_map(|f| {
-            (0..f.len()).prop_flat_map(move |i| {
-                // TODO: ????? why was this needed shouuld be able to access f from the inner closure here...
-                // anyways there should be a better way to write this composed strategies
-                (Just(f.clone()), protocol_from_filter(f[i])).prop_map(move |(f, p)| (f, p))
-            })
+            if f.is_empty() {
+                any::<Protocol>().prop_map(|p| (vec![], p)).boxed()
+            } else {
+                (0..f.len())
+                    .prop_flat_map(move |i| {
+                        // TODO: ????? why was this needed shouuld be able to access f from the inner closure here...
+                        // anyways there should be a better way to write this composed strategies
+                        (Just(f.clone()), protocol_from_filter(f[i])).prop_map(move |(f, p)| (f, p))
+                    })
+                    .boxed()
+            }
         })
     }
 
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
-        match f {
+        match dbg!(f) {
             Filter::Udp(FilterInner {
                 port_range_end,
                 port_range_start,
@@ -849,8 +855,8 @@ mod proptests {
     fn port_range() -> impl Strategy<Value = FilterInner> {
         any::<u16>().prop_flat_map(|s| {
             (s..=u16::MAX).prop_map(move |d| FilterInner {
-                port_range_end: d,
                 port_range_start: s,
+                port_range_end: d,
             })
         })
     }
