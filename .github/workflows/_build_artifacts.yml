@@ -40,7 +40,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.1"
+  VERSION: "1.0.2"
 
 permissions:
   # write permission is required to create a github release
@@ -175,7 +175,7 @@ jobs:
             image_name: http-test-server
     env:
       # mark:automatic-version
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_1.0.1_${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_1.0.2_${{ matrix.arch.shortname }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
