@@ -474,6 +474,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
     Ok(())
 }
 
+// Allow dead code because `UpdateNotificationClicked` doesn't work on Linux yet
+#[allow(dead_code)]
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
@@ -624,7 +626,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    os::open_url(&self.app, &url)?;
+                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
                     self.app
                         .get_window("welcome")
                         .context("Couldn't get handle to Welcome window")?
@@ -687,12 +689,7 @@ impl Controller {
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
                 // `tauri::api::shell::open`
-                os::show_clickable_notification(
-                    &title,
-                    "Click here to download the new version.",
-                    self.ctlr_tx.clone(),
-                    Req::UpdateNotificationClicked(download_url),
-                )?;
+                os::show_update_notification(&title, &download_url)?;
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
