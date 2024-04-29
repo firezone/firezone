@@ -1,8 +1,104 @@
-# How Firezone DNS Works
+# How DNS Routing Works
 
-_Note: This blog post describes in detail how Firezone DNS works in all its
-complexity. If you're looking for a more high-level reference, read the
-[docs page on the subject instead](/kb/deploy/dns)._
+Firezone's DNS routing system works a bit differently than one might expect. One
+question we commonly get from users new to Firezone is, "why do my DNS Resources
+resolve to a different IP address with Firezone enabled?". The answer is that
+Firezone includes a sophisticated DNS routing system that was designed to
+address some of the security pitfalls organizations face when deploying DNS
+across their workforce.
+
+This post aims to explain how DNS works in Firezone, why it's designed the way
+it is, and how that keeps your organization secure.
+
+## A brief history lesson
+
+To grasp some of the security issues that can arise from poorly configured DNS,
+we first need to understand the problem DNS was built to solve. Time for a
+history lesson!
+
+DNS was originally conceived to solve a classic scalability problem.
+
+Hosts on the ARPANET (the precursor to the modern internet) were numbered using
+IPv4 addresses. To avoid having to remember the IP address for each host you
+wanted to connect to, a centralized database was used to store a mapping between
+every host's IPv4 address and a human-friendly hostname.
+
+Makes sense so far, right? But where was this database stored, and how was it
+updated?
+
+The database for this early system was literally just a single text file (aptly
+named `HOSTS.TXT`) stored on a central system managed jointly by the Stanford
+Research Institute (SRI) and Network Information Center (NIC) [1].
+
+<p className="text-xs text-center mx-auto">
+  Figure 1: Artist's rendition of the original HOSTS.TXT file
+</p>
+
+Whenever an ARPANET member organization wanted to add a host to the file or
+update its IP address, it needed to contact the SRI (during standard business
+hours!) and file a request containing the updated information.
+
+The system worked great when there were only a handful of hosts to maintain. But
+as you might imagine, it quickly started to become untenable as more and more
+organizations connected their machines to the ARPANET.
+
+The problem was especially apparent with computer mail (known today as email).
+The `user@host.domain` system had not been standardized yet, so computer mail
+providers resorted to creating "an increasingly large and irregular set of
+methods for identifying the location of a mailbox" [2].
+
+It was clear a solution was needed, and fast -- the ARPANET was quickly growing.
+Members of the Internet Engineering Task Force (IETF) gathered to discuss
+possible solutions to the problem.
+
+## Enter the Domain Name System (DNS)
+
+Over the course of several meetings, IETF engineers devised a clever solution to
+the scalability problem they were facing: instead of storing hostnames and IPs
+in a single, central `HOSTS.TXT` file, they would instead be split and stored
+across multiple "Name Servers", each one responsible for maintaining hosts that
+belonged to a particular network, or "Domain".
+
+This is in fact where DNS gets its name -- it is quite literally the Domain Name
+System.
+
+### How DNS works
+
+So how does it work?
+
+To achieve the distributed database design the IETF engineers came up with, DNS
+uses a _recursive resolver_ mechanism which, in a simplified way, works as
+follows:
+
+<p className="text-xs text-center mx-auto">Figure 2: How DNS works</p>
+
+1. Each host specifies a DNS nameserver to use for queries.
+1. When an application on the machine wants to connect to another host, it asks
+   the nameserver what the address of the other host is.
+1. If the nameserver knows the address (perhaps another host recently asked it),
+   it responds with what it knows.
+1. If it doesn't know the address, well it turns out the nameserver host itself
+   has _another_ nameserver defined. So it asks this nameserver. If the next
+   nameserver doesn't know the address, the process is repeated until the query
+   lands at what are known as a _root server_.
+
+Root Servers, in some sense, replace the original master hosts file that the NIC
+maintained in the early ARPA Internet. But with one big difference: for a query
+to reach a root server, it has first traversed a tree-like structure of leaf
+resolvers.
+
+This system lends itself well to deduplication: if two or more hosts on the ARPA
+Internet queried for the same name, the reply would come from their nearest
+common ancestor, and not a root server.
+
+The email addressing problem above is then solved by prepending the user's name
+followed by an `@` character, like so: `USER@HOST.DOMAIN`.
+
+### Security issues with DNS
+
+Over the years, DNS has seen its fair share of security issues. 
+
+## How Split DNS solves these problems
 
 When a user signs in, the Firezone Client configures its host operating system
 to use a special, lightweight DNS proxy running inside the Client for all DNS
@@ -64,3 +160,10 @@ resolver(s) instead.
 This means that Clients are automatically configured for Split DNS in Firezone
 -- no other configuration is necessary other than adding the desired Resources
 in the admin portal.
+
+### References
+
+1.
+1. _Domain Names - Concepts and Facilities_,
+   https://datatracker.ietf.org/doc/html/rfc882
+1.
