@@ -184,12 +184,16 @@ pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
     rt.block_on(async { ipc_listen(cli).await })
 }
 
+pub fn firezone_group() -> Result<nix::unistd::Group> {
+    let group = nix::unistd::Group::from_name("firezone")
+        .context("can't get group by name")?
+        .context("firezone group must exist on the system")?;
+    Ok(group)
+}
+
 async fn ipc_listen(cli: Cli) -> Result<()> {
     // Find the `firezone` group
-    let fz_gid = nix::unistd::Group::from_name("firezone")
-        .context("can't get group by name")?
-        .context("firezone group must exist on the system")?
-        .gid;
+    let fz_gid = firezone_group()?.gid;
 
     // Remove the socket if a previous run left it there
     let sock_path = sock_path();

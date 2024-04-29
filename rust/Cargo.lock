@@ -1909,6 +1909,7 @@ dependencies = [
  "keyring",
  "minidumper",
  "native-dialog",
+ "nix 0.28.0",
  "output_vt100",
  "rand 0.8.5",
  "reqwest",

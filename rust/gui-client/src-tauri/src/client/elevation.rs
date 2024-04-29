@@ -2,17 +2,24 @@ pub(crate) use imp::{check, elevate};
 
 #[cfg(target_os = "linux")]
 mod imp {
+    use crate::client::gui::Error;
     use anyhow::{Context, Result};
 
     #[allow(clippy::print_stderr)]
-    pub(crate) fn check() -> Result<bool> {
+    pub(crate) fn check() -> Result<bool, Error> {
         // Must use `eprintln` here because `tracing` won't be initialized yet.
-
         let user = std::env::var("USER").context("USER env var should be set")?;
         if user == "root" {
             eprintln!("Firezone must run as a normal user, not with `sudo` or as root");
             return Ok(false);
         }
+
+        let fz_gid = firezone_headless_client::imp::firezone_group()?.gid;
+        let groups = nix::unistd::getgroups().context("`nix::unistd::getgroups`")?;
+        if !groups.contains(&fz_gid) {
+            return Err(Error::UserNotInFirezoneGroup);
+        }
+
         Ok(true)
     }
 
@@ -26,7 +33,7 @@ mod imp {
 mod imp {
     use anyhow::Result;
 
-    pub(crate) fn check() -> Result<bool> {
+    pub(crate) fn check() -> Result<bool, crate::client::gui::Error> {
         Ok(true)
     }
 
@@ -44,7 +51,7 @@ mod imp {
     /// Check if we have elevated privileges, extract wintun.dll if needed.
     ///
     /// Returns true if already elevated, false if not elevated, error if we can't be sure
-    pub(crate) fn check() -> Result<bool> {
+    pub(crate) fn check() -> Result<bool, crate::client::gui::Error> {
         // Almost the same as the code in tun_windows.rs in connlib
         const TUNNEL_UUID: &str = "72228ef4-cb84-4ca5-a4e6-3f8636e75757";
         const TUNNEL_NAME: &str = "Firezone Elevation Check";
