@@ -44,14 +44,14 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use crate::client::wintun_install;
+    use crate::client::{gui::Error, wintun_install};
     use anyhow::{Context, Result};
     use std::{os::windows::process::CommandExt, str::FromStr};
 
     /// Check if we have elevated privileges, extract wintun.dll if needed.
     ///
     /// Returns true if already elevated, false if not elevated, error if we can't be sure
-    pub(crate) fn check() -> Result<bool, crate::client::gui::Error> {
+    pub(crate) fn check() -> Result<bool, Error> {
         // Almost the same as the code in tun_windows.rs in connlib
         const TUNNEL_UUID: &str = "72228ef4-cb84-4ca5-a4e6-3f8636e75757";
         const TUNNEL_NAME: &str = "Firezone Elevation Check";
@@ -59,7 +59,11 @@ mod imp {
         let path = match wintun_install::ensure_dll() {
             Ok(x) => x,
             Err(wintun_install::Error::PermissionDenied) => return Ok(false),
-            Err(e) => return Err(e).context("Failed to ensure wintun.dll is installed"),
+            Err(e) => {
+                return Err(e)
+                    .context("Failed to ensure wintun.dll is installed")
+                    .map_err(Error::Other)
+            }
         };
 
         // SAFETY: Unsafe needed because we're loading a DLL from disk and it has arbitrary C code in it.
