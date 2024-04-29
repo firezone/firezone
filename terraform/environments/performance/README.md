@@ -3,7 +3,7 @@
 This directory contains terraform examples for spinning up VMs on Azure to be
 used for performance testing.
 
-This is primarily meant to be used internall by the Firezone Team at this time,
+This is primarily meant to be used internal by the Firezone Team at this time,
 but anyone can use the scripts here by changing the variables in a local
 `terraform.tfvars` as needed.
 
