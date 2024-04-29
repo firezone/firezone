@@ -1,16 +1,19 @@
 use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
-use tauri::Manager;
 
 /// Since clickable notifications don't work on Linux yet, the update text
 /// must be different on different platforms
-pub(crate) fn show_update_notification(title: &str, download_url: &url::Url) -> Result<()> {
+pub(crate) fn show_update_notification(
+    ctlr_tx: CtlrTx,
+    title: &str,
+    download_url: url::Url,
+) -> Result<()> {
     show_clickable_notification(
-        &title,
+        title,
         "Click here to download the new version.",
-        self.ctlr_tx.clone(),
-        ControllerRequest::UpdatNotificationClicked(download_url),
+        ctlr_tx,
+        ControllerRequest::UpdateNotificationClicked(download_url),
     )?;
     Ok(())
 }

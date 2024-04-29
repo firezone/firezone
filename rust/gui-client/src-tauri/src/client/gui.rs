@@ -677,7 +677,7 @@ impl Controller {
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
                 // `tauri::api::shell::open`
-                os::show_update_notification(&title, &release.download_url)?;
+                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
