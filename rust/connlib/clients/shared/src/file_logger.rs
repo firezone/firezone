@@ -120,8 +120,27 @@ impl Inner {
         }
 
         let file = new_file?;
+        Self::set_permissions(&file)?;
 
         Ok((file, filename))
+    }
+
+    /// Make the logs group-readable so that the GUI, running as a user in the `firezone`
+    /// group, can zip them up when exporting logs.
+    #[cfg(target_os = "linux")]
+    fn set_permissions(f: &fs::File) -> io::Result<()> {
+        // I would put this at the top of the file, but it only exists on Linux
+        use std::os::unix::fs::PermissionsExt;
+        // user read/write, group read-only, others nothing
+        let perms = fs::Permissions::from_mode(0o640);
+        f.set_permissions(perms)?;
+        Ok(())
+    }
+
+    /// Does nothing on non-Linux systems
+    #[cfg(not(target_os = "linux"))]
+    fn set_permissions(f: &fs::File) -> io::Result<()> {
+        Ok(())
     }
 }
 
