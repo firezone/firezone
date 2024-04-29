@@ -8,7 +8,7 @@ pub(crate) fn show_update_notification(
     title: &str,
     download_url: url::Url,
 ) -> Result<()> {
-    show_notification(title, &download_url.to_string())?;
+    show_notification(title, download_url.to_string().as_ref())?;
     Ok(())
 }
 
