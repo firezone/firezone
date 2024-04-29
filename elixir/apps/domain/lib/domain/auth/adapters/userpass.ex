@@ -6,7 +6,7 @@ defmodule Domain.Auth.Adapters.UserPass do
   use Supervisor
   alias Domain.Repo
   alias Domain.Auth.{Identity, Provider, Adapter, Context}
-  alias Domain.Auth.Adapters.UserPass.Password
+  alias Domain.Auth.Adapters.UserPass.IdentityState
 
   @behaviour Adapter
   @behaviour Adapter.Local
@@ -42,8 +42,8 @@ defmodule Domain.Auth.Adapters.UserPass do
     data = Map.get(changeset.data, :provider_virtual_state) || %{}
     attrs = Ecto.Changeset.get_change(changeset, :provider_virtual_state) || %{}
 
-    Ecto.embedded_load(Password, data, :json)
-    |> Password.Changeset.changeset(attrs)
+    Ecto.embedded_load(IdentityState, data, :json)
+    |> IdentityState.Changeset.changeset(attrs)
     |> case do
       %{valid?: false} = nested_changeset ->
         {changeset, _original_type} =
@@ -116,4 +116,7 @@ defmodule Domain.Auth.Adapters.UserPass do
         {:error, reason}
     end
   end
+
+  @impl true
+  def load(provider), do: provider
 end

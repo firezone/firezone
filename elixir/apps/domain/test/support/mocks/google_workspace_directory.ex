@@ -8,7 +8,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
   end
 
   def mock_users_list_endpoint(bypass, users \\ nil) do
-    users_list_endpoint_path = "/admin/directory/v1/users"
+    users_list_endpoint_path = "admin/directory/v1/users"
 
     resp = %{
       "kind" => "admin#directory#users",
@@ -193,13 +193,13 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end
 
   def mock_organization_units_list_endpoint(bypass, org_units \\ nil) do
-    org_units_list_endpoint_path = "/admin/directory/v1/customer/my_customer/orgunits"
+    org_units_list_endpoint_path = "admin/directory/v1/customer/my_customer/orgunits"
 
     resp = %{
       "kind" => "admin#directory#org_units",
@@ -229,13 +229,13 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end
 
   def mock_groups_list_endpoint(bypass, groups \\ nil) do
-    groups_list_endpoint_path = "/admin/directory/v1/groups"
+    groups_list_endpoint_path = "admin/directory/v1/groups"
 
     resp = %{
       "kind" => "admin#directory#groups",
@@ -296,13 +296,13 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end
 
   def mock_group_members_list_endpoint(bypass, group_id, members \\ nil) do
-    group_members_list_endpoint_path = "/admin/directory/v1/groups/#{group_id}/members"
+    group_members_list_endpoint_path = "admin/directory/v1/groups/#{group_id}/members"
 
     resp = %{
       "kind" => "admin#directory#members",
@@ -366,7 +366,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end

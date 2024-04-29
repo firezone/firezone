@@ -124,6 +124,9 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
 
       updated_provider = Repo.get!(Domain.Auth.Provider, provider.id)
       assert updated_provider.last_synced_at != provider.last_synced_at
+
+      assert_receive {:bypass_request, %{request_path: "/v1.0/groups"} = conn}
+      assert {"authorization", "Bearer OIDC_ACCESS_TOKEN"} in conn.req_headers
     end
 
     test "does not crash on endpoint errors" do

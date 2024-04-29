@@ -376,6 +376,14 @@ defmodule Domain.Repo.Changeset do
   # Polymorphic embeds
 
   @doc """
+  Loads polymorphic embed `data` into a struct of the given `schema`.
+
+  If the data is already a `schema` struct, it is returned as is.
+  """
+  def load_polymorphic_embed(_schema, %_loaded_schema{} = data), do: data
+  def load_polymorphic_embed(schema, data), do: Ecto.embedded_load(schema, data, :json)
+
+  @doc """
   Changes `Ecto.Changeset` struct to convert one of `:map` fields to an embedded schema.
 
   If embedded changeset was valid, changes would be put back as map to the changeset field
@@ -409,7 +417,7 @@ defmodule Domain.Repo.Changeset do
     required? = Keyword.get(opts, :required, false)
 
     # We only support singular polymorphic embeds for now
-    :map = Map.get(changeset.types, field)
+    true = Map.get(changeset.types, field) in [:map, Domain.Types.EncryptedMap]
 
     if field_invalid?(changeset, field) do
       changeset
@@ -420,9 +428,16 @@ defmodule Domain.Repo.Changeset do
       if required? and is_nil(changes) and empty?(data) do
         add_error(changeset, field, "can't be blank", validation: :required)
       else
-        %Changeset{} = nested_changeset = on_cast.(data || %{}, changes || %{})
-        {changeset, original_type} = inject_embedded_changeset(changeset, field, nested_changeset)
-        prepare_changes(changeset, &dump(&1, field, original_type))
+        case on_cast.(data || %{}, changes || %{}) do
+          %Changeset{} = nested_changeset ->
+            {changeset, original_type} =
+              inject_embedded_changeset(changeset, field, nested_changeset)
+
+            prepare_changes(changeset, &dump(&1, field, original_type))
+
+          _schema ->
+            prepare_changes(changeset, &dump(&1, field))
+        end
       end
     end
   end
@@ -471,6 +486,23 @@ defmodule Domain.Repo.Changeset do
     changeset = %{changeset | types: Map.put(changeset.types, field, original_type)}
 
     put_change(changeset, field, map)
+  end
+
+  defp dump(changeset, field) do
+    changeset
+    |> get_change(field)
+    |> case do
+      %{__meta__: _meta} = schema ->
+        map =
+          schema
+          |> Ecto.embedded_dump(:json)
+          |> atom_keys_to_string()
+
+        put_change(changeset, field, map)
+
+      _map ->
+        changeset
+    end
   end
 
   # We dump atoms to strings because if we persist to Postgres and read it,

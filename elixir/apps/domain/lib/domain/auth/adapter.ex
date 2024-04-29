@@ -31,6 +31,11 @@ defmodule Domain.Auth.Adapter do
   @callback capabilities() :: [capability()]
 
   @doc """
+  Loads the polymorphic provider data and puts it back to the provider struct.
+  """
+  @callback load(%Provider{}) :: %Provider{}
+
+  @doc """
   Applies provider-specific validations for the Identity changeset before it's created.
   """
   @callback identity_changeset(%Provider{}, %Ecto.Changeset{data: %Identity{}}) ::

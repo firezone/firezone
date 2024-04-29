@@ -114,4 +114,7 @@ defmodule Domain.Auth.Adapters.Email do
       {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
     end
   end
+
+  @impl true
+  def load(provider), do: provider
 end

@@ -46,6 +46,7 @@ defmodule Domain.MixProject do
       {:postgrex, "~> 0.16"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
+      {:cloak_ecto, "~> 1.3"},
 
       # PubSub and Presence
       {:phoenix, "~> 1.7"},

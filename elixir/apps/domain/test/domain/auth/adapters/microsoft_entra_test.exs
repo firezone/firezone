@@ -84,26 +84,32 @@ defmodule Domain.Auth.Adapters.MicrosoftEntraTest do
       assert provider.name == attrs.name
       assert provider.adapter == attrs.adapter
 
-      assert provider.adapter_config == %{
-               "scope" =>
-                 Enum.join(
-                   [
-                     "openid",
-                     "email",
-                     "profile",
-                     "offline_access",
-                     "Group.Read.All",
-                     "GroupMember.Read.All",
-                     "User.Read",
-                     "User.Read.All"
-                   ],
-                   " "
-                 ),
+      scope =
+        Enum.join(
+          [
+            "openid",
+            "email",
+            "profile",
+            "offline_access",
+            "Group.Read.All",
+            "GroupMember.Read.All",
+            "User.Read",
+            "User.Read.All"
+          ],
+          " "
+        )
+
+      assert %{
+               "scope" => ^scope,
                "response_type" => "code",
                "client_id" => "client_id",
-               "client_secret" => "client_secret",
-               "discovery_document_uri" => discovery_document_url
-             }
+               "client_secret" => client_secret,
+               "discovery_document_uri" => ^discovery_document_url
+             } = provider.adapter_config
+
+      assert client_secret
+             |> Base.decode64!()
+             |> Domain.Vault.decrypt!() == "client_secret"
     end
   end
 

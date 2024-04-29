@@ -54,7 +54,7 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end
@@ -90,7 +90,7 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end
@@ -136,7 +136,7 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url("http://localhost:#{bypass.port}/")
+    override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
   end

@@ -6,7 +6,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
   end
 
   def mock_instance_metadata_id_endpoint(bypass, id \\ Ecto.UUID.generate()) do
-    token_endpoint_path = "/instance/id"
+    token_endpoint_path = "instance/id"
 
     test_pid = self()
 
@@ -16,13 +16,13 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
       Plug.Conn.send_resp(conn, 200, id)
     end)
 
-    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
+    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}")
 
     bypass
   end
 
   def mock_instance_metadata_zone_endpoint(bypass, zone \\ "projects/001001/zones/us-east-1") do
-    token_endpoint_path = "/instance/zone"
+    token_endpoint_path = "instance/zone"
 
     test_pid = self()
 
@@ -32,13 +32,13 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
       Plug.Conn.send_resp(conn, 200, zone)
     end)
 
-    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
+    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}")
 
     bypass
   end
 
   def mock_instance_metadata_token_endpoint(bypass, resp \\ nil) do
-    token_endpoint_path = "/instance/service-accounts/default/token"
+    token_endpoint_path = "instance/service-accounts/default/token"
 
     resp =
       resp ||
@@ -56,7 +56,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
 
-    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
+    override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}")
 
     bypass
   end

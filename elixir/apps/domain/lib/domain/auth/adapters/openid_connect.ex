@@ -3,7 +3,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   alias Domain.Repo
   alias Domain.Actors
   alias Domain.Auth.{Identity, Provider, Adapter}
-  alias Domain.Auth.Adapters.OpenIDConnect.{Settings, State, PKCE}
+  alias Domain.Auth.Adapters.OpenIDConnect.{ProviderConfig, ProviderState, IdentityState, PKCE}
   require Logger
 
   @behaviour Adapter
@@ -35,6 +35,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     |> Domain.Repo.Changeset.trim_change(:provider_identifier)
     |> Domain.Repo.Changeset.copy_change(:provider_virtual_state, :provider_state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
+    |> Domain.Repo.Changeset.cast_polymorphic_embed(:provider_state,
+      with: fn current_attrs, _attrs ->
+        Ecto.embedded_load(IdentityState, current_attrs, :json)
+      end
+    )
   end
 
   @impl true
@@ -43,8 +48,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     |> Domain.Repo.Changeset.cast_polymorphic_embed(:adapter_config,
       required: true,
       with: fn current_attrs, attrs ->
-        Ecto.embedded_load(Settings, current_attrs, :json)
-        |> Settings.Changeset.changeset(attrs)
+        Ecto.embedded_load(ProviderConfig, current_attrs, :json)
+        |> ProviderConfig.Changeset.changeset(attrs)
+      end
+    )
+    |> Domain.Repo.Changeset.cast_polymorphic_embed(:adapter_state,
+      with: fn current_attrs, _attrs ->
+        Ecto.embedded_load(ProviderState, current_attrs, :json)
       end
     )
   end
@@ -61,10 +71,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
   def authorization_uri(%Provider{} = provider, redirect_uri, params \\ %{})
       when is_binary(redirect_uri) do
-    config = config_for_provider(provider)
+    provider = load(provider)
 
     verifier = PKCE.code_verifier()
-    state = State.new()
+    state = authorization_uri_state()
 
     params =
       Map.merge(
@@ -77,13 +87,19 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         params
       )
 
-    with {:ok, uri} <- OpenIDConnect.authorization_uri(config, redirect_uri, params) do
+    with {:ok, uri} <-
+           OpenIDConnect.authorization_uri(provider.adapter_config, redirect_uri, params) do
       {:ok, uri, {state, verifier}}
     end
   end
 
+  @doc false
+  def authorization_uri_state do
+    Domain.Crypto.random_token(32)
+  end
+
   def ensure_states_equal(state1, state2) do
-    if State.equal?(state1, state2) do
+    if Plug.Crypto.secure_compare(state1, state2) do
       :ok
     else
       {:error, :invalid_state}
@@ -92,9 +108,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
   @impl true
   def sign_out(%Provider{} = provider, %Identity{} = identity, redirect_url) do
-    config = config_for_provider(provider)
+    provider = load(provider)
 
-    case OpenIDConnect.end_session_uri(config, %{
+    case OpenIDConnect.end_session_uri(provider.adapter_config, %{
            id_token_hint: identity.provider_state["id_token"],
            post_logout_redirect_uri: redirect_url
          }) do
@@ -112,6 +128,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {redirect_uri, code_verifier, code},
         identifier_claim \\ "sub"
       ) do
+    provider = load(provider)
+
     token_params = %{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
@@ -119,25 +137,25 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       code_verifier: code_verifier
     }
 
-    with {:ok, provider_identifier, identity_state} <-
+    with {:ok, provider_identifier, identity_provider_state} <-
            fetch_state(provider, token_params, identifier_claim) do
       Identity.Query.not_disabled()
       |> Identity.Query.by_provider_id(provider.id)
       |> maybe_by_provider_claims(
         provider,
         provider_identifier,
-        identity_state
+        identity_provider_state
       )
       |> Repo.fetch_and_update(Identity.Query,
         with: fn identity ->
-          Identity.Changeset.update_identity_provider_state(identity, identity_state)
+          Identity.Changeset.update_identity_provider_state(identity, identity_provider_state)
           # if an email was used in provider identifier and it's replaced by sub claim
           # later, we want to use the ID from sub claim as provider_identifier
           |> Ecto.Changeset.put_change(:provider_identifier, provider_identifier)
         end
       )
       |> case do
-        {:ok, identity} -> {:ok, identity, identity_state["expires_at"]}
+        {:ok, identity} -> {:ok, identity, identity_provider_state["expires_at"]}
         {:error, reason} -> {:error, reason}
       end
     else
@@ -151,13 +169,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
          queryable,
          provider,
          provider_identifier,
-         identity_state
+         identity_provider_state
        ) do
     if provider.provisioner == :manual do
       Identity.Query.by_provider_claims(
         queryable,
         provider_identifier,
-        identity_state["claims"]["email"] || identity_state["userinfo"]["email"]
+        identity_provider_state["claims"]["email"] || identity_provider_state["userinfo"]["email"]
       )
     else
       Identity.Query.by_provider_identifier(queryable, provider_identifier)
@@ -170,6 +188,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {redirect_uri, code_verifier, code},
         identifier_claim \\ "sub"
       ) do
+    provider = load(provider)
+
     token_params = %{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
@@ -177,33 +197,40 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       code_verifier: code_verifier
     }
 
-    with {:ok, provider_identifier, identity_state} <-
+    with {:ok, provider_identifier, identity_provider_state} <-
            fetch_state(provider, token_params, identifier_claim) do
       Domain.Auth.upsert_identity(actor, provider, %{
         provider_identifier: provider_identifier,
-        provider_virtual_state: identity_state
+        provider_virtual_state: identity_provider_state
       })
     end
   end
 
   def refresh_access_token(%Provider{} = provider) do
+    provider = load(provider)
+
     token_params = %{
       grant_type: "refresh_token",
-      refresh_token: provider.adapter_state["refresh_token"]
+      refresh_token: provider.adapter_state.refresh_token
     }
 
-    with {:ok, _provider_identifier, adapter_state} <-
+    with {:ok, _provider_identifier, provider_adapter_state} <-
            fetch_state(provider, token_params) do
       Provider.Query.not_deleted()
       |> Provider.Query.by_id(provider.id)
       |> Repo.fetch_and_update(Provider.Query,
         with: fn provider ->
           adapter_state_updates =
-            Map.take(adapter_state, ["expires_at", "access_token", "userinfo", "claims"])
+            Map.take(provider_adapter_state, [
+              "expires_at",
+              "access_token",
+              "userinfo",
+              "claims"
+            ])
 
-          adapter_state = Map.merge(provider.adapter_state, adapter_state_updates)
-
-          Provider.Changeset.update(provider, %{adapter_state: adapter_state})
+          # this state is encrypted at the schema level
+          provider_adapter_state = Map.merge(provider.adapter_state, adapter_state_updates)
+          Provider.Changeset.update(provider, %{adapter_state: provider_adapter_state})
         end
       )
     else
@@ -239,11 +266,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   defp fetch_state(%Provider{} = provider, token_params, identifier_claim \\ "sub") do
-    config = config_for_provider(provider)
-
-    with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
-         {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
-         {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
+    with {:ok, tokens} <- OpenIDConnect.fetch_tokens(provider.adapter_config, token_params),
+         {:ok, claims} <- OpenIDConnect.verify(provider.adapter_config, tokens["id_token"]),
+         {:ok, userinfo} <-
+           OpenIDConnect.fetch_userinfo(provider.adapter_config, tokens["access_token"]) do
       expires_at =
         cond do
           not is_nil(tokens["expires_in"]) ->
@@ -292,8 +318,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
-  defp config_for_provider(%Provider{} = provider) do
-    Ecto.embedded_load(Settings, provider.adapter_config, :json)
-    |> Map.from_struct()
+  @impl true
+  def load(%Provider{adapter_config: adapter_config, adapter_state: adapter_state} = provider) do
+    %{
+      provider
+      | adapter_config: Repo.Changeset.load_polymorphic_embed(ProviderConfig, adapter_config),
+        adapter_state: Repo.Changeset.load_polymorphic_embed(ProviderState, adapter_state)
+    }
   end
 end

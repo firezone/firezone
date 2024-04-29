@@ -1,4 +1,4 @@
-defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
+defmodule Domain.Auth.Adapters.OpenIDConnect.ProviderConfig.Changeset do
   use Domain, :changeset
 
   @fields ~w[scope
@@ -13,6 +13,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
     |> validate_discovery_document_uri()
     |> validate_inclusion(:response_type, ~w[code])
     |> validate_format(:scope, ~r/openid/, message: "must include openid scope")
+  end
+
+  def validate_scope(changeset, field, scopes) do
+    Enum.reduce(scopes, changeset, fn scope, changeset ->
+      validate_format(changeset, field, ~r/#{scope}/, message: "must include #{scope} scope")
+    end)
   end
 
   def validate_discovery_document_uri(changeset) do
