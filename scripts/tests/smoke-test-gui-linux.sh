@@ -23,7 +23,7 @@ dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
 ls -lash ../target/debug
 
 sudo groupadd --force firezone
-sudo adduser user firezone
+sudo adduser "$USER" firezone
 
 function run_fz_gui() {
     # Does what it says
