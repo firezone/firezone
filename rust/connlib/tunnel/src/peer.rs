@@ -723,6 +723,7 @@ mod proptests {
         #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
         #[strategy(filters_with_protocol())] protocol_config: (Filters, Protocol),
         #[strategy(any::<u16>())] sport: u16,
+        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
         let (src, resource_addr, dest) = config;
         let (filters, protocol) = protocol_config;
@@ -730,8 +731,8 @@ mod proptests {
         peer.add_resource(resource_addr, resource_id, filters, None);
 
         let packet = match protocol {
-            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, vec![0u8; 100]),
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, vec![0u8; 100]),
+            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest),
         };
 
