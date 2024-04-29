@@ -1,12 +1,20 @@
 use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
-use secrecy::{ExposeSecret, SecretString};
-use tauri::Manager;
 
-/// Open a URL in the user's default browser
-pub(crate) fn open_url(app: &tauri::AppHandle, url: &SecretString) -> Result<()> {
-    tauri::api::shell::open(&app.shell_scope(), url.expose_secret(), None)?;
+/// Since clickable notifications don't work on Linux yet, the update text
+/// must be different on different platforms
+pub(crate) fn show_update_notification(
+    ctlr_tx: CtlrTx,
+    title: &str,
+    download_url: url::Url,
+) -> Result<()> {
+    show_clickable_notification(
+        title,
+        "Click here to download the new version.",
+        ctlr_tx,
+        ControllerRequest::UpdateNotificationClicked(download_url),
+    )?;
     Ok(())
 }
 
@@ -70,6 +78,6 @@ pub(crate) fn show_clickable_notification(
             Ok(())
         })
         .show()
-        .context("Couldn't show clickable notification")?;
+        .context("Couldn't show clickable URL notification")?;
     Ok(())
 }
