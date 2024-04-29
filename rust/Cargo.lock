@@ -6734,9 +6734,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-panic"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaf80030ce049691c9922d75be63cadf345110a245cd4581833c66f87c02ad25"
+checksum = "7bf1298a179837099f9309243af3b554e840f7f67f65e9f55294913299bd4cc5"
 dependencies = [
  "tracing",
  "tracing-subscriber",
