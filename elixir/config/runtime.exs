@@ -92,6 +92,9 @@ if config_env() == :prod do
   config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
     enabled: compile_config!(:background_jobs_enabled)
 
+  config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
+    enabled: compile_config!(:background_jobs_enabled)
+
   if external_url = compile_config!(:external_url) do
     %{
       scheme: external_url_scheme,

@@ -27,6 +27,10 @@ defmodule Domain.Fixtures.Auth do
     Ecto.UUID.generate()
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :jumpcloud}) do
+    Ecto.UUID.generate()
+  end
+
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
     "user-#{unique_integer()}@#{String.downcase(name)}.com"
   end
@@ -139,6 +143,26 @@ defmodule Domain.Fixtures.Auth do
     {provider, bypass}
   end
 
+  def start_and_create_jumpcloud_provider(attrs \\ %{}) do
+    bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+    api_base_url = "http://localhost:#{bypass.port}"
+
+    adapter_config =
+      openid_connect_adapter_config(
+        api_base_url: api_base_url,
+        discovery_document_uri: "#{api_base_url}/.well-known/openid-configuration",
+        scope: Domain.Auth.Adapters.JumpCloud.Settings.scope() |> Enum.join(" ")
+      )
+      |> Map.put("api_key", "secret-api-key-123")
+
+    provider =
+      attrs
+      |> Enum.into(%{adapter_config: adapter_config})
+      |> create_jumpcloud_provider()
+
+    {provider, bypass}
+  end
+
   def create_openid_connect_provider(attrs \\ %{}) do
     attrs =
       %{
@@ -244,6 +268,28 @@ defmodule Domain.Fixtures.Auth do
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
         "claims" => "openid email profile offline_access"
       }
+    )
+  end
+
+  def create_jumpcloud_provider(attrs \\ %{}) do
+    attrs =
+      %{
+        adapter: :jumpcloud,
+        provisioner: :custom
+      }
+      |> Map.merge(Enum.into(attrs, %{}))
+      |> provider_attrs()
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+
+    update!(provider,
+      disabled_at: nil,
+      adapter_state: %{}
     )
   end
 

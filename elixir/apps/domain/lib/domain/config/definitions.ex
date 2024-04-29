@@ -435,10 +435,11 @@ defmodule Domain.Config.Definitions do
       google_workspace
       microsoft_entra
       okta
+      jumpcloud
       userpass
       token
     ]a)}},
-    default: ~w[email openid_connect google_workspace microsoft_entra okta token]a
+    default: ~w[email openid_connect google_workspace microsoft_entra okta jumpcloud token]a
   )
 
   ##############################################

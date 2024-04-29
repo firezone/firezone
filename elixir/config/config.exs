@@ -49,6 +49,10 @@ config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
 
 config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
 
+config :domain, Domain.Auth.Adapters.JumpCloud.APIClient,
+  endpoint: "https://console.jumpcloud.com/api",
+  finch_transport_opts: []
+
 config :domain, Domain.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
   finch_transport_opts: []
