@@ -369,9 +369,9 @@ checksum = "fbb36e985947064623dbd357f727af08ffd077f93d696782f3c56365fa2e2799"
 
 [[package]]
 name = "async-trait"
-version = "0.1.79"
+version = "0.1.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a507401cad91ec6a857ed5513a2073c82a9b9048762b885bb98655b306964681"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1846,7 +1846,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "tracing",
@@ -1857,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1906,7 +1906,6 @@ dependencies = [
  "git-version",
  "hex",
  "hostname 0.4.0",
- "ipconfig",
  "keyring",
  "minidumper",
  "native-dialog",
@@ -1927,6 +1926,7 @@ dependencies = [
  "tauri-winrt-notification",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-log",
  "tracing-panic",
@@ -1943,17 +1943,17 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
- "dirs",
  "firezone-cli-utils",
  "futures",
  "git-version",
  "humantime",
+ "ipconfig",
  "nix 0.28.0",
  "resolv-conf",
  "sd-notify",
@@ -1968,16 +1968,15 @@ dependencies = [
 
 [[package]]
 name = "firezone-linux-client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "firezone-headless-client",
- "tokio",
 ]
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2018,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2848,7 +2847,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2863,7 +2862,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3122,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "pnet_packet",
 ]
@@ -4431,7 +4430,7 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "backoff",
  "base64 0.22.0",
@@ -5452,9 +5451,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.115"
+version = "1.0.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12dc5c46daa8e9fdf4f5e71b6cf9a53f2487da0e86e55808e2d35539666497dd"
+checksum = "3e17db7126d17feb94eb3fad46bf1a96b034e8aacbc2e775fe81505f8b0b2813"
 dependencies = [
  "indexmap 2.2.6",
  "itoa 1.0.11",
@@ -5688,7 +5687,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5709,7 +5708,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "boringtun",

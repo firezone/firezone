@@ -1,7 +1,7 @@
 [package]
 name = "phoenix-channel"
 # mark:automatic-version
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,7 +15,7 @@ serde = { version = "1.0.196", features = ["derive"] }
 tracing = { workspace = true }
 rand_core = "0.6.4"
 url = "2.4.1"
-serde_json = "1.0.115"
+serde_json = "1.0.116"
 thiserror = "1.0.50"
 tokio = { version = "1.36.0", features = ["net", "time"] }
 backoff = "0.4.0"

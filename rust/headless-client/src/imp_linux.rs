@@ -1,9 +1,9 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, Cmd};
-use anyhow::{bail, Context, Result};
+use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, Session, Sockets};
+use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
 use connlib_shared::{
     keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
@@ -11,25 +11,51 @@ use connlib_shared::{
 };
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{SinkExt, StreamExt};
-use secrecy::SecretString;
-use std::{future, net::IpAddr, path::PathBuf, str::FromStr, task::Poll};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+    str::FromStr,
+    task::{Context, Poll},
+};
 use tokio::{
     net::{UnixListener, UnixStream},
-    signal::unix::SignalKind,
+    signal::unix::SignalKind as TokioSignalKind,
+    sync::mpsc,
 };
-use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use url::Url;
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-/// The path for our Unix Domain Socket
-///
-/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
-/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
-/// on some systems, `/run` should be the newer version.
-const SOCK_PATH: &str = "/run/firezone-client.sock";
+pub(crate) struct Signals {
+    sighup: tokio::signal::unix::Signal,
+    sigint: tokio::signal::unix::Signal,
+}
+
+impl Signals {
+    pub(crate) fn new() -> Result<Self> {
+        let sighup = tokio::signal::unix::signal(TokioSignalKind::hangup())?;
+        let sigint = tokio::signal::unix::signal(TokioSignalKind::interrupt())?;
+
+        Ok(Self { sighup, sigint })
+    }
+
+    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+        if self.sigint.poll_recv(cx).is_ready() {
+            return Poll::Ready(super::SignalKind::Interrupt);
+        }
+
+        if self.sighup.poll_recv(cx).is_ready() {
+            return Poll::Ready(super::SignalKind::Hangup);
+        }
+
+        Poll::Pending
+    }
+}
 
 pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
@@ -37,58 +63,27 @@ pub fn default_token_path() -> PathBuf {
         .join("token")
 }
 
-pub async fn run() -> Result<()> {
+pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
-
     tracing::info!(git_version = crate::GIT_VERSION);
 
-    match cli.command() {
-        Cmd::Auto => {
-            if let Some(token) = token(&cli)? {
-                run_standalone(cli, &token).await
-            } else {
-                run_ipc_service(cli).await
-            }
-        }
-        Cmd::IpcService => run_ipc_service(cli).await,
-        Cmd::Standalone => {
-            let token = token(&cli)?.with_context(|| {
-                format!(
-                    "Can't find the Firezone token in $FIREZONE_TOKEN or in `{}`",
-                    cli.token_path
-                )
-            })?;
-            run_standalone(cli, &token).await
-        }
-        Cmd::StubIpcClient => run_debug_ipc_client(cli).await,
+    if !nix::unistd::getuid().is_root() {
+        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
+    run_ipc_service(cli)
 }
 
-/// Try to retrieve the token from CLI arg, env var, or disk
-///
-/// Sync because we do blocking file I/O
-fn token(cli: &Cli) -> Result<Option<SecretString>> {
-    let path = PathBuf::from(&cli.token_path);
-
-    if let Some(token) = &cli.token {
-        // Token was provided in CLI args or env var
-        // Not very secure, but we do get the token
-        tracing::info!(
-            ?path,
-            "Found token in environment or CLI args, ignoring any token that may be on disk."
-        );
-        return Ok(Some(token.clone().into()));
-    }
-
-    let Ok(stat) = nix::sys::stat::fstatat(None, &path, nix::fcntl::AtFlags::empty()) else {
+pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
+    let Ok(stat) = nix::sys::stat::fstatat(None, path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read
         tracing::info!(
             ?path,
-            "No token found in CLI args, in environment, or on disk"
+            ?TOKEN_ENV_KEY,
+            "No token found in env var or on disk"
         );
-        return Ok(None);
+        bail!("Token file doesn't exist");
     };
     if stat.st_uid != ROOT_USER {
         bail!(
@@ -108,103 +103,15 @@ fn token(cli: &Cli) -> Result<Option<SecretString>> {
             path.display()
         );
     }
-
-    let Ok(bytes) = std::fs::read(&path) else {
-        // We got the metadata a second ago, but can't read the file itself.
-        // Pretty strange, would have to be a disk fault or TOCTOU.
-        tracing::info!(?path, "Token file existed but now is unreadable");
-        return Ok(None);
-    };
-    let s = String::from_utf8(bytes)?;
-    let token = s.trim().to_string();
-
-    tracing::info!(?path, "Loaded token from disk");
-    Ok(Some(token.into()))
-}
-
-async fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
-    tracing::info!("Running in standalone mode");
-    let max_partition_time = cli.max_partition_time.map(|d| d.into());
-
-    let callbacks = CallbackHandler;
-
-    // AKA "Device ID", not the Firezone slug
-    let firezone_id = match cli.firezone_id {
-        Some(id) => id,
-        None => connlib_shared::device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
-    };
-
-    let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(cli.api_url, token, firezone_id, None, public_key.to_bytes())?;
-
-    if cli.check {
-        tracing::info!("Check passed");
-        return Ok(());
-    }
-
-    let session = Session::connect(
-        login,
-        Sockets::new(),
-        private_key,
-        None,
-        callbacks.clone(),
-        max_partition_time,
-        tokio::runtime::Handle::current(),
-    );
-    // TODO: this should be added dynamically
-    session.set_dns(system_resolvers(get_dns_control_from_env()).unwrap_or_default());
-
-    let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
-    let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())?;
-
-    future::poll_fn(|cx| loop {
-        if sigint.poll_recv(cx).is_ready() {
-            tracing::debug!("Received SIGINT");
-
-            return Poll::Ready(std::io::Result::Ok(()));
-        }
-
-        if sighup.poll_recv(cx).is_ready() {
-            tracing::debug!("Received SIGHUP");
-
-            session.reconnect();
-            continue;
-        }
-
-        return Poll::Pending;
-    })
-    .await?;
-
-    session.disconnect();
-
     Ok(())
 }
 
-fn system_resolvers(dns_control_method: Option<DnsControlMethod>) -> Result<Vec<IpAddr>> {
-    match dns_control_method {
+pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
+    match get_dns_control_from_env() {
         None => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
         Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
-    }
-}
-
-#[derive(Clone)]
-struct CallbackHandler;
-
-impl Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::error!("Disconnected: {error}");
-
-        std::process::exit(1);
-    }
-
-    fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {
-        // See easily with `export RUST_LOG=firezone_headless_client=debug`
-        tracing::debug!(len = resources.len(), "Printing the resource list one time");
-        for resource in &resources {
-            tracing::debug!(?resource);
-        }
     }
 }
 
@@ -232,7 +139,7 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
-fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
+pub fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //
@@ -258,23 +165,26 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .collect()
 }
 
-async fn run_debug_ipc_client(_cli: Cli) -> Result<()> {
-    tracing::info!(pid = std::process::id(), "run_debug_ipc_client");
-    let stream = UnixStream::connect(SOCK_PATH)
-        .await
-        .with_context(|| format!("couldn't connect to UDS at {SOCK_PATH}"))?;
-    let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-
-    stream.send(serde_json::to_string("Hello")?.into()).await?;
-    Ok(())
+/// The path for our Unix Domain Socket
+///
+/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
+/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
+/// on some systems, `/run` should be the newer version.
+///
+/// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
+pub fn sock_path() -> PathBuf {
+    PathBuf::from("/run")
+        .join(connlib_shared::BUNDLE_ID)
+        .join("ipc.sock")
 }
 
-async fn run_ipc_service(_cli: Cli) -> Result<()> {
+pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
     tracing::info!("run_daemon");
-    ipc_listen().await
+    rt.block_on(async { ipc_listen(cli).await })
 }
 
-async fn ipc_listen() -> Result<()> {
+async fn ipc_listen(cli: Cli) -> Result<()> {
     // Find the `firezone` group
     let fz_gid = nix::unistd::Group::from_name("firezone")
         .context("can't get group by name")?
@@ -282,10 +192,13 @@ async fn ipc_listen() -> Result<()> {
         .gid;
 
     // Remove the socket if a previous run left it there
-    tokio::fs::remove_file(SOCK_PATH).await.ok();
-    let listener = UnixListener::bind(SOCK_PATH).context("Couldn't bind UDS")?;
-    std::os::unix::fs::chown(SOCK_PATH, Some(ROOT_USER), Some(fz_gid.into()))
+    let sock_path = sock_path();
+    tokio::fs::remove_file(&sock_path).await.ok();
+    let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
+    std::os::unix::fs::chown(&sock_path, Some(ROOT_USER), Some(fz_gid.into()))
         .context("can't set firezone as the group for the UDS")?;
+    let perms = std::fs::Permissions::from_mode(0o660);
+    std::fs::set_permissions(sock_path, perms)?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
@@ -302,100 +215,104 @@ async fn ipc_listen() -> Result<()> {
         // I'm not sure if we can enforce group membership here - Docker
         // might just be enforcing it with filesystem permissions.
         // Checking the secondary groups of another user looks complicated.
-
-        let stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-        if let Err(error) = handle_ipc_client(stream).await {
+        if let Err(error) = handle_ipc_client(&cli, stream).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
     }
 }
 
-type IpcStream = tokio_util::codec::Framed<UnixStream, LengthDelimitedCodec>;
+#[derive(Clone)]
+struct CallbackHandlerIpc {
+    cb_tx: mpsc::Sender<IpcServerMsg>,
+}
 
-async fn handle_ipc_client(mut stream: IpcStream) -> Result<()> {
-    tracing::info!("Waiting for an IPC message from the GUI...");
+impl Callbacks for CallbackHandlerIpc {
+    fn on_disconnect(&self, _error: &connlib_client_shared::Error) {
+        self.cb_tx
+            .try_send(IpcServerMsg::OnDisconnect)
+            .expect("should be able to send OnDisconnect");
+    }
 
-    let v = stream
-        .next()
-        .await
-        .context("Error while reading IPC message")?
-        .context("IPC stream empty")?;
-    let decoded: String = serde_json::from_slice(&v)?;
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+        tracing::info!("TunnelReady");
+        self.cb_tx
+            .try_send(IpcServerMsg::TunnelReady)
+            .expect("Should be able to send TunnelReady");
+        None
+    }
 
-    tracing::debug!(?decoded, "Received message");
-    stream.send("OK".to_string().into()).await?;
-    tracing::info!("Replied. Connection will close");
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
+        tracing::info!(len = resources.len(), "New resource list");
+        self.cb_tx
+            .try_send(IpcServerMsg::OnUpdateResources(resources))
+            .expect("Should be able to send OnUpdateResources");
+    }
+}
+
+async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
+    connlib_shared::deactivate_dns_control()?;
+    let (rx, tx) = stream.into_split();
+    let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
+    let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+    let (cb_tx, mut cb_rx) = mpsc::channel(100);
+
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = cb_rx.recv().await {
+            tx.send(serde_json::to_string(&msg)?.into()).await?;
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+
+    let mut connlib = None;
+    let callback_handler = CallbackHandlerIpc { cb_tx };
+    while let Some(msg) = rx.next().await {
+        let msg = msg?;
+        let msg: super::IpcClientMsg = serde_json::from_slice(&msg)?;
+
+        match msg {
+            IpcClientMsg::Connect { api_url, token } => {
+                let token = secrecy::SecretString::from(token);
+                assert!(connlib.is_none());
+                let device_id = connlib_shared::device_id::get()
+                    .context("Failed to read / create device ID")?;
+                let (private_key, public_key) = keypair();
+
+                let login = LoginUrl::client(
+                    Url::parse(&api_url)?,
+                    &token,
+                    device_id.id,
+                    None,
+                    public_key.to_bytes(),
+                )?;
+
+                connlib = Some(connlib_client_shared::Session::connect(
+                    login,
+                    Sockets::new(),
+                    private_key,
+                    None,
+                    callback_handler.clone(),
+                    cli.max_partition_time.map(|t| t.into()),
+                    tokio::runtime::Handle::try_current()?,
+                ));
+            }
+            IpcClientMsg::Disconnect => {
+                if let Some(connlib) = connlib.take() {
+                    connlib.disconnect();
+                }
+            }
+            IpcClientMsg::Reconnect => connlib.as_mut().context("No connlib session")?.reconnect(),
+            IpcClientMsg::SetDns(v) => connlib.as_mut().context("No connlib session")?.set_dns(v),
+        }
+    }
+
+    send_task.abort();
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::IpcStream;
-    use futures::{SinkExt, StreamExt};
     use std::net::IpAddr;
-    use tokio::net::{UnixListener, UnixStream};
-    use tokio_util::codec::LengthDelimitedCodec;
-
-    const MESSAGE_ONE: &str = "message one";
-    const MESSAGE_TWO: &str = "message two";
-
-    #[tokio::test]
-    async fn ipc() {
-        let sock_path = dirs::runtime_dir()
-            .unwrap()
-            .join("dev.firezone.client_ipc_test");
-
-        // Remove the socket if a previous run left it there
-        tokio::fs::remove_file(&sock_path).await.ok();
-        let listener = UnixListener::bind(&sock_path).unwrap();
-
-        let ipc_server_task = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let cred = stream.peer_cred().unwrap();
-            // TODO: Check that the user is in the `firezone` group
-            // For now, to make it work well in CI where that group isn't created,
-            // just check if it matches our own UID.
-            let actual_peer_uid = cred.uid();
-            let expected_peer_uid = nix::unistd::Uid::current().as_raw();
-            assert_eq!(actual_peer_uid, expected_peer_uid);
-
-            let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-
-            let v = stream
-                .next()
-                .await
-                .expect("Error while reading IPC message")
-                .expect("IPC stream empty");
-            let decoded: String = serde_json::from_slice(&v).unwrap();
-            assert_eq!(MESSAGE_ONE, decoded);
-
-            let v = stream
-                .next()
-                .await
-                .expect("Error while reading IPC message")
-                .expect("IPC stream empty");
-            let decoded: String = serde_json::from_slice(&v).unwrap();
-            assert_eq!(MESSAGE_TWO, decoded);
-        });
-
-        tracing::info!(pid = std::process::id(), "Connecting to IPC server");
-        let stream = UnixStream::connect(&sock_path).await.unwrap();
-        let mut stream = IpcStream::new(stream, LengthDelimitedCodec::new());
-
-        stream
-            .send(serde_json::to_string(MESSAGE_ONE).unwrap().into())
-            .await
-            .unwrap();
-        stream
-            .send(serde_json::to_string(MESSAGE_TWO).unwrap().into())
-            .await
-            .unwrap();
-
-        tokio::time::timeout(std::time::Duration::from_millis(2_000), ipc_server_task)
-            .await
-            .unwrap()
-            .unwrap();
-    }
 
     #[test]
     fn parse_resolvectl_output() {

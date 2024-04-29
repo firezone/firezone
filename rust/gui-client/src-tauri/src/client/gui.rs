@@ -17,6 +17,7 @@ use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tunnel_wrapper::CallbackHandler;
+use url::Url;
 
 use ControllerRequest as Req;
 
@@ -47,11 +48,19 @@ mod tunnel_wrapper_ipc;
 #[cfg(target_os = "linux")]
 use tunnel_wrapper_ipc as tunnel_wrapper;
 */
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 #[path = "tunnel-wrapper/in_proc.rs"]
 mod tunnel_wrapper_in_proc;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+
+#[cfg(target_os = "linux")]
+#[path = "tunnel-wrapper/ipc.rs"]
+mod tunnel_wrapper_ipc;
+
+#[cfg(target_os = "windows")]
 use tunnel_wrapper_in_proc as tunnel_wrapper;
+
+#[cfg(target_os = "linux")]
+use tunnel_wrapper_ipc as tunnel_wrapper;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
@@ -403,16 +412,22 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
     let release = client::updates::check()
         .await
         .context("Error in client::updates::check")?;
+    let Some(download_url) = release.download_url() else {
+        tracing::warn!("No installer for this OS/arch online");
+        return Ok(());
+    };
 
     let our_version = client::updates::current_version()?;
-    let github_version = &release.tag_name;
 
     if always_show_update_notification || (our_version < release.tag_name) {
-        tracing::info!(?our_version, ?github_version, "Github has a new release");
+        tracing::info!(?our_version, ?release.tag_name, "There is a new release");
         // We don't necessarily need to route through the Controller here, but if we
         // want a persistent "Click here to download the new MSI" button, this would allow that.
         ctlr_tx
-            .send(ControllerRequest::UpdateAvailable(release))
+            .send(ControllerRequest::UpdateAvailable {
+                download_url: download_url.clone(),
+                version_to_download: release.tag_name,
+            })
             .await
             .context("Error while sending UpdateAvailable to Controller")?;
         return Ok(());
@@ -420,8 +435,8 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 
     tracing::info!(
         ?our_version,
-        ?github_version,
-        "Our release is newer than, or the same as Github's latest"
+        ?release.tag_name,
+        "Our release is newer than, or the same as, the latest"
     );
     Ok(())
 }
@@ -474,8 +489,11 @@ pub(crate) enum ControllerRequest {
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
-    UpdateAvailable(client::updates::Release),
-    UpdateNotificationClicked(client::updates::Release),
+    UpdateAvailable {
+        download_url: Url,
+        version_to_download: semver::Version,
+    },
+    UpdateNotificationClicked(Url),
 }
 
 struct Controller {
@@ -503,7 +521,7 @@ struct Session {
 impl Controller {
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
-    fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, token: SecretString) -> Result<()> {
         if self.session.is_some() {
             bail!("can't start session, we're already in a session");
         }
@@ -521,14 +539,17 @@ impl Controller {
             "Calling connlib Session::connect"
         );
 
-        let connlib = tunnel_wrapper::connect(
+        let mut connlib = tunnel_wrapper::connect(
             api_url.as_str(),
             token,
             callback_handler.clone(),
             tokio::runtime::Handle::current(),
-        )?;
+        )
+        .await?;
 
-        connlib.set_dns(client::resolvers::get().unwrap_or_default());
+        connlib
+            .set_dns(client::resolvers::get().unwrap_or_default())
+            .await?;
 
         self.session = Some(Session {
             callback_handler,
@@ -557,7 +578,7 @@ impl Controller {
         Ok(())
     }
 
-    fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -565,6 +586,7 @@ impl Controller {
         // Uses `std::fs`
         let token = self.auth.handle_response(auth_response)?;
         self.start_session(token)
+            .await
             .context("Couldn't start connlib session")?;
         Ok(())
     }
@@ -581,7 +603,7 @@ impl Controller {
             }
             Req::Disconnected => {
                 tracing::info!("Disconnected by connlib");
-                self.sign_out()?;
+                self.sign_out().await?;
                 os::show_notification(
                     "Firezone disconnected",
                     "To access resources, sign in again.",
@@ -596,6 +618,7 @@ impl Controller {
             }
             Req::SchemeRequest(url) => self
                 .handle_deep_link(&url)
+                .await
                 .context("Couldn't handle deep link")?,
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self.auth.start_sign_in()? {
@@ -610,17 +633,17 @@ impl Controller {
             }
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 if self.session.is_some() {
-                    // If the user opened the menu, then sign-in completed, then they
-                    // click "cancel sign in", don't sign out - They can click Sign Out
-                    // if they want to sign out. "Cancel" may mean "Give up waiting,
-                    // but if you already got in, don't make me sign in all over again."
-                    //
-                    // Also, by amazing coincidence, it doesn't work in Tauri anyway.
-                    // We'd have to reuse the `sign_out` ID to make it work.
-                    tracing::info!("This can never happen. Tauri doesn't pass us a system tray event if the menu no longer has any item with that ID.");
+                    if self.tunnel_ready {
+                        tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
+                    } else {
+                        tracing::warn!(
+                            "Connlib is already raising the tunnel, calling `sign_out` anyway"
+                        );
+                        self.sign_out().await?;
+                    }
                 } else {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
-                    self.sign_out()?;
+                    self.sign_out().await?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -640,7 +663,7 @@ impl Controller {
                 .context("Couldn't copy resource to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
                 tracing::info!("User asked to sign out");
-                self.sign_out()?;
+                self.sign_out().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
@@ -655,8 +678,11 @@ impl Controller {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
             }
-            Req::UpdateAvailable(release) => {
-                let title = format!("Firezone {} available for download", release.tag_name);
+            Req::UpdateAvailable {
+                download_url,
+                version_to_download,
+            } => {
+                let title = format!("Firezone {} available for download", version_to_download);
 
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
@@ -665,16 +691,12 @@ impl Controller {
                     &title,
                     "Click here to download the new version.",
                     self.ctlr_tx.clone(),
-                    Req::UpdateNotificationClicked(release),
+                    Req::UpdateNotificationClicked(download_url),
                 )?;
             }
-            Req::UpdateNotificationClicked(release) => {
+            Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
-                tauri::api::shell::open(
-                    &self.app.shell_scope(),
-                    release.browser_download_url,
-                    None,
-                )?;
+                tauri::api::shell::open(&self.app.shell_scope(), download_url, None)?;
             }
         }
         Ok(())
@@ -717,14 +739,14 @@ impl Controller {
     }
 
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
-    fn sign_out(&mut self) -> Result<()> {
+    async fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
         self.tunnel_ready = false;
         if let Some(session) = self.session.take() {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.
-            session.connlib.disconnect();
+            session.connlib.disconnect().await?;
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.
@@ -789,6 +811,7 @@ async fn run_controller(
     {
         controller
             .start_session(token)
+            .await
             .context("Failed to restart session during app start")?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
@@ -805,16 +828,19 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => if let Err(error) = controller.refresh_system_tray_menu() {
-                tracing::error!(?error, "Failed to reload resource list");
-            },
+            () = controller.notify_controller.notified() => {
+                tracing::debug!("Controller notified of new resources");
+                if let Err(error) = controller.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to reload resource list");
+                }
+            }
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
                     if let Some(session) = controller.session.as_mut() {
                         tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        session.connlib.reconnect();
+                        session.connlib.reconnect().await?;
                     }
                 }
             },
@@ -822,7 +848,7 @@ async fn run_controller(
                 r?;
                 if let Some(session) = controller.session.as_mut() {
                     tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default());
+                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default()).await?;
                 }
             },
             req = rx.recv() => {

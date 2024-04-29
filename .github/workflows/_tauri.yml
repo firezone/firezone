@@ -14,7 +14,7 @@ permissions:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.0"
+  VERSION: "1.0.1"
 
 defaults:
   run:
@@ -29,19 +29,27 @@ jobs:
       matrix:
         include:
           - runs-on: ubuntu-20.04
-            binary-dest-path: firezone-linux-gui-client
+            # mark:automatic-version
+            binary-dest-path: firezone-client-gui-linux_1.0.1_x86_64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
-            exe-artifact: rust/gui-client/firezone-linux-gui-client-amd64
-            syms-artifact: rust/gui-client/firezone-linux-gui-client-amd64.dwp
-            pkg-artifact: rust/gui-client/firezone-linux-gui-client_amd64.deb
+            # mark:automatic-version
+            exe-artifact: rust/gui-client/firezone-client-gui-linux_1.0.1_x86_64
+            # mark:automatic-version
+            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.0.1_x86_64.dwp
+            # mark:automatic-version
+            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.0.1_x86_64.deb
           - runs-on: windows-2019
-            binary-dest-path: firezone-windows-client
+            # mark:automatic-version
+            binary-dest-path: firezone-client-gui-windows_1.0.1_x86_64
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
-            exe-artifact: rust/gui-client/firezone-windows-client-x64.exe
-            syms-artifact: rust/gui-client/firezone-windows-client-x64.pdb
-            pkg-artifact: rust/gui-client/firezone-windows-client-x64.msi
+            # mark:automatic-version
+            exe-artifact: rust/gui-client/firezone-client-gui-windows_1.0.1_x86_64.exe
+            # mark:automatic-version
+            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.0.1_x86_64.pdb
+            # mark:automatic-version
+            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.0.1_x86_64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
@@ -76,7 +84,7 @@ jobs:
       - name: Sign the MSI
         if: ${{ runner.os == 'Windows' }}
         shell: bash
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/firezone-client-gui_${{ env.VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}

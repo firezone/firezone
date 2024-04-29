@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:automatic-version
-version = "1.0.0"
+version = "1.0.1"
 description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
@@ -55,6 +55,7 @@ zip = { version = "0.6.6", features = ["deflate", "time"], default-features = fa
 dirs = "5.0.1"
 # Used for infinite `pending` on not-yet-implemented functions
 futures = "0.3.30"
+tokio-util = { version = "0.7.10", features = ["codec"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dirs = "5.0.1"
@@ -68,7 +69,6 @@ windows-core = "0.56.0"
 windows-implement = "0.56.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
-ipconfig = "0.3.2"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.56.0"
