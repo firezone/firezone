@@ -1,5 +1,5 @@
 use crate::messages::{
-    client::ResourceDescriptionCidr, client::ResourceDescriptionDns, gateway, ClientId, ResourceId,
+    client::ResourceDescriptionCidr, client::ResourceDescriptionDns, ClientId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{

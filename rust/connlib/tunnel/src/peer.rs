@@ -526,30 +526,6 @@ mod tests {
     }
 
     #[test]
-    fn gateway_accept_udp_with_filters_multi_port_range() {
-        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
-        peer.add_resource(
-            cidr_v4_resource().into(),
-            resource_id(),
-            vec![Filter::Udp(FilterInner {
-                port_range_start: 20,
-                port_range_end: 100,
-            })],
-            None,
-        );
-
-        let packet = ip_packet::make::udp_packet(
-            source_v4_addr(),
-            cidr_v4_resource().hosts().next().unwrap().into(),
-            5401,
-            80,
-            vec![0; 100],
-        );
-
-        assert!(peer.ensure_allowed(&packet).is_ok());
-    }
-
-    #[test]
     fn gateway_reject_tcp_with_filters_outside_range() {
         let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
         peer.add_resource(
@@ -717,7 +693,7 @@ mod proptests {
     use test_strategy::Arbitrary;
 
     #[test_strategy::proptest(ProptestConfig {max_shrink_iters: 10_000, ..Default::default()})]
-    fn gateway_accepts_packet_with_filters(
+    fn gateway_accepts_allowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
         #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
@@ -727,6 +703,7 @@ mod proptests {
     ) {
         let (src, resource_addr, dest) = config;
         let (filters, protocol) = protocol_config;
+        // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
         peer.add_resource(resource_addr, resource_id, filters, None);
 
