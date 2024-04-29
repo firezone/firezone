@@ -105,6 +105,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
     })
 
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
+    provider = Domain.Auth.Adapters.Okta.load(provider)
 
     assert_redirected(
       lv,
@@ -114,12 +115,11 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.EditTest do
     assert provider.name == provider_attrs.name
     assert provider.adapter == :okta
 
-    assert provider.adapter_config["client_id"] == adapter_config_attrs["client_id"]
-    assert provider.adapter_config["client_secret"] == adapter_config_attrs["client_secret"]
+    assert provider.adapter_config.client_id == adapter_config_attrs["client_id"]
+    assert provider.adapter_config.client_secret == adapter_config_attrs["client_secret"]
+    assert provider.adapter_config.okta_account_domain == api_base_url
 
-    assert provider.adapter_config["okta_account_domain"] == api_base_url
-
-    assert provider.adapter_config["discovery_document_uri"] ==
+    assert provider.adapter_config.discovery_document_uri ==
              "#{api_base_url}/.well-known/openid-configuration"
   end
 

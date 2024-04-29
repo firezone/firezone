@@ -97,6 +97,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
 
     render_submit(form)
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
+    provider = Domain.Auth.Adapters.OpenIDConnect.load(provider)
 
     assert_redirected(
       lv,
@@ -106,12 +107,12 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.EditTest do
     assert provider.name == provider_attrs.name
     assert provider.adapter == :openid_connect
 
-    assert provider.adapter_config == %{
-             "client_id" => provider_attrs.adapter_config["client_id"],
-             "client_secret" => provider_attrs.adapter_config["client_secret"],
-             "discovery_document_uri" => provider_attrs.adapter_config["discovery_document_uri"],
-             "scope" => provider_attrs.adapter_config["scope"],
-             "response_type" => "code"
+    assert provider.adapter_config == %Domain.Auth.Adapters.OpenIDConnect.ProviderConfig{
+             client_id: provider_attrs.adapter_config["client_id"],
+             client_secret: provider_attrs.adapter_config["client_secret"],
+             discovery_document_uri: provider_attrs.adapter_config["discovery_document_uri"],
+             scope: provider_attrs.adapter_config["scope"],
+             response_type: "code"
            }
   end
 

@@ -95,6 +95,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.NewTest do
     })
 
     assert provider = Repo.get_by(Domain.Auth.Provider, name: provider_attrs.name)
+    provider = Domain.Auth.Adapters.Okta.load(provider)
 
     assert_redirected(
       lv,
@@ -104,11 +105,8 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.NewTest do
     assert provider.name == provider_attrs.name
     assert provider.adapter == :okta
 
-    assert provider.adapter_config["client_id"] ==
-             provider_attrs.adapter_config["client_id"]
-
-    assert provider.adapter_config["client_secret"] ==
-             provider_attrs.adapter_config["client_secret"]
+    assert provider.adapter_config.client_id == provider_attrs.adapter_config["client_id"]
+    assert provider.adapter_config.client_secret == provider_attrs.adapter_config["client_secret"]
   end
 
   test "renders changeset errors on invalid attrs", %{
