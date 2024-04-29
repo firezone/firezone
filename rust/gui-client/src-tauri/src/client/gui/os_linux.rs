@@ -1,7 +1,7 @@
-use super::{ControllerRequest, CtlrTx, Error};
+use super::{ControllerRequest, CtlrTx};
 use anyhow::Result;
 use secrecy::{ExposeSecret, SecretString};
-use tauri::Manager;
+use tauri::{api::notification::Notification, Manager};
 
 /// Open a URL in the user's default browser
 pub(crate) fn open_url(app: &tauri::AppHandle, url: &SecretString) -> Result<()> {
@@ -10,8 +10,11 @@ pub(crate) fn open_url(app: &tauri::AppHandle, url: &SecretString) -> Result<()>
 }
 
 /// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<(), Error> {
-    // TODO
+pub(crate) fn show_notification(title: &str, body: &str) -> Result<()> {
+    Notification::new(connlib_shared::BUNDLE_ID)
+        .title(title)
+        .body(body)
+        .show()?;
     Ok(())
 }
 
@@ -21,7 +24,8 @@ pub(crate) fn show_clickable_notification(
     _body: &str,
     _tx: CtlrTx,
     _req: ControllerRequest,
-) -> Result<(), Error> {
-    // TODO
+) -> Result<()> {
+    // TODO: Tauri doesn't seem to have clickable notifications on Linux.
+    // No indication if it'll be in 2.x or if there's a good third-party replacement
     Ok(())
 }
