@@ -110,7 +110,8 @@ defmodule API.Gateway.ChannelTest do
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
+                 %{protocol: :icmp}
                ]
              }
 
@@ -224,7 +225,8 @@ defmodule API.Gateway.ChannelTest do
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
+                 %{protocol: :icmp}
                ]
              }
     end
@@ -301,7 +303,8 @@ defmodule API.Gateway.ChannelTest do
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
+                 %{protocol: :icmp}
                ]
              }
     end
@@ -435,7 +438,8 @@ defmodule API.Gateway.ChannelTest do
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
+                 %{protocol: :icmp}
                ]
              }
 
@@ -549,7 +553,8 @@ defmodule API.Gateway.ChannelTest do
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
+                 %{protocol: :icmp}
                ]
              }
 
@@ -741,7 +746,8 @@ defmodule API.Gateway.ChannelTest do
                filters: [
                  %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
                  %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200}
+                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
+                 %{protocol: :icmp}
                ]
              }
     end

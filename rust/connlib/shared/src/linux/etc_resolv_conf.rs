@@ -127,6 +127,7 @@ fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
     // Don't delete the backup file - If we lose power here, and the revert is rolled back,
     // we may want it. Filesystems are not atomic by default, and have weak ordering,
     // so we don't want to end up in a state where the backup is deleted and the revert was rolled back.
+    tracing::info!("Reverted resolv.conf file");
     Ok(())
 }
 
