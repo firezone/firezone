@@ -13,22 +13,20 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens do
     Logger.debug("Refreshing access tokens for #{length(providers)} Okta providers")
 
     Enum.each(providers, fn provider ->
-      Logger.debug("Refreshing access token",
+      Logger.metadata(
+        account_id: provider.account_id,
         provider_id: provider.id,
-        account_id: provider.account_id
+        provider_adapter: provider.adapter
       )
 
+      Logger.debug("Refreshing access token")
+
       case Okta.refresh_access_token(provider) do
-        {:ok, provider} ->
-          Logger.debug("Finished refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id
-          )
+        {:ok, _provider} ->
+          Logger.debug("Finished refreshing access token")
 
         {:error, reason} ->
           Logger.error("Failed refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id,
             reason: inspect(reason)
           )
       end
