@@ -5334,9 +5334,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.2.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5dce177d0b09fa4f0a5388d15a0ed889b45411ade9406c9aa71dd1fdcb407d0"
+checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
 dependencies = [
  "bytes",
  "crc",
@@ -5833,8 +5833,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.5.1"
-source = "git+https://github.com/firezone/str0m?branch=main#49b9ac85679fdcdd050dad856bc5df63616fa065"
+version = "0.5.0"
+source = "git+https://github.com/firezone/str0m?branch=main#44b616945145033ade739f30cdce004728011619"
 dependencies = [
  "combine",
  "crc",
