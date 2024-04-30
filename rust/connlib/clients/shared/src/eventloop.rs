@@ -225,7 +225,7 @@ where
                 candidates,
             }) => {
                 for candidate in candidates {
-                    self.tunnel.add_ice_candidate(gateway_id, candidate)
+                    self.tunnel.remove_ice_candidate(gateway_id, candidate)
                 }
             }
         }
