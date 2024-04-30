@@ -4,12 +4,19 @@ set -euo pipefail
 
 hostname=$(hostname)
 FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
-FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
-FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway/}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
 RUST_LOG=${RUST_LOG:-str0m=warn,info}
+
+# Can be used to download a specific version of the gateway from a custom URL
+FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
+FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway/}
+
+# Optional environment variables to configure logging and tracing
+FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
+FIREZONE_GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID:-}
+FIREZONE_LOG_FORMAT=${FIREZONE_LOG_FORMAT:-}
 
 if [ -z "$FIREZONE_TOKEN" ]; then
     echo "FIREZONE_TOKEN is required"
@@ -35,6 +42,9 @@ Environment="FIREZONE_ID=$FIREZONE_ID"
 Environment="FIREZONE_TOKEN=$FIREZONE_TOKEN"
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
+Environment="LOG_FORMAT=$FIREZONE_LOG_FORMAT"
+Environment="GOOGLE_CLOUD_PROJECT_ID=$FIREZONE_GOOGLE_CLOUD_PROJECT_ID"
+Environment="OTLP_GRPC_ENDPOINT=$FIREZONE_OTLP_GRPC_ENDPOINT"
 ExecStartPre=/usr/local/bin/firezone-gateway-init
 ExecStart=/usr/bin/sudo \
   --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG,LOG_FORMAT,GOOGLE_CLOUD_PROJECT_ID,OTLP_GRPC_ENDPOINT \

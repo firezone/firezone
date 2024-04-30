@@ -35,13 +35,6 @@ write_files:
             otlp:
               receivers: [otlp]
 
-  - path: /etc/environment
-    content: |
-      LOG_FORMAT=google-cloud
-      GOOGLE_CLOUD_PROJECT_ID=$(project_id)
-      OTLP_GRPC_ENDPOINT=$(otlp_grpc_endpoint)
-    append: true
-
 runcmd:
   # Install Ops Agent
   - curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
@@ -51,4 +44,7 @@ runcmd:
     FIREZONE_API_URL="${firezone_api_url}" \
     FIREZONE_VERSION="${firezone_version}" \
     FIREZONE_ARTIFACT_URL="${firezone_artifact_url}" \
+    FIREZONE_LOG_FORMAT="google-cloud" \
+    FIREZONE_GOOGLE_CLOUD_PROJECT_ID=$(project_id) \
+    FIREZONE_OTLP_GRPC_ENDPOINT=$(otlp_grpc_endpoint) \
     bash <(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh)
