@@ -1,3 +1,40 @@
+# Bucket where CI stores binary artifacts (eg. gateway or client)
+resource "google_storage_bucket" "firezone-binaries" {
+  project = module.google-cloud-project.project.project_id
+  name    = "firezone-binaries"
+
+  location = "US"
+
+  lifecycle_rule {
+    condition {
+      age = 365
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
+
+  lifecycle_rule {
+    condition {
+      age = 1
+    }
+
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
+  }
+
+  public_access_prevention    = "inherited"
+  uniform_bucket_level_access = true
+}
+
+resource "google_storage_bucket_iam_member" "public-firezone-binaries" {
+  bucket = google_storage_bucket.firezone-binaries.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+
 # Docker layer caching
 resource "google_artifact_registry_repository" "cache" {
   provider = google-beta
@@ -114,6 +151,14 @@ resource "google_storage_bucket_iam_member" "github-actions-sccache-access" {
   for_each = toset(local.ci_iam_members)
 
   bucket = google_storage_bucket.sccache.name
+  role   = "roles/storage.objectAdmin"
+  member = each.key
+}
+
+resource "google_storage_bucket_iam_member" "github-actions-firezone-binaries-access" {
+  for_each = toset(local.ci_iam_members)
+
+  bucket = google_storage_bucket.firezone-binaries.name
   role   = "roles/storage.objectAdmin"
   member = each.key
 }
