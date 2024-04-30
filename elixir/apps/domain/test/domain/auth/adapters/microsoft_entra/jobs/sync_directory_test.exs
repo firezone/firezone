@@ -407,7 +407,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
-    test "persists the sync error on the provider", %{provider: provider} do
+    test "stops the sync retires on 401 error on the provider", %{provider: provider} do
       bypass = Bypass.open()
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
 
@@ -441,6 +441,28 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       refute updated_provider.last_synced_at
       assert updated_provider.last_syncs_failed == 1
       assert updated_provider.last_sync_error == error_message
+    end
+
+    test "persists the sync error on the provider", %{provider: provider} do
+      bypass = Bypass.open()
+      MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      for path <- [
+            "v1.0/users",
+            "v1.0/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 500, "")
+        end)
+      end
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
+      refute updated_provider.last_synced_at
+      assert updated_provider.last_syncs_failed == 1
+      assert updated_provider.last_sync_error == "Microsoft Graph API is temporarily unavailable"
 
       for path <- [
             "v1.0/users",
