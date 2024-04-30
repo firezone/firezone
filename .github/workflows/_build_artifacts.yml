@@ -231,6 +231,8 @@ jobs:
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
       - name: Copy binaries to Google Cloud Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         run: |
