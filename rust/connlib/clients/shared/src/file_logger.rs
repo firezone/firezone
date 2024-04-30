@@ -139,7 +139,8 @@ impl Inner {
 
     /// Does nothing on non-Linux systems
     #[cfg(not(target_os = "linux"))]
-    fn set_permissions(f: &fs::File) -> io::Result<()> {
+    #[allow(clippy::unnecessary_wraps)]
+    fn set_permissions(_f: &fs::File) -> io::Result<()> {
         Ok(())
     }
 }
