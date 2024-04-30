@@ -88,6 +88,7 @@ pub async fn connect(
     // TODO: Make sure this joins / drops somewhere
     let ipc_task = tokio_handle.spawn(async move {
         poll_fn(|cx| signed_in.poll(cx)).await?;
+        tracing::debug!("IPC task exiting");
         Ok(signed_in)
     });
 
@@ -113,7 +114,11 @@ struct SignedIn {
 
 impl SignedIn {
     fn poll(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        tracing::debug!("SignedIn::poll");
         loop {
+            if let Poll::Ready(Err(e)) = self.stream.as_mut().poll_flush(cx) {
+                return Poll::Ready(Err(e.into()));
+            }
             match self.stream.as_mut().poll_ready(cx) {
                 Poll::Ready(Ok(())) => {
                     // IPC stream can send
