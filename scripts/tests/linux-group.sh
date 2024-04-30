@@ -20,7 +20,7 @@ sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-ipc"
 
 # The firezone group must exist before the daemon starts
 sudo groupadd "$FZ_GROUP"
-sudo systemctl start "$SERVICE_NAME" || (systemctl status "$SERVICE_NAME"; exit 1)
+sudo systemctl start "$SERVICE_NAME" || { systemctl status "$SERVICE_NAME"; exit 1; }
 
 # Make sure the socket has the right permissions
 if [ "root firezone" != "$(stat -c '%U %G' $SOCKET)" ]
