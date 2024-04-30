@@ -68,7 +68,7 @@ module.exports = {
             // "--tw-format-counters": theme("colors.orange[500]"),
             // "--tw-format-bullets": theme("colors.orange[500]"),
             // "--tw-format-hr": theme("colors.orange[200]"),
-            // "--tw-format-quotes": theme("colors.orange[900]"),
+            "--tw-format-quotes": firezoneColors["night-rider"][700],
             // "--tw-format-quote-borders": theme("colors.orange[300]"),
             // "--tw-format-captions": theme("colors.orange[700]"),
             "--tw-format-code": firezoneColors["electric-violet"][800],

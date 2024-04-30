@@ -24,6 +24,41 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
+            title="How DNS Works in Firezone"
+            date="April 30, 2024"
+            href="/blog/how-dns-works-in-firezone"
+            authorName="Gabriel Steinberg"
+            authorAvatarSrc={gravatar("gabriel@firezone.dev")}
+            type="Learn"
+          >
+            <p className="mb-2">
+              Firezone{" "}
+              <Link
+                href="/blog/how-dns-works-in-firezone"
+                className="text-accent-500 underline hover:no-underline"
+              >
+                1.0 GA is now available
+              </Link>
+              ! Also in this update:
+            </p>
+            <ul className="list-inside list-disc ml-4">
+              <li>
+                Firezone 1.0 signups are{" "}
+                <Link
+                  href="https://app.firezone.dev/sign_up"
+                  className="text-accent-500 underline hover:no-underline"
+                >
+                  now open
+                </Link>
+              </li>
+              <li>New Team plan with self-serve billing</li>
+              <li>
+                Clients available for Windows, macOS, iOS, Android, and Linux
+              </li>
+              <li>Network roaming support</li>
+            </ul>
+          </SummaryCard>
+          <SummaryCard
             title="April 2024 Update: GA"
             date="April 1, 2024"
             href="/blog/apr-2024-update"
