@@ -567,7 +567,7 @@ mod proptests {
     };
     use test_strategy::Arbitrary;
 
-    #[test_strategy::proptest(ProptestConfig {max_shrink_iters: 10_000, ..Default::default()})]
+    #[test_strategy::proptest()]
     fn gateway_accepts_allowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
@@ -591,7 +591,7 @@ mod proptests {
         assert!(peer.ensure_allowed(&packet).is_ok());
     }
 
-    #[test_strategy::proptest(ProptestConfig {max_shrink_iters: 10_000, ..Default::default()})]
+    #[test_strategy::proptest()]
     fn gateway_reject_unallowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
