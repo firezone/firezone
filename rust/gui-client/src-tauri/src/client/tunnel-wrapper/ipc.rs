@@ -2,7 +2,7 @@ use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription};
 use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::{Sink, Stream};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     future::poll_fn,
@@ -11,11 +11,8 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::{
-    net::{unix::OwnedWriteHalf, UnixStream},
-    sync::Notify,
-};
-use tokio_util::codec::{Framed, FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio::{net::UnixStream, sync::Notify};
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 use super::ControllerRequest;
 use super::CtlrTx;
@@ -125,6 +122,7 @@ impl SignedIn {
                             if let Err(e) = self.stream.as_mut().start_send(msg) {
                                 return Poll::Ready(Err(e.into()));
                             }
+                            continue;
                         }
                         Poll::Ready(None) => {
                             return Poll::Ready(Err(anyhow::anyhow!("outbound rx closed")))
@@ -156,6 +154,7 @@ impl SignedIn {
                         }
                         IpcServerMsg::TunnelReady => self.callback_handler.on_tunnel_ready(),
                     }
+                    continue;
                 }
                 Poll::Ready(None) => return Poll::Ready(Err(anyhow::anyhow!("shutting down"))),
                 Poll::Pending => {}
@@ -163,14 +162,6 @@ impl SignedIn {
 
             return Poll::Pending;
         }
-    }
-
-    async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
-        self.stream
-            .send(encode(msg)?)
-            .await
-            .context("Couldn't send IPC message")?;
-        Ok(())
     }
 }
 
