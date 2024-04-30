@@ -114,3 +114,6 @@ sudo systemctl enable firezone-gateway
 
 # Start the service
 sudo systemctl start firezone-gateway
+
+echo "Firezone Gateway installed successfully!"
+echo "Run 'sudo systemctl status firezone-gateway' to check the status."
