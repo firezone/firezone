@@ -231,16 +231,16 @@ jobs:
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-      - name: Copy Google Cloud Storage binaries to "latest" version
+      - name: Copy binaries to Google Cloud Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         run: |
           gsutil cp \
                 ${BINARY_DEST_PATH} \
-                firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}
+                gs://firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}
 
           gsutil cp \
                 ${BINARY_DEST_PATH}.sha256sum.txt \
-                firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
+                gs://firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
