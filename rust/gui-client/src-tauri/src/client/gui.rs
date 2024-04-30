@@ -73,20 +73,6 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
-impl Managed {
-    #[cfg(debug_assertions)]
-    /// In debug mode, if `--inject-faults` is passed, sleep for `millis` milliseconds
-    pub async fn fault_msleep(&self, millis: u64) {
-        if self.inject_faults {
-            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
-        }
-    }
-
-    #[cfg(not(debug_assertions))]
-    /// Does nothing in release mode
-    pub async fn fault_msleep(&self, _millis: u64) {}
-}
-
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(Debug, thiserror::Error)]
@@ -379,6 +365,10 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send ExportLogs request")?;
+    ctlr_tx
+        .send(ControllerRequest::ClearLogs)
+        .await
+        .context("Failed to send ClearLogs request")?;
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
@@ -473,6 +463,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
+    /// Only used for smoke tests
+    ClearLogs,
     Disconnected,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
@@ -594,6 +586,9 @@ impl Controller {
                     "Applied new settings. Log level will take effect at next app start."
                 );
             }
+            Req::ClearLogs => logging::clear_logs_inner()
+                .await
+                .context("Failed to clear logs")?,
             Req::Disconnected => {
                 tracing::info!("Disconnected by connlib");
                 self.sign_out().await?;

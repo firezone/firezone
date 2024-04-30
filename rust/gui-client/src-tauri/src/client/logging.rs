@@ -83,8 +83,8 @@ pub(crate) fn debug_command_setup() -> Result<(), Error> {
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
-    clear_logs_inner(&managed).await.map_err(|e| e.to_string())
+pub(crate) async fn clear_logs() -> StdResult<(), String> {
+    clear_logs_inner().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -107,7 +107,7 @@ pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
 ///
 /// This includes the current log file, so we won't write any more logs to disk
 /// until the file rolls over or the app restarts.
-pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
+pub(crate) async fn clear_logs_inner() -> Result<()> {
     for log_path in log_paths()?.into_iter().map(|x| x.src) {
         let mut dir = tokio::fs::read_dir(log_path).await?;
         while let Some(entry) = dir.next_entry().await? {
@@ -115,7 +115,6 @@ pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
         }
     }
 
-    managed.fault_msleep(5000).await;
     Ok(())
 }
 
@@ -123,7 +122,7 @@ pub(crate) async fn clear_logs_inner(managed: &Managed) -> Result<()> {
 pub(crate) fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
-    let stem = PathBuf::from(format!("connlib-{datetime_string}"));
+    let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
     let filename = stem.with_extension("zip");
     let Some(filename) = filename.to_str() else {
         bail!("zip filename isn't valid Unicode");
@@ -223,12 +222,12 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
 #[cfg(target_os = "linux")]
 fn log_paths() -> Result<Vec<LogPath>> {
     Ok(vec![
-        app_log_path()?,
         LogPath {
             // TODO: This is magic, it must match the systemd file
             src: PathBuf::from("/var/log").join(connlib_shared::BUNDLE_ID),
             dst: PathBuf::from("connlib"),
         },
+        app_log_path()?,
     ])
 }
 
