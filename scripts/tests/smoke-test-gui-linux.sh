@@ -26,10 +26,11 @@ sudo groupadd --force firezone
 sudo adduser "$USER" firezone
 
 function run_fz_gui() {
+    pwd
     # Does what it says
     sudo --preserve-env \
     su --login "$USER" --command \
-    "xvfb-run --auto-servernum ../target/debug/$PACKAGE $*"
+    "xvfb-run --auto-servernum $PWD/../target/debug/$PACKAGE $*"
 }
 
 function smoke_test() {
