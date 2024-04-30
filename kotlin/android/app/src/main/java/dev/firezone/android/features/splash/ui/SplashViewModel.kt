@@ -8,6 +8,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
@@ -22,6 +23,7 @@ internal class SplashViewModel
     constructor(
         private val repo: Repository,
         private val applicationRestrictions: Bundle,
+        private val applicationMode: ApplicationMode,
     ) : ViewModel() {
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
@@ -30,7 +32,7 @@ internal class SplashViewModel
             viewModelScope.launch {
                 // Stay a while and enjoy the logo
                 delay(REQUEST_DELAY)
-                if (!hasVpnPermissions(context)) {
+                if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
                     val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
