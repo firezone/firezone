@@ -28,8 +28,12 @@ pub(crate) struct Handles {
 
 struct LogPath {
     /// Where to find the logs on disk
+    ///
+    /// e.g. `/var/log/dev.firezone.client`
     src: PathBuf,
     /// Where to store the logs in the zip
+    ///
+    /// e.g. `connlib`
     dst: PathBuf,
 }
 
@@ -237,6 +241,13 @@ fn log_paths() -> Result<Vec<LogPath>> {
     Ok(vec![app_log_path()?])
 }
 
+/// Log dir for just the GUI app
+///
+/// e.g. `$HOME/.cache/dev.firezone.client/data/logs`
+/// or `%LOCALAPPDATA%/dev.firezone.client/data/logs`
+///
+/// On Windows this also happens to contain the connlib logs,
+/// until #3712 merges
 fn app_log_path() -> Result<LogPath> {
     Ok(LogPath {
         src: known_dirs::logs().context("Can't compute app log dir")?,
