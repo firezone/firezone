@@ -52,6 +52,7 @@ uuid = { version = "1.7.0", features = ["v4"] }
 zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+bytes = "1.6.0"
 dirs = "5.0.1"
 # Used for infinite `pending` on not-yet-implemented functions
 futures = "0.3.30"

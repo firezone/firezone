@@ -1,18 +1,21 @@
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription};
 use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
-use futures::{SinkExt, StreamExt};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
+    future::poll_fn,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    pin::Pin,
     sync::Arc,
+    task::{Context, Poll},
 };
 use tokio::{
     net::{unix::OwnedWriteHalf, UnixStream},
     sync::Notify,
 };
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio_util::codec::{Framed, FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use super::ControllerRequest;
 use super::CtlrTx;
@@ -27,8 +30,8 @@ pub(crate) struct CallbackHandler {
 
 /// Forwards events to and from connlib
 pub(crate) struct TunnelWrapper {
-    recv_task: tokio::task::JoinHandle<Result<()>>,
-    tx: FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>,
+    ipc_task: tokio::task::JoinHandle<Result<SignedIn>>,
+    tx: tokio::sync::mpsc::Sender<bytes::Bytes>,
 }
 
 impl TunnelWrapper {
@@ -36,8 +39,7 @@ impl TunnelWrapper {
         self.send_msg(&IpcClientMsg::Disconnect)
             .await
             .context("Couldn't send Disconnect")?;
-        self.tx.close().await?;
-        self.recv_task.abort();
+        self.ipc_task.abort();
         Ok(())
     }
 
@@ -60,11 +62,7 @@ impl TunnelWrapper {
 
     async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
-            .send(
-                serde_json::to_string(msg)
-                    .context("Couldn't encode IPC message as JSON")?
-                    .into(),
-            )
+            .send(encode(msg)?)
             .await
             .context("Couldn't send IPC message")?;
         Ok(())
@@ -81,28 +79,22 @@ pub async fn connect(
     let stream = UnixStream::connect(sock_path())
         .await
         .context("Couldn't connect to UDS")?;
-    let (rx, tx) = stream.into_split();
-    let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-    let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let stream = Framed::new(stream, LengthDelimitedCodec::new());
+    let mut signed_in = SignedIn {
+        callback_handler,
+        outbound: rx,
+        stream: Box::pin(stream),
+    };
 
     // TODO: Make sure this joins / drops somewhere
-    let recv_task = tokio_handle.spawn(async move {
-        while let Some(msg) = rx.next().await {
-            let msg = msg?;
-            let msg: IpcServerMsg = serde_json::from_slice(&msg)?;
-            match msg {
-                IpcServerMsg::Ok => {}
-                IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
-                    &connlib_client_shared::Error::Other("errors can't be serialized"),
-                ),
-                IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                IpcServerMsg::TunnelReady => callback_handler.on_tunnel_ready(),
-            }
-        }
-        Ok(())
+    let ipc_task = tokio_handle.spawn(async move {
+        poll_fn(|cx| signed_in.poll(cx)).await?;
+        Ok(signed_in)
     });
 
-    let mut client = TunnelWrapper { recv_task, tx };
+    let mut client = TunnelWrapper { ipc_task, tx };
     let token = token.expose_secret().clone();
     client
         .send_msg(&IpcClientMsg::Connect {
@@ -113,6 +105,79 @@ pub async fn connect(
         .context("Couldn't send Connect message")?;
 
     Ok(client)
+}
+
+/// IPC for a session that's sent `Connect`
+struct SignedIn {
+    callback_handler: CallbackHandler,
+    outbound: tokio::sync::mpsc::Receiver<bytes::Bytes>,
+    stream: Pin<Box<Framed<UnixStream, LengthDelimitedCodec>>>,
+}
+
+impl SignedIn {
+    fn poll(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        loop {
+            match self.stream.as_mut().poll_ready(cx) {
+                Poll::Ready(Ok(())) => {
+                    // IPC stream can send
+                    match self.outbound.poll_recv(cx) {
+                        Poll::Ready(Some(msg)) => {
+                            if let Err(e) = self.stream.as_mut().start_send(msg) {
+                                return Poll::Ready(Err(e.into()));
+                            }
+                        }
+                        Poll::Ready(None) => {
+                            return Poll::Ready(Err(anyhow::anyhow!("outbound rx closed")))
+                        }
+                        Poll::Pending => {}
+                    }
+                }
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(e.into())),
+                Poll::Pending => {}
+            }
+
+            match self.stream.as_mut().poll_next(cx) {
+                Poll::Ready(Some(msg)) => {
+                    let msg = match msg {
+                        Ok(x) => x,
+                        Err(e) => return Poll::Ready(Err(e.into())),
+                    };
+                    let msg: IpcServerMsg = serde_json::from_slice(&msg).unwrap();
+                    match msg {
+                        IpcServerMsg::Ok => {}
+                        IpcServerMsg::OnDisconnect => {
+                            self.callback_handler.on_disconnect(
+                                &connlib_client_shared::Error::Other("errors can't be serialized"),
+                            );
+                            return Poll::Ready(Ok(()));
+                        }
+                        IpcServerMsg::OnUpdateResources(res) => {
+                            self.callback_handler.on_update_resources(res)
+                        }
+                        IpcServerMsg::TunnelReady => self.callback_handler.on_tunnel_ready(),
+                    }
+                }
+                Poll::Ready(None) => return Poll::Ready(Err(anyhow::anyhow!("shutting down"))),
+                Poll::Pending => {}
+            }
+
+            return Poll::Pending;
+        }
+    }
+
+    async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
+        self.stream
+            .send(encode(msg)?)
+            .await
+            .context("Couldn't send IPC message")?;
+        Ok(())
+    }
+}
+
+fn encode(msg: &IpcClientMsg) -> Result<bytes::Bytes> {
+    Ok(serde_json::to_string(msg)
+        .context("Failed to encode IPC client message JSON")?
+        .into())
 }
 
 // Callbacks must all be non-blocking
