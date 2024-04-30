@@ -27,7 +27,13 @@ internal class CustomUriViewModel
 
         fun parseCustomUri(intent: Intent) {
             viewModelScope.launch {
-                val errors = mutableListOf<String>()
+                val accumulatedErrors = mutableListOf<String>()
+                val error = { msg: String ->
+                    accumulatedErrors += msg
+                    Firebase.crashlytics.log(msg)
+                    Log.e(TAG, msg)
+                }
+
                 when (intent.data?.host) {
                     PATH_CALLBACK -> {
                         intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->
@@ -38,10 +44,7 @@ internal class CustomUriViewModel
                             if (repo.validateState(state).firstOrNull() == true) {
                                 Log.d(TAG, "Valid state parameter. Continuing to save state...")
                             } else {
-                                val msg = "Invalid state parameter $state"
-                                Firebase.crashlytics.log(msg)
-                                Log.e(TAG, msg)
-                                errors += msg
+                                error("Invalid state parameter $state")
                             }
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)?.let { fragment ->
@@ -54,22 +57,14 @@ internal class CustomUriViewModel
                                 repo.clearNonce()
                                 repo.clearState()
                             } else {
-                                val msg = "Invalid auth fragment $fragment"
-                                Firebase.crashlytics.log(msg)
-                                Log.e(TAG, msg)
-                                errors += msg
+                                error("Invalid auth fragment $fragment")
                             }
                         }
                     }
-                    else -> {
-                        val msg = "Unknown path segment: ${intent.data?.lastPathSegment}"
-                        Firebase.crashlytics.log(msg)
-                        Log.e(TAG, msg)
-                        errors += msg
-                    }
+                    else -> error("Unknown path segment: ${intent.data?.lastPathSegment}")
                 }
-                if (errors.isNotEmpty()) {
-                    actionMutableLiveData.postValue(ViewAction.AuthFlowError(errors))
+                if (accumulatedErrors.isNotEmpty()) {
+                    actionMutableLiveData.postValue(ViewAction.AuthFlowError(accumulatedErrors))
                 } else {
                     Log.d(TAG, "Auth flow complete")
                     actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
