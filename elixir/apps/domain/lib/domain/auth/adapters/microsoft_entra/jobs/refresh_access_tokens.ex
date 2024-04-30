@@ -22,7 +22,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens do
       Logger.debug("Refreshing access token")
 
       case MicrosoftEntra.refresh_access_token(provider) do
-        {:ok, provider} ->
+        {:ok, _provider} ->
           Logger.debug("Finished refreshing access token")
 
         {:error, reason} ->

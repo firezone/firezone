@@ -22,7 +22,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens do
       Logger.debug("Refreshing access token")
 
       case Okta.refresh_access_token(provider) do
-        {:ok, provider} ->
+        {:ok, _provider} ->
           Logger.debug("Finished refreshing access token")
 
         {:error, reason} ->

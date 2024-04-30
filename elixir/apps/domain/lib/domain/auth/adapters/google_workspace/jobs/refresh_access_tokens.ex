@@ -22,7 +22,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens do
       Logger.debug("Refreshing access token")
 
       case GoogleWorkspace.refresh_access_token(provider) do
-        {:ok, provider} ->
+        {:ok, _provider} ->
           Logger.debug("Finished refreshing access token")
 
         {:error, reason} ->
