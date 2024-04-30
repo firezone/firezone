@@ -238,7 +238,7 @@ jobs:
           path: ${{ env.BINARY_DEST_PATH }}
           destination: firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}
       - name: Upload checksum to Google Cloud Storage
-        # if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: ${{ env.BINARY_DEST_PATH }}.sha256sum.txt
