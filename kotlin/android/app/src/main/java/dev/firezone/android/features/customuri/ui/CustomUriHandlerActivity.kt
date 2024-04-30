@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.customuri.ui
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
@@ -29,6 +30,17 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
             when (action) {
                 CustomUriViewModel.ViewAction.AuthFlowComplete -> {
                     TunnelService.start(this@CustomUriHandlerActivity)
+                    startActivity(
+                        Intent(this, MainActivity::class.java),
+                    )
+                }
+                is CustomUriViewModel.ViewAction.AuthFlowError -> {
+                    AlertDialog.Builder(this).apply {
+                        setTitle("Error")
+                        setMessage("Errors occurred during the authentication: ${action.errors}")
+                        setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                        create().show()
+                    }
                     startActivity(
                         Intent(this, MainActivity::class.java),
                     )
