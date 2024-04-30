@@ -41,6 +41,9 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
       actor_groups_attrs = map_group_attrs(groups)
       {:ok, {identities_attrs, actor_groups_attrs, membership_tuples}}
     else
+      {:error, {401, %{"error" => %{"message" => message}}}} ->
+        {:error, {:unauthorized, message}}
+
       {:error, {status, %{"error" => %{"message" => message}}}} ->
         {:error, message, "Microsoft Graph API returned #{status}: #{message}"}
 
