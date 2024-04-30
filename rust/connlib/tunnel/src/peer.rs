@@ -677,17 +677,22 @@ mod tests {
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::{
+        net::{Ipv4Addr, Ipv6Addr},
+        ops::RangeInclusive,
+    };
 
     use super::*;
     use connlib_shared::{messages::gateway::FilterInner, proptest::*};
     use ip_network::{Ipv4Network, Ipv6Network};
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
+    use itertools::Itertools;
     use proptest::{
         arbitrary::any,
         collection,
         prelude::ProptestConfig,
         prop_oneof,
+        sample::select,
         strategy::{Just, Strategy},
     };
     use test_strategy::Arbitrary;
@@ -714,6 +719,33 @@ mod proptests {
         };
 
         assert!(peer.ensure_allowed(&packet).is_ok());
+    }
+
+    #[test_strategy::proptest(ProptestConfig {max_shrink_iters: 10_000, ..Default::default()})]
+    fn gateway_reject_unallowed_packet(
+        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(resource_id())] resource_id: ResourceId,
+        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(filters_with_rejected_protocol())] protocol_config: (Filters, Protocol),
+        #[strategy(any::<u16>())] sport: u16,
+        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
+    ) {
+        let (src, resource_addr, dest) = config;
+        let (filters, protocol) = protocol_config;
+        // This test could be extended to test multiple src
+        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        peer.add_resource(resource_addr, resource_id, filters, None);
+
+        let packet = match protocol {
+            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
+            Protocol::Icmp => icmp_request_packet(src, dest),
+        };
+
+        assert!(matches!(
+            peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
     }
 
     // Note: for these tests we don't really care that it's a valid host
@@ -801,6 +833,53 @@ mod proptests {
         })
     }
 
+    fn filters_with_rejected_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
+        // TODO: This can be cleaned up
+        filters()
+            .prop_filter("empty filters accepts every packet", |f| !f.is_empty())
+            .prop_flat_map(|f| {
+                let filters = f.clone();
+                any::<EmptyProtocol>()
+                    .prop_filter_map(
+                        "If ICMP is contained there is no way to generate gaps",
+                        move |p| {
+                            (p != EmptyProtocol::Icmp || !filters.contains(&Filter::Icmp))
+                                .then_some(p)
+                        },
+                    )
+                    .prop_flat_map(move |p| {
+                        if p == EmptyProtocol::Icmp {
+                            Just((f.clone(), Protocol::Icmp)).boxed()
+                        } else {
+                            let f = f.clone();
+                            select(gaps(f.clone(), p))
+                                .prop_flat_map(move |g| {
+                                    let f = f.clone();
+                                    g.prop_map(move |dport| (f.clone(), p.into_protocol(dport)))
+                                })
+                                .boxed()
+                        }
+                    })
+            })
+    }
+
+    fn gaps(filters: Filters, protocol: EmptyProtocol) -> Vec<RangeInclusive<u16>> {
+        filters
+            .into_iter()
+            .filter_map(|f| match (f, protocol) {
+                (Filter::Udp(inner), EmptyProtocol::Udp) => {
+                    Some(inner.port_range_start..=inner.port_range_end)
+                }
+                (Filter::Tcp(inner), EmptyProtocol::Tcp) => {
+                    Some(inner.port_range_start..=inner.port_range_end)
+                }
+                (_, _) => None,
+            })
+            .collect::<RangeInclusiveSet<u16>>()
+            .gaps(&(0..=u16::MAX))
+            .collect_vec()
+    }
+
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
         match f {
             Filter::Udp(FilterInner {
@@ -844,5 +923,32 @@ mod proptests {
         Tcp { dport: u16 },
         Udp { dport: u16 },
         Icmp,
+    }
+
+    impl From<&Filter> for EmptyProtocol {
+        fn from(value: &Filter) -> Self {
+            match value {
+                Filter::Udp(_) => EmptyProtocol::Udp,
+                Filter::Tcp(_) => EmptyProtocol::Tcp,
+                Filter::Icmp => EmptyProtocol::Icmp,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, Arbitrary, PartialEq, Eq)]
+    enum EmptyProtocol {
+        Tcp,
+        Udp,
+        Icmp,
+    }
+
+    impl EmptyProtocol {
+        fn into_protocol(self, dport: u16) -> Protocol {
+            match self {
+                EmptyProtocol::Tcp => Protocol::Tcp { dport },
+                EmptyProtocol::Udp => Protocol::Udp { dport },
+                EmptyProtocol::Icmp => Protocol::Icmp,
+            }
+        }
     }
 }
