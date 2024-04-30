@@ -109,6 +109,43 @@ module "google-artifact-registry" {
   ]
 }
 
+# Bucket where CI stores binary artifacts (eg. gateway or client)
+resource "google_storage_bucket" "firezone-binaries" {
+  project = module.google-cloud-project.project.project_id
+  name    = "${module.google-cloud-project.project.project_id}-artifacts"
+
+  location = "US"
+
+  lifecycle_rule {
+    condition {
+      age = 365
+    }
+
+    action {
+      type = "Delete"
+    }
+  }
+
+  lifecycle_rule {
+    condition {
+      age = 1
+    }
+
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
+  }
+
+  public_access_prevention    = "inherited"
+  uniform_bucket_level_access = true
+}
+
+resource "google_storage_bucket_iam_member" "public-firezone-binaries" {
+  bucket = google_storage_bucket.firezone-binaries.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+
 # Create a VPC
 module "google-cloud-vpc" {
   source = "../../modules/google-cloud/vpc"

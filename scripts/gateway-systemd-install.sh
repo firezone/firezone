@@ -4,6 +4,8 @@ set -euo pipefail
 
 hostname=$(hostname)
 FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
+FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
+FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway/}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
@@ -27,6 +29,7 @@ Documentation=https://www.firezone.dev/kb
 
 [Service]
 Type=simple
+Environment="FIREZONE_VERSION=$FIREZONE_VERSION"
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
 Environment="FIREZONE_ID=$FIREZONE_ID"
 Environment="FIREZONE_TOKEN=$FIREZONE_TOKEN"
@@ -34,7 +37,7 @@ Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
 ExecStartPre=/usr/local/bin/firezone-gateway-init
 ExecStart=/usr/bin/sudo \
-  --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG \
+  --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG,LOG_FORMAT,GOOGLE_CLOUD_PROJECT_ID,OTLP_GRPC_ENDPOINT \
   -u firezone \
   -g firezone \
   /usr/local/bin/firezone-gateway
@@ -53,19 +56,20 @@ cat <<EOF | sudo tee /usr/local/bin/firezone-gateway-init
 
 set -ue
 
-# Download latest version of the gateway if it doesn't already exist
+# Download ${FIREZONE_VERSION} version of the gateway if it doesn't already exist
 if [ ! -e /usr/local/bin/firezone-gateway ]; then
-  echo "/usr/local/bin/firezone-gateway not found. Downloading latest version..."
+  echo "/usr/local/bin/firezone-gateway not found."
+  echo "Downloading ${FIREZONE_VERSION} version from ${FIREZONE_ARTIFACT_URL}..."
   arch=\$(uname -m)
 
   # See https://www.github.com/firezone/firezone/releases for available binaries
-  curl -fsSL https://www.firezone.dev/dl/firezone-gateway/latest/\$arch -o /tmp/firezone-gateway
+  curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o /tmp/firezone-gateway
 
   if file /tmp/firezone-gateway | grep -q "executable"; then
     mv /tmp/firezone-gateway /usr/local/bin/firezone-gateway
   else
     echo "/tmp/firezone-gateway is not an executable!"
-    echo "Ensure 'https://www.firezone.dev/dl/firezone-gateway/latest/\$arch' is accessible from this machine,"
+    echo "Ensure '${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch' is accessible from this machine,"
     echo "or download binary manually and install to /usr/local/bin/firezone-gateway."
     exit 1
   fi

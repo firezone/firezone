@@ -1,7 +1,7 @@
 # Bucket where CI stores binary artifacts (eg. gateway or client)
 resource "google_storage_bucket" "firezone-binaries" {
   project = module.google-cloud-project.project.project_id
-  name    = "firezone-binaries"
+  name    = "${module.google-cloud-project.project.project_id}-artifacts"
 
   location = "US"
 
