@@ -28,20 +28,19 @@ pub(crate) struct CallbackHandler {
 /// Forwards events to and from connlib
 pub(crate) struct TunnelWrapper {
     ipc_task: tokio::task::JoinHandle<Result<SignedIn>>,
-    tx: tokio::sync::mpsc::Sender<bytes::Bytes>,
+    tx: tokio::sync::mpsc::Sender<IpcClientMsg>,
 }
 
 impl TunnelWrapper {
     pub(crate) async fn disconnect(mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Disconnect)
+        self.send_msg(IpcClientMsg::Disconnect)
             .await
             .context("Couldn't send Disconnect")?;
-        self.ipc_task.abort();
         Ok(())
     }
 
     pub(crate) async fn reconnect(&mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Reconnect)
+        self.send_msg(IpcClientMsg::Reconnect)
             .await
             .context("Couldn't send Reconnect")?;
         Ok(())
@@ -51,15 +50,15 @@ impl TunnelWrapper {
     ///
     /// `dns` is passed as value because the in-proc impl needs that
     pub(crate) async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
-        self.send_msg(&IpcClientMsg::SetDns(dns))
+        self.send_msg(IpcClientMsg::SetDns(dns))
             .await
             .context("Couldn't send SetDns")?;
         Ok(())
     }
 
-    async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
+    async fn send_msg(&mut self, msg: IpcClientMsg) -> Result<()> {
         self.tx
-            .send(encode(msg)?)
+            .send(msg)
             .await
             .context("Couldn't send IPC message")?;
         Ok(())
@@ -95,7 +94,7 @@ pub async fn connect(
     let mut client = TunnelWrapper { ipc_task, tx };
     let token = token.expose_secret().clone();
     client
-        .send_msg(&IpcClientMsg::Connect {
+        .send_msg(IpcClientMsg::Connect {
             api_url: api_url.to_string(),
             token,
         })
@@ -108,11 +107,12 @@ pub async fn connect(
 /// IPC for a session that's sent `Connect`
 struct SignedIn {
     callback_handler: CallbackHandler,
-    outbound: tokio::sync::mpsc::Receiver<bytes::Bytes>,
+    outbound: tokio::sync::mpsc::Receiver<IpcClientMsg>,
     stream: Pin<Box<Framed<UnixStream, LengthDelimitedCodec>>>,
 }
 
 impl SignedIn {
+    /// Returns `Ready` when connlib disconnects or on error
     fn poll(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         tracing::debug!("SignedIn::poll");
         loop {
@@ -124,8 +124,11 @@ impl SignedIn {
                     // IPC stream can send
                     match self.outbound.poll_recv(cx) {
                         Poll::Ready(Some(msg)) => {
-                            if let Err(e) = self.stream.as_mut().start_send(msg) {
+                            if let Err(e) = self.stream.as_mut().start_send(encode(&msg)?) {
                                 return Poll::Ready(Err(e.into()));
+                            }
+                            if let IpcClientMsg::Disconnect = msg {
+                                return Poll::Ready(Ok(()));
                             }
                             continue;
                         }
