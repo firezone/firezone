@@ -28,12 +28,47 @@ use super::CtlrTx;
 /// been a partition.
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
-// This will stay in the GUI process
-#[derive(Clone)]
-pub(crate) struct CallbackHandler {
-    pub notify_controller: Arc<Notify>,
-    pub ctlr_tx: CtlrTx,
-    pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
+/// In `in_proc` this is just a stub for compatibility
+///
+/// In IPC it represents a connection to the IPC service
+#[derive(Default)]
+pub(crate) struct Connection {
+    pub session: Option<Session>,
+}
+
+impl Connection {
+    pub(crate) async fn sign_in(
+        &mut self,
+        api_url: &str,
+        token: SecretString,
+        callback_handler: CallbackHandler,
+        tokio_handle: tokio::runtime::Handle,
+    ) -> Result<()> {
+        let mut connlib = sign_in(api_url, token, callback_handler.clone(), tokio_handle).await?;
+
+        connlib
+            .set_dns(crate::client::resolvers::get().unwrap_or_default())
+            .await?;
+        self.session = Some(Session {
+            callback_handler,
+            connlib,
+        });
+        Ok(())
+    }
+
+    pub(crate) async fn sign_out(&mut self) -> Result<()> {
+        if let Some(session) = self.session.take() {
+            tracing::debug!("disconnecting connlib");
+            // This is redundant if the token is expired, in that case
+            // connlib already disconnected itself.
+            session.connlib.disconnect().await?;
+        } else {
+            // Might just be because we got a double sign-out or
+            // the user canceled the sign-in or something innocent.
+            tracing::info!("Tried to sign out but there's no session, cancelled sign-in");
+        }
+        Ok(())
+    }
 }
 
 /// Forwards events to and from connlib
@@ -41,7 +76,20 @@ pub(crate) struct CallbackHandler {
 /// In the `in_proc` module this is just a stub. The real purpose is to abstract
 /// over both in-proc connlib instances and connlib instances living in the tunnel
 /// process, across an IPC boundary.
+pub(crate) struct Session {
+    pub callback_handler: CallbackHandler,
+    pub connlib: TunnelWrapper,
+}
+
+#[derive(Clone)]
+pub(crate) struct CallbackHandler {
+    pub notify_controller: Arc<Notify>,
+    pub ctlr_tx: CtlrTx,
+    pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
+}
+
 pub(crate) struct TunnelWrapper {
+    // Must be private since it's implementation-dependent
     session: connlib_client_shared::Session,
 }
 
@@ -69,7 +117,7 @@ impl TunnelWrapper {
 ///
 /// This is `async` because the IPC version is async
 #[allow(clippy::unused_async)]
-pub async fn connect(
+async fn sign_in(
     api_url: &str,
     token: SecretString,
     callback_handler: CallbackHandler,
