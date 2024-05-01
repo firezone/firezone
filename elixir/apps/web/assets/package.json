@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "@fontsource/source-sans-3": "^5.0.19",
+    "@fontsource/source-sans-3": "^5.0.20",
     "flowbite": "^2.3.0"
   }
 }
