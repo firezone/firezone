@@ -65,6 +65,7 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
+use std::net::IpAddr;
 use tokio::{runtime::Runtime, sync::mpsc};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
@@ -572,7 +573,7 @@ mod async_dns {
         /// This is `&mut self` because calling `register_callback` twice
         /// before the callback fires would cause a resource leak.
         /// Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
-        pub(crate) async fn notified(&mut self) -> Result<()> {
+        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
             // We use a particular order here because I initially assumed
             // `RegNotifyChangeKeyValue` has a gap in this sequence:
             // - RegNotifyChangeKeyValue
@@ -593,7 +594,7 @@ mod async_dns {
             self.register_callback()
                 .context("`register_callback` failed")?;
 
-            Ok(())
+            Ok(crate::client::resolvers::get().unwrap_or_default())
         }
 
         // Be careful with this, if you register twice before the callback fires,

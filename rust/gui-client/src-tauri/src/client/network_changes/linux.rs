@@ -1,6 +1,7 @@
 //! Not implemented for Linux yet
 
 use anyhow::Result;
+use std::net::IpAddr;
 use tokio::time::Interval;
 
 pub(crate) fn run_dns_debug() -> Result<()> {
@@ -36,25 +37,33 @@ impl Worker {
     pub(crate) async fn notified(&mut self) {
         loop {
             self.interval.tick().await;
-            tracing::debug!("Checking for network changes");
+            tracing::trace!("Checking for network changes");
         }
     }
 }
 
 pub(crate) struct DnsListener {
     interval: Interval,
+    last_seen: Vec<IpAddr>,
 }
 
 impl DnsListener {
     pub(crate) fn new() -> Result<Self> {
         Ok(Self {
             interval: create_interval(),
+            last_seen: crate::client::resolvers::get().unwrap_or_default(),
         })
     }
-    pub(crate) async fn notified(&mut self) -> Result<()> {
+
+    pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
         loop {
             self.interval.tick().await;
-            tracing::debug!("Checking for DNS changes");
+            tracing::trace!("Checking for DNS changes");
+            let new = crate::client::resolvers::get().unwrap_or_default();
+            if new != self.last_seen {
+                self.last_seen = new.clone();
+                return Ok(new);
+            }
         }
     }
 }
