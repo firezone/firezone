@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1154,7 +1154,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1846,7 +1846,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "clap",
  "tracing",
@@ -1857,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1943,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1968,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-linux-client"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "firezone-headless-client",
@@ -1976,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2847,7 +2847,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2862,7 +2862,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "pnet_packet",
 ]
@@ -4456,7 +4456,7 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "backoff",
  "base64 0.22.0",
@@ -5334,9 +5334,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.2.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5dce177d0b09fa4f0a5388d15a0ed889b45411ade9406c9aa71dd1fdcb407d0"
+checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
 dependencies = [
  "bytes",
  "crc",
@@ -5713,7 +5713,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5734,7 +5734,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "boringtun",
@@ -5833,8 +5833,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.5.1"
-source = "git+https://github.com/firezone/str0m?branch=main#49b9ac85679fdcdd050dad856bc5df63616fa065"
+version = "0.5.0"
+source = "git+https://github.com/firezone/str0m?branch=main#44b616945145033ade739f30cdce004728011619"
 dependencies = [
  "combine",
  "crc",
@@ -5932,9 +5932,9 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "swift-bridge"
-version = "0.1.53"
+version = "0.1.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72088d7882bd9c900d194cbc6008222c876450f68ce97212ac764775307bfd74"
+checksum = "6180c668892926e0bc19d75a81b0ee2fdce3ab15ff062a61b3ce9b4d562eac1b"
 dependencies = [
  "swift-bridge-build",
  "swift-bridge-macro",
@@ -5942,9 +5942,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-build"
-version = "0.1.53"
+version = "0.1.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0216c84c63a11fb704946f9c4843c9fad28aaf2431cbbd674a37d86d71f2100"
+checksum = "7b8256d2d8c35795afeab117528f5e42b2706ca29b20f768929d458c7f245fdd"
 dependencies = [
  "proc-macro2",
  "swift-bridge-ir",
@@ -5954,9 +5954,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-ir"
-version = "0.1.53"
+version = "0.1.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "183036306714fcb1a53192dd80b89694eef24389b034f3392109b3447006550f"
+checksum = "a28407ee88b57fac3e8c9314a0eefb1f63a3743cb0beef4b8d93189d5d8ce0f1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5965,9 +5965,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-macro"
-version = "0.1.53"
+version = "0.1.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89560c6f6a3b65ec983c6fca5eb9d5e4c839ff41d8162c24339e258a20bf04a6"
+checksum = "e69ec9898b591cfcf473a584e98b54517400dcc67b0d3f8fdf2a099ce7971e3a"
 dependencies = [
  "proc-macro2",
  "quote",
