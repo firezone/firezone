@@ -185,18 +185,10 @@ pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
 }
 
 async fn ipc_listen(cli: Cli) -> Result<()> {
-    // Find the `firezone` group
-    let fz_gid = nix::unistd::Group::from_name("firezone")
-        .context("can't get group by name")?
-        .context("firezone group must exist on the system")?
-        .gid;
-
     // Remove the socket if a previous run left it there
     let sock_path = sock_path();
     tokio::fs::remove_file(&sock_path).await.ok();
     let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
-    std::os::unix::fs::chown(&sock_path, Some(ROOT_USER), Some(fz_gid.into()))
-        .context("can't set firezone as the group for the UDS")?;
     let perms = std::fs::Permissions::from_mode(0o660);
     std::fs::set_permissions(sock_path, perms)?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
