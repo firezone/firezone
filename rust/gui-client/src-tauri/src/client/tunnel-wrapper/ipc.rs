@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, Callbacks, ResourceDescription};
+use connlib_client_shared::{Callbacks, ResourceDescription};
 use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
@@ -19,7 +19,6 @@ use super::CtlrTx;
 
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
-    pub _logger: file_logger::Handle,
     pub notify_controller: Arc<Notify>,
     pub ctlr_tx: CtlrTx,
     pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
