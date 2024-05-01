@@ -34,7 +34,7 @@ jobs:
               aarch64-apple-darwin
               aarch64-apple-ios
           - runs-on: windows-2022
-            clippt-targets: >-
+            clippy-targets: >-
               --target x86_64-pc-windows-msvc
             targets: >-
               x86_64-pc-windows-msvc
