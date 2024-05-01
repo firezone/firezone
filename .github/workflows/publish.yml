@@ -59,3 +59,41 @@ jobs:
               -t ghcr.io/firezone/${image}:${MAJOR_MINOR_VERSION} \
               $SOURCE_TAG
           done
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy Google Cloud Storage binaries to "latest" version
+        run: |
+          set -xe
+
+          IMAGES=(firezone-gateway)
+          ARCHITECTURES=(x86_64 aarch64 armv7)
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          for image in "${IMAGES[@]}"; do
+            for arch in "${ARCHITECTURES[@]}"; do
+              # Copy sha256sum.txt
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt \
+                gs://firezone-prod-artifacts/${image}/latest/${arch}.sha256sum.txt
+
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}.sha256sum.txt
+
+              # Copy binaries
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }} \
+                gs://firezone-prod-artifacts/${image}/latest/${arch}
+
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }} \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}
+            done
+          done
