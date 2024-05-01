@@ -18,15 +18,31 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
-        include:
-          - runs-on: ubuntu-22.04
-          - runs-on: macos-14
-          - runs-on: windows-2022
+        - runs-on: ubuntu-22.04
+          targets: >-
+            x86_64-linux-android
+            aarch64-linux-android
+            i686-linux-android
+            armv7-linux-androideabi
+            x86_64-unknown-linux-musl
+            aarch64-unknown-linux-musl
+            armv7-unknown-linux-musleabihf
+        - runs-on: macos-14
+          targets: >-
+            x86_64-apple-darwin
+            aarch64-apple-darwin
+            aarch64-apple-ios
+        - runs-on: windows-2022
+          targets: >-
+            x86_64-pc-windows-msvc
+            aarch64-pc-windows-msvc
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         id: setup-rust
+        with:
+          targets: ${{ matrix.targets }}
       - uses: ./.github/actions/setup-tauri
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
