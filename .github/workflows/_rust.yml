@@ -54,6 +54,9 @@ jobs:
               aarch64-pc-windows-msvc
     runs-on: ${{ matrix.runs-on }}
     steps:
+      # musl-tools is needed for linting musl targets
+      - run: sudo apt-get update -qq && sudo apt-get install -y musl-tools
+        if: runner.os == 'Linux'
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         id: setup-rust
