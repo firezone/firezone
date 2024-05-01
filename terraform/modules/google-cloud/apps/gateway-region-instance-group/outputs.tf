@@ -3,7 +3,7 @@ output "service_account" {
 }
 
 output "target_tags" {
-  value = local.application_tags
+  value = local.network_tags
 }
 
 output "instance_template" {

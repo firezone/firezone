@@ -4,59 +4,17 @@ data "google_compute_zones" "in_region" {
 }
 
 locals {
-  application_name    = var.application_name != null ? var.application_name : var.image
-  application_version = var.application_version != null ? var.application_version : replace(var.image_tag, ".", "-")
-
-  application_labels = merge({
+  labels = merge({
     managed_by  = "terraform"
-    application = local.application_name
-  }, var.application_labels)
+    application = "firezone-gateway"
+  }, var.labels)
 
-  application_tags = ["app-${local.application_name}"]
+  network_tags = ["firezone-gateways-${var.name}"]
 
   google_health_check_ip_ranges = [
     "130.211.0.0/22",
     "35.191.0.0/16",
   ]
-
-  environment_variables = concat([
-    {
-      name  = "LISTEN_ADDRESS_DISCOVERY_METHOD"
-      value = "gce_metadata"
-    },
-    {
-      name  = "RUST_LOG"
-      value = var.observability_log_level
-    },
-    {
-      name  = "RUST_BACKTRACE"
-      value = "full"
-    },
-    {
-      name  = "LOG_FORMAT"
-      value = "google-cloud"
-    },
-    {
-      name  = "GOOGLE_CLOUD_PROJECT_ID"
-      value = var.project_id
-    },
-    {
-      name  = "OTLP_GRPC_ENDPOINT"
-      value = "127.0.0.1:4317"
-    },
-    {
-      name  = "FIREZONE_TOKEN"
-      value = var.token
-    },
-    {
-      name  = "FIREZONE_API_URL"
-      value = var.api_url
-    },
-    {
-      name  = "FIREZONE_ENABLE_MASQUERADE"
-      value = "1"
-    }
-  ], var.application_environment_variables)
 
   compute_region_zones = length(var.compute_instance_availability_zones) == 0 ? data.google_compute_zones.in_region.names : var.compute_instance_availability_zones
 }
@@ -71,20 +29,20 @@ data "google_compute_image" "ubuntu" {
 resource "google_compute_instance_template" "application" {
   project = var.project_id
 
-  name_prefix = "${local.application_name}-"
+  name_prefix = "${var.name}-"
 
-  description = "This template is used to create ${local.application_name} instances."
+  description = "This template is used to create ${var.name} Firezone Gateway instances."
 
   machine_type = var.compute_instance_type
 
   can_ip_forward = true
 
-  tags = local.application_tags
+  tags = local.network_tags
 
   labels = merge({
     container-vm = data.google_compute_image.ubuntu.name
-    version      = local.application_version
-  }, local.application_labels)
+    version      = replace(var.vsn, ".", "-")
+  }, local.labels)
 
   scheduling {
     automatic_restart   = true
@@ -144,9 +102,13 @@ resource "google_compute_instance_template" "application" {
 
   metadata = {
     user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
-      container_name        = local.application_name != null ? local.application_name : var.image
-      container_image       = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
-      container_environment = local.environment_variables
+      project_id         = var.project_id
+      otlp_grpc_endpoint = "127.0.0.1:4317"
+
+      firezone_token        = var.token
+      firezone_api_url      = var.api_url
+      firezone_version      = replace(var.vsn, ".", "-")
+      firezone_artifact_url = "https://storage.googleapis.com/firezone-prod-artifacts/firezone-gateway"
     })
 
     google-logging-enabled       = "true"
@@ -184,7 +146,7 @@ resource "google_compute_instance_template" "application" {
 resource "google_compute_health_check" "port" {
   project = var.project_id
 
-  name = "${local.application_name}-${var.health_check.name}"
+  name = "${var.name}-${var.health_check.name}"
 
   check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
   timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
@@ -212,9 +174,9 @@ resource "google_compute_health_check" "port" {
 resource "google_compute_region_instance_group_manager" "application" {
   project = var.project_id
 
-  name = "${local.application_name}-${var.compute_region}"
+  name = "${var.name}-${var.compute_region}"
 
-  base_instance_name = local.application_name
+  base_instance_name = var.name
 
   region                    = var.compute_region
   distribution_policy_zones = local.compute_region_zones
@@ -225,7 +187,7 @@ resource "google_compute_region_instance_group_manager" "application" {
   wait_for_instances_status = "STABLE"
 
   version {
-    name              = local.application_version
+    name              = var.vsn
     instance_template = google_compute_instance_template.application.self_link
   }
 
@@ -258,11 +220,11 @@ resource "google_compute_region_instance_group_manager" "application" {
 resource "google_compute_firewall" "http-health-checks" {
   project = var.project_id
 
-  name    = "${local.application_name}-healthcheck"
+  name    = "${var.name}-healthcheck"
   network = var.compute_network
 
   source_ranges = local.google_health_check_ip_ranges
-  target_tags   = local.application_tags
+  target_tags   = local.network_tags
 
   allow {
     protocol = var.health_check.protocol
