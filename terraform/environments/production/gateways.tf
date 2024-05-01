@@ -19,18 +19,13 @@ module "gateways" {
 
   compute_instance_replicas = 2
 
-  container_registry = module.google-artifact-registry.url
+  observability_log_level = "info"
 
-  image_repo = module.google-artifact-registry.repo
-  image      = "gateway"
-  image_tag  = local.gateway_image_tag
-
-  observability_log_level = "debug"
-
-  application_name = "gateway"
-
+  name    = "gateway"
   api_url = "wss://api.${local.tld}"
   token   = var.gateway_token
+
+  vsn = local.gateway_image_tag
 }
 
 # Allow gateways to access the Metabase

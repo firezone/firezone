@@ -1,7 +1,7 @@
 # Bucket where CI stores binary artifacts (eg. gateway or client)
-resource "google_storage_bucket" "firezone-binaries" {
+resource "google_storage_bucket" "firezone-binary-artifacts" {
   project = module.google-cloud-project.project.project_id
-  name    = "firezone-binaries"
+  name    = "${module.google-cloud-project.project.project_id}-artifacts"
 
   location = "US"
 
@@ -29,8 +29,8 @@ resource "google_storage_bucket" "firezone-binaries" {
   uniform_bucket_level_access = true
 }
 
-resource "google_storage_bucket_iam_member" "public-firezone-binaries" {
-  bucket = google_storage_bucket.firezone-binaries.name
+resource "google_storage_bucket_iam_member" "public-firezone-binary-artifacts" {
+  bucket = google_storage_bucket.firezone-binary-artifacts.name
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }
@@ -155,10 +155,10 @@ resource "google_storage_bucket_iam_member" "github-actions-sccache-access" {
   member = each.key
 }
 
-resource "google_storage_bucket_iam_member" "github-actions-firezone-binaries-access" {
+resource "google_storage_bucket_iam_member" "github-actions-firezone-binary-artifacts-access" {
   for_each = toset(local.ci_iam_members)
 
-  bucket = google_storage_bucket.firezone-binaries.name
+  bucket = google_storage_bucket.firezone-binary-artifacts.name
   role   = "roles/storage.objectAdmin"
   member = each.key
 }
