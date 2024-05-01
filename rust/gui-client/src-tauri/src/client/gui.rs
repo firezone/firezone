@@ -821,11 +821,11 @@ async fn run_controller(
                     }
                 }
             },
-            r = dns_listener.notified() => {
-                r?;
+            resolvers = dns_listener.notified() => {
+                let resolvers = resolvers?;
                 if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default()).await?;
+                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                    session.connlib.set_dns(resolvers).await?;
                 }
             },
             req = rx.recv() => {
