@@ -15,8 +15,8 @@ dependencies:
     specifier: ^3.0.1
     version: 3.0.1(@types/react@18.2.73)(react@18.2.0)
   '@next/mdx':
-    specifier: ~14.1.4
-    version: 14.1.4(@mdx-js/loader@3.0.1)(@mdx-js/react@3.0.1)
+    specifier: ~14.2.3
+    version: 14.2.3(@mdx-js/loader@3.0.1)(@mdx-js/react@3.0.1)
   '@types/mdx':
     specifier: ^2.0.11
     version: 2.0.11
@@ -454,8 +454,8 @@ packages:
     resolution: {integrity: sha512-VhgXTvrgeBRxNPjyfBsDIMvgsKDxjlpw4IAUsHCX8Gjl1vtHUYRT3+xfQ/wwvLPDd/6kqfLqk9Pt4+7gysuCKQ==}
     dev: false
 
-  /@next/mdx@14.1.4(@mdx-js/loader@3.0.1)(@mdx-js/react@3.0.1):
-    resolution: {integrity: sha512-FyuDXPTEmuIqtj/AxaKLvwiEZb6hDviq6Ywn8ZlsZOlvYSWpcZGuQrYrDulrdIm/I48hHXANor7EiJzTbVig8Q==}
+  /@next/mdx@14.2.3(@mdx-js/loader@3.0.1)(@mdx-js/react@3.0.1):
+    resolution: {integrity: sha512-oVz7BWpoLQ9dKvCKxPIX9X6BILPTrpTJnYDn2lAsZvK7J9Ela6xNm57vNwgZ8q7xw1THSDdSlbPNgIalM7U/+A==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
