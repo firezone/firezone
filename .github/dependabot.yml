@@ -76,6 +76,7 @@ updates:
           - androidx.hilt:hilt-compiler
           - com.google.dagger.hilt.android
           - com.google.dagger:hilt-android
+          - com.google.dagger:hilt-android-testing
           - com.google.dagger:hilt-android-compiler
       retrofit:
         patterns:
