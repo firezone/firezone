@@ -40,7 +40,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.2"
+  VERSION: "1.0.3"
 
 permissions:
   # write permission is required to create a github release
@@ -175,7 +175,7 @@ jobs:
             image_name: http-test-server
     env:
       # mark:automatic-version
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_1.0.2_${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_1.0.3_${{ matrix.arch.shortname }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
@@ -224,6 +224,25 @@ jobs:
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             --clobber \
             --repo ${{ github.repository }}
+      - name: Authenticate to Google Cloud
+        id: auth
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy binaries to Google Cloud Storage
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        run: |
+          gcloud storage cp \
+            ${BINARY_DEST_PATH} \
+            gs://firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}
+
+          gcloud storage cp \
+            ${BINARY_DEST_PATH}.sha256sum.txt \
+            gs://firezone-binaries/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
