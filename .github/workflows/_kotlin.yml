@@ -22,7 +22,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v2
+        uses: gradle/wrapper-validation-action@v3
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
         with:
