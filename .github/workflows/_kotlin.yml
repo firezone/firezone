@@ -108,7 +108,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
       # Test on x86_64 only -- prevents compiling for other targets.
       # See https://github.com/mozilla/rust-android-gradle?tab=readme-ov-file#specifying-local-targets
-      - run: echo 'rust.target=x86_64' > local.properties
+      - run: echo 'rust.targets=x86_64' > local.properties
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
