@@ -110,7 +110,7 @@ module "google-artifact-registry" {
 }
 
 # Bucket where CI stores binary artifacts (eg. gateway or client)
-resource "google_storage_bucket" "firezone-binaries" {
+resource "google_storage_bucket" "firezone-binary-artifacts" {
   project = module.google-cloud-project.project.project_id
   name    = "${module.google-cloud-project.project.project_id}-artifacts"
 
@@ -140,8 +140,8 @@ resource "google_storage_bucket" "firezone-binaries" {
   uniform_bucket_level_access = true
 }
 
-resource "google_storage_bucket_iam_member" "public-firezone-binaries" {
-  bucket = google_storage_bucket.firezone-binaries.name
+resource "google_storage_bucket_iam_member" "public-firezone-binary-artifacts" {
+  bucket = google_storage_bucket.firezone-binary-artifacts.name
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }

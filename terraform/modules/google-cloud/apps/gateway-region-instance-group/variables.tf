@@ -92,10 +92,16 @@ variable "api_url" {
   description = "URL of the control plane endpoint."
 }
 
+variable "artifact_url" {
+  type        = string
+  default     = "https://storage.googleapis.com/firezone-prod-artifacts/firezone-gateway"
+  description = "URL from which Firezone install script will download the gateway binary"
+}
+
 variable "vsn" {
   type        = string
-  description = "Version of the application."
   default     = "latest"
+  description = "Version of the Firezone gateway that is downloaded from `artifact_url`."
 }
 
 variable "health_check" {
