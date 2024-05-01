@@ -48,8 +48,8 @@ dependencies:
     specifier: ^2.3.0
     version: 2.3.0
   flowbite-react:
-    specifier: ^0.7.8
-    version: 0.7.8(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.3)
+    specifier: ^0.9.0
+    version: 0.9.0(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.3)
   highlight.js:
     specifier: ^11.9.0
     version: 11.9.0
@@ -662,12 +662,6 @@ packages:
 
   /@types/ms@0.7.34:
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
-    dev: false
-
-  /@types/node@20.11.25:
-    resolution: {integrity: sha512-TBHyJxk2b7HceLVGFcpAUjsa5zIdsPWlR6XHfyGzd0SFu+/NFgQgMAl96MSDZgQDvJAvV6BKsFOrt6zIL09JDw==}
-    dependencies:
-      undici-types: 5.26.5
     dev: false
 
   /@types/node@20.12.7:
@@ -1314,8 +1308,8 @@ packages:
     dependencies:
       to-regex-range: 5.0.1
 
-  /flowbite-react@0.7.8(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.3):
-    resolution: {integrity: sha512-hYYPvIixokNgAlPbmxNAYFLlLi61z492v8hj1jQHykhuesPGTifDFeQcDxKgQvENqc4bRdBdjrKOvnq7D+pm7g==}
+  /flowbite-react@0.9.0(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.3):
+    resolution: {integrity: sha512-wRGzTPHaEuRSXiAFhdTuksezABE/AjI/iyOOBGZpsFAz/sq7zuorAqjRud9FWgy3TlFPtldl7kL93wNY2nOnKQ==}
     peerDependencies:
       react: '>=18'
       react-dom: '>=18'
@@ -1722,7 +1716,7 @@ packages:
     resolution: {integrity: sha512-7vuh85V5cdDofPyxn58nrPjBktZo0u9x1g8WtjQol+jZDaE+fhN+cIvTj11GndBnMnyfrUOG1sZQxCdjKh+DKg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/node': 20.11.25
+      '@types/node': 20.12.7
       merge-stream: 2.0.0
       supports-color: 8.1.1
     dev: false
