@@ -76,6 +76,7 @@ updates:
           - androidx.hilt:hilt-compiler
           - com.google.dagger.hilt.android
           - com.google.dagger:hilt-android
+          - com.google.dagger:hilt-android-testing
           - com.google.dagger:hilt-android-compiler
       retrofit:
         patterns:
@@ -110,6 +111,10 @@ updates:
       interval: monthly
   - package-ecosystem: npm
     directory: rust/gui-client/
+    schedule:
+      interval: monthly
+  - package-ecosystem: npm
+    directory: scripts/tests/browser/
     schedule:
       interval: monthly
   - package-ecosystem: npm
