@@ -40,7 +40,8 @@ runcmd:
   - curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
   - sudo bash add-google-cloud-ops-agent-repo.sh --also-install
   # Install Firezone Gateway
-  - FIREZONE_TOKEN="${firezone_token}" \
+  - |
+    FIREZONE_TOKEN="${firezone_token}" \
     FIREZONE_API_URL="${firezone_api_url}" \
     FIREZONE_VERSION="${firezone_version}" \
     FIREZONE_ARTIFACT_URL="${firezone_artifact_url}" \
