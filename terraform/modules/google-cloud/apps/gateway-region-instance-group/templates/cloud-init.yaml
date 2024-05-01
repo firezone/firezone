@@ -41,11 +41,11 @@ runcmd:
   - sudo bash add-google-cloud-ops-agent-repo.sh --also-install
   # Install Firezone Gateway
   - |
-    FIREZONE_TOKEN="${firezone_token}" \
-    FIREZONE_API_URL="${firezone_api_url}" \
-    FIREZONE_VERSION="${firezone_version}" \
-    FIREZONE_ARTIFACT_URL="${firezone_artifact_url}" \
-    FIREZONE_LOG_FORMAT="google-cloud" \
-    FIREZONE_GOOGLE_CLOUD_PROJECT_ID=$(project_id) \
-    FIREZONE_OTLP_GRPC_ENDPOINT=$(otlp_grpc_endpoint) \
+    export FIREZONE_TOKEN="${firezone_token}"
+    export FIREZONE_API_URL="${firezone_api_url}"
+    export FIREZONE_VERSION="${firezone_version}"
+    export FIREZONE_ARTIFACT_URL="${firezone_artifact_url}"
+    export FIREZONE_LOG_FORMAT="google-cloud"
+    export FIREZONE_GOOGLE_CLOUD_PROJECT_ID="${project_id}"
+    export FIREZONE_OTLP_GRPC_ENDPOINT="${otlp_grpc_endpoint}"
     bash <(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh)
