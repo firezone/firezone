@@ -179,7 +179,7 @@ dependencies {
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.51.1")
     // Instrumented Tests
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.51")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.51.1")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.51.1")
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.navigation:navigation-testing:2.7.7")
@@ -187,7 +187,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.5.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     // Unit Tests
-    testImplementation("com.google.dagger:hilt-android-testing:2.51")
+    testImplementation("com.google.dagger:hilt-android-testing:2.51.1")
 
     // Retrofit 2
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
