@@ -41,7 +41,7 @@ resource "google_compute_instance_template" "application" {
 
   labels = merge({
     container-vm = data.google_compute_image.ubuntu.name
-    version      = var.vsn
+    version      = replace(var.vsn, ".", "-")
   }, local.labels)
 
   scheduling {
@@ -107,7 +107,7 @@ resource "google_compute_instance_template" "application" {
 
       firezone_token        = var.token
       firezone_api_url      = var.api_url
-      firezone_version      = var.vsn
+      firezone_version      = replace(var.vsn, ".", "-")
       firezone_artifact_url = "https://storage.googleapis.com/firezone-prod-artifacts/firezone-gateway"
     })
 
