@@ -65,7 +65,6 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use std::net::IpAddr;
 use tokio::{runtime::Runtime, sync::mpsc};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
@@ -407,7 +406,7 @@ fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, ops::Deref, path::Path};
+    use std::{ffi::c_void, net::IpAddr, ops::Deref, path::Path};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -451,12 +450,11 @@ mod async_dns {
 
         rt.block_on(async move {
             loop {
-                tokio::select! {
+                let resolvers = tokio::select! {
                     _r = tokio::signal::ctrl_c() => break,
                     r = listener.notified() => r?,
-                }
+                };
 
-                let resolvers = crate::client::resolvers::get()?;
                 tracing::info!(?resolvers);
             }
 
@@ -483,12 +481,12 @@ mod async_dns {
             })
         }
 
-        pub(crate) async fn notified(&mut self) -> Result<()> {
+        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,
             }
-            Ok(())
+            Ok(crate::client::resolvers::get().unwrap_or_default())
         }
     }
 
@@ -573,7 +571,7 @@ mod async_dns {
         /// This is `&mut self` because calling `register_callback` twice
         /// before the callback fires would cause a resource leak.
         /// Cancel-safety: Yes. <https://docs.rs/tokio/latest/tokio/macro.select.html#cancellation-safety>
-        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
+        pub(crate) async fn notified(&mut self) -> Result<()> {
             // We use a particular order here because I initially assumed
             // `RegNotifyChangeKeyValue` has a gap in this sequence:
             // - RegNotifyChangeKeyValue
@@ -594,7 +592,7 @@ mod async_dns {
             self.register_callback()
                 .context("`register_callback` failed")?;
 
-            Ok(crate::client::resolvers::get().unwrap_or_default())
+            Ok(())
         }
 
         // Be careful with this, if you register twice before the callback fires,
