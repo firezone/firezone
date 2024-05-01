@@ -45,9 +45,6 @@ jobs:
         id: setup-rust
         with:
           targets: ${{ matrix.targets }}
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cross
       - uses: ./.github/actions/setup-tauri
       # musl-tools is needed for linting musl targets
       - run: sudo apt-get update -qq && sudo apt-get install -y musl-tools
@@ -58,8 +55,11 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
         name: "cargo doc"
         shell: bash
-      - run: cross clippy --all-targets ${{ matrix.clippy-targets }} --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
+      - run: cargo clippy --all-targets ${{ matrix.clippy-targets }} --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
         name: "cargo clippy"
+        env:
+          # Needed to compile for Android target
+          PATH: $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
         shell: bash
 
       - uses: taiki-e/install-action@cargo-udeps
