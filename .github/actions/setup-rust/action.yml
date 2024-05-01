@@ -68,7 +68,7 @@ runs:
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy,cross
+        components: rustfmt,clippy
     - if: inputs.targets != ''
       run: rustup target add ${{ inputs.targets }}
       shell: bash

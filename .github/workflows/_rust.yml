@@ -59,6 +59,9 @@ jobs:
         id: setup-rust
         with:
           targets: ${{ matrix.targets }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cross
       - uses: ./.github/actions/setup-tauri
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
