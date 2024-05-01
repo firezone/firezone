@@ -10,7 +10,7 @@
 
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{file_logger, ResourceDescription, Sockets};
+use connlib_client_shared::{ResourceDescription, Sockets};
 use connlib_shared::{keypair, LoginUrl};
 use secrecy::SecretString;
 use std::{
@@ -31,8 +31,6 @@ const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 // This will stay in the GUI process
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
-    // This isn't used, but maybe we need to keep it alive or something.
-    pub _logger: file_logger::Handle,
     pub notify_controller: Arc<Notify>,
     pub ctlr_tx: CtlrTx,
     pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,

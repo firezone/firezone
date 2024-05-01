@@ -22,7 +22,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Re
 /// resulting in empty log files.
 #[must_use]
 pub(crate) struct Handles {
-    pub logger: file_logger::Handle,
+    pub _logger: file_logger::Handle,
     pub _reloader: reload::Handle<EnvFilter, Registry>,
 }
 
@@ -70,7 +70,7 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
     LogTracer::init()?;
     tracing::debug!(?log_path, "Log path");
     Ok(Handles {
-        logger,
+        _logger: logger,
         _reloader: reloader,
     })
 }

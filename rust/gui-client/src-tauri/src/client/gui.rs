@@ -40,14 +40,6 @@ mod os;
 mod os;
 
 // This syntax is odd, but it helps `cargo-mutants` understand the platform-specific modules
-// The IPC implementation of TunnelWrapper is not built yet
-/*
-#[cfg(target_os = "linux")]
-#[path = "tunnel-wrapper/ipc.rs"]
-mod tunnel_wrapper_ipc;
-#[cfg(target_os = "linux")]
-use tunnel_wrapper_ipc as tunnel_wrapper;
-*/
 #[cfg(target_os = "windows")]
 #[path = "tunnel-wrapper/in_proc.rs"]
 mod tunnel_wrapper_in_proc;
@@ -490,7 +482,8 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    logging_handles: client::logging::Handles,
+    /// Must be kept alive so the logger will keep running
+    _logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
@@ -513,7 +506,6 @@ impl Controller {
 
         let callback_handler = CallbackHandler {
             ctlr_tx: self.ctlr_tx.clone(),
-            _logger: self.logging_handles.logger.clone(),
             notify_controller: Arc::clone(&self.notify_controller),
             resources: Default::default(),
         };
@@ -778,7 +770,7 @@ async fn run_controller(
         auth: client::auth::Auth::new().context("Failed to set up auth module")?,
         ctlr_tx,
         session: None,
-        logging_handles,
+        _logging_handles: logging_handles,
         notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
@@ -824,11 +816,11 @@ async fn run_controller(
                     }
                 }
             },
-            r = dns_listener.notified() => {
-                r?;
+            resolvers = dns_listener.notified() => {
+                let resolvers = resolvers?;
                 if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default()).await?;
+                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                    session.connlib.set_dns(resolvers).await?;
                 }
             },
             req = rx.recv() => {
