@@ -19,26 +19,22 @@ pub(crate) fn check_internet() -> Result<bool> {
     Ok(true)
 }
 
-pub(crate) struct Worker {
-    interval: Interval,
-}
+pub(crate) struct Worker {}
 
 impl Worker {
     pub(crate) fn new() -> Result<Self> {
-        Ok(Self {
-            interval: create_interval(),
-        })
+        Ok(Self {})
     }
 
     pub(crate) fn close(&mut self) -> Result<()> {
         Ok(())
     }
 
+    /// Not implemented on Linux
+    ///
+    /// On Windows this returns when we gain or lose Internet.
     pub(crate) async fn notified(&mut self) {
-        loop {
-            self.interval.tick().await;
-            tracing::trace!("Checking for network changes");
-        }
+        futures::future::pending().await
     }
 }
 
