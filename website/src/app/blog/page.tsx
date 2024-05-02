@@ -24,39 +24,19 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
-            title="How DNS Works in Firezone"
+            title="How DNS-based Routing Works"
             date="April 30, 2024"
-            href="/blog/how-dns-works-in-firezone"
+            href="/blog/how-dns-based-traffic-redirection-works"
             authorName="Gabriel Steinberg"
             authorAvatarSrc={gravatar("gabriel@firezone.dev")}
             type="Learn"
           >
             <p className="mb-2">
-              Firezone{" "}
-              <Link
-                href="/blog/how-dns-works-in-firezone"
-                className="text-accent-500 underline hover:no-underline"
-              >
-                1.0 GA is now available
-              </Link>
-              ! Also in this update:
+              Firezone's approach to DNS works a bit differently than one might
+              expect. One question we often get from new users is, "why do my
+              DNS Resources resolve to a different IP address with Firezone
+              enabled?". The short answer is: we proxy them!
             </p>
-            <ul className="list-inside list-disc ml-4">
-              <li>
-                Firezone 1.0 signups are{" "}
-                <Link
-                  href="https://app.firezone.dev/sign_up"
-                  className="text-accent-500 underline hover:no-underline"
-                >
-                  now open
-                </Link>
-              </li>
-              <li>New Team plan with self-serve billing</li>
-              <li>
-                Clients available for Windows, macOS, iOS, Android, and Linux
-              </li>
-              <li>Network roaming support</li>
-            </ul>
           </SummaryCard>
           <SummaryCard
             title="April 2024 Update: GA"

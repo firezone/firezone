@@ -2,9 +2,9 @@ import _Page from "./_page";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "How DNS Works in Firezone • Firezone Blog",
+  title: "How DNS-Based Traffic Redirection Works • Firezone Blog",
   description:
-    "A bit about the history of DNS, the security issues that plague it, and how Firezone uniquely solves these.",
+    "The history of DNS, the security issues that plague it, and how Firezone solves them.",
 };
 
 export default function Page() {
