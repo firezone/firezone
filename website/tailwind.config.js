@@ -1,3 +1,5 @@
+const flowbite = require("flowbite-react/tailwind");
+
 const firezoneColors = {
   // See our brand palette in Figma.
   // These have been reversed to match Tailwind's default order.
@@ -48,7 +50,7 @@ const firezoneColors = {
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "node_modules/flowbite-react/**/*.{js,ts,jsx,tsx}",
+    flowbite.content(),
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
@@ -103,5 +105,5 @@ module.exports = {
       },
     },
   },
-  plugins: [require("flowbite/plugin"), require("flowbite-typography")],
+  plugins: [flowbite.plugin(), require("flowbite-typography")],
 };
