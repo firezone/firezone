@@ -132,6 +132,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
+          working-directory: ./kotlin/android
       - name: Run Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
