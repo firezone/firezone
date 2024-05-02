@@ -53,11 +53,11 @@ applications, entire subnets, and everything in between.
   <img width="1439" alt="architecture" src="https://github.com/firezone/firezone/assets/167144/48cd6a1e-2f3f-4ca7-969a-fc5b33e13d1c">
 </p>
 
-<!-- TODO: Record new overview video without so many colors so that the gif compressed better. -->
-
+<!-- TODO: Record new overview video without so many colors so that the gif compressed better. This one (26 MB) was too large.
 <p align="center">
   <img width="1200" alt="Firezone Overview" src="https://www.firezone.dev/images/overview-screencap.gif">
 </p>
+-->
 
 ## Features
 
