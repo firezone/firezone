@@ -57,7 +57,7 @@ internal class CustomUriViewModel
                                 repo.clearNonce()
                                 repo.clearState()
                             } else {
-                                error("Invalid auth fragment $fragment")
+                                error("Auth fragment was empty")
                             }
                         }
                     }
@@ -84,6 +84,8 @@ internal class CustomUriViewModel
         internal sealed class ViewAction {
             data object AuthFlowComplete : ViewAction()
 
-            data class AuthFlowError(val errors: Iterable<String>) : ViewAction()
+            data class AuthFlowError(val errors: Iterable<String>) : ViewAction() {
+                constructor(vararg errors: String) : this(errors.toList())
+            }
         }
     }
