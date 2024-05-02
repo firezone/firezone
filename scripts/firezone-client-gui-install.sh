@@ -10,7 +10,7 @@ set -euox pipefail
 DEB_PATH=$(realpath "$1")
 
 echo "Installing Firezone..."
-sudo apt-get install "$DEB_PATH"
+sudo apt-get install --yes "$DEB_PATH"
 
 echo "Adding your user to the firezone-client group..."
 # Creates the system group `firezone-client`
