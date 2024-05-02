@@ -109,6 +109,7 @@ jobs:
       # Test on x86_64 only -- prevents compiling for other targets.
       # See https://github.com/mozilla/rust-android-gradle?tab=readme-ov-file#specifying-local-targets
       - run: echo 'rust.targets=x86' > local.properties
+        working-directory: .
       # See https://github.com/ReactiveCircus/android-emulator-runner?tab=readme-ov-file#running-hardware-accelerated-emulators-on-linux-runners
       - name: Enable KVM group perms
         run: |
