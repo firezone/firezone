@@ -8,7 +8,7 @@ export default function _Page() {
       authorName="Gabriel Steinberg"
       authorTitle="Senior Backend Engineer"
       authorEmail="gabriel@firezone.dev"
-      title="How DNS-Based Traffic Redirection Works"
+      title="How DNS-Based Traffic Routing Works"
       date="2024-04-30"
     >
       <Content />

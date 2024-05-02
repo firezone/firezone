@@ -24,9 +24,9 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
-            title="How DNS-based Routing Works"
+            title="How DNS-based Traffic Routing Works"
             date="April 30, 2024"
-            href="/blog/how-dns-based-traffic-redirection-works"
+            href="/blog/how-dns-based-traffic-routing-works"
             authorName="Gabriel Steinberg"
             authorAvatarSrc={gravatar("gabriel@firezone.dev")}
             type="Learn"

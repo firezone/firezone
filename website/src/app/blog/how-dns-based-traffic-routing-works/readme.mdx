@@ -1,0 +1,372 @@
+import Image from "next/image";
+
+Firezone's approach to DNS works a bit differently than one might expect. One
+question we get a lot is, "why do my DNS Resources resolve to different IPs with
+Firezone enabled?". Great question. Let's explain that now!
+
+What follows is a brief history of DNS, (a few of) the security issues that
+plague it, and how Firezone's DNS-based traffic routing was designed to address
+them.
+
+## A brief history lesson
+
+But before we dive into all the fun details, it's helpful to first understand
+the problem DNS was originally designed to solve.
+
+DNS was created in the early 1980s to address a classic scalability problem with
+the early ARPANET.
+
+<Image
+  src="/images/blog/how-dns-based-traffic-routing-works/arpanet-logical-map.png"
+  alt="Early ARPANET logical map"
+  width={1200}
+  height={1200}
+  className="mx-auto rounded shadow"
+/>
+
+<p className="text-sm italic text-center mx-auto">
+  Figure 1: Early ARPANET logical map
+</p>
+
+The ARPANET, the precursor to the modern internet, was a network of computers
+that connected various research institutions and government agencies across the
+United States. It was the first network to use the new TCP/IP protocol suite,
+which provided an IP address to each host on the network.
+
+To connect to a host on the ARPANET, you needed its IP address. But there was a
+problem: IP addresses are hard to remember, and it turns out humans aren't great
+at remembering long strings of numbers. To solve this, a simple system was
+created to each host's IP address to a human-friendly "hostname".
+
+<p className="text-sm italic text-center mx-auto">
+  Figure 2: Artist's rendition of the original HOSTS.TXT file
+</p>
+
+So far, so good, right? Well, not quite. The system was perhaps a bit _too_
+simple.
+
+### Files don't scale
+
+Hostname to IP address mappings were stored in a single file, aptly named
+`HOSTS.TXT`, and stored on the `SRI-NIC` server -- a system maintained by the
+Network Information Center (NIC) at the Stanford Research Institute (SRI).
+
+Whenever an ARPANET member organization (yes, you had to be a member at that
+time) wanted to add a host to the file or update its IP address, it had to
+contact the SRI (during standard business hours!) and file a formal request
+containing the updated mapping.
+
+Need to make an update over the weekend or on a US holiday? Too bad, you were
+out of luck!
+
+The system worked ok when there were only a handful of hosts to maintain. But,
+as you might imagine, it became increasingly unmanageable as more hosts joined.
+
+## Enter the Domain Name System (DNS)
+
+Over the course of several meetings, early ARPANET engineers (who would later go
+on to form the [IETF](https://www.ietf.org/)) devised a clever solution to the
+scalability problem they were facing: instead of storing the hostname lookup
+table in a single file, they would chop it up instead and distribute the entries
+across several "Nameservers", each one responsible for maintaining the hosts
+that belonged to a particular network, or "Domain".
+
+Hence the name: the Domain Name System, or DNS for short.
+
+### How DNS works
+
+At a high level, DNS is a heirarchical system that distributes the
+responsibility of resolving a a fully-qualified domain name (FQDN) to a series
+of nameservers, each one responsible for a resolving different part.
+
+<p className="text-sm italic text-center mx-auto">Figure 3: How DNS works</p>
+
+Here's how it works:
+
+1. An application makes a query. The first stop is the **stub resolver**, a
+   small piece of software on the host that's responsible for resolving DNS
+   queries.
+1. The stub resolver typically maintains a small cache of recent queries. If the
+   query misses the cache, it forwards the query to an **upstream resolver**.
+   This is typically a larger, caching resolver run by your ISP or more recently
+   a public DNS service like NextDNS or Cloudflare.
+1. If _this_ query misses the cache, the upstream resolver begins the full
+   process of resolution. It starts by forwarding the query to a **root
+   nameserver**. The root nameserver is at the top of the DNS hierarchy.
+1. The root nameserver responds to the upsteam resolver with the IP address of
+   the **TLD nameserver** for the root in question, for example `com` or `net`.
+   The upstream resolver then forwards the query to the TLD nameserver.
+1. The TLD nameserver responds with the IP address of the **authoritative
+   nameserver** for the domain in question. This is the nameserver the owner of
+   the domain will configure to respond to queries for that domain. It's where
+   you typically configure your DNS records for your domain, for example.
+1. The upstream resolver then forwards the query to the authoritative
+   nameserver.
+1. Finally, the authoritative nameserver responds with the IP address of the
+   host in question, and the upstream resolver returns the final answer to the
+   stub resolver on the host that originally made the query.
+1. The application on the host can now connect to the IP address returned by the
+   stub resolver.
+
+The system of root, TLD, and authoritate nameservers replace the function of the
+original `HOSTS.TXT` file maintained by NIC in the ARPANET. However, now it's
+distributed -- no one server or organization is responsible for maintaining the
+entire database, and the system can scale as more hosts, domains, and IP
+addresses are added.
+
+On today's internet, the whole process for resolving an query usually takes only
+a few hundred milliseconds. Caching resolvers help to speed up the process by
+storing the results of queries for a certain amount of time, known as the
+record's time-to-live (TTL).
+
+This means that if a host makes the same query multiple times, the stub or
+upstream resolver can return the result immediately (assuming the TTL hasn't
+expired) without having to query the hierarchy of root, TLD, and authoritative
+nameservers again. This can speed up query times orders of magnitude, to the
+point where stub resolvers responding with cached responses are nearly
+instantaneous.
+
+So hostnames are now mapped to IP addresses in a scalable way, and queries are
+pretty fast on average. DNS worked quite well for the ARPANET! So well, in fact,
+that it was adopted mostly unchanged by the internet as it grew to become the
+global network we know and love today.
+
+But hold your champagne bottles. There's just one problem with all these
+delightfully distributed domain lookups: security.
+
+### Security issues with DNS
+
+DNS was designed in the early 1980s, when the ARPANET was a small, trusted
+network of research institutions and government agencies. The system was
+designed with the assumption that all entities on the network were known and
+trusted, and that the network itself was secure.
+
+As the ARPANET grew to become the internet, however, this assumption no longer
+held.
+
+#### DNS spoofing
+
+<p className="text-sm italic text-center mx-auto">
+  Figure 4: An illustration of DNS spoofing
+</p>
+
+One of the more apparent security issues is that you have to trust the
+nameservers you're querying. If a malicious actor manages to compromise a
+nameserver, they can return false responses to your queries. Since your machine
+has no other way to verify the authoritative answer, it will happily connect to
+whatever IP address the malicious nameserver returned. This is known as a
+[DNS spoofing](https://en.wikipedia.org/wiki/DNS_spoofing) attack.
+
+In more recent years, various solutions have been created to address this and
+other shortcomings:
+[DNSSEC](https://en.wikipedia.org/wiki/Domain_Name_System_Security_Extensions)
+ensures the integrity of responses to your query, and DNS-over-TLS (DoT) and
+DNS-over-HTTPS (DoH) take this a step further and prevent eavesdroppers from
+seeing which queries you perform.
+
+#### DNS enumeration
+
+Ok, these solutions work great for protecting the answers to your queries, but
+what about protecting the nameservers from the queries themselves?
+
+If an organization defines records for its internal services, for example,
+anyone can query its authoritative nameservers to map out a list of all the
+organization's internal services. How convenient!
+
+This is known as **DNS enumeration**, and is typically one of the first steps
+taken by a malicious actor looking for potential entrypoints into an
+organization.
+
+Because of this issue, organizations often resort to running their own upstream
+resolvers, configured to return different results (or sometimes none at all)
+depending on the _source_ of the request. This technique is known as **Split
+DNS**.
+
+So how does it work?
+
+## How Split DNS works
+
+Split DNS is a technique wherein an orgnization maintains two (or more) separate
+DNS servers (or a single server configured with two "zones") -- one for internal
+resources and one for external resources. The internal server is only accessible
+to users who are connected to an organization's internal network (such as a VPN
+or branch office network), while the external zone is accessible to the outside
+world.
+
+<p className="text-sm italic text-center mx-auto">
+  Figure 5: Split DNS in action
+</p>
+
+As an example, let's say an organization has an internal service called
+`gitlab.company.com` which resolves to `10.10.10.10`. The organization's
+internal DNS server would be configured to respond to queries for this service,
+but the external DNS server would simply return `NXDOMAIN`, DNS speak for
+"Sorry, wrong number". This allows the organization to publish some records
+publicly, like `www.company.com` so that its website is accessible to the
+public, while leaving the addresses of its private resources a secret.
+
+Sprinkle in a little bit of matching DNS configuration onto your workforce's
+machines to make sure the right server is being queried for the right domains,
+and you're set.
+
+Split DNS works well for organizations that want to secure access to their own
+internal applications, and continues to be a popular way to mitigate enumeration
+attacks today.
+
+So far, so good right?
+
+### The problem with Split DNS
+
+Split DNS works great when you have a clear distinction between external and
+internal resources. It allows you to publish public addresses for your public
+resources so anyone can access them, and publish private addresses for your
+workforce so they can connect to the private resources that you manage.
+
+Increasingly, however, cloud-delivered services are replacing their on-premise
+equivalents across many organizations. The upside here is generally lower
+operational cost -- pay the businesses making the software to host it for you as
+opposed to hosting and managing it yourself, and reap the efficiency benefits in
+the form of cost reduction.
+
+But the downside with these public SaaS apps is that you can't use Split DNS to
+hide them anymore -- they aren't running on your infrastructure, so there simply
+aren't any internal zones and therefore no internal IPs to give to your
+workforce to connect to.
+
+As it turns out, there's a simple solution to this problem that's becoming more
+and more common across popular SaaS providers. Many public SaaS apps like
+GitHub, Slack, and Hubspot provide an IP allowlist feature that limits access to
+your tenant based on a range of allowed source addresses.
+
+Now, the studious reader will be quick to recognize the solution to our Split
+DNS problem: can't the organization simply tunnel the resolved IP addresses of
+these services through the VPN, just like they did before with internal
+services?
+
+And yes, that can work in some circumstances, but there's one minor problem
+standing in our way: **virtual hosting**.
+
+If the service uses
+[virtual hosting](https://en.wikipedia.org/wiki/Virtual_hosting), the IP address
+that the DNS query resolves to is shared among many different services, and not
+just the one the organization is interested in routing traffic for.
+
+<p className="text-sm text-center mx-auto italic">
+  Figure 5: Collateral damage can occur with Split DNS and some services
+</p>
+
+This means that an organization wishing to route DNS traffc _only_ for
+`github.com` might inadvertently route traffic for _other_ GitHub (and maybe
+even non-GitHub) services as well!
+
+#### NAT to the rescue?
+
+Ok, but what about another solution: can the organization simply configure its
+client devices to use the organization's DNS server to respond with internal IP
+addresses for the public services?
+
+That's much better -- it solves the problem of routing traffic for the wrong
+service, but it introduces a new problem: the organization now needs to maintain
+a list of all the public resources its workforce needs to access, then configure
+its DNS server to respond with a unique internal IP address for each one,
+finally it needs to be reasonably sure these IP addresses don't conflict with
+other networks available to the employee's machine, such as a home printer.
+
+<p className="text-sm text-center mx-auto italic">
+  Figure 6: Split DNS with NAT: A management nightmare
+</p>
+
+On top of the addressing headache, the organization needs to operate NAT routers
+that accept the traffic from the VPN clients across their workforce, translate
+the source addresses so they appear to come from one of the IPs in the
+allowlist, and finally forward the traffic on to the service in question. The IP
+addressing configuration and NAT router configuration would need to be kept in
+sync so that they function together.
+
+So we've taken what was originally a DNS problem and translated it to a
+configuration management problem. So let's solve it!
+
+## DNS-based traffic routing
+
+By now you're probably thinking, "this is all well and good, but what does this
+have to do with Firezone?". Glad you asked!
+
+Firezone's approach to DNS was designed to address both the insecurity of DNS
+and the shortcomings of Split DNS, into a single solution that's just as secure
+as Split DNS, but much more flexible and easier to manage.
+
+### How it works
+
+When a user signs in, the Firezone Client configures its host operating system
+to use a special, lightweight DNS proxy running inside the Client for all DNS
+queries on the system.
+
+This proxy lives at `100.100.111.0/24` for IPv4 queries and
+`fd00:2021:1111:8000:100:100:111:0/120` for IPv6 queries. These addresses are
+not routable on the public internet, so there's no risk that queries for
+internal resources will leave the device unexpectedly.
+
+The IP addresses the proxy chooses to "listen on" are determined by the
+[upstream resolvers](#configuring-client-dns-upstream-resolvers) available to
+the Client. For each IPv4 upstream resolver, the proxy listens on an address in
+the `100.100.111.0/24` range, and for each IPv6 upstream resolver, the proxy
+listens on an address in the `fd00:2021:1111:8000:100:100:111:0/120` range.
+
+<p className="text-sm text-center mx-auto italic">
+  Figure 7: Firezone's embedded stub resolver
+</p>
+
+When an application makes a DNS query, the proxy checks if the name matches a
+Firezone Resource that the user has access to. If it does, the Client then
+requests a Gateway serving that Resource to resolve the DNS query. When the
+Gateway responds, the proxy will create a temporary mapping between the actual
+IP address of the Resource and the dummy IP address it returned to the
+application. From this point onward, all subsequent packets to the dummy IP
+address are forwarded to the Gateway that resolved the query. These IPs are
+persisted for the duration of the Client's session.
+
+```
+user@host:~ % dig ifconfig.net
+
+; <<>> DiG 9.10.6 <<>> ifconfig.net
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 51756
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;ifconfig.net.			IN	A
+
+;; ANSWER SECTION:
+ifconfig.net.		300	IN	A	100.96.0.2
+ifconfig.net.		300	IN	A	100.96.0.1
+
+;; Query time: 262 msec
+;; SERVER: fd00:2021:1111:8000:100:100:111:0#53(fd00:2021:1111:8000:100:100:111:0)
+;; WHEN: Sat Feb 17 14:04:40 PST 2024
+;; MSG SIZE  rcvd: 86
+```
+
+<p className="text-sm text-center mx-auto italic">
+  Figure 8: An example dig command with a DNS-based Resource
+</p>
+
+If the proxy sees a query for a name that **is not** a Firezone Resource it will
+forward the query to the host's default stub resolver, as if Firezone never
+existed. This means that Clients are automatically configured for Split DNS in
+Firezone -- no other configuration is necessary other than adding the desired
+Resources in the admin portal.
+
+{/* TODO: Add much more detail here */}
+
+## Conclusion
+
+There's much more detail we could have covered here, so if you're interested in
+seeing how this works under the hood, all source code is available -- go
+[take a look](https://github.com/firezone/firezone/blob/main/rust/connlib/tunnel/src/dns.rs)
+for yourself!
+
+### References
+
+1. _Domain Names - Concepts and Facilities_,
+   https://datatracker.ietf.org/doc/html/rfc882
