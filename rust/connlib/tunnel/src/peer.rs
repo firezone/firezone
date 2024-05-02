@@ -572,23 +572,40 @@ mod proptests {
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
         #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
-        #[strategy(filters_with_protocol())] protocol_config: (Filters, Protocol),
+        #[strategy(collection::vec(filters_with_protocol(), 1..=5))] protocol_config: Vec<(
+            Filters,
+            Protocol,
+        )>,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
         let (src, resource_addr, dest) = config;
-        let (filters, protocol) = protocol_config;
+        let mut filters = protocol_config.iter();
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
-        peer.add_resource(resource_addr, resource_id, filters, None);
+        let mut resource_addr = Some(resource_addr);
 
-        let packet = match protocol {
-            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
-            Protocol::Icmp => icmp_request_packet(src, dest),
-        };
+        loop {
+            let Some(addr) = resource_addr else {
+                break;
+            };
+            let Some((filter, _)) = filters.next() else {
+                break;
+            };
+            peer.add_resource(addr, resource_id, filter.clone(), None);
+            resource_addr = supernet(addr);
+        }
 
-        assert!(peer.ensure_allowed(&packet).is_ok());
+        let filters = filters.rev();
+        for (_, protocol) in filters {
+            let packet = match protocol {
+                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
+                Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
+                Protocol::Icmp => icmp_request_packet(src, dest),
+            };
+
+            assert!(peer.ensure_allowed(&packet).is_ok());
+        }
     }
 
     #[test_strategy::proptest()]
@@ -786,6 +803,13 @@ mod proptests {
                 port_range_end: d,
             })
         })
+    }
+
+    fn supernet(ip: IpNetwork) -> Option<IpNetwork> {
+        match ip {
+            IpNetwork::V4(v4) => v4.supernet().map(Into::into),
+            IpNetwork::V6(v6) => v6.supernet().map(Into::into),
+        }
     }
 
     #[derive(Debug, Clone, Copy, Arbitrary)]
