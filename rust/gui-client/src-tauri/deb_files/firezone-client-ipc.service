@@ -44,7 +44,7 @@ ExecStart=firezone-client-ipc
 Type=notify
 # Unfortunately we may need root to control DNS
 User=root
-Group=firezone
+Group=firezone-client
 
 [Install]
 WantedBy=default.target

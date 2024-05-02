@@ -34,7 +34,7 @@ You can achieve this more easily by using `pre-commit`. See
 
 ## Scripting tips
 
-- Use `#!/usr/bin/env bash` along with `set -euo pipefail` in general for dev
+- Use `#!/usr/bin/env bash` along with `set -euox pipefail` in general for dev
   and test scripts.
 - In Docker images and other minimal envs, stick to `#!/bin/sh` and simply
   `set -eu`.
