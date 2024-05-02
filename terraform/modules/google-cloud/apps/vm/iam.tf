@@ -3,21 +3,12 @@
 resource "google_service_account" "application" {
   project = var.project_id
 
-  account_id   = "firezone-${var.name}"
-  display_name = "${var.name} instances"
-  description  = "Service account for ${var.name} Firezone Gateway instances."
+  account_id   = "vm-${local.vm_name}"
+  display_name = "${local.vm_name} app"
+  description  = "Service account for ${local.vm_name} VM."
 }
 
-## Allow application service account to pull images from the container registry
-resource "google_project_iam_member" "artifacts" {
-  project = var.project_id
-
-  role = "roles/artifactregistry.reader"
-
-  member = "serviceAccount:${google_service_account.application.email}"
-}
-
-## Allow fluentbit to injest logs
+## Allow fluentbit/OPS Agent to injest logs
 resource "google_project_iam_member" "logs" {
   project = var.project_id
 
