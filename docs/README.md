@@ -33,11 +33,9 @@
 
 ---
 
-**Note**: 🚧 The `main` branch is undergoing major restructuring in preparation
-for the release of Firezone 1.0 🚧.
-
-See the [`legacy` branch](https://github.com/firezone/firezone/tree/legacy) if
-you're looking for Firezone 0.7.
+**Note**: The `main` branch tracks Firezone 1.x. See the
+[`legacy` branch](https://github.com/firezone/firezone/tree/legacy) if you're
+looking for Firezone 0.7.
 
 [Read the 1.0 announcement for more](https://www.firezone.dev/blog/firezone-1-0).
 
@@ -55,9 +53,11 @@ applications, entire subnets, and everything in between.
   <img width="1439" alt="architecture" src="https://github.com/firezone/firezone/assets/167144/48cd6a1e-2f3f-4ca7-969a-fc5b33e13d1c">
 </p>
 
-<!-- TODO: New intro usage video
-![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
- -->
+<!-- TODO: Record new overview video without so many colors so that the gif compressed better. This one (26 MB) was too large.
+<p align="center">
+  <img width="1200" alt="Firezone Overview" src="https://www.firezone.dev/images/overview-screencap.gif">
+</p>
+-->
 
 ## Features
 
@@ -130,8 +130,6 @@ If you're feeling especially adventurous and want to self-host Firezone for
 **educational** or **hobby** purposes, follow the instructions to spin up a
 local development environment in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-The clients can be built from their respective directories.
-
 The latest published clients (on App Stores and on
 [releases](https://github.com/firezone/firezone/releases)) are only guaranteed
 to work with the managed version of Firezone and may not work with a self-hosted
@@ -142,16 +140,29 @@ may not be compatible with the tip of `main` from this repository.
 Therefore, if you're experimenting with self-hosting Firezone, you will probably
 want to use clients you build and distribute yourself as well.
 
+See the READMEs in the following directories for more information on building
+each client:
+
+- macOS / iOS: [swift/apple](../swift/apple)
+- Android / ChromeOS: [kotlin/android](../kotlin/android)
+- Windows / Linux: [rust/gui-client](../rust/gui-client)
+
 ### How long will 0.7 be supported until?
 
 **Firezone 0.7 is currently end-of-life and has stopped receiving updates as of
 January 31st, 2024.** It will continue to be available indefinitely from the
 `legacy` branch of this repo under the Apache 2.0 license.
 
-### What's your pricing structure like?
+### How much does it cost?
 
-Please see our pricing page at
-https://www.firezone.dev/pricing?utm_source=readme
+We offer flexible per-seat monthly and annual plans for the cloud-managed
+version of Firezone, with optional invoicing for larger organizations. See our
+[pricing](https://www.firezone.dev/pricing?utm_source=readme) page for more
+details.
+
+Those experimenting with self-hosting can use Firezone for free without feature
+or seat limitations, but we can't provide support for self-hosted installations
+at this time.
 
 ## Documentation
 
@@ -170,10 +181,9 @@ community support options:
 1. [Open a PR](https://github.com/firezone/firezone/issues): Contribute a bugfix
    or make a contribution to Firezone.
 
-<!-- TODO
 If you need help deploying or maintaining Firezone for your business, consider
-[contacting us about our paid support plan](https://www.firezone.dev/contact/sales?utm_source=readme).
--->
+[contacting our sales team](https://www.firezone.dev/contact/sales?utm_source=readme)
+to speak with a Firezone expert.
 
 ## Star History
 
