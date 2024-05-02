@@ -8,6 +8,7 @@ packages:
   - apt-transport-https
   - ca-certificates
   - software-properties-common
+  - curl
 
 write_files:
   - path: /etc/apt/keyrings
@@ -48,4 +49,6 @@ runcmd:
     export FIREZONE_LOG_FORMAT="google-cloud"
     export FIREZONE_GOOGLE_CLOUD_PROJECT_ID="${project_id}"
     export FIREZONE_OTLP_GRPC_ENDPOINT="${otlp_grpc_endpoint}"
-    bash <(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh)
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh -o /tmp/gateway-install.sh
+    bash /tmp/gateway-install.sh
+    rm /tmp/gateway-install.sh

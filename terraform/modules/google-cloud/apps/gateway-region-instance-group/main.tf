@@ -9,7 +9,9 @@ locals {
     application = "firezone-gateway"
   }, var.labels)
 
-  network_tags = ["firezone-gateways-${var.name}"]
+  network_tags = [
+    "firezone-gateways-${var.name}"
+  ]
 
   google_health_check_ip_ranges = [
     "130.211.0.0/22",
