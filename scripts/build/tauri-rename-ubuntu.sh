@@ -23,7 +23,8 @@ make_hash "$BINARY_DEST_PATH.dwp"
 make_hash "$BINARY_DEST_PATH.deb"
 
 # Test the deb package, since this script is the easiest place to get a release build
-sudo apt install "$BINARY_DEST_PATH.deb"
+DEB_PATH=$(realpath "$BINARY_DEST_PATH.deb")
+sudo apt-get install "$DEB_PATH"
 # Update users / groups
 sudo systemd-sysusers
 
