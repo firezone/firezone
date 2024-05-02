@@ -23,7 +23,7 @@ sudo groupadd "$FZ_GROUP"
 sudo systemctl start "$SERVICE_NAME" || { systemctl status "$SERVICE_NAME"; exit 1; }
 
 # Make sure the socket has the right permissions
-if [ "root firezone" != "$(stat -c '%U %G' $SOCKET)" ]
+if [ "root $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
 then
     exit 1
 fi
