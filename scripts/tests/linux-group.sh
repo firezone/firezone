@@ -6,7 +6,7 @@
 source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-client-ipc
-FZ_GROUP="firezone"
+FZ_GROUP="firezone-client"
 SERVICE_NAME=firezone-client-ipc
 SOCKET=/run/dev.firezone.client/ipc.sock
 export RUST_LOG=info

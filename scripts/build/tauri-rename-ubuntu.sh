@@ -23,7 +23,9 @@ make_hash "$BINARY_DEST_PATH.dwp"
 make_hash "$BINARY_DEST_PATH.deb"
 
 # Test the deb package, since this script is the easiest place to get a release build
-sudo dpkg --install "$BINARY_DEST_PATH.deb"
+sudo apt install "$BINARY_DEST_PATH.deb"
+# Update users / groups
+sudo systemd-sysusers
 
 # Debug-print the files. The icons and both binaries should be in here
 dpkg --listfiles firezone-client-gui
@@ -37,5 +39,5 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 firezone-client-gui --help | grep "Usage: firezone-client-gui"
 
 # Try to start the IPC service
-sudo groupadd --force firezone
+sudo groupadd --force firezone-client
 sudo systemctl start firezone-client-ipc || systemctl status firezone-client-ipc
