@@ -15,7 +15,7 @@ export RUST_LOG=info
 sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
 
 # Set up the systemd service
-sudo cp "rust/gui-client/src-tauri/$SERVICE_NAME.service" /usr/lib/systemd/system/
+sudo cp "rust/gui-client/src-tauri/deb_files/$SERVICE_NAME.service" /usr/lib/systemd/system/
 sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-ipc"
 
 # The firezone group must exist before the daemon starts
