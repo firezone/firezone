@@ -1,6 +1,7 @@
 use crate::client::known_dirs;
 use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, Secret};
+use std::process::Command;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -24,17 +25,6 @@ impl Server {
         std::fs::create_dir_all(&dir).context("Can't create dir for deep link socket")?;
 
         let listener = UnixListener::bind(&path).context("Couldn't bind listener Unix socket")?;
-
-        // Figure out who we were before `sudo`, if using sudo
-        if let Ok(username) = std::env::var("SUDO_USER") {
-            // chown so that when the non-privileged browser launches us,
-            // we can send a message to our privileged main process
-            std::process::Command::new("chown")
-                .arg(username)
-                .arg(&path)
-                .status()
-                .context("couldn't chown Unix domain socket")?;
-        }
 
         Ok(Self { listener })
     }
@@ -109,13 +99,24 @@ Categories=Network;
 
     // Run `xdg-desktop-menu install` with that desktop file
     let xdg_desktop_menu = "xdg-desktop-menu";
-    let status = std::process::Command::new(xdg_desktop_menu)
+    let status = Command::new(xdg_desktop_menu)
         .arg("install")
         .arg(&path)
         .status()
         .with_context(|| format!("failed to run `{xdg_desktop_menu}`"))?;
     if !status.success() {
-        bail!("failed to register our deep link scheme")
+        bail!("{xdg_desktop_menu} returned failure exit code");
     }
+
+    // Needed for Ubuntu 22.04, see issue #4880
+    let update_desktop_database = "update-desktop-database";
+    let status = Command::new(update_desktop_database)
+        .arg(&dir)
+        .status()
+        .with_context(|| format!("failed to run `{update_desktop_database}`"))?;
+    if !status.success() {
+        bail!("{update_desktop_database} returned failure exit code");
+    }
+
     Ok(())
 }
