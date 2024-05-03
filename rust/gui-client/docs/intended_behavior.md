@@ -10,6 +10,8 @@ Best performed on a clean VM
 1. Expect "Reboot to finish..." message
 1. Expect `grep firezone-client /etc/group` to show the group
 1. Expect `systemctl status firezone-client-ipc.service` to show "enabled" and "running"
+1. Run the Firezone GUI
+1. Expect an error saying that you are not a member of the group `firezone-client`
 1. Reboot
 1. Expect `groups` to include "firezone-client"
 1. Run the Firezone GUI
@@ -35,6 +37,8 @@ Best performed on a clean VM
 1. Enter 'password' to unlock the stored token
 1. Expect "Connected to Firezone" notification
 1. Check the IP again
+1. Export the logs
+1. Expect `zipinfo` to show
 
 ## Settings tab
 
