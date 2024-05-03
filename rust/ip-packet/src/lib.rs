@@ -292,7 +292,7 @@ impl<'a> IpPacket<'a> {
     }
 
     pub fn as_tcp(&self) -> Option<TcpPacket> {
-        dbg!(self.is_tcp())
+        self.is_tcp()
             .then(|| TcpPacket::new(self.payload()))
             .flatten()
     }
