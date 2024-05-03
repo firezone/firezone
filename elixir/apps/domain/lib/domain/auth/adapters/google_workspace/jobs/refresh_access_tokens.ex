@@ -13,22 +13,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens do
     Logger.debug("Refreshing access tokens for #{length(providers)} providers")
 
     Enum.each(providers, fn provider ->
-      Logger.debug("Refreshing access token",
+      Logger.metadata(
+        account_id: provider.account_id,
         provider_id: provider.id,
-        account_id: provider.account_id
+        provider_adapter: provider.adapter
       )
 
+      Logger.debug("Refreshing access token")
+
       case GoogleWorkspace.refresh_access_token(provider) do
-        {:ok, provider} ->
-          Logger.debug("Finished refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id
-          )
+        {:ok, _provider} ->
+          Logger.debug("Finished refreshing access token")
 
         {:error, reason} ->
           Logger.error("Failed refreshing access token",
-            provider_id: provider.id,
-            account_id: provider.account_id,
             reason: inspect(reason)
           )
       end

@@ -5,19 +5,28 @@
 
 source "./scripts/tests/lib.sh"
 
-BINARY_NAME=firezone-linux-client
-FZ_GROUP="firezone"
+BINARY_NAME=firezone-client-ipc
+FZ_GROUP="firezone-client"
 SERVICE_NAME=firezone-client-ipc
+SOCKET=/run/dev.firezone.client/ipc.sock
 export RUST_LOG=info
 
 # Copy the Linux Client out of the build dir
 sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
 
-sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
+# Set up the systemd service
+sudo cp "rust/gui-client/src-tauri/deb_files/$SERVICE_NAME.service" /usr/lib/systemd/system/
+sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-ipc"
 
 # The firezone group must exist before the daemon starts
 sudo groupadd "$FZ_GROUP"
-sudo systemctl start "$SERVICE_NAME" || systemctl status "$SERVICE_NAME"
+sudo systemctl start "$SERVICE_NAME" || { systemctl status "$SERVICE_NAME"; exit 1; }
+
+# Make sure the socket has the right permissions
+if [ "root $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
+then
+    exit 1
+fi
 
 # Add ourselves to the firezone group
 sudo gpasswd --add "$USER" "$FZ_GROUP"
