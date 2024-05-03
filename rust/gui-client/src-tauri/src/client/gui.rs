@@ -80,7 +80,7 @@ impl Managed {
 }
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("Deep-link module error: {0}")]
@@ -88,7 +88,9 @@ pub(crate) enum Error {
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
 
-    // `client.rs` provides a more user-friendly message when showing the error dialog box
+    // `client.rs` provides a more user-friendly message when showing the error dialog box for certain variants
+    #[error("UserNotInFirezoneGroup")]
+    UserNotInFirezoneGroup,
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
     #[error(transparent)]
