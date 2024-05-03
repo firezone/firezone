@@ -36,7 +36,7 @@ which provided an IP address to each host on the network.
 To connect to a host on the ARPANET, you needed its IP address. But there was a
 problem: IP addresses are hard to remember, and it turns out humans aren't great
 at remembering long strings of numbers. To solve this, a simple system was
-created to each host's IP address to a human-friendly "hostname".
+created to map each host's IP address to a human-friendly "hostname".
 
 <p className="text-sm italic text-center mx-auto">
   Figure 2: Artist's rendition of the original HOSTS.TXT file
@@ -77,7 +77,7 @@ Hence the name: the Domain Name System, or DNS for short.
 
 At a high level, DNS is a heirarchical system that distributes the
 responsibility of resolving a a fully-qualified domain name (FQDN) to a series
-of nameservers, each one responsible for a resolving different part.
+of nameservers, each one responsible for resolving a different part.
 
 <p className="text-sm italic text-center mx-auto">Figure 3: How DNS works</p>
 
@@ -108,7 +108,7 @@ Here's how it works:
 1. The application on the host can now connect to the IP address returned by the
    stub resolver.
 
-The system of root, TLD, and authoritate nameservers replace the function of the
+The system of root, TLD, and authoritative nameservers replace the function of the
 original `HOSTS.TXT` file maintained by NIC in the ARPANET. However, now it's
 distributed -- no one server or organization is responsible for maintaining the
 entire database, and the system can scale as more hosts, domains, and IP
@@ -122,7 +122,7 @@ record's time-to-live (TTL).
 This means that if a host makes the same query multiple times, the stub or
 upstream resolver can return the result immediately (assuming the TTL hasn't
 expired) without having to query the hierarchy of root, TLD, and authoritative
-nameservers again. This can speed up query times orders of magnitude, to the
+nameservers again. This can speed up query times by orders of magnitude, to the
 point where stub resolvers responding with cached responses are nearly
 instantaneous.
 
@@ -269,7 +269,7 @@ That's much better -- it solves the problem of routing traffic for the wrong
 service, but it introduces a new problem: the organization now needs to maintain
 a list of all the public resources its workforce needs to access, then configure
 its DNS server to respond with a unique internal IP address for each one,
-finally it needs to be reasonably sure these IP addresses don't conflict with
+and finally it needs to be reasonably sure these IP addresses don't conflict with
 other networks available to the employee's machine, such as a home printer.
 
 <p className="text-sm text-center mx-auto italic">
@@ -292,7 +292,7 @@ By now you're probably thinking, "this is all well and good, but what does this
 have to do with Firezone?". Glad you asked!
 
 Firezone's approach to DNS was designed to address both the insecurity of DNS
-and the shortcomings of Split DNS, into a single solution that's just as secure
+and the shortcomings of Split DNS, resulting in a single solution that's just as secure
 as Split DNS, but much more flexible and easier to manage.
 
 ### How it works
