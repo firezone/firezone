@@ -19,7 +19,7 @@ pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDes
         .prop_map(|(id, name, address)| ResourceDescriptionCidr { id, address, name })
 }
 
-pub fn resource_id() -> impl Strategy<Value = ResourceId> {
+pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
     any::<u128>().prop_map(ResourceId::from_u128)
 }
 

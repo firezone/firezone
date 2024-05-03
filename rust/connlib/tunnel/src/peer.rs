@@ -435,95 +435,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    // Note: this is a special case that is correctly handled by the gateway
-    // but there are still problems for the control protocol and client to support this
-    // See: #4789
-    fn gateway_filters_work_for_subranges() {
-        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
-        peer.add_resource(
-            "10.0.0.0/24".parse().unwrap(),
-            resource_id(),
-            vec![Filter::Tcp(FilterInner {
-                port_range_start: 20,
-                port_range_end: 100,
-            })],
-            None,
-        );
-        peer.add_resource(
-            "10.0.0.0/16".parse().unwrap(),
-            resource2_id(),
-            vec![Filter::Tcp(FilterInner {
-                port_range_start: 100,
-                port_range_end: 200,
-            })],
-            None,
-        );
-
-        let packet = ip_packet::make::tcp_packet(
-            source_v4_addr(),
-            "10.0.0.1".parse().unwrap(),
-            5401,
-            80,
-            vec![0; 100],
-        );
-        assert!(peer.ensure_allowed(&packet).is_ok());
-
-        let packet = ip_packet::make::tcp_packet(
-            source_v4_addr(),
-            "10.0.0.1".parse().unwrap(),
-            5401,
-            120,
-            vec![0; 100],
-        );
-        assert!(peer.ensure_allowed(&packet).is_ok());
-
-        let packet = ip_packet::make::tcp_packet(
-            source_v4_addr(),
-            "10.0.1.1".parse().unwrap(),
-            5401,
-            80,
-            vec![0; 100],
-        );
-        assert!(matches!(
-            peer.ensure_allowed(&packet),
-            Err(connlib_shared::Error::InvalidDst)
-        ));
-
-        let packet = ip_packet::make::tcp_packet(
-            source_v4_addr(),
-            "10.0.1.1".parse().unwrap(),
-            5401,
-            120,
-            vec![0; 100],
-        );
-        assert!(peer.ensure_allowed(&packet).is_ok());
-    }
-
-    #[test]
-    fn gateway_filters_work_for_subranges_with_permit_all() {
-        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
-        peer.add_resource(
-            "10.0.0.0/24".parse().unwrap(),
-            resource_id(),
-            vec![Filter::Tcp(FilterInner {
-                port_range_start: 20,
-                port_range_end: 100,
-            })],
-            None,
-        );
-        peer.add_resource("10.0.0.0/16".parse().unwrap(), resource2_id(), vec![], None);
-
-        let packet = ip_packet::make::udp_packet(
-            source_v4_addr(),
-            "10.0.0.1".parse().unwrap(),
-            5401,
-            200,
-            vec![0; 100],
-        );
-        assert!(peer.ensure_allowed(&packet).is_ok());
-    }
-
     fn source_v4_addr() -> IpAddr {
         "100.64.0.1".parse().unwrap()
     }
@@ -559,9 +470,7 @@ mod proptests {
     use itertools::Itertools;
     use proptest::{
         arbitrary::any,
-        collection,
-        prelude::ProptestConfig,
-        prop_oneof,
+        collection, prop_oneof,
         sample::select,
         strategy::{Just, Strategy},
     };
@@ -570,12 +479,11 @@ mod proptests {
     #[test_strategy::proptest()]
     fn gateway_accepts_allowed_packet(
         #[strategy(client_id())] client_id: ClientId,
-        #[strategy(resource_id())] resource_id: ResourceId,
+        #[strategy(vec![resource_id(); 5])] resources_id: Vec<ResourceId>,
         #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
-        #[strategy(collection::vec(filters_with_protocol(), 1..=5))] protocol_config: Vec<(
-            Filters,
-            Protocol,
-        )>,
+        #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=5))] protocol_config: Vec<
+            (Filters, Protocol),
+        >,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
@@ -584,6 +492,7 @@ mod proptests {
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
         let mut resource_addr = Some(resource_addr);
+        let mut resources = 0;
 
         loop {
             let Some(addr) = resource_addr else {
@@ -592,18 +501,17 @@ mod proptests {
             let Some((filter, _)) = filters.next() else {
                 break;
             };
-            peer.add_resource(addr, resource_id, filter.clone(), None);
+            peer.add_resource(addr, resources_id[resources], filter.clone(), None);
+            resources += 1;
             resource_addr = supernet(addr);
         }
 
-        let filters = filters.rev();
-        for (_, protocol) in filters {
+        for (_, protocol) in &protocol_config[0..resources] {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest),
             };
-
             assert!(peer.ensure_allowed(&packet).is_ok());
         }
     }
@@ -621,16 +529,64 @@ mod proptests {
         let (filters, protocol) = protocol_config;
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
-        peer.add_resource(resource_addr, resource_id, filters, None);
-
         let packet = match protocol {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest),
         };
 
+        peer.add_resource(resource_addr, resource_id, filters, None);
+
         assert!(matches!(
             peer.ensure_allowed(&packet),
+            Err(connlib_shared::Error::InvalidDst)
+        ));
+    }
+
+    #[test_strategy::proptest()]
+    fn gateway_reject_removed_filter_packet(
+        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(resource_id())] resource_id_allowed: ResourceId,
+        #[strategy(resource_id())] resource_id_removed: ResourceId,
+        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(non_overlapping_non_empty_filters_with_allowed_protocol())] protocol_config: (
+            (Filters, Protocol),
+            (Filters, Protocol),
+        ),
+        #[strategy(any::<u16>())] sport: u16,
+        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
+    ) {
+        let (src, resource_addr, dest) = config;
+        let ((filters_allowed, protocol_allowed), (filters_removed, protocol_removed)) =
+            protocol_config;
+        // This test could be extended to test multiple src
+        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+
+        let packet_allowed = match protocol_allowed {
+            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+            Protocol::Icmp => icmp_request_packet(src, dest),
+        };
+
+        let packet_rejected = match protocol_removed {
+            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
+            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
+            Protocol::Icmp => icmp_request_packet(src, dest),
+        };
+
+        peer.add_resource(
+            supernet(resource_addr).unwrap_or(resource_addr),
+            resource_id_allowed,
+            filters_allowed,
+            None,
+        );
+
+        peer.add_resource(resource_addr, resource_id_removed, filters_removed, None);
+        peer.remove_resource(&resource_id_removed);
+
+        assert!(peer.ensure_allowed(&packet_allowed).is_ok());
+        assert!(matches!(
+            peer.ensure_allowed(&packet_rejected),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
@@ -704,20 +660,38 @@ mod proptests {
         })
     }
 
-    fn filters_with_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
+    fn filters_with_allowed_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
         filters().prop_flat_map(|f| {
             if f.is_empty() {
                 any::<Protocol>().prop_map(|p| (vec![], p)).boxed()
             } else {
                 (0..f.len())
                     .prop_flat_map(move |i| {
-                        // TODO: ????? why was this needed shouuld be able to access f from the inner closure here...
-                        // anyways there should be a better way to write this composed strategies
                         (Just(f.clone()), protocol_from_filter(f[i])).prop_map(move |(f, p)| (f, p))
                     })
                     .boxed()
             }
         })
+    }
+
+    fn non_overlapping_non_empty_filters_with_allowed_protocol(
+    ) -> impl Strategy<Value = ((Filters, Protocol), (Filters, Protocol))> {
+        filters_with_allowed_protocol()
+            .prop_filter("empty filters accepts every packet", |(f, _)| !f.is_empty())
+            .prop_flat_map(|(f1, p1)| {
+                filters_in_gaps(f1.clone())
+                    .prop_filter(
+                        "we reject empty filters since it increseases complexity",
+                        |f| !f.is_empty(),
+                    )
+                    .prop_flat_map(|f| {
+                        (0..f.len()).prop_flat_map(move |i| {
+                            (Just(f.clone()), protocol_from_filter(f[i]))
+                                .prop_map(move |(f, p)| (f, p))
+                        })
+                    })
+                    .prop_map(move |(f2, p2)| ((f1.clone(), p1), (f2, p2)))
+            })
     }
 
     fn filters_with_rejected_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
@@ -785,6 +759,44 @@ mod proptests {
         }
     }
 
+    fn filters_in_gaps(filters: Filters) -> impl Strategy<Value = Filters> {
+        filter_from_vec(
+            gaps(filters.clone(), EmptyProtocol::Tcp),
+            EmptyProtocol::Tcp,
+        )
+        .prop_flat_map(move |tcp_filters| {
+            let f = filters.clone();
+            filter_from_vec(
+                gaps(filters.clone(), EmptyProtocol::Udp),
+                EmptyProtocol::Udp,
+            )
+            .prop_map(move |udp_filters| {
+                let mut filters = tcp_filters.clone();
+                filters.extend(udp_filters);
+                if !f.contains(&Filter::Icmp) {
+                    filters.push(Filter::Icmp)
+                }
+
+                filters
+            })
+        })
+    }
+
+    fn filter_from_vec(
+        ranges: Vec<RangeInclusive<u16>>,
+        empty_protocol: EmptyProtocol,
+    ) -> impl Strategy<Value = Filters> {
+        collection::vec(
+            select(ranges.clone()).prop_flat_map(move |r| {
+                let range = r.clone();
+                range.prop_flat_map(move |s| {
+                    (s..=*r.end()).prop_map(move |e| empty_protocol.into_filter(s..=e))
+                })
+            }),
+            1..=ranges.len(),
+        )
+    }
+
     fn filters() -> impl Strategy<Value = Filters> {
         collection::vec(
             prop_oneof![
@@ -842,6 +854,20 @@ mod proptests {
                 EmptyProtocol::Tcp => Protocol::Tcp { dport },
                 EmptyProtocol::Udp => Protocol::Udp { dport },
                 EmptyProtocol::Icmp => Protocol::Icmp,
+            }
+        }
+
+        fn into_filter(self, range: RangeInclusive<u16>) -> Filter {
+            match self {
+                EmptyProtocol::Tcp => Filter::Tcp(FilterInner {
+                    port_range_start: *range.start(),
+                    port_range_end: *range.end(),
+                }),
+                EmptyProtocol::Udp => Filter::Udp(FilterInner {
+                    port_range_start: *range.start(),
+                    port_range_end: *range.end(),
+                }),
+                EmptyProtocol::Icmp => Filter::Icmp,
             }
         }
     }
