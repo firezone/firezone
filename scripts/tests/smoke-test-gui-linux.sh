@@ -3,6 +3,7 @@
 set -euox pipefail
 
 BUNDLE_ID="dev.firezone.client"
+FZ_GROUP="firezone-client"
 
 #DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
@@ -22,8 +23,8 @@ cargo install --quiet --locked dump_syms minidump-stackwalk
 dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
 ls -lash ../target/debug
 
-sudo groupadd --force firezone
-sudo adduser "$USER" firezone
+sudo groupadd --force "$FZ_GROUP"
+sudo adduser "$USER" "$FZ_GROUP"
 
 function run_fz_gui() {
     pwd
