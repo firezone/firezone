@@ -77,7 +77,7 @@ defmodule Web.Resources.Components do
       </div>
 
       <p class="text-sm text-neutral-500">
-        Restrict traffic to specified protocols and ports. By default, <strong>all</strong>
+        Restrict traffic only to specified protocols and ports. By default, <strong>all</strong>
         traffic to this Resource allowed.
       </p>
 
