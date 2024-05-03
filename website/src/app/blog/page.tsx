@@ -24,9 +24,9 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
-            title="How DNS-based Traffic Routing Works"
+            title="How DNS Works in Firezone"
             date="April 30, 2024"
-            href="/blog/how-dns-based-traffic-routing-works"
+            href="/blog/how-dns-works-in-firezone"
             authorName="Gabriel Steinberg"
             authorAvatarSrc={gravatar("gabriel@firezone.dev")}
             type="Learn"
