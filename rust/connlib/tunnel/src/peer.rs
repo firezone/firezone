@@ -605,9 +605,6 @@ mod proptests {
                     .network_address()
             }
         })
-        // .prop_filter("not a valid host", |ip| {
-        //     !ip.is_unspecified() && !ip.is_broadcast()
-        // })
     }
 
     // Note: for these tests we don't really care that it's a valid host
@@ -624,7 +621,6 @@ mod proptests {
                     .network_address()
             }
         })
-        // .prop_filter("not a valid host", |ip| !ip.is_unspecified())
     }
 
     fn source_resource_and_host_within() -> impl Strategy<Value = (IpAddr, IpNetwork, IpAddr)> {
@@ -661,13 +657,14 @@ mod proptests {
     }
 
     fn filters_with_allowed_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
-        filters().prop_flat_map(|f| {
-            if f.is_empty() {
+        filters().prop_flat_map(|filters| {
+            if filters.is_empty() {
                 any::<Protocol>().prop_map(|p| (vec![], p)).boxed()
             } else {
-                (0..f.len())
-                    .prop_flat_map(move |i| {
-                        (Just(f.clone()), protocol_from_filter(f[i])).prop_map(move |(f, p)| (f, p))
+                select(filters.clone())
+                    .prop_flat_map(move |filter| {
+                        let filters = filters.clone();
+                        protocol_from_filter(filter).prop_map(move |p| (filters.clone(), p))
                     })
                     .boxed()
             }
@@ -678,19 +675,21 @@ mod proptests {
     ) -> impl Strategy<Value = ((Filters, Protocol), (Filters, Protocol))> {
         filters_with_allowed_protocol()
             .prop_filter("empty filters accepts every packet", |(f, _)| !f.is_empty())
-            .prop_flat_map(|(f1, p1)| {
-                filters_in_gaps(f1.clone())
+            .prop_flat_map(|(filters_a, protocol_a)| {
+                filters_in_gaps(filters_a.clone())
                     .prop_filter(
                         "we reject empty filters since it increseases complexity",
                         |f| !f.is_empty(),
                     )
-                    .prop_flat_map(|f| {
-                        (0..f.len()).prop_flat_map(move |i| {
-                            (Just(f.clone()), protocol_from_filter(f[i]))
-                                .prop_map(move |(f, p)| (f, p))
+                    .prop_flat_map(|filters| {
+                        select(filters.clone()).prop_flat_map(move |filter| {
+                            let filters = filters.clone();
+                            protocol_from_filter(filter).prop_map(move |p| (filters.clone(), p))
                         })
                     })
-                    .prop_map(move |(f2, p2)| ((f1.clone(), p1), (f2, p2)))
+                    .prop_map(move |(filters_b, protocol_b)| {
+                        ((filters_a.clone(), protocol_a), (filters_b, protocol_b))
+                    })
             })
     }
 
