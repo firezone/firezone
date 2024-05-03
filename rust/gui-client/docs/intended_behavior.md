@@ -8,7 +8,6 @@ Best performed on a clean VM
 
 1. Run `scripts/firezone-client-gui-install.sh`
 1. Expect "Reboot to finish..." message
-1. Expect `grep firezone-client /etc/group` to show the group
 1. Expect `systemctl status firezone-client-ipc.service` to show "enabled" and "running"
 1. Run the Firezone GUI
 1. Expect an error saying that you are not a member of the group `firezone-client`
@@ -25,7 +24,7 @@ Best performed on a clean VM
 1. Check "Always..." and click "Open link"
 1. Expect a keyring dialog to pop up
 1. Enter 'password' for testing purposes
-1. Expect "Connected to Firezone" notification
+1. Expect "Firezone connected" notification
 1. Browse to `https://ifconfig.net`
 1. Expect to see the gateway's IP and location
 1. Quit Firezone
@@ -35,7 +34,7 @@ Best performed on a clean VM
 1. Run the Firezone GUI
 1. Expect a keyring dialog to pop up
 1. Enter 'password' to unlock the stored token
-1. Expect "Connected to Firezone" notification
+1. Expect "Firezone connected" notification
 1. Check the IP again
 1. Export the logs
 1. Expect `zipinfo` to show

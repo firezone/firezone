@@ -561,7 +561,7 @@ impl Controller {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
-        tracing::info!("Got deep link");
+        tracing::info!("Received deep link over IPC");
         // Uses `std::fs`
         let token = self.auth.handle_response(auth_response)?;
         self.start_session(token)
