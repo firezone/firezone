@@ -29,6 +29,8 @@ impl Server {
             .parent()
             .context("Impossible, socket path should always have a parent")?;
 
+        // If the connection succeeds, that means another process has bound the socket,
+        // and we're the 2nd instance, so we should exit
         if let Ok(_) = std::os::unix::net::UnixStream::connect(&path) {
             return Err(super::Error::CantListen);
         }
@@ -54,7 +56,7 @@ impl Server {
         stream
             .read_to_end(&mut bytes)
             .await
-            .context("Failed to read incoming deep link over Unix socket stream. Maybe a 2nd instance tried to connect")?;
+            .context("failed to read incoming deep link over Unix socket stream")?;
         if bytes.is_empty() {
             bail!("Got zero bytes from the deep link socket - probably a 2nd instance was blocked");
         }
