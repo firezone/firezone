@@ -1,7 +1,7 @@
 use crate::client::known_dirs;
 use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, Secret};
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -13,14 +13,25 @@ pub(crate) struct Server {
     listener: UnixListener,
 }
 
+fn sock_path() -> Result<PathBuf> {
+    Ok(known_dirs::runtime()
+        .context("Couldn't find runtime dir")?
+        .join(SOCK_NAME))
+}
+
 impl Server {
     /// Create a new deep link server to make sure we're the only instance
     ///
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
     pub(crate) fn new() -> Result<Self, super::Error> {
-        let dir = known_dirs::runtime().context("couldn't find runtime dir")?;
-        let path = dir.join(SOCK_NAME);
-        // TODO: This breaks single instance. Can we enforce it some other way?
+        let path = sock_path()?;
+        let dir = path
+            .parent()
+            .context("Impossible, socket path should always have a parent")?;
+
+        if let Ok(_) = std::os::unix::net::UnixStream::connect(&path) {
+            return Err(super::Error::CantListen);
+        }
         std::fs::remove_file(&path).ok();
         std::fs::create_dir_all(&dir).context("Can't create dir for deep link socket")?;
 
@@ -43,7 +54,10 @@ impl Server {
         stream
             .read_to_end(&mut bytes)
             .await
-            .context("failed to read incoming deep link over Unix socket stream")?;
+            .context("Failed to read incoming deep link over Unix socket stream. Maybe a 2nd instance tried to connect")?;
+        if bytes.is_empty() {
+            bail!("Got zero bytes from the deep link socket - probably a 2nd instance was blocked");
+        }
         let bytes = Secret::new(bytes);
         tracing::debug!(
             len = bytes.expose_secret().len(),
@@ -56,8 +70,7 @@ impl Server {
 pub(crate) async fn open(url: &url::Url) -> Result<()> {
     crate::client::logging::debug_command_setup()?;
 
-    let dir = known_dirs::runtime().context("deep_link::open couldn't find runtime dir")?;
-    let path = dir.join(SOCK_NAME);
+    let path = sock_path()?;
     let mut stream = UnixStream::connect(&path).await?;
 
     stream.write_all(url.to_string().as_bytes()).await?;
