@@ -9,7 +9,7 @@ edition = "2021"
 mock = []
 
 [dependencies]
-anyhow = "1.0.81"
+anyhow = "1.0.82"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
 base64 = { version = "0.22", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
