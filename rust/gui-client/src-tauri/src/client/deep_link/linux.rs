@@ -31,11 +31,11 @@ impl Server {
 
         // If the connection succeeds, that means another process has bound the socket,
         // and we're the 2nd instance, so we should exit
-        if let Ok(_) = std::os::unix::net::UnixStream::connect(&path) {
+        if std::os::unix::net::UnixStream::connect(&path).is_ok() {
             return Err(super::Error::CantListen);
         }
         std::fs::remove_file(&path).ok();
-        std::fs::create_dir_all(&dir).context("Can't create dir for deep link socket")?;
+        std::fs::create_dir_all(dir).context("Can't create dir for deep link socket")?;
 
         let listener = UnixListener::bind(&path).context("Couldn't bind listener Unix socket")?;
 
