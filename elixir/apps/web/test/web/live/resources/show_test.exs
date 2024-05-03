@@ -136,7 +136,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert table["created"] =~ actor.name
 
     for filter <- resource.filters do
-      assert String.downcase(table["traffic filtering rules"]) =~ Atom.to_string(filter.protocol)
+      assert String.downcase(table["traffic restriction"]) =~ Atom.to_string(filter.protocol)
     end
   end
 
