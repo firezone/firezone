@@ -8,8 +8,12 @@ defmodule Domain.Resources.Resource do
 
     field :type, Ecto.Enum, values: [:cidr, :ip, :dns]
 
+    #
+    # []
+    # [{protocol -> :tcp, ports -> [1, 65535]}, {protocol -> :udp, ports -> [53]}]
+
     embeds_many :filters, Filter, on_replace: :delete, primary_key: false do
-      field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1, all: -1]
+      field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1]
       field :ports, {:array, Domain.Types.Int4Range}, default: []
     end
 

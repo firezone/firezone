@@ -76,6 +76,14 @@ defmodule Web.Live.Resources.NewTest do
     expected_inputs =
       (connection_inputs ++
          [
+           "resource[filters][icmp][enabled]",
+           "resource[filters][icmp][protocol]",
+           "resource[filters][tcp][enabled]",
+           "resource[filters][tcp][ports]",
+           "resource[filters][tcp][protocol]",
+           "resource[filters][udp][enabled]",
+           "resource[filters][udp][ports]",
+           "resource[filters][udp][protocol]",
            "resource[address]",
            "resource[address_description]",
            "resource[name]",
@@ -117,8 +125,6 @@ defmodule Web.Live.Resources.NewTest do
          [
            "resource[address]",
            "resource[address_description]",
-           "resource[filters][all][enabled]",
-           "resource[filters][all][protocol]",
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
            "resource[filters][tcp][enabled]",
@@ -162,6 +168,14 @@ defmodule Web.Live.Resources.NewTest do
     expected_inputs =
       (connection_inputs ++
          [
+           "resource[filters][icmp][enabled]",
+           "resource[filters][icmp][protocol]",
+           "resource[filters][tcp][enabled]",
+           "resource[filters][tcp][ports]",
+           "resource[filters][tcp][protocol]",
+           "resource[filters][udp][enabled]",
+           "resource[filters][udp][ports]",
+           "resource[filters][udp][protocol]",
            "resource[address]",
            "resource[address_description]",
            "resource[name]",
@@ -188,8 +202,6 @@ defmodule Web.Live.Resources.NewTest do
     assert find_inputs(form) == [
              "resource[address]",
              "resource[address_description]",
-             "resource[filters][all][enabled]",
-             "resource[filters][all][protocol]",
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
              "resource[filters][tcp][enabled]",
@@ -413,7 +425,7 @@ defmodule Web.Live.Resources.NewTest do
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
   end
 
-  test "does not render traffic filter form", %{
+  test "shows disabled traffic filter form when traffic filters disabled", %{
     account: account,
     group: group,
     identity: identity,
@@ -421,7 +433,7 @@ defmodule Web.Live.Resources.NewTest do
   } do
     Domain.Config.feature_flag_override(:traffic_filters, false)
 
-    {:ok, lv, _html} =
+    {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new?site_id=#{group}")
@@ -431,9 +443,19 @@ defmodule Web.Live.Resources.NewTest do
     assert find_inputs(form) == [
              "resource[address]",
              "resource[address_description]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
              "resource[name]",
              "resource[type]"
            ]
+
+    assert html =~ "UPGRADE TO UNLOCK"
   end
 
   test "creates a resource on valid attrs when traffic filter form disabled", %{
@@ -466,5 +488,37 @@ defmodule Web.Live.Resources.NewTest do
     assert connection.gateway_group_id == group.id
 
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
+  end
+
+  test "prevents saving resource if traffic filters set when traffic filters disabled", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "8080, 4443"},
+        udp: %{ports: "4000 - 5000"}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    # ** (ArgumentError) could not find non-disabled input, select or textarea with name "resource[filters][tcp][ports]" within:
+    assert_raise ArgumentError, fn ->
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+    end
+
+    assert Repo.all(Domain.Resources.Resource) == []
   end
 end
