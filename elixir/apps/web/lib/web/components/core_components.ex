@@ -619,7 +619,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <span
       class={[
-        "text-xs mr-2 px-2.5 py-0.5 rounded whitespace-nowrap",
+        "text-xs px-2.5 py-0.5 rounded whitespace-nowrap",
         @colors[@type],
         @class
       ]}

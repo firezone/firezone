@@ -101,8 +101,6 @@ defmodule Web.Live.Resources.EditTest do
       (connection_inputs ++
          [
            "resource[address_description]",
-           "resource[filters][all][enabled]",
-           "resource[filters][all][protocol]",
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
            "resource[filters][tcp][enabled]",
@@ -134,8 +132,6 @@ defmodule Web.Live.Resources.EditTest do
 
     assert find_inputs(form) == [
              "resource[address_description]",
-             "resource[filters][all][enabled]",
-             "resource[filters][all][protocol]",
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
              "resource[filters][tcp][enabled]",
@@ -273,39 +269,7 @@ defmodule Web.Live.Resources.EditTest do
               {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
   end
 
-  test "disables all filters on a resource when 'Permit All' filter is selected", %{
-    account: account,
-    identity: identity,
-    resource: resource,
-    conn: conn
-  } do
-    attrs = %{
-      filters: %{
-        all: %{enabled: true}
-      }
-    }
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}/edit")
-
-    assert lv
-           |> form("form", resource: attrs)
-           |> render_submit() ==
-             {:error, {:live_redirect, %{to: ~p"/#{account}/resources/#{resource}", kind: :push}}}
-
-    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
-
-    saved_filters =
-      for filter <- saved_resource.filters, into: %{} do
-        {filter.protocol, %{ports: Enum.join(filter.ports, ", ")}}
-      end
-
-    assert saved_filters == %{all: %{ports: ""}}
-  end
-
-  test "does not render traffic filter form when traffic filters disabled", %{
+  test "shows disabled traffic filter form when traffic filters disabled", %{
     account: account,
     group: group,
     identity: identity,
@@ -314,7 +278,7 @@ defmodule Web.Live.Resources.EditTest do
   } do
     Domain.Config.feature_flag_override(:traffic_filters, false)
 
-    {:ok, lv, _html} =
+    {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
@@ -323,8 +287,18 @@ defmodule Web.Live.Resources.EditTest do
 
     assert find_inputs(form) == [
              "resource[address_description]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
              "resource[name]"
            ]
+
+    assert html =~ "UPGRADE TO UNLOCK"
   end
 
   test "updates a resource on valid attrs when traffic filters disabled", %{
@@ -354,8 +328,41 @@ defmodule Web.Live.Resources.EditTest do
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
 
-    assert saved_resource.filters == [
-             %Domain.Resources.Resource.Filter{protocol: :all, ports: []}
-           ]
+    assert saved_resource.filters == []
+  end
+
+  test "prevents saving resource if traffic filters set when traffic filters disabled", %{
+    account: account,
+    group: group,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "8080, 4443"},
+        udp: %{ports: "4000 - 5000"}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
+
+    # ** (ArgumentError) could not find non-disabled input, select or textarea with name "resource[filters][tcp][ports]" within:
+    assert_raise ArgumentError, fn ->
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+    end
+
+    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert saved_resource.name == resource.name
+    assert saved_resource.filters == resource.filters
   end
 end

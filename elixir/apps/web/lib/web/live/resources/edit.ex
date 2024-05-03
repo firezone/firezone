@@ -72,7 +72,7 @@ defmodule Web.Resources.Edit do
               </p>
             </div>
 
-            <.filters_form :if={@traffic_filters_enabled?} form={@form[:filters]} />
+            <.filters_form account={@account} form={@form[:filters]} />
 
             <.connections_form
               :if={is_nil(@params["site_id"])}

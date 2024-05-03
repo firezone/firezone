@@ -164,11 +164,11 @@ defmodule Web.Resources.Show do
           </.vertical_table_row>
           <.vertical_table_row :if={@traffic_filters_enabled?}>
             <:label>
-              Traffic Filtering Rules
+              Traffic restriction
             </:label>
             <:value>
               <div :if={@resource.filters == []} %>
-                No traffic filtering rules
+                All traffic allowed
               </div>
               <div :for={filter <- @resource.filters} :if={@resource.filters != []} %>
                 <.filter_description filter={filter} />
