@@ -2,6 +2,35 @@ import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 import Link from "next/link";
 
+```
+user@host:~ % dig slack.com
+
+; <<>> DiG 9.10.6 <<>> slack.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 61288
+;; flags: qr rd ra; QUERY: 1, ANSWER: 9, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;slack.com.			IN	A
+
+;; ANSWER SECTION:
+slack.com.		1	IN	A	100.96.0.93
+slack.com.		1	IN	A	100.96.0.97
+slack.com.		1	IN	A	100.96.0.94
+slack.com.		1	IN	A	100.96.0.92
+slack.com.		1	IN	A	100.96.0.98
+slack.com.		1	IN	A	100.96.0.90
+slack.com.		1	IN	A	100.96.0.96
+slack.com.		1	IN	A	100.96.0.91
+slack.com.		1	IN	A	100.96.0.95
+
+;; Query time: 59 msec
+;; SERVER: 100.100.111.2#53(100.100.111.2)
+;; WHEN: Fri May 03 09:31:09 PDT 2024
+;; MSG SIZE  rcvd: 252
+```
+
 Firezone's approach to DNS works a bit differently than one might expect. One
 question we get a lot is, "why do my DNS Resources resolve to different IPs with
 Firezone enabled?". Great question. Let's explain that now!
@@ -30,28 +59,29 @@ the early ARPANET.
   Figure 1: Early ARPANET logical map
 </p>
 
-The ARPANET, the precursor to the modern internet, was a network of computers
-that connected various research institutions and government agencies across the
-United States. It was the first network to use the new TCP/IP protocol suite,
-which provided an IP address to each host on the network.
+The [ARPANET](https://en.wikipedia.org/wiki/ARPANET), the precursor to the
+modern internet, was a network of computers that connected various research
+institutions and government agencies across the United States. It was the first
+network to use the new TCP/IP protocol suite, which provided an IP address to
+each host on the network.
 
 To connect to a host on the ARPANET, you needed its IP address. But there was a
-problem: it turns out humans aren't great at remembering long strings of numbers. To solve this, 
-a simple system was
-created to map each host's IP address to a human-friendly "hostname".
+problem: it turns out humans aren't great at remembering long strings of
+numbers. To solve this, a simple system was created to map each host's IP
+address to a human-friendly "hostname".
 
-Simple enough, right? Well, not quite. The system was perhaps a bit _too_
-simple.
-
-### Files don't scale
+<p className="text-sm italic text-center mx-auto">
+  Figure 2: Artist's rendition of the original HOSTS.TXT file
+</p>
 
 Hostname to IP address mappings were stored in a single file, aptly named
 `HOSTS.TXT`, and stored on the `SRI-NIC` server -- a system maintained by the
 Network Information Center (NIC) at the Stanford Research Institute (SRI).
 
-<p className="text-sm italic text-center mx-auto">
-  Figure 2: Artist's rendition of the original HOSTS.TXT file
-</p>
+Simple enough, right? Well, not quite. The system was perhaps a bit _too_
+simple.
+
+### Files don't scale
 
 Whenever an ARPANET member organization (yes, you had to be a member at that
 time) wanted to add a host to the file or update its IP address, it had to
@@ -77,8 +107,8 @@ Hence the name: the Domain Name System, or DNS for short.
 ### How DNS works
 
 At a high level, DNS is a hierarchical system that distributes the
-responsibility of resolving a fully-qualified domain name (FQDN) to a series
-of nameservers, each one responsible for resolving a different part.
+responsibility of resolving a fully-qualified domain name (FQDN) to a series of
+nameservers, each one responsible for resolving a different part.
 
 <p className="text-sm italic text-center mx-auto">Figure 3: How DNS works</p>
 
@@ -183,16 +213,14 @@ resolvers, configured to return different results (or sometimes none at all)
 depending on the _source_ of the request. This technique is known as **Split
 DNS**.
 
-So how does it work?
-
 ## How Split DNS works
 
-Split DNS is a technique wherein an orgnization maintains two (or more) separate
-DNS servers (or a single server configured with two "zones") -- one for internal
-resources and one for external resources. The internal server is only accessible
-to users who are connected to an organization's internal network (such as a VPN
-or branch office network), while the external zone is accessible to the outside
-world.
+[Split DNS](https://en.wikipedia.org/wiki/Split-horizon_DNS) is a technique
+wherein an orgnization maintains two (or more) separate DNS servers (or a single
+server configured with two "zones") -- one for internal resources and one for
+external resources. The internal server is only accessible to users who are
+connected to an organization's internal network (such as a VPN or branch office
+network), while the external zone is accessible to the outside world.
 
 <p className="text-sm italic text-center mx-auto">
   Figure 5: Split DNS in action
@@ -234,7 +262,8 @@ Anyone with the right credentials can access your organization's private
 repository, CRM data, or CI/CD secrets from anywhere in the world. Without
 internal addresses to resolve to, Split DNS doesn't help us anymore.
 
-Is there another way to secure access to these services?
+Is there another way to secure access to these services, now that we can't hide
+them with Split DNS?
 
 #### A naive solution
 
@@ -256,15 +285,15 @@ Well, mostly. But there's a catch: **virtual hosting**.
 
 [Virtual hosting](https://en.wikipedia.org/wiki/Virtual_hosting) is a technique
 used to host multiple services at a single IP address. It's become an essential
-tool in the arsenl to fight IPv4 address exhaustion, and is increasingly being
-used in IPv6 networks as well.
+tool in the arsenal to fight IPv4 address exhaustion, and is increasingly used
+in IPv6 networks as well.
 
 <p className="text-sm text-center mx-auto italic">
   Figure 6: Collateral damage can occur if you naively tunnel resolved IPs
 </p>
 
 If we simply resolve `github.com` and then configure our VPN to route traffic
-for that IP address through a jumphost, we might inadvertently route traffic
+for that IP address through a jumphost, we might inadvertently route traffic for
 `api.github.com`, `gist.github.com`, or `raw.githubusercontent.com` as well!
 
 #### NAT to the rescue?
@@ -283,7 +312,9 @@ for the services we're trying to secure, generate a unique IP for them
 on-the-fly, and then somehow route the resulting traffic through a NAT gateway
 to the actual service.
 
-<p className="text-sm text-center mx-auto italic">Figure 7:</p>
+<p className="text-sm text-center mx-auto italic">
+  Figure 7: DNS interception + NAT gateway: problem solved?
+</p>
 
 Seems complicated doesn't it? Keeping all of this in sync and up-to-date would
 be a configuration nightmare. So we've taken what was originally a DNS problem
@@ -291,12 +322,11 @@ and translated it to a configuration problem.
 
 ## DNS-based traffic routing
 
-And that's where Firezone comes in.
+That's where Firezone comes in.
 
-Firezone's approach to DNS was designed to address both the insecurity of DNS
-and the shortcomings of Split DNS, resulting in a single solution that's just as
-secure as Split DNS, but more flexible, and easier to manage, and best of all --
-works with cloud-delivered services too. Let's see how.
+Firezone's approach to DNS was designed to combine the benefits of Split DNS for
+internal services with the routing benefits for IP-allowlisted public services.
+Let's see how.
 
 ### How it works
 
@@ -304,110 +334,81 @@ Remember the stub resolver we talked about earlier? Recall that it's a small
 piece of software on your host that's responsible for resolving DNS queries.
 It's the first stop for any DNS query made by an application on your host.
 
-Well, each Firezone client embeds a tiny, lightweight stub resolver with some
-interesting properties.
+Well, each Firezone client embeds a tiny, lightweight stub resolver that works
+just like the one your operating system provides, but with a special twist.
 
 For DNS queries that don't match any of your Firezone-defined Resources, the
 resolver operates like any other stub resolver, forwarding the query to your
 upstream resolver as if Firezone didn't exist.
 
+For DNS queries that match a defined Resource, however, the resolver behaves a
+bit differently.
+
+Instead of forwarding the query to your upstream resolver, it first asks
+Firezone's Policy Engine to authorize the query for the Resource in question.
+
+If approved, the Policy Engine forwards the query to a Gateway that's available
+to serve the Resource. The Gateway then resolves the query for the Resource
+(using _its_ stub resolver) and returns the result back to our special stub
+resolver in the Client.
+
+<Alert color="info">
+  Read more about [Gateways](/kb/architecture/core-components#gateways) and the
+  [Policy Engine](/kb/architecture/core-components#policy-engine) in our
+  architecture docs.
+</Alert>
+
+Here's where things get interesting: instead of passing the resolved IP address
+as-is back to the application, the stub resolver generates a dummy IP address
+for it and returns that instead.
+
 <p className="text-sm text-center mx-auto italic">
   Figure 8: Firezone's embedded stub resolver
 </p>
 
-However, for DNS queries that match a Resource you've defined in your Firezone
-account, the resolver behaves a bit differently. Instead of forwarding the query
-to your upstream resolver, it asks the Policy Engine first to authorize the
-query for the Resource in question.
+Now, when as the application sends packets to the dummy IP, they're routed
+through the newly established Firezone tunnel to the Gateway that resolved the
+query. The Gateway then forwards this traffic on to the public service, setting
+the source address to the static IP we've configured in the service's allowlist,
+and we've now secured access to the public service using its DNS name.
 
-If approved, the Policy Engine forwards the query to a Gateway that's been
-assigned to serve the Resource. The Gateway then resolves the query and returns
-the IP address of the Resource to the stub resolver.
-
-<Alert color="info">
-  Gateways are lightweight Firezone servers that run on your infrastructure and
-  connect your users to your defined Resources. Read more about them in our{" "}
-  <Link href="/kb/deploy/gateways">Gateway documentation</Link>.
-</Alert>
-
-Here's where things get interesting: instead of returning the actual IP address
-of the Resource to the application that made the query, the stub resolver
-_returns a dummy IP address that it generated on-the-fly_. This dummy IP address
-is not only unique to the Resource and query in question, but also unique to the
-Gateway and Site that contains the Gateway as well.
-
-This means that two Resources that might resolve to the same actual address will
-resolve to different addreses if they're served by two different Gateways.
-
-All of this happens in under a second, completely transparently to the user.
-
-If you assign your Gateway a static IP address, you can now add that IP address
-to your SaaS provider's IP allowlist, and your workforce can access the service
-securely from anywhere in the world.
-
-A nice side effect of this approach is that it _also_ works for Split DNS.
+All of this happens in about the same time it would take for a query to be
+resolved without Firezone, so the end user is none the wiser. Our public
+services from above can now be selectively routed through Firezone no matter how
+many other services may be hosted at the same IP!
 
 ### How it's implemented
 
-When a user signs in, the Firezone Client configures its host operating system
-to use a special, lightweight DNS proxy running inside the Client for all DNS
-queries on the system.
+We glossed over lots of details above. The section below will get a bit
+technical, so if you're not interested in the nitty-gritty details, feel free to
+skip ahead to the [conclusion](#conclusion). If you are, well, let's dive
+deeper.
 
-This proxy lives at `100.100.111.0/24` for IPv4 queries and
-`fd00:2021:1111:8000:100:100:111:0/120` for IPv6 queries. These addresses are
-not routable on the public internet, so there's no risk that queries for
-internal resources will leave the device unexpectedly.
+#### Query interception
 
-The IP addresses the proxy chooses to "listen on" are determined by the
-[upstream resolvers](#configuring-client-dns-upstream-resolvers) available to
-the Client. For each IPv4 upstream resolver, the proxy listens on an address in
-the `100.100.111.0/24` range, and for each IPv6 upstream resolver, the proxy
-listens on an address in the `fd00:2021:1111:8000:100:100:111:0/120` range.
+The process actually starts when a user signs in to the Firezone Client. When
+this happens, the Client reads which upstream resolvers are available on the
+host, generates corresponding "sentinel addresses" for each one, and then
+configures the host's operating system to use these as the host's default
+upstream resolvers instead. This is how the sub resolver mentioned above is able
+to intercept queries to act on as needed.
 
-<p className="text-sm text-center mx-auto italic">
-  Figure 9: How multiple DNS servers are handled
-</p>
+For each IPv4 and IPv6 upstream resolver it finds on the host, the Client
+generates a matching sentinel address in the `100.100.111.0/24` and
+`fd00:2021:1111:8000:100:100:111:0/120` respectively. This is why you'll often
+see `100.100.111.1` set as your upstream resolver in `/etc/resolv.conf` with the
+Firezone Client signed in.
 
-When an application makes a DNS query, the proxy checks if the name matches a
-Firezone Resource that the user has access to. If it does, the Client then
-requests a Gateway serving that Resource to resolve the DNS query. When the
-Gateway responds, the proxy will create a temporary mapping between the actual
-IP address of the Resource and the dummy IP address it returned to the
-application. From this point onward, all subsequent packets to the dummy IP
-address are forwarded to the Gateway that resolved the query. These IPs are
-persisted for the duration of the Client's session.
+A nice side effect of this one-to-one mapping approach is that it won't affect
+the nameserver selection algorithm in the host's operating system. If an
+upstream resolver is down, the corresponding sentinel address will be
+unresponsive, and the operating system will pick another, responsive one to use
+instead.
 
-```
-user@host:~ % dig ifconfig.net
+#### Generating the mappings
 
-; <<>> DiG 9.10.6 <<>> ifconfig.net
-;; global options: +cmd
-;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 51756
-;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 0
-
-;; QUESTION SECTION:
-;ifconfig.net.			IN	A
-
-;; ANSWER SECTION:
-ifconfig.net.		300	IN	A	100.96.0.2
-ifconfig.net.		300	IN	A	100.96.0.1
-
-;; Query time: 262 msec
-;; SERVER: fd00:2021:1111:8000:100:100:111:0#53(fd00:2021:1111:8000:100:100:111:0)
-;; WHEN: Sat Feb 17 14:04:40 PST 2024
-;; MSG SIZE  rcvd: 86
-```
-
-<p className="text-sm text-center mx-auto italic">
-  Figure 10: An example dig command with a DNS-based Resource
-</p>
-
-If the proxy sees a query for a name that **is not** a Firezone Resource it will
-forward the query to the host's default stub resolver, as if Firezone never
-existed. This means that Clients are automatically configured for Split DNS in
-Firezone -- no other configuration is necessary other than adding the desired
-Resources in the admin portal.
+- Multiple Resource IPs
+- Gateways that resolve different Resource IPs
 
 {/* TODO: Add much more detail here */}
 
