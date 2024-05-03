@@ -800,8 +800,8 @@ mod proptests {
         collection::vec(
             prop_oneof![
                 Just(Filter::Icmp),
-                port_range().prop_map(|inner| Filter::Udp(inner)),
-                port_range().prop_map(|inner| Filter::Tcp(inner)),
+                port_range().prop_map(Filter::Udp),
+                port_range().prop_map(Filter::Tcp),
             ],
             0..=100,
         )
