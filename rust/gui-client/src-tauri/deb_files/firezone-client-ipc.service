@@ -7,6 +7,8 @@ CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 LockPersonality=true
 LogsDirectory=dev.firezone.client
+# Allow users in `firezone` group to delete log files
+LogsDirectoryMode=775
 MemoryDenyWriteExecute=true
 NoNewPrivileges=true
 PrivateMounts=true

@@ -154,7 +154,7 @@ async function clearLogs() {
       console.error(e);
     })
     .finally(() => {
-      logCountOutput.innerText = "0 files, 0 MB";
+      countLogs();
       unlockLogsForm();
     });
 }
