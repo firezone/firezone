@@ -77,8 +77,7 @@ defmodule Web.Resources.Components do
       </div>
 
       <p class="text-sm text-neutral-500">
-        Restrict traffic only to specified protocols and ports. By default, <strong>all</strong>
-        traffic to this Resource allowed.
+        Restrict access to the specified protocols and ports. By default, <strong>all</strong> protocols and ports are accessible.
       </p>
 
       <div class={@traffic_filters_enabled? == false && "opacity-50"}>
@@ -118,14 +117,15 @@ defmodule Web.Resources.Components do
               />
             </div>
 
-            <div class="flex-grow">
+            <div :if={Map.has_key?(@forms_by_protocol, :tcp)} class="flex-grow">
               <% ports = (@forms_by_protocol[:tcp] || %{ports: %{value: []}})[:ports] %>
               <.input
                 type="text"
+                inline_errors={true}
                 field={ports}
                 name={"#{@form.name}[tcp][ports]"}
                 value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled?}
+                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
                 placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
               />
             </div>
@@ -148,14 +148,15 @@ defmodule Web.Resources.Components do
               />
             </div>
 
-            <div class="flex-grow">
+            <div :if={Map.has_key?(@forms_by_protocol, :udp)} class="flex-grow">
               <% ports = (@forms_by_protocol[:udp] || %{ports: %{value: []}})[:ports] %>
               <.input
                 type="text"
+                inline_errors={true}
                 field={ports}
                 name={"#{@form.name}[udp][ports]"}
                 value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled?}
+                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
                 placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
               />
             </div>
