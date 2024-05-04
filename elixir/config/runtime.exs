@@ -55,7 +55,6 @@ if config_env() == :prod do
 
   config :domain, :enabled_features,
     idp_sync: compile_config!(:feature_idp_sync_enabled),
-    traffic_filters: compile_config!(:feature_traffic_filters_enabled),
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),

@@ -136,6 +136,7 @@ defmodule Web.Settings.IdentityProviders.New do
         <%= if @opts[:enabled] == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="ml-2 text-sm text-primary-500">
             <.badge class="ml-2" type="primary" title="Feature available on a higher pricing plan">
+              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" />
               UPGRADE TO UNLOCK
             </.badge>
           </.link>

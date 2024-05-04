@@ -70,6 +70,7 @@ defmodule Web.Resources.Components do
         <%= if @traffic_filters_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
+              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" />
               UPGRADE TO UNLOCK
             </.badge>
           </.link>
