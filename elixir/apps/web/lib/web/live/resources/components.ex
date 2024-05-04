@@ -70,15 +70,15 @@ defmodule Web.Resources.Components do
         <%= if @traffic_filters_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
-              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" />
-              UPGRADE TO UNLOCK
+              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
             </.badge>
           </.link>
         <% end %>
       </div>
 
       <p class="text-sm text-neutral-500">
-        Restrict access to the specified protocols and ports. By default, <strong>all</strong> protocols and ports are accessible.
+        Restrict access to the specified protocols and ports. By default, <strong>all</strong>
+        protocols and ports are accessible.
       </p>
 
       <div class={@traffic_filters_enabled? == false && "opacity-50"}>
@@ -126,7 +126,7 @@ defmodule Web.Resources.Components do
                 field={ports}
                 name={"#{@form.name}[tcp][ports]"}
                 value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
+                disabled={!@traffic_filters_enabled?}
                 placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
               />
             </div>
@@ -157,7 +157,7 @@ defmodule Web.Resources.Components do
                 field={ports}
                 name={"#{@form.name}[udp][ports]"}
                 value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
+                disabled={!@traffic_filters_enabled?}
                 placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
               />
             </div>

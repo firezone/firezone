@@ -40,7 +40,11 @@ defmodule Web.FormComponents do
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
 
   attr :errors, :list, default: []
-  attr :inline_errors, :boolean, default: false, doc: "whether to display errors inline instead of below the input"
+
+  attr :inline_errors, :boolean,
+    default: false,
+    doc: "whether to display errors inline instead of below the input"
+
   attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
@@ -129,7 +133,9 @@ defmodule Web.FormComponents do
         />
         <%= @label %>
       </label>
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -168,7 +174,9 @@ defmodule Web.FormComponents do
           <% end %>
         <% end %>
       </select>
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -198,7 +206,9 @@ defmodule Web.FormComponents do
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -220,7 +230,9 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -266,7 +278,9 @@ defmodule Web.FormComponents do
         <.icon name="hero-plus" /> Add
       </.button>
 
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -298,7 +312,9 @@ defmodule Web.FormComponents do
         {@rest}
       />
 
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -340,7 +356,9 @@ defmodule Web.FormComponents do
           {@rest}
         />
       </div>
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -363,7 +381,9 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       />
-      <.error inline={@inline_errors} :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
