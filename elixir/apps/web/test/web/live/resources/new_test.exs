@@ -79,10 +79,8 @@ defmodule Web.Live.Resources.NewTest do
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
            "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][ports]",
            "resource[filters][tcp][protocol]",
            "resource[filters][udp][enabled]",
-           "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
            "resource[address]",
            "resource[address_description]",
@@ -128,10 +126,8 @@ defmodule Web.Live.Resources.NewTest do
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
            "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][ports]",
            "resource[filters][tcp][protocol]",
            "resource[filters][udp][enabled]",
-           "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
            "resource[name]",
            "resource[type]"
@@ -171,10 +167,8 @@ defmodule Web.Live.Resources.NewTest do
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
            "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][ports]",
            "resource[filters][tcp][protocol]",
            "resource[filters][udp][enabled]",
-           "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
            "resource[address]",
            "resource[address_description]",
@@ -205,10 +199,8 @@ defmodule Web.Live.Resources.NewTest do
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
              "resource[filters][tcp][enabled]",
-             "resource[filters][tcp][ports]",
              "resource[filters][tcp][protocol]",
              "resource[filters][udp][enabled]",
-             "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
              "resource[name]",
              "resource[type]"
@@ -236,7 +228,8 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}})
 
     lv
     |> form("form", resource: attrs)
@@ -273,7 +266,8 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}})
 
     assert lv
            |> form("form", resource: attrs)
@@ -310,7 +304,8 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}})
 
     assert lv
            |> form("form", resource: attrs)
@@ -342,6 +337,7 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
     |> render_change(resource: %{type: :dns})
 
     assert lv
@@ -366,8 +362,8 @@ defmodule Web.Live.Resources.NewTest do
       address_description: "http://foobar.com:3000/",
       filters: %{
         icmp: %{enabled: true},
-        tcp: %{ports: "80, 443"},
-        udp: %{ports: "4000 - 5000"}
+        tcp: %{ports: "80, 443", enabled: true},
+        udp: %{ports: "4000 - 5000", enabled: true}
       },
       connections: %{gateway_group.id => %{enabled: true}}
     }
@@ -379,7 +375,8 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}})
 
     lv
     |> form("form", resource: attrs)
@@ -402,8 +399,8 @@ defmodule Web.Live.Resources.NewTest do
       address_description: "http://foobar.com:3000/",
       filters: %{
         icmp: %{enabled: true},
-        tcp: %{ports: "80, 443"},
-        udp: %{ports: "4000 - 5000"}
+        tcp: %{ports: "80, 443", enabled: true},
+        udp: %{ports: "4000 - 5000", enabled: true}
       }
     }
 
@@ -414,7 +411,8 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}})
 
     lv
     |> form("form", resource: attrs)
@@ -446,10 +444,8 @@ defmodule Web.Live.Resources.NewTest do
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
              "resource[filters][tcp][enabled]",
-             "resource[filters][tcp][ports]",
              "resource[filters][tcp][protocol]",
              "resource[filters][udp][enabled]",
-             "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
              "resource[name]",
              "resource[type]"
@@ -477,6 +473,7 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
     |> render_change(resource: %{type: :dns})
 
     lv
@@ -502,8 +499,8 @@ defmodule Web.Live.Resources.NewTest do
       name: "foobar.com",
       filters: %{
         icmp: %{enabled: true},
-        tcp: %{ports: "8080, 4443"},
-        udp: %{ports: "4000 - 5000"}
+        tcp: %{ports: "8080, 4443", enabled: true},
+        udp: %{ports: "4000 - 5000", enabled: true}
       }
     }
 
