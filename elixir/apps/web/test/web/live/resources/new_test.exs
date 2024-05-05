@@ -229,7 +229,9 @@ defmodule Web.Live.Resources.NewTest do
     lv
     |> form("form")
     # Generate onchange to trigger visible elements, otherwise the form won't be valid
-    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}})
+    |> render_change(
+      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+    )
 
     lv
     |> form("form", resource: attrs)
@@ -267,7 +269,9 @@ defmodule Web.Live.Resources.NewTest do
     lv
     |> form("form")
     # Generate onchange to trigger visible elements, otherwise the form won't be valid
-    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}})
+    |> render_change(
+      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+    )
 
     assert lv
            |> form("form", resource: attrs)
@@ -305,7 +309,9 @@ defmodule Web.Live.Resources.NewTest do
     lv
     |> form("form")
     # Generate onchange to trigger visible elements, otherwise the form won't be valid
-    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}})
+    |> render_change(
+      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+    )
 
     assert lv
            |> form("form", resource: attrs)
@@ -376,7 +382,12 @@ defmodule Web.Live.Resources.NewTest do
     lv
     |> form("form")
     # Generate onchange to trigger visible elements, otherwise the form won't be valid
-    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}})
+    |> render_change(
+      resource: %{
+        type: :dns,
+        filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}
+      }
+    )
 
     lv
     |> form("form", resource: attrs)
@@ -412,7 +423,12 @@ defmodule Web.Live.Resources.NewTest do
     lv
     |> form("form")
     # Generate onchange to trigger visible elements, otherwise the form won't be valid
-    |> render_change(resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}})
+    |> render_change(
+      resource: %{
+        type: :dns,
+        filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}
+      }
+    )
 
     lv
     |> form("form", resource: attrs)
