@@ -77,6 +77,9 @@ jobs:
           ./gradlew --info appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
 
   ui-test:
+    # FIXME
+    # Currently flaky, see https://github.com/firezone/firezone/pull/4178#issuecomment-2094815889
+    if: false
     name: ui-test-api-${{ matrix.api-level }}
     strategy:
       fail-fast: false
@@ -84,8 +87,8 @@ jobs:
         include:
           # TODO: These currently time out and/or fail intermittently.
           # https://github.com/ReactiveCircus/android-emulator-runner/issues/385
-          # - api-level: 26
-          # - api-level: 29
+          - api-level: 26
+          - api-level: 29
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     steps:
