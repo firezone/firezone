@@ -14,7 +14,6 @@ import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import java.lang.IllegalStateException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -28,39 +27,47 @@ internal class CustomUriViewModel
 
         fun parseCustomUri(intent: Intent) {
             viewModelScope.launch {
+                val accumulatedErrors = mutableListOf<String>()
+                val error = { msg: String ->
+                    accumulatedErrors += msg
+                    Firebase.crashlytics.log(msg)
+                    Log.e(TAG, msg)
+                }
+
                 when (intent.data?.host) {
                     PATH_CALLBACK -> {
                         intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->
-                            Log.d("CustomUriViewModel", "Found actor name: $actorName")
+                            Log.d(TAG, "Found actor name: $actorName")
                             repo.saveActorName(actorName).collect()
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
                             if (repo.validateState(state).firstOrNull() == true) {
-                                Log.d("CustomUriViewModel", "Valid state parameter. Continuing to save state...")
+                                Log.d(TAG, "Valid state parameter. Continuing to save state...")
                             } else {
-                                throw IllegalStateException("Invalid state parameter $state! Authentication will not succeed...")
+                                error("Invalid state parameter $state")
                             }
-                            intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)?.let { fragment ->
-                                if (fragment.isNotBlank()) {
-                                    Log.d("CustomUriViewModel", "Found valid auth fragment in response")
+                        }
+                        intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)?.let { fragment ->
+                            if (fragment.isNotBlank()) {
+                                Log.d(TAG, "Found valid auth fragment in response")
 
-                                    // Save token, then clear nonce and state since we don't
-                                    // need to keep them around anymore
-                                    repo.saveToken(fragment).collect()
-                                    repo.clearNonce()
-                                    repo.clearState()
-
-                                    actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
-                                } else {
-                                    throw IllegalStateException("Invalid auth fragment $fragment! Authentication will not succeed...")
-                                }
+                                // Save token, then clear nonce and state since we don't
+                                // need to keep them around anymore
+                                repo.saveToken(fragment).collect()
+                                repo.clearNonce()
+                                repo.clearState()
+                            } else {
+                                error("Auth fragment was empty")
                             }
                         }
                     }
-                    else -> {
-                        Firebase.crashlytics.log("Unknown path segment: ${intent.data?.lastPathSegment}")
-                        Log.e("CustomUriViewModel", "Unknown path segment: ${intent.data?.lastPathSegment}")
-                    }
+                    else -> error("Unknown path segment: ${intent.data?.lastPathSegment}")
+                }
+                if (accumulatedErrors.isNotEmpty()) {
+                    actionMutableLiveData.postValue(ViewAction.AuthFlowError(accumulatedErrors))
+                } else {
+                    Log.d(TAG, "Auth flow complete")
+                    actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
                 }
             }
         }
@@ -70,9 +77,15 @@ internal class CustomUriViewModel
             private const val QUERY_CLIENT_STATE = "state"
             private const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
             private const val QUERY_ACTOR_NAME = "actor_name"
+
+            private const val TAG = "CustomUriViewModel"
         }
 
         internal sealed class ViewAction {
-            object AuthFlowComplete : ViewAction()
+            data object AuthFlowComplete : ViewAction()
+
+            data class AuthFlowError(val errors: Iterable<String>) : ViewAction() {
+                constructor(vararg errors: String) : this(errors.toList())
+            }
         }
     }
