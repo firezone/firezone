@@ -82,10 +82,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # TODO: Uncomment when this is fixed:
+          # TODO: These currently time out and/or fail intermittently.
           # https://github.com/ReactiveCircus/android-emulator-runner/issues/385
           # - api-level: 26
-          - api-level: 29
+          # - api-level: 29
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     steps:
