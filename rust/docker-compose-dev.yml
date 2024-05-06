@@ -18,7 +18,13 @@ services:
     volumes:
       - ./rust/target/x86_64-unknown-linux-musl/debug/firezone-gateway:/bin/firezone-gateway
 
-  relay:
+  relay-1:
+    build:
+      target: test
+    volumes:
+      - ./rust/target/x86_64-unknown-linux-musl/debug/firezone-relay:/bin/firezone-relay
+
+  relay-2:
     build:
       target: test
     volumes:
