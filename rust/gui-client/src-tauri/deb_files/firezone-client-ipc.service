@@ -7,6 +7,8 @@ CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
 DeviceAllow=/dev/net/tun
 LockPersonality=true
 LogsDirectory=dev.firezone.client
+# Allow users in `firezone` group to delete log files
+LogsDirectoryMode=775
 MemoryDenyWriteExecute=true
 NoNewPrivileges=true
 PrivateMounts=true
@@ -44,7 +46,7 @@ ExecStart=firezone-client-ipc
 Type=notify
 # Unfortunately we may need root to control DNS
 User=root
-Group=firezone
+Group=firezone-client
 
 [Install]
 WantedBy=default.target

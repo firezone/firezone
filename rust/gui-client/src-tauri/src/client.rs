@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser};
+use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
 
 mod about;
@@ -66,13 +67,18 @@ pub(crate) fn run() -> Result<()> {
 
     match cli.command {
         None => {
-            if elevation::check()? {
+            match elevation::check() {
                 // We're already elevated, just run the GUI
-                run_gui(cli)
-            } else {
-                // We're not elevated, ask Powershell / sudo to re-launch us, then exit
-                elevation::elevate()?;
-                Ok(())
+                Ok(true) => run_gui(cli),
+                Ok(false) => {
+                    // We're not elevated, ask Powershell to re-launch us, then exit. On Linux this is completely different.
+                    elevation::elevate()?;
+                    Ok(())
+                }
+                Err(error) => {
+                    show_error_dialog(&error)?;
+                    Err(error.into())
+                }
             }
         }
         Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
@@ -122,12 +128,15 @@ fn run_gui(cli: Cli) -> Result<()> {
 }
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
-    #[allow(clippy::wildcard_enum_match_arm)]
+    // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
     let error_msg = match error {
         // TODO: Update this URL
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
         gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
-        error => error.to_string(),
+        gui::Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
+        gui::Error::Logging(_) => "Logging error".to_string(),
+        gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo adduser $USER {FIREZONE_GROUP}` and then reboot"),
+        gui::Error::Other(error) => error.to_string(),
     };
 
     native_dialog::MessageDialog::new()

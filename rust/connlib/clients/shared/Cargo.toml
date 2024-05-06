@@ -8,7 +8,7 @@ edition = "2021"
 mock = ["connlib-shared/mock"]
 
 [dependencies]
-anyhow = "1.0.81"
+anyhow = "1.0.82"
 tokio = { version = "1.36", default-features = false, features = ["sync", "rt"] }
 secrecy = { workspace = true }
 tracing = { workspace = true }
@@ -23,7 +23,6 @@ backoff = { workspace = true }
 url = { version = "2.4.1", features = ["serde"] }
 time = { version = "0.3.36", features = ["formatting"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
-parking_lot = "0.12"
 bimap = "0.6"
 ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }

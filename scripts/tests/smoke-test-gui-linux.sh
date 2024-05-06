@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-source "./scripts/tests/lib.sh"
+set -euox pipefail
 
 BUNDLE_ID="dev.firezone.client"
+FZ_GROUP="firezone-client"
 
 #DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
@@ -22,6 +23,17 @@ cargo install --quiet --locked dump_syms minidump-stackwalk
 dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
 ls -lash ../target/debug
 
+sudo groupadd --force "$FZ_GROUP"
+sudo adduser "$USER" "$FZ_GROUP"
+
+function run_fz_gui() {
+    pwd
+    # Does what it says
+    sudo --preserve-env \
+    su --login "$USER" --command \
+    "xvfb-run --auto-servernum $PWD/../target/debug/$PACKAGE $*"
+}
+
 function smoke_test() {
     # Make sure the files we want to check don't exist on the system yet
     stat "$LOGS_PATH" && exit 1
@@ -31,7 +43,7 @@ function smoke_test() {
     stat "$RAN_BEFORE_PATH" && exit 1
 
     # Run the smoke test normally
-    if ! xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --no-deep-links smoke-test
+    if ! run_fz_gui --no-deep-links smoke-test
     then
         minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"
         exit 1
@@ -49,7 +61,7 @@ function smoke_test() {
     stat "$RAN_BEFORE_PATH"
 
     # Run the test again and make sure the device ID is not changed
-    xvfb-run --auto-servernum ../target/debug/"$PACKAGE"  --no-deep-links smoke-test
+    run_fz_gui --no-deep-links smoke-test
     # DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     #if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
@@ -70,7 +82,7 @@ function crash_test() {
     rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    xvfb-run --auto-servernum ../target/debug/"$PACKAGE" --crash --no-deep-links && exit 1
+    run_fz_gui --crash --no-deep-links && exit 1
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"

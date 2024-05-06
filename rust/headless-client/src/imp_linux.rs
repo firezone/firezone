@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
+use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
@@ -182,6 +182,13 @@ pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     tracing::info!("run_daemon");
     rt.block_on(async { ipc_listen(cli).await })
+}
+
+pub fn firezone_group() -> Result<nix::unistd::Group> {
+    let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
+        .context("can't get group by name")?
+        .context("`{FIREZONE_GROUP}` group must exist on the system")?;
+    Ok(group)
 }
 
 async fn ipc_listen(cli: Cli) -> Result<()> {

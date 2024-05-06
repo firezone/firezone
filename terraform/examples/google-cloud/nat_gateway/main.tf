@@ -32,7 +32,7 @@ module "gateways" {
   compute_provision_public_ipv6_address = false
   compute_provision_public_ipv4_address = false
 
-  image_tag = "1.0"
+  vsn = "latest"
 
   observability_log_level = "info"
 
