@@ -2038,7 +2038,7 @@ dependencies = [
  "libc",
  "log",
  "netlink-packet-core",
- "netlink-packet-route",
+ "netlink-packet-route 0.20.0",
  "pretty_assertions",
  "proptest",
  "proptest-state-machine",
@@ -2906,7 +2906,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.11",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.7",
  "tokio",
  "tower-service",
  "tracing",
@@ -3769,6 +3769,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74c171cd77b4ee8c7708da746ce392440cb7bcf618d122ec9ecc607b12938bf4"
 dependencies = [
  "anyhow",
+ "byteorder",
+ "libc",
+ "log",
+ "netlink-packet-core",
+ "netlink-packet-utils",
+]
+
+[[package]]
+name = "netlink-packet-route"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a37142a3d25dff78c49e99c27244827409717366287ff229b16e36cfeee17cf1"
+dependencies = [
+ "anyhow",
+ "bitflags 2.5.0",
  "byteorder",
  "libc",
  "log",
@@ -5161,7 +5176,7 @@ dependencies = [
  "futures",
  "log",
  "netlink-packet-core",
- "netlink-packet-route",
+ "netlink-packet-route 0.19.0",
  "netlink-packet-utils",
  "netlink-proto",
  "netlink-sys",
