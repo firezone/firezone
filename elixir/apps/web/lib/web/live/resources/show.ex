@@ -159,7 +159,7 @@ defmodule Web.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={@traffic_filters_enabled?}>
+          <.vertical_table_row>
             <:label>
               Traffic restriction
             </:label>

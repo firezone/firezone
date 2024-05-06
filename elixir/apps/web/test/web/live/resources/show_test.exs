@@ -124,6 +124,29 @@ defmodule Web.Live.Resources.ShowTest do
     end
   end
 
+  test "renders traffic filters on show page even when traffic filters disabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    resource = Fixtures.Resources.create_resource(account: account, filters: [])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["traffic restriction"] == "All traffic allowed"
+  end
+
   test "renders policies table", %{
     account: account,
     identity: identity,
