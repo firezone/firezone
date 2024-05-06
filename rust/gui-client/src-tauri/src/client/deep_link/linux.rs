@@ -1,7 +1,7 @@
 use crate::client::known_dirs;
 use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, Secret};
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -13,16 +13,40 @@ pub(crate) struct Server {
     listener: UnixListener,
 }
 
+fn sock_path() -> Result<PathBuf> {
+    Ok(known_dirs::runtime()
+        .context("Couldn't find runtime dir")?
+        .join(SOCK_NAME))
+}
+
 impl Server {
     /// Create a new deep link server to make sure we're the only instance
     ///
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
     pub(crate) fn new() -> Result<Self, super::Error> {
-        let dir = known_dirs::runtime().context("couldn't find runtime dir")?;
-        let path = dir.join(SOCK_NAME);
-        // TODO: This breaks single instance. Can we enforce it some other way?
+        let path = sock_path()?;
+        let dir = path
+            .parent()
+            .context("Impossible, socket path should always have a parent")?;
+
+        // Try to `connect` to the socket as a client.
+        // If it succeeds, that means there is already a Firezone instance listening
+        // as a server on that socket, and we should exit.
+        // If it fails, it means nobody is listening on the socket, or the
+        // socket does not exist, in which case we are the only instance
+        // and should proceed.
+        if std::os::unix::net::UnixStream::connect(&path).is_ok() {
+            return Err(super::Error::CantListen);
+        }
         std::fs::remove_file(&path).ok();
-        std::fs::create_dir_all(&dir).context("Can't create dir for deep link socket")?;
+        std::fs::create_dir_all(dir).context("Can't create dir for deep link socket")?;
+
+        // TODO: TOCTOU error here.
+        // It's possible for 2 processes to see the `connect` call fail, then one
+        // binds the socket, and the other deletes the socket and binds a different
+        // socket at the same path, resulting in 2 instances with confusing behavior.
+        // The `bind` call should probably go first, but without more testing and more
+        // thought, I don't want to re-arrange it yet.
 
         let listener = UnixListener::bind(&path).context("Couldn't bind listener Unix socket")?;
 
@@ -44,6 +68,9 @@ impl Server {
             .read_to_end(&mut bytes)
             .await
             .context("failed to read incoming deep link over Unix socket stream")?;
+        if bytes.is_empty() {
+            bail!("Got zero bytes from the deep link socket - probably a 2nd instance was blocked");
+        }
         let bytes = Secret::new(bytes);
         tracing::debug!(
             len = bytes.expose_secret().len(),
@@ -56,8 +83,7 @@ impl Server {
 pub(crate) async fn open(url: &url::Url) -> Result<()> {
     crate::client::logging::debug_command_setup()?;
 
-    let dir = known_dirs::runtime().context("deep_link::open couldn't find runtime dir")?;
-    let path = dir.join(SOCK_NAME);
+    let path = sock_path()?;
     let mut stream = UnixStream::connect(&path).await?;
 
     stream.write_all(url.to_string().as_bytes()).await?;
