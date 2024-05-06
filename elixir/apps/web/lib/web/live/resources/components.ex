@@ -118,7 +118,7 @@ defmodule Web.Resources.Components do
               />
             </div>
 
-            <div :if={Map.has_key?(@forms_by_protocol, :tcp)} class="flex-grow">
+            <div class="flex-grow">
               <% ports = (@forms_by_protocol[:tcp] || %{ports: %{value: []}})[:ports] %>
               <.input
                 type="text"
@@ -126,7 +126,7 @@ defmodule Web.Resources.Components do
                 field={ports}
                 name={"#{@form.name}[tcp][ports]"}
                 value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled?}
+                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
                 placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
               />
             </div>
@@ -149,7 +149,7 @@ defmodule Web.Resources.Components do
               />
             </div>
 
-            <div :if={Map.has_key?(@forms_by_protocol, :udp)} class="flex-grow">
+            <div class="flex-grow">
               <% ports = (@forms_by_protocol[:udp] || %{ports: %{value: []}})[:ports] %>
               <.input
                 type="text"
@@ -157,7 +157,7 @@ defmodule Web.Resources.Components do
                 field={ports}
                 name={"#{@form.name}[udp][ports]"}
                 value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled?}
+                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
                 placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
               />
             </div>
