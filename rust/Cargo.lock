@@ -144,9 +144,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.81"
+version = "1.0.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0952808a6c2afd1aa8947271f3a60f1a6763c7b912d210184c5149b5cf147247"
+checksum = "f538837af36e6f6a9be0faa67f9a314f8119e4e4b5867c6ab40ed60360142519"
 
 [[package]]
 name = "arboard"
@@ -1136,7 +1136,6 @@ dependencies = [
  "connlib-shared",
  "firezone-tunnel",
  "ip_network",
- "parking_lot",
  "phoenix-channel",
  "secrecy",
  "serde",
@@ -1909,6 +1908,7 @@ dependencies = [
  "keyring",
  "minidumper",
  "native-dialog",
+ "nix 0.28.0",
  "output_vt100",
  "rand 0.8.5",
  "reqwest",

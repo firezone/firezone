@@ -98,7 +98,6 @@ services:
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_TRAFFIC_FILTERS_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
       REST_API_ENABLED: "true"
@@ -167,7 +166,6 @@ services:
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_TRAFFIC_FILTERS_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
       REST_API_ENABLED: "true"
@@ -230,7 +228,6 @@ services:
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_TRAFFIC_FILTERS_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
       REST_API_ENABLED: "true"
@@ -299,7 +296,6 @@ services:
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_TRAFFIC_FILTERS_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
       REST_API_ENABLED: "true"

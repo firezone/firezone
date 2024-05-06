@@ -343,10 +343,18 @@ defmodule Web.CoreComponents do
   """
   attr :rest, :global
   slot :inner_block, required: true
+  attr :inline, :boolean, default: false
 
   def error(assigns) do
     ~H"""
-    <p class="mt-3 flex gap-3 text-sm leading-6 text-rose-600 phx-no-feedback:hidden" {@rest}>
+    <p
+      class={[
+        "w-full flex gap-3 text-sm leading-6",
+        "text-rose-600 phx-no-feedback:hidden",
+        (@inline && "ml-3") || "mt-3"
+      ]}
+      {@rest}
+    >
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
       <%= render_slot(@inner_block) %>
     </p>

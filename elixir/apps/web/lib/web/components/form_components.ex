@@ -40,6 +40,11 @@ defmodule Web.FormComponents do
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
 
   attr :errors, :list, default: []
+
+  attr :inline_errors, :boolean,
+    default: false,
+    doc: "whether to display errors inline instead of below the input"
+
   attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
   attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
   attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
@@ -128,7 +133,9 @@ defmodule Web.FormComponents do
         />
         <%= @label %>
       </label>
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -167,7 +174,9 @@ defmodule Web.FormComponents do
           <% end %>
         <% end %>
       </select>
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -197,7 +206,9 @@ defmodule Web.FormComponents do
         <option :if={@prompt} value=""><%= @prompt %></option>
         <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
       </select>
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -219,7 +230,9 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -265,7 +278,9 @@ defmodule Web.FormComponents do
         <.icon name="hero-plus" /> Add
       </.button>
 
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
@@ -297,14 +312,16 @@ defmodule Web.FormComponents do
         {@rest}
       />
 
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
 
   def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
       <div class={[
         "flex",
@@ -339,14 +356,16 @@ defmodule Web.FormComponents do
           {@rest}
         />
       </div>
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
 
   def input(assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
       <input
         type={@type}
@@ -362,7 +381,9 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       />
-      <.error :for={msg <- @errors} data-validation-error-for={@name}><%= msg %></.error>
+      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+        <%= msg %>
+      </.error>
     </div>
     """
   end
