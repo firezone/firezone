@@ -713,7 +713,7 @@ mod proptests {
             .prop_flat_map(|(filters_a, protocol_a)| {
                 filters_in_gaps(filters_a.clone())
                     .prop_filter(
-                        "we reject empty filters since it increseases complexity",
+                        "we reject empty filters since it increases complexity",
                         |f| !f.is_empty(),
                     )
                     .prop_flat_map(|filters| {
