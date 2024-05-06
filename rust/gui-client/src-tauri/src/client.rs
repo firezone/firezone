@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser};
+use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
 
 mod about;
@@ -134,7 +135,7 @@ fn show_error_dialog(error: &gui::Error) -> Result<()> {
         gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         gui::Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
         gui::Error::Logging(_) => "Logging error".to_string(),
-        gui::Error::UserNotInFirezoneGroup => "You are not a member of the group `firezone`. Try `sudo adduser $USER firezone` and then reboot".to_string(),
+        gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo adduser $USER {FIREZONE_GROUP}` and then reboot"),
         gui::Error::Other(error) => error.to_string(),
     };
 
