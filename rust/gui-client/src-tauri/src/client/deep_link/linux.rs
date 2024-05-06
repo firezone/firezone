@@ -29,13 +29,24 @@ impl Server {
             .parent()
             .context("Impossible, socket path should always have a parent")?;
 
-        // If the connection succeeds, that means another process has bound the socket,
-        // and we're the 2nd instance, so we should exit
+        // Try to `connect` to the socket as a client.
+        // If it succeeds, that means there is already a Firezone instance listening
+        // as a server on that socket, and we should exit.
+        // If it fails, it means nobody is listening on the socket, or the
+        // socket does not exist, in which case we are the only instance
+        // and should proceed.
         if std::os::unix::net::UnixStream::connect(&path).is_ok() {
             return Err(super::Error::CantListen);
         }
         std::fs::remove_file(&path).ok();
         std::fs::create_dir_all(dir).context("Can't create dir for deep link socket")?;
+
+        // TODO: TOCTOU error here.
+        // It's possible for 2 processes to see the `connect` call fail, then one
+        // binds the socket, and the other deletes the socket and binds a different
+        // socket at the same path, resulting in 2 instances with confusing behavior.
+        // The `bind` call should probably go first, but without more testing and more
+        // thought, I don't want to re-arrange it yet.
 
         let listener = UnixListener::bind(&path).context("Couldn't bind listener Unix socket")?;
 
