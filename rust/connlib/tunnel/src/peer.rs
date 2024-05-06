@@ -517,6 +517,41 @@ mod proptests {
     }
 
     #[test_strategy::proptest()]
+    fn gateway_accepts_different_resources_with_same_ip_packet(
+        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(vec![resource_id(); 10])] resources_ids: Vec<ResourceId>,
+        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=10))] protocol_config: Vec<
+            (Filters, Protocol),
+        >,
+        #[strategy(any::<u16>())] sport: u16,
+        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
+    ) {
+        let (src, resource_addr, dest) = config;
+        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut resources_ids = resources_ids.iter();
+        for (filters, _) in &protocol_config {
+            // This test could be extended to test multiple src
+            peer.add_resource(
+                resource_addr,
+                *resources_ids.next().unwrap(),
+                filters.clone(),
+                None,
+            );
+        }
+
+        for (_, protocol) in protocol_config {
+            let packet = match protocol {
+                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Icmp => icmp_request_packet(src, dest),
+            };
+
+            assert!(peer.ensure_allowed(&packet).is_ok());
+        }
+    }
+
+    #[test_strategy::proptest()]
     fn gateway_reject_unallowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
