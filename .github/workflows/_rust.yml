@@ -28,6 +28,11 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
+      - uses: taiki-e/install-action@cargo-udeps
+      - run: |
+          rustup install --no-self-update nightly-2024-03-26 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
+          cargo +nightly-2024-03-26 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
+        name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
         env:
@@ -37,12 +42,6 @@ jobs:
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
         name: "cargo clippy"
         shell: bash
-
-      - uses: taiki-e/install-action@cargo-udeps
-      - run: |
-          rustup install nightly-2024-03-26 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-03-26 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
-        name: Check for unused dependencies
 
   test:
     name: test-${{ matrix.runs-on }}
