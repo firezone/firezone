@@ -7,7 +7,7 @@ import Alert from "@/components/DocsAlert";
 # Architecture: Tech Stack
 
 Firezone has a unique mix of data throughput, reliability, and scability
-challenges. So we made sure to pick the right tools for the job. Here's a
+requirements. So we made sure to pick the right tools for the job. Here's a
 high-level overview of the tech stack choices we made and why.
 
 ## Control plane
@@ -20,7 +20,7 @@ Elixir and Phoenix.
 
 [Elixir](https://www.elixir-lang.org) is a functional programming language
 that's received lots of attention in recent years for its performance and
-scalability.
+concurrency properties.
 
 It's built on top of the [Erlang VM](https://www.erlang.org/), which has a
 reputation for being fault-tolerant and highly concurrent. Erlang continues to
@@ -71,6 +71,15 @@ Client applications:
     height={1200}
   />
 </Link>
+
+The separation between control plane and data plane state serves two functions:
+
+- It ensures that control plane messages do not slow down or otherwise block the
+  data plane processing loop.
+- It allows the Client to withstand temporary network partitions from the
+  control plane API without dropping data plane packets. This means, for
+  example, existing connections to Resources continue to operate uninterrupted
+  even as we deploy new versions of the control plane API.
 
 ## Ops and infrastructure
 
