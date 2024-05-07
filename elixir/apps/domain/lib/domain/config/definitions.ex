@@ -636,11 +636,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_flow_activities_enabled, :boolean, default: false)
 
   @doc """
-  Boolean flag to turn Resource traffic filters on/off for all accounts.
-  """
-  defconfig(:feature_traffic_filters_enabled, :boolean, default: false)
-
-  @doc """
   Boolean flag to turn Account relays admin functionality on/off for all accounts.
   """
   defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
