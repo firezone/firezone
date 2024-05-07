@@ -2044,6 +2044,7 @@ dependencies = [
  "proptest-state-machine",
  "quinn-udp",
  "rand_core 0.6.4",
+ "rangemap",
  "rtnetlink",
  "sd-notify",
  "secrecy",
@@ -4932,6 +4933,12 @@ checksum = "12a5a2d6c7039059af621472a4389be1215a816df61aa4d531cfe85264aee95f"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "rangemap"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f60fcc7d6849342eff22c4350c8b9a989ee8ceabc4b481253e8946b9fe83d684"
 
 [[package]]
 name = "raw-window-handle"
