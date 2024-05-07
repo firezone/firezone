@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+        <Component Id="FirezoneClientIpcService" Guid="a8092ff9-30fa-48bb-9b2d-45fe39d16c66">
+          <File Id="FirezoneClientIpcServiceExe" Name="firezone-client-ipc.exe" Source="../../firezone-client-ipc.exe" KeyPath="yes" />
+          <ServiceInstall
+              Id="FirezoneClientServiceInstaller"
+              Type="ownProcess"
+              Vital="yes"
+              Name="FirezoneClientIpcService"
+              DisplayName="Firezone Client IPC"
+              Start="auto"
+              Account="LocalSystem"
+              ErrorControl="normal"
+              Interactive="no">
+              </ServiceInstall>
+              <ServiceControl Id="FirezoneClientServiceControl" Stop="both" Remove="both" Name="FirezoneClientIpcService" Wait="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>
