@@ -1964,6 +1964,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+ "windows-service",
 ]
 
 [[package]]
@@ -7533,6 +7534,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "749f0da9cc72d82e600d8d2e44cadd0b9eedb9038f71a1c58556ac1c5791813b"
 dependencies = [
  "windows-targets 0.52.5",
+]
+
+[[package]]
+name = "windows-service"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d24d6bcc7f734a4091ecf8d7a64c5f7d7066f45585c1861eba06449909609c8a"
+dependencies = [
+ "bitflags 2.5.0",
+ "widestring",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

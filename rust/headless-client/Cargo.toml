@@ -33,6 +33,7 @@ tokio-util = { version = "0.7.10", features = ["codec"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
+windows-service = "0.7.0"
 
 [lints]
 workspace = true

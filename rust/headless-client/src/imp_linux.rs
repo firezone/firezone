@@ -63,6 +63,9 @@ pub fn default_token_path() -> PathBuf {
         .join("token")
 }
 
+/// Only called from the GUI Client's build of the IPC service
+///
+/// On Linux this is the same as running with `ipc-service`
 pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
@@ -180,7 +183,7 @@ pub fn sock_path() -> PathBuf {
 
 pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    tracing::info!("run_daemon");
+    tracing::info!("run_ipc_service");
     rt.block_on(async { ipc_listen(cli).await })
 }
 
