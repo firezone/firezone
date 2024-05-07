@@ -11,7 +11,10 @@ use std::{
 };
 use tokio::sync::mpsc;
 use windows_service::{
-    service::{ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType},
+    service::{
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+        ServiceType,
+    },
     service_control_handler::{self, ServiceControlHandlerResult},
 };
 
@@ -69,7 +72,12 @@ fn windows_service_run(_arguments: Vec<OsString>) {
 // Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
     let cli = Cli::parse();
-    let (layer, _handle) = file_logger::layer(&connlib_shared::windows::app_local_data_dir().unwrap().join("data").join("logs"));
+    let (layer, _handle) = file_logger::layer(
+        &connlib_shared::windows::app_local_data_dir()
+            .unwrap()
+            .join("data")
+            .join("logs"),
+    );
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);
 
@@ -123,18 +131,28 @@ fn fallible_windows_service_run() -> Result<()> {
 /// Running as a Windows service is complicated, so to make debugging easier
 /// we'll have a dev-only mode that runs all the IPC code as a normal process
 /// in an admin console.
-pub(crate) fn run_ipc_service(cli: Cli, rt: tokio::runtime::Runtime, shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+pub(crate) fn run_ipc_service(
+    cli: Cli,
+    rt: tokio::runtime::Runtime,
+    shutdown_rx: mpsc::Receiver<()>,
+) -> Result<()> {
     tracing::info!("run_ipc_service");
     rt.block_on(async { ipc_listen(cli, shutdown_rx).await })
 }
 
 async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    let log_dir = connlib_shared::windows::app_local_data_dir().unwrap().join("data").join("logs").display().to_string();
+    let log_dir = connlib_shared::windows::app_local_data_dir()
+        .unwrap()
+        .join("data")
+        .join("logs")
+        .display()
+        .to_string();
     tokio::fs::write(
         "C:/ProgramData/dev.firezone.client/service.txt",
         log_dir.as_bytes(),
     )
-    .await.context("couldn't write debug file service.txt")?;
+    .await
+    .context("couldn't write debug file service.txt")?;
 
     shutdown_rx.recv().await;
 
