@@ -1,6 +1,6 @@
 use crate::messages::{
     client::ResourceDescriptionCidr,
-    client::{GatewayGroup, ResourceDescriptionDns, SiteId},
+    client::{GatewayGroup, ResourceDescriptionDns, SiteId, Status},
     ClientId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -18,16 +18,20 @@ pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
         dns_resource_address(),
         gateway_groups(),
         address_description(),
+        any::<Status>(),
     )
-        .prop_map(|(id, name, address, gateway_groups, address_description)| {
-            ResourceDescriptionDns {
-                id,
-                address,
-                name,
-                gateway_groups,
-                address_description,
-            }
-        })
+        .prop_map(
+            |(id, name, address, gateway_groups, address_description, status)| {
+                ResourceDescriptionDns {
+                    id,
+                    address,
+                    name,
+                    gateway_groups,
+                    address_description,
+                    status,
+                }
+            },
+        )
 }
 
 pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
@@ -37,16 +41,20 @@ pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDes
         ip_network(host_mask_bits),
         gateway_groups(),
         address_description(),
+        any::<Status>(),
     )
-        .prop_map(|(id, name, address, gateway_groups, address_description)| {
-            ResourceDescriptionCidr {
-                id,
-                address,
-                name,
-                gateway_groups,
-                address_description,
-            }
-        })
+        .prop_map(
+            |(id, name, address, gateway_groups, address_description, status)| {
+                ResourceDescriptionCidr {
+                    id,
+                    address,
+                    name,
+                    gateway_groups,
+                    address_description,
+                    status,
+                }
+            },
+        )
 }
 
 pub fn address_description() -> impl Strategy<Value = String> {

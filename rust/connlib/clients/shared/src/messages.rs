@@ -101,8 +101,7 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        client::ResourceDescriptionCidr,
-        client::{GatewayGroup, ResourceDescriptionDns},
+        client::{GatewayGroup, ResourceDescriptionCidr, ResourceDescriptionDns, Status},
         DnsServer, IpDnsServer, Stun, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
@@ -238,6 +237,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        status: Status::Unknown,
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
@@ -248,6 +248,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        status: Status::Unknown,
                     }),
                 ],
                 relays: vec![],
@@ -311,6 +312,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        status: Status::Unknown,
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
@@ -321,6 +323,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        status: Status::Unknown,
                     }),
                 ],
                 relays: vec![],

@@ -8,6 +8,22 @@ use uuid::Uuid;
 
 use super::ResourceId;
 
+// TODO: decide if we keep the same ResourceDescription message or we separate into a non-deserializable thing
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
+pub enum Status {
+    Unknown,
+    Online,
+    Offline,
+}
+
+impl Default for Status {
+    fn default() -> Self {
+        Status::Unknown
+    }
+}
+
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
@@ -22,6 +38,9 @@ pub struct ResourceDescriptionDns {
 
     pub address_description: String,
     pub gateway_groups: Vec<GatewayGroup>,
+
+    #[serde(default)]
+    pub status: Status,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -38,6 +57,9 @@ pub struct ResourceDescriptionCidr {
 
     pub address_description: String,
     pub gateway_groups: Vec<GatewayGroup>,
+
+    #[serde(default)]
+    pub status: Status,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -104,6 +126,13 @@ impl ResourceDescription {
                 cidr_a.address != cidr_b.address
             }
             _ => true,
+        }
+    }
+
+    pub fn status(&mut self) -> &mut Status {
+        match self {
+            ResourceDescription::Dns(r) => &mut r.status,
+            ResourceDescription::Cidr(r) => &mut r.status,
         }
     }
 }

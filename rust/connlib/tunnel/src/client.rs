@@ -2,6 +2,7 @@ use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
+use connlib_shared::messages::client::Status;
 use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, client::ResourceDescriptionDns,
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
@@ -172,6 +173,13 @@ where
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
         self.role_state.on_connection_failed(id);
+    }
+
+    pub fn offline_resource(&mut self, id: ResourceId) {
+        let Some(resource) = self.role_state.resource_ids.get_mut(&id) else {
+            return;
+        };
+        *resource.status() = Status::Offline;
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -834,6 +842,7 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
+                    self.set_gateways_resources_status(id, Status::Unknown);
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -853,9 +862,22 @@ impl ClientState {
                         conn_id: connection,
                         candidate,
                     }),
-                snownet::Event::ConnectionEstablished { .. } => {}
+                snownet::Event::ConnectionEstablished(id) => {
+                    self.set_gateways_resources_status(id, Status::Online);
+                }
             }
         }
+    }
+
+    fn set_gateways_resources_status(&mut self, gateway_id: GatewayId, status: Status) {
+        self.resource_ids
+            .iter_mut()
+            .filter(|(r_id, _)| {
+                self.resources_gateways
+                    .get(r_id)
+                    .is_some_and(|g_id| *g_id == gateway_id)
+            })
+            .for_each(|(_, r)| *r.status() = status);
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -1491,6 +1513,7 @@ mod proptests {
             name: resource.name,
             address_description: resource.address_description,
             gateway_groups: resource.gateway_groups,
+            status: resource.status,
         };
 
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);

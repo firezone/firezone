@@ -329,6 +329,7 @@ mod tests {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
+            status: super::client::Status::Unknown,
         })
     }
 

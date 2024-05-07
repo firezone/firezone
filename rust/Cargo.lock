@@ -1183,6 +1183,7 @@ dependencies = [
  "snownet",
  "swift-bridge",
  "tempfile",
+ "test-strategy",
  "thiserror",
  "tokio",
  "tracing",
