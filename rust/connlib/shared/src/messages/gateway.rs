@@ -99,6 +99,29 @@ impl ResourceDescription<ResourceDescriptionDns> {
     }
 }
 
+impl ResourceDescription<ResolvedResourceDescriptionDns> {
+    pub fn addresses(&self) -> Vec<IpNetwork> {
+        match self {
+            ResourceDescription::Dns(r) => r.addresses.clone(),
+            ResourceDescription::Cidr(r) => vec![r.address],
+        }
+    }
+
+    pub fn id(&self) -> ResourceId {
+        match self {
+            ResourceDescription::Dns(r) => r.id,
+            ResourceDescription::Cidr(r) => r.id,
+        }
+    }
+
+    pub fn filters(&self) -> Vec<Filter> {
+        match self {
+            ResourceDescription::Dns(r) => r.filters.clone(),
+            ResourceDescription::Cidr(r) => r.filters.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

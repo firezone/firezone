@@ -60,22 +60,15 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
-        let (resource_addresses, id, filters) = match &resource {
-            ResourceDescription::Dns(r) => {
-                let Some(domain) = domain.clone() else {
-                    return Err(Error::ControlProtocolError);
-                };
-
+        match (&domain, &resource) {
+            (Some(domain), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(&domain, &r.domain) {
                     return Err(Error::InvalidResource);
                 }
-
-                (r.addresses.clone(), r.id, r.filters.clone())
             }
-            ResourceDescription::Cidr(ref cidr) => {
-                (vec![cidr.address], cidr.id, cidr.filters.clone())
-            }
-        };
+            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
+            _ => {}
+        }
 
         let answer = self.role_state.node.accept_connection(
             client_id,
@@ -95,10 +88,10 @@ where
         self.new_peer(
             ips,
             client_id,
-            id,
-            filters,
+            resource.id(),
+            resource.filters(),
             expires_at,
-            resource_addresses.clone(),
+            resource.addresses(),
         );
 
         Ok(ConnectionAccepted {
@@ -108,7 +101,8 @@ where
             },
             domain_response: domain.map(|domain| DomainResponse {
                 domain,
-                address: resource_addresses
+                address: resource
+                    .addresses()
                     .into_iter()
                     .map(|ip| ip.network_address())
                     .collect(),
@@ -127,31 +121,32 @@ where
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
     ) -> Option<DomainResponse> {
-        let peer = self.role_state.peers.get_mut(&client)?;
-
-        let (addresses, resource_id, filters) = match &resource {
-            ResourceDescription::Dns(r) => {
-                let domain = domain.clone()?;
-
+        match (&domain, &resource) {
+            (Some(domain), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(&domain, &r.domain) {
                     return None;
                 }
-
-                (r.addresses.clone(), r.id, r.filters.clone())
             }
-            ResourceDescription::Cidr(cidr) => (vec![cidr.address], cidr.id, cidr.filters.clone()),
-        };
-
-        for address in &addresses {
-            peer.add_resource(*address, resource_id, filters.clone(), expires_at);
+            (None, ResourceDescription::Dns(_)) => return None,
+            _ => {}
         }
 
-        tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+        let peer = self.role_state.peers.get_mut(&client)?;
+
+        for address in resource.addresses() {
+            peer.add_resource(address, resource.id(), resource.filters(), expires_at);
+        }
+
+        tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
         if let Some(domain) = domain {
             return Some(DomainResponse {
                 domain,
-                address: addresses.iter().map(|i| i.network_address()).collect(),
+                address: resource
+                    .addresses()
+                    .iter()
+                    .map(|i| i.network_address())
+                    .collect(),
             });
         }
 
