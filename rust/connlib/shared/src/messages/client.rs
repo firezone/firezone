@@ -1,9 +1,10 @@
 //! Client related messages that are needed within connlib
 
-use std::borrow::Cow;
+use std::{borrow::Cow, str::FromStr};
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::ResourceId;
 
@@ -18,6 +19,9 @@ pub struct ResourceDescriptionDns {
     ///
     /// Used only for display.
     pub name: String,
+
+    pub address_description: String,
+    pub gateway_groups: Vec<GatewayGroup>,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -31,6 +35,33 @@ pub struct ResourceDescriptionCidr {
     ///
     /// Used only for display.
     pub name: String,
+
+    pub address_description: String,
+    pub gateway_groups: Vec<GatewayGroup>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GatewayGroup {
+    pub name: String,
+    pub id: SiteId,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SiteId(Uuid);
+
+impl FromStr for SiteId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SiteId(Uuid::parse_str(s)?))
+    }
+}
+
+impl SiteId {
+    #[cfg(feature = "proptest")]
+    pub(crate) fn from_u128(v: u128) -> Self {
+        Self(Uuid::from_u128(v))
+    }
 }
 
 impl ResourceDescription {

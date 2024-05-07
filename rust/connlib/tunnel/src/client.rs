@@ -1489,6 +1489,8 @@ mod proptests {
             address,
             id: resource.id,
             name: resource.name,
+            address_description: resource.address_description,
+            gateway_groups: resource.gateway_groups,
         };
 
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
