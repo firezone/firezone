@@ -145,6 +145,21 @@ defmodule Web.Live.Resources.ShowTest do
       |> vertical_table_to_map()
 
     assert table["traffic restriction"] == "All traffic allowed"
+
+    resource = Fixtures.Resources.create_resource(account: account, filters: [%{protocol: :tcp, ports: []}])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["traffic restriction"] == "TCP: All ports allowed"
   end
 
   test "renders policies table", %{
