@@ -331,7 +331,7 @@ defmodule Web.Live.Resources.EditTest do
     assert saved_resource.filters == []
   end
 
-  test "prevents saving resource if traffic filters set when traffic filters disabled", %{
+  test "disables traffic filters form fields when traffic filters disabled", %{
     account: account,
     group: group,
     identity: identity,
@@ -340,27 +340,17 @@ defmodule Web.Live.Resources.EditTest do
   } do
     Domain.Config.feature_flag_override(:traffic_filters, false)
 
-    attrs = %{
-      name: "foobar.com",
-      filters: %{
-        icmp: %{enabled: true},
-        tcp: %{ports: "8080, 4443"},
-        udp: %{ports: "4000 - 5000"}
-      }
-    }
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
 
-    # ** (ArgumentError) could not find non-disabled input, select or textarea with name "resource[filters][tcp][ports]" within:
-    assert_raise ArgumentError, fn ->
-      lv
-      |> form("form", resource: attrs)
-      |> render_submit()
-    end
-
+    assert has_element?(lv, "input[name='resource[filters][icmp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][icmp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][tcp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][tcp][ports]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][udp][enabled]'][disabled]")
+    assert has_element?(lv, "input[name='resource[filters][udp][ports]'][disabled]")
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert saved_resource.name == resource.name
     assert saved_resource.filters == resource.filters
