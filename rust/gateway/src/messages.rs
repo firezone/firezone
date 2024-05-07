@@ -116,6 +116,9 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
+    use connlib_shared::messages::gateway::Filter;
+    use connlib_shared::messages::gateway::PortRange;
+    use connlib_shared::messages::gateway::ResourceDescriptionDns;
     use connlib_shared::messages::Turn;
     use phoenix_channel::InitMessage;
     use phoenix_channel::PhoenixMessage;
@@ -329,6 +332,26 @@ mod test {
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":[true,false],"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
         let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn resource_updated() {
+        let message = r#"{"event":"resource_updated","ref":null,"topic":"gateway","payload":{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"icmp"},{"protocol":"tcp"}]}}"#;
+        let m =
+            IngressMessages::ResourceUpdated(ResourceDescription::Dns(ResourceDescriptionDns {
+                id: "57f9ebbb-21d5-4f9f-bf86-b25122fc7a43".parse().unwrap(),
+                address: "?.httpbin".to_string(),
+                name: "?.httpbin".to_string(),
+                filters: vec![
+                    Filter::Icmp,
+                    Filter::Tcp(PortRange {
+                        port_range_end: 65535,
+                        port_range_start: 0,
+                    }),
+                ],
+            }));
+        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
         assert_eq!(m, ingress_message);
     }
 
