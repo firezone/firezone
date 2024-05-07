@@ -133,7 +133,7 @@ defmodule Web.Resources.New do
 
             <.connections_form
               :if={is_nil(@params["site_id"])}
-              multiple={Domain.Accounts.multi_site_resources_enabled?(@account)}
+              multiple={Accounts.multi_site_resources_enabled?(@account)}
               form={@form[:connections]}
               account={@account}
               gateway_groups={@gateway_groups}
