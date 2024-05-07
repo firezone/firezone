@@ -3,9 +3,9 @@ defmodule Domain.Repo.Migrations.ResetTrafficFilters do
 
   def change do
     execute("""
-      UPDATE resources
-      SET filters = '[]'
-      WHERE filters = '[{"ports":[],"protocol":"all"}]'
+    UPDATE resources
+    SET filters = '[]'
+    WHERE filters = '[{"ports":[],"protocol":"all"}]'
     """)
   end
 end
