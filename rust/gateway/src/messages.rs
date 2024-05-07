@@ -75,6 +75,7 @@ pub enum IngressMessages {
     InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
+    ResourceUpdated(ResourceDescription),
 }
 
 /// A client's ice candidate message.
