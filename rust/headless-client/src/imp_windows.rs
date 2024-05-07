@@ -76,7 +76,11 @@ pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
 }
 
 async fn ipc_listen(_cli: Cli) -> Result<()> {
-    tokio::fs::write("C:/ProgramData/dev.firezone.client/service.txt", b"test message\n").await?;
+    tokio::fs::write(
+        "C:/ProgramData/dev.firezone.client/service.txt",
+        b"test message\n",
+    )
+    .await?;
     Ok(())
 }
 
