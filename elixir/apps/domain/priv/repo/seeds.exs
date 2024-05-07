@@ -628,7 +628,7 @@ IO.puts("")
       address: "google.com",
       address_description: "https://google.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -641,7 +641,7 @@ IO.puts("")
       address: "*.firez.one",
       address_description: "https://firez.one/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -654,7 +654,7 @@ IO.puts("")
       address: "?.firezone.dev",
       address_description: "https://firezone.dev/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -667,7 +667,7 @@ IO.puts("")
       address: "example.com",
       address_description: "https://example.com:1234/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -680,7 +680,7 @@ IO.puts("")
       address: "ip6only.me",
       address_description: "https://ip6only.me/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -727,7 +727,7 @@ IO.puts("")
       address: "172.20.0.1/16",
       address_description: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
