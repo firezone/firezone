@@ -19,7 +19,6 @@ defmodule Web.Resources.Show do
         assign(
           socket,
           page_title: "Resource #{resource.name}",
-          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           resource: resource,
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
@@ -159,7 +158,7 @@ defmodule Web.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={@traffic_filters_enabled?}>
+          <.vertical_table_row>
             <:label>
               Traffic restriction
             </:label>

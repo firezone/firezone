@@ -185,7 +185,7 @@ defmodule Web.Resources.Components do
   defp pretty_print_filter(%{protocol: :udp, ports: ports}),
     do: "UDP: #{pretty_print_ports(ports)}"
 
-  defp pretty_print_ports([]), do: "Allowed"
+  defp pretty_print_ports([]), do: "All ports allowed"
   defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
 
   def map_connections_form_attrs(attrs) do

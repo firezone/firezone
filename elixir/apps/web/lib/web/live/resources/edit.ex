@@ -21,7 +21,6 @@ defmodule Web.Resources.Edit do
           gateway_groups: gateway_groups,
           form: form,
           params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           page_title: "Edit #{resource.name}"
         )
 
@@ -77,7 +76,7 @@ defmodule Web.Resources.Edit do
             <.connections_form
               :if={is_nil(@params["site_id"])}
               id="connections_form"
-              multiple={Domain.Accounts.multi_site_resources_enabled?(@account)}
+              multiple={Accounts.multi_site_resources_enabled?(@account)}
               form={@form[:connections]}
               account={@account}
               resource={@resource}

@@ -15,7 +15,6 @@ defmodule Web.Resources.New do
         name_changed?: false,
         form: to_form(changeset),
         params: Map.take(params, ["site_id"]),
-        traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
         page_title: "New Resource"
       )
 
@@ -134,7 +133,7 @@ defmodule Web.Resources.New do
 
             <.connections_form
               :if={is_nil(@params["site_id"])}
-              multiple={Domain.Accounts.multi_site_resources_enabled?(@account)}
+              multiple={Accounts.multi_site_resources_enabled?(@account)}
               form={@form[:connections]}
               account={@account}
               gateway_groups={@gateway_groups}
