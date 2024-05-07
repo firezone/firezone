@@ -729,7 +729,6 @@ mod proptests {
     }
 
     fn filters_with_rejected_protocol() -> impl Strategy<Value = (Filters, Protocol)> {
-        // TODO: This can be cleaned up
         filters()
             .prop_filter("empty filters accepts every packet", |f| !f.is_empty())
             .prop_flat_map(|f| {
