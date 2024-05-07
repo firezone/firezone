@@ -21,7 +21,6 @@ defmodule Web.Resources.Edit do
           gateway_groups: gateway_groups,
           form: form,
           params: Map.take(params, ["site_id"]),
-          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           page_title: "Edit #{resource.name}"
         )
 

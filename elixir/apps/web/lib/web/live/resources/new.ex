@@ -15,7 +15,6 @@ defmodule Web.Resources.New do
         name_changed?: false,
         form: to_form(changeset),
         params: Map.take(params, ["site_id"]),
-        traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
         page_title: "New Resource"
       )
 
