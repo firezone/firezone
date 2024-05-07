@@ -60,7 +60,7 @@ export default function RootLayout({
         <Mixpanel />
       </Suspense>
       <body className={source_sans_3.className}>
-        <Banner active>
+        <Banner active={false}>
           <p className="mx-auto text-center">
             Firezone 1.0 is here!{" "}
             <Link
