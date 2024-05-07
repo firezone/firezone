@@ -62,7 +62,7 @@ where
     ) -> Result<ConnectionAccepted> {
         match (&domain, &resource) {
             (Some(domain), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
                     return Err(Error::InvalidResource);
                 }
             }
@@ -123,7 +123,7 @@ where
     ) -> Option<DomainResponse> {
         match (&domain, &resource) {
             (Some(domain), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
                     return None;
                 }
             }
