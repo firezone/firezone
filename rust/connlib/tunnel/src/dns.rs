@@ -506,7 +506,9 @@ mod test {
             r#"{
                 "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4a",
                 "address": "*.foo.com",
-                "name": "foo.com wildcard"
+                "name": "foo.com wildcard",
+                "address_description": "foo",
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
             }"#,
         )
         .unwrap()
@@ -517,7 +519,9 @@ mod test {
             r#"{
                 "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4b",
                 "address": "*.bar.com",
-                "name": "bar.com wildcard"
+                "name": "bar.com wildcard",
+                "address_description": "bar",
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
             }"#,
         )
         .unwrap()
@@ -528,7 +532,9 @@ mod test {
             r#"{
                 "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4c",
                 "address": "baz.com",
-                "name": "baz.com"
+                "name": "baz.com",
+                "address_description": "baz",
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
             }"#,
         )
         .unwrap()

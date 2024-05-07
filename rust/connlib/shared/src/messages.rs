@@ -313,13 +313,22 @@ mod tests {
 
     use itertools::Itertools;
 
-    use super::{client::ResourceDescription, client::ResourceDescriptionDns, ResourceId};
+    use super::{
+        client::ResourceDescription,
+        client::{GatewayGroup, ResourceDescriptionDns},
+        ResourceId,
+    };
 
     fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
         ResourceDescription::Dns(ResourceDescriptionDns {
             id: ResourceId::from_str(uuid).unwrap(),
             name: name.to_string(),
             address: "unused.example.com".to_string(),
+            address_description: "test description".to_string(),
+            gateway_groups: vec![GatewayGroup {
+                name: "test".to_string(),
+                id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
+            }],
         })
     }
 
