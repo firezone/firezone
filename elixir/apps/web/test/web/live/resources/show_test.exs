@@ -146,7 +146,11 @@ defmodule Web.Live.Resources.ShowTest do
 
     assert table["traffic restriction"] == "All traffic allowed"
 
-    resource = Fixtures.Resources.create_resource(account: account, filters: [%{protocol: :tcp, ports: []}])
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        filters: [%{protocol: :tcp, ports: []}]
+      )
 
     {:ok, lv, _html} =
       conn
