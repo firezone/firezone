@@ -19,7 +19,6 @@ defmodule Web.Resources.Show do
         assign(
           socket,
           page_title: "Resource #{resource.name}",
-          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           resource: resource,
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
@@ -96,10 +95,7 @@ defmodule Web.Resources.Show do
         <span :if={not is_nil(@resource.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@resource.deleted_at)}>
-        <.edit_button
-          :if={Domain.Accounts.multi_site_resources_enabled?(@account)}
-          navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}
-        >
+        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
           Edit Resource
         </.edit_button>
       </:action>
@@ -162,13 +158,13 @@ defmodule Web.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={@traffic_filters_enabled?}>
+          <.vertical_table_row>
             <:label>
-              Traffic Filtering Rules
+              Traffic restriction
             </:label>
             <:value>
               <div :if={@resource.filters == []} %>
-                No traffic filtering rules
+                All traffic allowed
               </div>
               <div :for={filter <- @resource.filters} :if={@resource.filters != []} %>
                 <.filter_description filter={filter} />
