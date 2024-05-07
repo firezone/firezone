@@ -80,6 +80,6 @@ pub fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant
     }
 }
 
-pub(crate) fn contains(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
+pub(crate) fn network_contains_network(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
     ip_a.contains(ip_b.network_address()) && ip_a.netmask() <= ip_b.netmask()
 }

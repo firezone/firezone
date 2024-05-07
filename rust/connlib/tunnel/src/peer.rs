@@ -14,30 +14,24 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet};
 use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
-use crate::utils::contains;
+use crate::utils::network_contains_network;
 
 #[derive(Debug)]
 enum FilterEngine {
     PermitAll,
-    PermitSome(FilterEngineInner),
+    PermitSome(AllowRules),
 }
 
 #[derive(Debug)]
-struct FilterEngineInner {
+struct AllowRules {
     udp: RangeInclusiveSet<u16>,
     tcp: RangeInclusiveSet<u16>,
     icmp: bool,
 }
 
-impl From<&Filters> for FilterEngine {
-    fn from(value: &Filters) -> Self {
-        FilterEngine::PermitSome(value.into())
-    }
-}
-
 impl FilterEngine {
-    fn new() -> FilterEngine {
-        Self::PermitSome(FilterEngineInner::new())
+    fn empty() -> FilterEngine {
+        Self::PermitSome(AllowRules::new())
     }
 
     fn is_allowed(&self, packet: &IpPacket) -> bool {
@@ -51,7 +45,7 @@ impl FilterEngine {
         *self = FilterEngine::PermitAll;
     }
 
-    fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
+    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
         match self {
             FilterEngine::PermitAll => {}
             FilterEngine::PermitSome(filter_engine) => filter_engine.add_filters(filters),
@@ -59,9 +53,9 @@ impl FilterEngine {
     }
 }
 
-impl FilterEngineInner {
-    fn new() -> FilterEngineInner {
-        FilterEngineInner {
+impl AllowRules {
+    fn new() -> AllowRules {
+        AllowRules {
             udp: RangeInclusiveSet::new(),
             tcp: RangeInclusiveSet::new(),
             icmp: false,
@@ -85,7 +79,7 @@ impl FilterEngineInner {
         }
     }
 
-    fn add_filters<'a>(&mut self, filters: impl Iterator<Item = &'a Filter>) {
+    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
         for filter in filters {
             match filter {
                 Filter::Udp(range) => {
@@ -101,14 +95,6 @@ impl FilterEngineInner {
                 }
             }
         }
-    }
-}
-
-impl From<&Filters> for FilterEngineInner {
-    fn from(filters: &Filters) -> Self {
-        let mut filter_engine = FilterEngineInner::new();
-        filter_engine.add_filters(filters.iter());
-        filter_engine
     }
 }
 
@@ -221,7 +207,7 @@ impl ClientOnGateway {
     ) {
         self.resources.insert(
             resource,
-            GatewayResource {
+            ResourceOnGateway {
                 ip,
                 filters,
                 expires_at,
@@ -230,14 +216,18 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    // Call this after any resources change
+    //
+    // This recalculate the ip-table rules, this allows us to remove and add resources and keep the allow-list correct
+    // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
         for resource in self.resources.values() {
-            let mut filter_engine = FilterEngine::new();
+            let mut filter_engine = FilterEngine::empty();
             let filters = self
                 .resources
                 .values()
-                .filter_map(|r| contains(r.ip, resource.ip).then_some(&r.filters));
+                .filter_map(|r| network_contains_network(r.ip, resource.ip).then_some(&r.filters));
 
             // Empty filters means permit all
             if filters.clone().any(|f| f.is_empty()) {
@@ -341,7 +331,7 @@ impl GatewayOnClient {
     }
 }
 
-struct GatewayResource {
+struct ResourceOnGateway {
     ip: IpNetwork,
     filters: Filters,
     expires_at: Option<DateTime<Utc>>,
@@ -351,7 +341,7 @@ struct GatewayResource {
 pub struct ClientOnGateway {
     id: ClientId,
     allowed_ips: IpNetworkTable<()>,
-    resources: HashMap<ResourceId, GatewayResource>,
+    resources: HashMap<ResourceId, ResourceOnGateway>,
     filters: IpNetworkTable<FilterEngine>,
 }
 
@@ -361,7 +351,7 @@ mod tests {
 
     use chrono::Utc;
     use connlib_shared::messages::{
-        gateway::{Filter, FilterInner},
+        gateway::{Filter, PortRange},
         ClientId, ResourceId,
     };
     use ip_network::Ipv4Network;
@@ -377,7 +367,7 @@ mod tests {
         peer.add_resource(
             cidr_v4_resource().into(),
             resource_id(),
-            vec![Filter::Tcp(FilterInner {
+            vec![Filter::Tcp(PortRange {
                 port_range_start: 20,
                 port_range_end: 100,
             })],
@@ -387,7 +377,7 @@ mod tests {
         peer.add_resource(
             cidr_v4_resource().into(),
             resource2_id(),
-            vec![Filter::Udp(FilterInner {
+            vec![Filter::Udp(PortRange {
                 port_range_start: 20,
                 port_range_end: 100,
             })],
@@ -464,7 +454,7 @@ mod proptests {
     };
 
     use super::*;
-    use connlib_shared::{messages::gateway::FilterInner, proptest::*};
+    use connlib_shared::{messages::gateway::PortRange, proptest::*};
     use ip_network::{Ipv4Network, Ipv6Network};
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use itertools::Itertools;
@@ -733,16 +723,16 @@ mod proptests {
             .prop_filter("empty filters accepts every packet", |f| !f.is_empty())
             .prop_flat_map(|f| {
                 let filters = f.clone();
-                any::<EmptyProtocol>()
+                any::<ProtocolKind>()
                     .prop_filter_map(
                         "If ICMP is contained there is no way to generate gaps",
                         move |p| {
-                            (p != EmptyProtocol::Icmp || !filters.contains(&Filter::Icmp))
+                            (p != ProtocolKind::Icmp || !filters.contains(&Filter::Icmp))
                                 .then_some(p)
                         },
                     )
                     .prop_flat_map(move |p| {
-                        if p == EmptyProtocol::Icmp {
+                        if p == ProtocolKind::Icmp {
                             Just((f.clone(), Protocol::Icmp)).boxed()
                         } else {
                             let f = f.clone();
@@ -757,14 +747,14 @@ mod proptests {
             })
     }
 
-    fn gaps(filters: Filters, protocol: EmptyProtocol) -> Vec<RangeInclusive<u16>> {
+    fn gaps(filters: Filters, protocol: ProtocolKind) -> Vec<RangeInclusive<u16>> {
         filters
             .into_iter()
             .filter_map(|f| match (f, protocol) {
-                (Filter::Udp(inner), EmptyProtocol::Udp) => {
+                (Filter::Udp(inner), ProtocolKind::Udp) => {
                     Some(inner.port_range_start..=inner.port_range_end)
                 }
-                (Filter::Tcp(inner), EmptyProtocol::Tcp) => {
+                (Filter::Tcp(inner), ProtocolKind::Tcp) => {
                     Some(inner.port_range_start..=inner.port_range_end)
                 }
                 (_, _) => None,
@@ -776,13 +766,13 @@ mod proptests {
 
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
         match f {
-            Filter::Udp(FilterInner {
+            Filter::Udp(PortRange {
                 port_range_end,
                 port_range_start,
             }) => (port_range_start..=port_range_end)
                 .prop_map(|dport| Protocol::Udp { dport })
                 .boxed(),
-            Filter::Tcp(FilterInner {
+            Filter::Tcp(PortRange {
                 port_range_end,
                 port_range_start,
             }) => (port_range_start..=port_range_end)
@@ -793,31 +783,26 @@ mod proptests {
     }
 
     fn filters_in_gaps(filters: Filters) -> impl Strategy<Value = Filters> {
-        filter_from_vec(
-            gaps(filters.clone(), EmptyProtocol::Tcp),
-            EmptyProtocol::Tcp,
-        )
-        .prop_flat_map(move |tcp_filters| {
-            let f = filters.clone();
-            filter_from_vec(
-                gaps(filters.clone(), EmptyProtocol::Udp),
-                EmptyProtocol::Udp,
-            )
-            .prop_map(move |udp_filters| {
-                let mut filters = tcp_filters.clone();
-                filters.extend(udp_filters);
-                if !f.contains(&Filter::Icmp) {
-                    filters.push(Filter::Icmp)
-                }
+        filter_from_vec(gaps(filters.clone(), ProtocolKind::Tcp), ProtocolKind::Tcp).prop_flat_map(
+            move |tcp_filters| {
+                let f = filters.clone();
+                filter_from_vec(gaps(filters.clone(), ProtocolKind::Udp), ProtocolKind::Udp)
+                    .prop_map(move |udp_filters| {
+                        let mut filters = tcp_filters.clone();
+                        filters.extend(udp_filters);
+                        if !f.contains(&Filter::Icmp) {
+                            filters.push(Filter::Icmp)
+                        }
 
-                filters
-            })
-        })
+                        filters
+                    })
+            },
+        )
     }
 
     fn filter_from_vec(
         ranges: Vec<RangeInclusive<u16>>,
-        empty_protocol: EmptyProtocol,
+        empty_protocol: ProtocolKind,
     ) -> impl Strategy<Value = Filters> {
         collection::vec(
             select(ranges.clone()).prop_flat_map(move |r| {
@@ -841,9 +826,9 @@ mod proptests {
         )
     }
 
-    fn port_range() -> impl Strategy<Value = FilterInner> {
+    fn port_range() -> impl Strategy<Value = PortRange> {
         any::<u16>().prop_flat_map(|s| {
-            (s..=u16::MAX).prop_map(move |d| FilterInner {
+            (s..=u16::MAX).prop_map(move |d| PortRange {
                 port_range_start: s,
                 port_range_end: d,
             })
@@ -864,43 +849,43 @@ mod proptests {
         Icmp,
     }
 
-    impl From<&Filter> for EmptyProtocol {
+    impl From<&Filter> for ProtocolKind {
         fn from(value: &Filter) -> Self {
             match value {
-                Filter::Udp(_) => EmptyProtocol::Udp,
-                Filter::Tcp(_) => EmptyProtocol::Tcp,
-                Filter::Icmp => EmptyProtocol::Icmp,
+                Filter::Udp(_) => ProtocolKind::Udp,
+                Filter::Tcp(_) => ProtocolKind::Tcp,
+                Filter::Icmp => ProtocolKind::Icmp,
             }
         }
     }
 
     #[derive(Debug, Clone, Copy, Arbitrary, PartialEq, Eq)]
-    enum EmptyProtocol {
+    enum ProtocolKind {
         Tcp,
         Udp,
         Icmp,
     }
 
-    impl EmptyProtocol {
+    impl ProtocolKind {
         fn into_protocol(self, dport: u16) -> Protocol {
             match self {
-                EmptyProtocol::Tcp => Protocol::Tcp { dport },
-                EmptyProtocol::Udp => Protocol::Udp { dport },
-                EmptyProtocol::Icmp => Protocol::Icmp,
+                ProtocolKind::Tcp => Protocol::Tcp { dport },
+                ProtocolKind::Udp => Protocol::Udp { dport },
+                ProtocolKind::Icmp => Protocol::Icmp,
             }
         }
 
         fn into_filter(self, range: RangeInclusive<u16>) -> Filter {
             match self {
-                EmptyProtocol::Tcp => Filter::Tcp(FilterInner {
+                ProtocolKind::Tcp => Filter::Tcp(PortRange {
                     port_range_start: *range.start(),
                     port_range_end: *range.end(),
                 }),
-                EmptyProtocol::Udp => Filter::Udp(FilterInner {
+                ProtocolKind::Udp => Filter::Udp(PortRange {
                     port_range_start: *range.start(),
                     port_range_end: *range.end(),
                 }),
-                EmptyProtocol::Icmp => Filter::Icmp,
+                ProtocolKind::Icmp => Filter::Icmp,
             }
         }
     }

@@ -63,13 +63,13 @@ pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(tag = "protocol", rename_all = "snake_case")]
 pub enum Filter {
-    Udp(FilterInner),
-    Tcp(FilterInner),
+    Udp(PortRange),
+    Tcp(PortRange),
     Icmp,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FilterInner {
+pub struct PortRange {
     // TODO: we can use a custom deserializer
     // or maybe change the control plane to use start and end would suffice
     pub port_range_end: u16,
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn can_deserialize_udp_filter() {
         let msg = r#"{ "protocol": "udp", "port_range_start": 10, "port_range_end": 20 }"#;
-        let expected_filter = Filter::Udp(FilterInner {
+        let expected_filter = Filter::Udp(PortRange {
             port_range_start: 10,
             port_range_end: 20,
         });
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn can_deserialize_tcp_filter() {
         let msg = r#"{ "protocol": "tcp", "port_range_start": 10, "port_range_end": 20 }"#;
-        let expected_filter = Filter::Tcp(FilterInner {
+        let expected_filter = Filter::Tcp(PortRange {
             port_range_start: 10,
             port_range_end: 20,
         });
