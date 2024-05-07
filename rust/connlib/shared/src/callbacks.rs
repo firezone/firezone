@@ -1,4 +1,4 @@
-use crate::messages::ResourceDescription;
+use crate::messages::client::ResourceDescription;
 use ip_network::{Ipv4Network, Ipv6Network};
 use serde::Serialize;
 use std::fmt::Debug;

@@ -1,7 +1,7 @@
 use crate::{ClientEvent, ClientState, GatewayState};
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{ResourceDescription, ResourceDescriptionCidr, ResourceId},
+    messages::{client::ResourceDescription, client::ResourceDescriptionCidr, ResourceId},
     proptest::cidr_resource,
     StaticSecret,
 };

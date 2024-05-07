@@ -1,6 +1,6 @@
 use connlib_shared::messages::{
-    GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection,
-    ResourceDescription, ResourceId, ReuseConnection,
+    client::ResourceDescription, GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence,
+    RequestConnection, ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, net::IpAddr};
@@ -101,7 +101,8 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        DnsServer, IpDnsServer, ResourceDescriptionCidr, ResourceDescriptionDns, Stun, Turn,
+        client::ResourceDescriptionCidr, client::ResourceDescriptionDns, DnsServer, IpDnsServer,
+        Stun, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
 

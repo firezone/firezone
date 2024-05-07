@@ -147,7 +147,7 @@ impl<'a> MutableIpPacket<'a> {
             .flatten()
     }
 
-    fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
+    pub fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
         self.to_immutable()
             .is_tcp()
             .then(|| MutableTcpPacket::new(self.payload_mut()))
@@ -288,6 +288,12 @@ impl<'a> IpPacket<'a> {
     pub fn as_udp(&self) -> Option<UdpPacket> {
         self.is_udp()
             .then(|| UdpPacket::new(self.payload()))
+            .flatten()
+    }
+
+    pub fn as_tcp(&self) -> Option<TcpPacket> {
+        self.is_tcp()
+            .then(|| TcpPacket::new(self.payload()))
             .flatten()
     }
 

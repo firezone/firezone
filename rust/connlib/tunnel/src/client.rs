@@ -3,9 +3,9 @@ use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
 use connlib_shared::messages::{
+    client::ResourceDescription, client::ResourceDescriptionCidr, client::ResourceDescriptionDns,
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
-    IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceDescription,
-    ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId, ReuseConnection,
+    IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceId, ReuseConnection,
 };
 use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;

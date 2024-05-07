@@ -1,4 +1,6 @@
-use crate::messages::{ResourceDescriptionCidr, ResourceDescriptionDns, ResourceId};
+use crate::messages::{
+    client::ResourceDescriptionCidr, client::ResourceDescriptionDns, ClientId, ResourceId,
+};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
@@ -17,8 +19,12 @@ pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDes
         .prop_map(|(id, name, address)| ResourceDescriptionCidr { id, address, name })
 }
 
-pub fn resource_id() -> impl Strategy<Value = ResourceId> {
+pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
     any::<u128>().prop_map(ResourceId::from_u128)
+}
+
+pub fn client_id() -> impl Strategy<Value = ClientId> {
+    any::<u128>().prop_map(ClientId::from_u128)
 }
 
 pub fn resource_name() -> impl Strategy<Value = String> {

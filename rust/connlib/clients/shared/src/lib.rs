@@ -1,5 +1,5 @@
 //! Main connlib library for clients.
-pub use connlib_shared::messages::ResourceDescription;
+pub use connlib_shared::messages::client::ResourceDescription;
 pub use connlib_shared::{
     keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
