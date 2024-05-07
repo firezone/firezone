@@ -163,15 +163,20 @@ pub fn run() -> Result<()> {
 
     tracing::info!(git_version = crate::GIT_VERSION);
 
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
     match cli.command() {
         Cmd::Auto => {
             if let Some(token) = get_token(token_env_var, &cli)? {
-                run_standalone(cli, &token)
+                run_standalone(cli, rt, &token)
             } else {
-                imp::run_ipc_service(cli)
+                imp::run_ipc_service(cli, rt, shutdown_rx)
             }
         }
-        Cmd::IpcService => imp::run_ipc_service(cli),
+        Cmd::IpcService => imp::run_ipc_service(cli, rt, shutdown_rx),
         Cmd::Standalone => {
             let token = get_token(token_env_var, &cli)?.with_context(|| {
                 format!(
@@ -179,7 +184,7 @@ pub fn run() -> Result<()> {
                     cli.token_path
                 )
             })?;
-            run_standalone(cli, &token)
+            run_standalone(cli, rt, &token)
         }
     }
 }
@@ -191,11 +196,8 @@ enum SignalKind {
     Interrupt,
 }
 
-fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
+fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -> Result<()> {
     tracing::info!("Running in standalone mode");
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
     let _guard = rt.enter();
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());

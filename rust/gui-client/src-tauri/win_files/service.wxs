@@ -16,7 +16,7 @@
               ErrorControl="normal"
               Interactive="no">
               </ServiceInstall>
-              <ServiceControl Id="FirezoneClientServiceControl" Stop="both" Remove="both" Name="FirezoneClientIpcService" Wait="yes" />
+              <ServiceControl Id="FirezoneClientServiceControl" Start="install" Stop="both" Remove="both" Name="FirezoneClientIpcService" Wait="yes" />
       </Component>
     </DirectoryRef>
   </Fragment>

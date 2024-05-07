@@ -1,5 +1,5 @@
 use crate::Cli;
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
@@ -9,8 +9,14 @@ use std::{
     path::{Path, PathBuf},
     task::{Context, Poll},
 };
+use tokio::sync::mpsc;
+use windows_service::{
+    service::{ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType},
+    service_control_handler::{self, ServiceControlHandlerResult},
+};
 
 const SERVICE_NAME: &str = "firezone_client_ipc";
+const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 pub(crate) struct Signals {
     sigint: tokio::signal::windows::CtrlC,
@@ -47,11 +53,6 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 /// On Windows, this is wrapped specially so that Windows' service controller
 /// can launch it.
 pub fn run_only_ipc_service() -> Result<()> {
-    let cli = Cli::parse();
-    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
-    setup_global_subscriber(layer);
-    tracing::info!(git_version = crate::GIT_VERSION);
-
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run)?;
     Ok(())
 }
@@ -65,22 +66,78 @@ fn windows_service_run(_arguments: Vec<OsString>) {
     }
 }
 
+// Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
-    run_ipc_service(Cli::parse())
-}
+    let cli = Cli::parse();
+    let (layer, _handle) = file_logger::layer(&connlib_shared::windows::app_local_data_dir().unwrap().join("data").join("logs"));
+    setup_global_subscriber(layer);
+    tracing::info!(git_version = crate::GIT_VERSION);
 
-pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    tracing::info!("run_ipc_service");
-    rt.block_on(async { ipc_listen(cli).await })
+    let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
+    let event_handler = move |control_event| -> ServiceControlHandlerResult {
+        match control_event {
+            // TODO
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            ServiceControl::Stop => {
+                tracing::info!("Got stop signal from service controller");
+                shutdown_tx.blocking_send(()).unwrap();
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::UserEvent(_) => ServiceControlHandlerResult::NoError,
+            ServiceControl::Continue => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::NetBindAdd => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::NetBindDisable => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::NetBindEnable => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::NetBindRemove => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::ParamChange => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::Pause => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::Preshutdown => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::Shutdown => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::HardwareProfileChange(_) => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::PowerEvent(_) => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::SessionChange(_) => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::TimeChange => ServiceControlHandlerResult::NotImplemented,
+            ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
+            _ => todo!(),
+        }
+    };
+
+    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+    status_handle.set_service_status(ServiceStatus {
+        service_type: SERVICE_TYPE,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: std::time::Duration::default(),
+        process_id: None,
+    })?;
+
+    run_ipc_service(cli, rt, shutdown_rx)
 }
 
-async fn ipc_listen(_cli: Cli) -> Result<()> {
+/// Common entry point for both the Windows-wrapped IPC service and the debug IPC service
+///
+/// Running as a Windows service is complicated, so to make debugging easier
+/// we'll have a dev-only mode that runs all the IPC code as a normal process
+/// in an admin console.
+pub(crate) fn run_ipc_service(cli: Cli, rt: tokio::runtime::Runtime, shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+    tracing::info!("run_ipc_service");
+    rt.block_on(async { ipc_listen(cli, shutdown_rx).await })
+}
+
+async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+    let log_dir = connlib_shared::windows::app_local_data_dir().unwrap().join("data").join("logs").display().to_string();
     tokio::fs::write(
         "C:/ProgramData/dev.firezone.client/service.txt",
-        b"test message\n",
+        log_dir.as_bytes(),
     )
-    .await?;
+    .await.context("couldn't write debug file service.txt")?;
+
+    shutdown_rx.recv().await;
+
     Ok(())
 }
 
