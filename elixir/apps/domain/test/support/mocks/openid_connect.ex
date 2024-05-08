@@ -90,7 +90,6 @@ defmodule Domain.Mocks.OpenIDConnect do
         "request_parameter_supported" => false
       }
 
-
       # Process may not be alive in slow CI environments
       if Process.alive?(test_pid) do
         send(test_pid, {:request, conn})
