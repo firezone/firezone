@@ -122,6 +122,10 @@ fn fallible_windows_service_run() -> Result<()> {
         }
     };
 
+    // Fixes <https://github.com/firezone/firezone/issues/4899>,
+    // DNS rules persisting after reboot
+    connlib_shared::deactivate_dns_control().ok();
+
     // Tell Windows that we're running (equivalent to sd_notify in systemd)
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
     status_handle.set_service_status(ServiceStatus {
@@ -134,7 +138,9 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
-    run_ipc_service(cli, rt, shutdown_rx)?;
+    if let Err(error) = run_ipc_service(cli, rt, shutdown_rx) {
+        tracing::error!(?error, "error from run_ipc_service");
+    }
 
     // Tell Windows that we're stopping
     status_handle.set_service_status(ServiceStatus {
