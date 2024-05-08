@@ -20,6 +20,8 @@ use tokio::sync::mpsc;
 
 use imp::default_token_path;
 
+pub mod known_dirs;
+
 #[cfg(target_os = "linux")]
 pub mod imp_linux;
 #[cfg(target_os = "linux")]
