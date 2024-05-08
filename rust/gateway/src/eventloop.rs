@@ -192,6 +192,12 @@ impl Eventloop {
             } => {
                 // TODO: Handle `init` message during operation.
             }
+            phoenix_channel::Event::InboundMessage {
+                msg: IngressMessages::ResourceUpdated(resource_description),
+                ..
+            } => {
+                self.tunnel.update_resource(resource_description);
+            }
             phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
                 tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
             }

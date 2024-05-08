@@ -153,6 +153,12 @@ where
         None
     }
 
+    pub fn update_resource(&mut self, resource: ResourceDescription) {
+        for peer in self.role_state.peers.iter_mut() {
+            peer.update_resource(&resource);
+        }
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(%resource, %client))]
     pub fn remove_access(&mut self, client: &ClientId, resource: &ResourceId) {
         let Some(peer) = self.role_state.peers.get_mut(client) else {
