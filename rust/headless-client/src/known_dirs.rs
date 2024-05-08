@@ -14,7 +14,7 @@ mod imp {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;
 
-    /// Unimplemeneted. systemd injects this on LInux
+    /// Unimplemented. systemd injects this on LInux
     pub fn ipc_service_logs() -> Option<PathBuf> {
         unimplemented!()
     }
