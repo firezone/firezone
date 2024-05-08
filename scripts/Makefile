@@ -1,12 +1,19 @@
 # Format: Semver
 # See discussion here: https://github.com/firezone/firezone/issues/2041
 # and PR changing it here: https://github.com/firezone/firezone/pull/2949
+
+# These should track the upcoming release for Apple/Android
 apple-version = 1.0.5
 android-version = 1.0.3
-cargo-version = 1.0.3
-website-version = 1.0.2
-elixir-version = 1.0.3
-ci-version = 1.0.3
+
+# Set this to the current latest published release for the Windows/Linux/Gateway packages so
+# that links from the website will work
+website-version = 1.0.3
+
+# Set this to the upcoming release for the Windows/Linux/Gateway packages
+cargo-version = 1.0.4
+elixir-version = 1.0.4
+ci-version = 1.0.4
 
 .PHONY: version apple-version android-version cargo-version ci-version elixir-version
 
