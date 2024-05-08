@@ -75,6 +75,12 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
+                  Up to 6 users
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
                   Access your homelab or VPC from anywhere
                 </span>
               </li>
@@ -150,6 +156,12 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
+                  Up to 25 users
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
                   Resource access logs
                 </span>
               </li>
@@ -203,6 +215,12 @@ export default function _Page() {
               <strong>Everything in Team, plus:</strong>
             </p>
             <ul role="list" className="font-medium space-y-2">
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
+                  Unlimited users
+                </span>
+              </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
