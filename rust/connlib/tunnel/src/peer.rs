@@ -210,7 +210,7 @@ impl ClientOnGateway {
     ) {
         self.resources
             .entry(resource)
-            .or_insert(Vec::new())
+            .or_default()
             .push(ResourceOnGateway {
                 ips,
                 filters,
