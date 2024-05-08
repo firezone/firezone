@@ -7,9 +7,6 @@ autolabeler:
   - label: "kind/test"
     title:
       - "/^test/i"
-  - label: "kind/test"
-    title:
-      - "/^test/i"
   - label: "kind/feature"
     title:
       - "/^feat/i"
