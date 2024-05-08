@@ -1,6 +1,15 @@
 name-template: "$RESOLVED_VERSION"
 tag-template: "$RESOLVED_VERSION"
 autolabeler:
+  - label: "area/ci"
+    title:
+      - "/^ci/i"
+  - label: "kind/test"
+    title:
+      - "/^test/i"
+  - label: "kind/test"
+    title:
+      - "/^test/i"
   - label: "kind/feature"
     title:
       - "/^feat/i"
@@ -32,7 +41,10 @@ categories:
       - "kind/bug"
   - title: "🧰 Maintenance"
     label:
+      - "area/ci"
+      - "kind/test"
       - "kind/refactor"
+      - "kind/chore"
       - "kind/cleanup"
       - "dependencies"
   - title: "📝 Documentation"
