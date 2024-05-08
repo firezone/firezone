@@ -199,7 +199,7 @@ where
     ) {
         let mut peer = ClientOnGateway::new(client_id, &ips);
 
-        peer.add_resource(resource_addresses, resource, filters.clone(), expires_at);
+        peer.add_resource(resource_addresses, resource, filters, expires_at);
 
         self.role_state.peers.insert(peer, &ips);
     }
