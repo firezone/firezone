@@ -9,7 +9,7 @@ export default function _Page() {
       authorTitle="Senior Backend Engineer"
       authorEmail="gabriel@firezone.dev"
       title="How DNS Works in Firezone"
-      date="2024-04-30"
+      date="2024-05-08"
     >
       <Content />
     </Post>

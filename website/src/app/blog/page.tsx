@@ -25,7 +25,7 @@ export default function Page() {
         <div className="grid divide-y">
           <SummaryCard
             title="How DNS Works in Firezone"
-            date="April 30, 2024"
+            date="May 8, 2024"
             href="/blog/how-dns-works-in-firezone"
             authorName="Gabriel Steinberg"
             authorAvatarSrc={gravatar("gabriel@firezone.dev")}
@@ -35,7 +35,7 @@ export default function Page() {
               Firezone's approach to DNS works a bit differently than one might
               expect. One question we often get from new users is, "why do my
               DNS Resources resolve to a different IP address with Firezone
-              enabled?". The short answer is: we proxy them!
+              enabled?". Great question -- read on to find out.
             </p>
           </SummaryCard>
           <SummaryCard
