@@ -14,33 +14,40 @@ Address: 100.96.0.13
 
 Firezone's approach to DNS works a bit differently than one might expect. One
 question we get a lot is, "why do my DNS Resources resolve to different IPs with
-Firezone enabled?". Great question. Let's explain that now!
+Firezone enabled?". Great question. Let's explain that now.
 
 What follows is a quick recap of how DNS works, a couple of the security issues
-that plague it, and how Firezone's DNS-based traffic routing was designed to
-address them.
+it faces, and how Firezone's DNS-based traffic routing was designed to address
+them.
 
 ## Quick recap: DNS
 
-Before we dive into all the fun details, let's quickly summarize how DNS works.
+Before we dive into all the fun details, let's briefly cover how DNS works.
 
 At a high level, DNS is a hierarchical system that distributes the
 responsibility of resolving a fully-qualified domain name (FQDN) to a series of
 nameservers, each one responsible for resolving a different part.
 
-<p className="text-sm italic text-center mx-auto">Figure 3: How DNS works</p>
+<Image
+  src="/images/blog/how-dns-works-in-firezone/dns.svg"
+  alt="How DNS works"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
+
+<p className="text-sm italic text-center mx-auto">Figure 1: How DNS works</p>
 
 Here's an abbreviated summary of how it works:
 
 1. An application makes a query. The first stop is the **stub resolver**, a
    small piece of software on the host that's responsible for resolving all DNS
    queries on the system.
-1. The stub resolver typically maintains a small cache of recent queries. If the
-   query misses the cache, it forwards the query to an **upstream resolver**.
-   This is like the stub resolver but with a much larger cache and run by your
-   ISP (or more recently, a public DNS service like NextDNS or Cloudflare).
-1. If _this_ query misses the cache, the upstream resolver begins the full
-   process of resolution. It forwards the query to a series of successive
+1. The stub resolver forwards the query to an **upstream resolver**. This is
+   typically a caching resolver run by your ISP (or more recently, a public DNS
+   service like NextDNS or Cloudflare).
+1. If the query misses the cache, the upstream resolver begins the full process
+   of resolution. It forwards the query to a series of successive
    **nameservers** -- first the **root nameserver**, then the **TLD
    nameserver**, and finally the **authoritative nameserver**, each one
    responsible for resolving a different part of the FQDN.
@@ -53,16 +60,16 @@ Here's an abbreviated summary of how it works:
 On today's internet, the whole process for resolving a query typically takes a
 few hundred milliseconds. Caching resolvers help to speed this up by storing the
 results of queries for a certain amount of time, known as the record's
-time-to-live (TTL). So if a host makes the same query multiple times, the stub
-or upstream resolver can return the result immediately (assuming the TTL hasn't
+time-to-live (TTL). So if a host makes the same query multiple times, the
+upstream resolver can return the result immediately (assuming the TTL hasn't
 expired) without having to query the hierarchy of root, TLD, and authoritative
 nameservers again. This can speed up query times by orders of magnitude, to the
-point where stub resolvers responding with cached responses are nearly
+point where upstream resolvers responding with cached responses are nearly
 instantaneous.
 
 DNS works today almost exactly as it did when it was first introduced to the
 ARPANET in the early 1980s. But the internet has changed a lot since then, and
-security issues have cropped up that the original design didn't account for.
+security issues have emerged that the original design didn't account for.
 
 ### Security issues with DNS
 
@@ -72,8 +79,9 @@ assumption that all entities on the network were known, and that the network
 itself was secure.
 
 As the ARPANET grew to become the internet, however, this assumption no longer
-held. Two security issues in particular have become fairly popular attack
-vectors over the years: **DNS spoofing** and **DNS enumeration**.
+held. Two security issues in particular have become popular tools in the
+attacker's arsenal since DNS was first introduced: **DNS spoofing** and **DNS
+enumeration**.
 
 #### DNS spoofing
 
@@ -85,10 +93,8 @@ answer, it will happily connect to whatever IP address the malicious nameserver
 returned. This is known as a
 [DNS spoofing](https://en.wikipedia.org/wiki/DNS_spoofing) attack.
 
-<p className="text-sm italic text-center mx-auto">Figure 4: DNS spoofing</p>
-
 In recent years, various solutions have been created that, when used properly,
-render this mostly a solved problem:
+render this mostly a solved problem.
 [DNSSEC](https://en.wikipedia.org/wiki/Domain_Name_System_Security_Extensions)
 ensures the integrity of responses to your query, and
 [DNS-over-TLS (DoT)](https://en.wikipedia.org/wiki/DNS_over_TLS) and
@@ -97,14 +103,12 @@ step further and prevent eavesdroppers from seeing which queries you perform.
 
 #### DNS enumeration
 
-While the above solutions work great for protecting the answers to your queries,
-but what about protecting your nameservers from the queries themselves?
+The above solutions work well for protecting the answers to your queries, but
+what about protecting your nameservers from the queries themselves?
 
 If an organization defines records for its internal services, for example,
 anyone can query its authoritative nameservers to map out a list of all the
 organization's internal services. How convenient!
-
-<p className="text-sm italic text-center mx-auto">Figure 5: DNS enumeration</p>
 
 This is known as **DNS enumeration**, and is a common first step taken by a
 malicious actor looking for potential entrypoints into an organization. Because
@@ -121,8 +125,16 @@ external resources. The internal server is only accessible to users who are
 connected to an organization's internal network (such as a VPN or branch office
 network), while the external server is accessible to the outside world.
 
+<Image
+  src="/images/blog/how-dns-works-in-firezone/split-dns.svg"
+  alt="How Split DNS works"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
+
 <p className="text-sm italic text-center mx-auto">
-  Figure 5: Split DNS in action
+  Figure 2: How Split DNS works
 </p>
 
 As an example, let's say an organization has an internal service called
@@ -142,7 +154,7 @@ Split DNS is a great building block for organizations looking to secure access
 to their own internal applications, and continues to be a popular way to
 mitigate enumeration attacks today.
 
-### The problem with Split DNS
+### Limitations of Split DNS
 
 Split DNS works great when you have a clear distinction between external and
 internal resources. It allows you to publish public addresses for your public
@@ -159,21 +171,16 @@ But the downside is resources that were once internal are now publicly exposed.
 Anyone with the right credentials can access your organization's code
 repositories, CRM data, or CI/CD secrets from anywhere in the world. Since these
 services are now available publicly, they no longer have internal addresses, and
-without internal addresses to resolve to, Split DNS isn't helpful.
+without internal addresses to resolve to, Split DNS isn't as helpful anymore.
 
 Is there another way to secure access to these services?
 
 #### A naive solution
 
 As it turns out, there's a solution to this problem that's becoming more common
-these days: IP allowlists. Many SaaS apps like GitHub, Slack, and Hubspot allow
-you to configure a list of source IP addresses that are allowed to access the
-service.
-
-Now, some readers will have already recognized the solution to our public
-exposure problem: route your workforce's traffic for these services through a
-VPN jumphost or office router, egress the traffic through a static IP added to
-your SaaS provider's allowlist, and problem solved, right?
+these days: IP allowlists. Many third-party SaaS apps like GitHub, Slack, and
+Hubspot allow you to configure a list of source IP addresses that are allowed to
+access the service.
 
 <Image
   src="/images/blog/how-dns-works-in-firezone/ip-allowlist.svg"
@@ -184,8 +191,13 @@ your SaaS provider's allowlist, and problem solved, right?
 />
 
 <p className="text-sm text-center mx-auto italic">
-  Figure 5: Example IP allowlist
+  Figure 3: IP allowlist protecting access to www.github.com
 </p>
+
+Now, some readers will have already recognized the solution to our public
+exposure problem: route your workforce's traffic for these services through a
+VPN jumphost or office router, egress the traffic through a static IP added to
+your SaaS provider's allowlist, and problem solved, right?
 
 Well, kind of. There's just one issue with the above approach: **virtual
 hosting**.
@@ -195,19 +207,30 @@ used to host multiple services at a single IP address. It's become an essential
 tool in the arsenal to fight IPv4 address exhaustion, and is often used in IPv6
 networks as well.
 
+If we simply resolve `github.com` and then configure our VPN to route traffic
+for that IP address through the jumphost, we might inadvertently route traffic
+for `gist.github.com`, `api.github.com`, or `raw.githubusercontent.com` too!
+
+<Image
+  src="/images/blog/how-dns-works-in-firezone/collateral-damage.svg"
+  alt="Collateral damage from naive IP routing"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
+
 <p className="text-sm text-center mx-auto italic">
-  Figure 6: Collateral damage can occur if you naively tunnel resolved IPs
+  Figure 4: Collateral damage may occur if you naively route resolved IPs
 </p>
 
-If we simply resolve `github.com` and then configure our VPN to route traffic
-for that IP address through a jumphost, we might inadvertently route traffic for
-`api.github.com`, `gist.github.com`, or `raw.githubusercontent.com` too!
+This creates a problem: any service that shares its IP address with other
+services can't be secured using a naive IP allowlist approach.
 
-#### NAT to the rescue?
+#### NAT to the rescue
 
-So we can't simply route traffic for the resolved IPs of the services we're
-trying to secure. We need to translate them somehow to ensure they don't
-conflict with services we _don't_ wish to route. Enter NAT: Network Address
+So we can't simply resolve service IP addresses and route them as-is. We need to
+translate them somehow to make sure they don't conflict with the resolved
+addresses for services we _don't_ wish to route. Enter NAT: Network Address
 Translation.
 
 We can solve the problem above by intecepting the DNS query to the service,
@@ -218,11 +241,19 @@ actual IP address of the service.
 This solves the collateral damage problem of routing traffic for the wrong
 service, but it introduces a new problem: we need a way to intercept DNS queries
 for the services we're trying to secure, generate a unique IP for them
-on-the-fly, and then somehow route the resulting traffic through a NAT gateway
-to service in question.
+on-the-fly, and then somehow route the associated traffic through a properly
+configured NAT gateway to the service in question.
+
+<Image
+  src="/images/blog/how-dns-works-in-firezone/dns-interception-nat-gateway.svg"
+  alt="DNS interception + NAT gateway"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
 
 <p className="text-sm text-center mx-auto italic">
-  Figure 7: DNS interception + NAT gateway: problem solved?
+  Figure 5: DNS interception + NAT gateway: problem solved?
 </p>
 
 Seems complicated doesn't it? Keeping all of this in sync and up-to-date would
@@ -242,14 +273,13 @@ Let's see how.
 
 Remember the stub resolver we introduced earlier? Recall that it's a small piece
 of software on the host that's responsible for resolving all DNS queries on the
-system.
-
-Well, each Firezone Client embeds a tiny, lightweight stub resolver that works
-just like the one your operating system provides, but with a special twist.
+system. Well, each Firezone Client embeds a tiny, lightweight stub resolver that
+works just like the one your operating system provides, but with a special
+twist.
 
 For DNS queries that don't match any of your Firezone-defined Resources, it
 operates like any other stub resolver, forwarding the query to your system's
-default nameservers as if Firezone didn't exist. For DNS queries that match a
+default nameservers as if Firezone didn't exist. For DNS queries that do match a
 defined Resource, however, it behaves a bit differently.
 
 Instead of forwarding the query to your default nameservers, our special stub
@@ -259,7 +289,7 @@ Resource in question.
 If approved, the Policy Engine forwards the query to a Gateway that's available
 to serve the Resource. The Gateway then resolves the query for the Resource
 (using _its_ stub resolver) and returns the final result all the way back to the
-stub resolver running in the Client.
+stub resolver running inside the Client.
 
 <Alert color="info">
   If you're new to Firezone, read more about
@@ -272,28 +302,41 @@ Here's where things get interesting: instead of passing the resolved IP address
 as-is back to the application, the stub resolver generates a dummy IP address
 for it and returns that instead.
 
+<Image
+  src="/images/blog/how-dns-works-in-firezone/dns-based-traffic-routing.svg"
+  alt="Firezone's DNS-based traffic routing"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
+
 <p className="text-sm text-center mx-auto italic">
-  Figure 8: Firezone's embedded stub resolver
+  Figure 6: Firezone's DNS-based traffic routing
 </p>
 
-Now, when as the application sends packets to the dummy IP, they're routed
-through the newly established Firezone tunnel to the Gateway that resolved the
-query. The Gateway then forwards this traffic on to the public service, setting
-the source address to the static IP we've configured in the service's allowlist
-(achieving the NAT function mentioned earlier), and we've now secured access to
-the public service using its DNS name.
+Now, as the application sends packets to the dummy IP, they're routed through
+the newly established Firezone tunnel to the Gateway that resolved the query.
+The Gateway then forwards this traffic on to the public service, setting the
+source address to the static IP we've configured in the service's allowlist
+(achieving the NAT function mentioned earlier), and we've now routed traffic to
+the service through Firezone without affecting any other services that share its
+IP.
 
 All of this happens in about the same time it would take for a query to be
 resolved without Firezone, so the application (and end user) are none the wiser.
 
 The query is resolved over a secure WebSocket transport via Firezone's control
-plane, which protects against spoofing. And we can now selectively route
-third-party SaaS apps through Firezone as well, no matter how many other
-services may be hosted at the same IP.
+plane, protecting against the spoofing attack mentioned earlier. And since the
+actual resolution takes place on the Gateway running in your protected
+environment, enumeration attacks are also mitigated.
+
+All that's left is to add the Gateway's IP address to the service's allowlist,
+and you've now routed your traffic for the service through Firezone without the
+collateral damage problem we covered above.
 
 ### How it's implemented
 
-We glossed over lots of details above. The section below will get a bit
+We glossed over lots of details above. The section below gets a bit more
 technical, so if you're not interested in the nitty-gritty details, feel free to
 skip ahead to the [conclusion](#conclusion). If you are, well, let's dive a
 little deeper.
@@ -301,14 +344,14 @@ little deeper.
 #### Query interception
 
 The process described above actually starts when you sign in to the Firezone
-Client. When this happens, the Client reads which upstream resolvers are
-available on the host, generates corresponding **sentinel addresses** for each
-one, and then configures the host's operating system to use these as the host's
-default nameservers instead.
+Client. When this happens, the Client reads which nameservers are available on
+the host (from `/etc/resolv.conf` for example), generates corresponding
+**sentinel addresses** for each one, and then configures the host's operating
+system to use these as the host's default nameservers instead.
 
-For each IPv4 and IPv6 upstream resolver it finds on the host, the Client
-generates a matching sentinel address in the `100.100.111.0/24` and
-`fd00:2021:1111:8000:100:100:111:0/120` ranges for IPv4 and IPv6 resolvers,
+For each IPv4 and IPv6 nameserver it finds on the host, the Client generates a
+matching sentinel address in the `100.100.111.0/24` and
+`fd00:2021:1111:8000:100:100:111:0/120` ranges for IPv4 and IPv6 nameservers,
 respectively. This is why you'll often see `nameserver 100.100.111.1` as one of
 your upstream resolvers in `/etc/resolv.conf` while the Client is connected.
 
@@ -317,57 +360,69 @@ the selection algorithm your operating system uses to pick healthy nameservers
 -- if one is down, the corresponding sentinel address will be unresponsive, and
 the operating system will pick another, responsive sentinel to use instead.
 
-As we were building it, we thought of another useful feature: Instead of simply
-using the system's default resolvers to forward queries to, we can use ones set
-by an admin in the admin portal instead. This can be used, for example, to
-configure DNS filtering provider to
+##### Custom nameservers
+
+As we were building all this, we thought of another feature that might be useful
+to organizations. Instead of using the host's default nameservers to forward
+non-matching queries to, we allow the admin to specify them in the Firezone
+admin portal instead. The Client will then generate sentinel addresses for these
+nameservers and use them instead of the host's for all other queries on the
+system.
+
+This is useful for protecting queries that _don't_ go through Firezone. For
+example, you can configure a DNS filtering provider to
 [block malicious DNS queries](/kb/use-cases/secure-dns) across your workforce.
 Or you could point it to your organization's internal nameservers to resolve
-internal services in a more traditional Split DNS configuration.
+internal services like a more traditional Split DNS configuration.
 
 #### Generating the mappings
 
 Ok, so that covers how queries are intercepted, but how does the stub resolver
-actually generate the dummy IP addresses for your Firezone Resources? Let's walk
-through an example to illustrate.
+generate the dummy IP addresses? Let's step through an example to illustrate.
 
-<p className="text-sm text-center mx-auto italic">
-  Figure 9: Generating dummy IP addresse (TODO)
-</p>
+In this example, the admin wants to secure access to Slack, but the process
+works the same for any third-party SaaS service.
 
-1. An admin defines a Resource (say `*.slack.com`) and then adds a corresponding
-   Policy to grant access.
-1. All connected Clients allowed by the Policy will immediately receive the new
+1. An admin defines a DNS Resource with address `*.slack.com` in the Firezone
+   admin portal. Notice the wildcard -- this will route all subdomains for Slack
+   through Firezone as well, which helps prevent certain.
+1. The admin then defines a corresponding Policy with the Groups that should
+   have access.
+1. All connected Clients affected by the Policy will immediately receive the new
    Resource definition.
-1. The Client then configures the stub resolver to begin intercepting queries
-   for `*.slack.com` in order to forward to the Policy Engine.
-1. When it sees a matching one, the stub resolver forwards the query to the
-   Policy Engine, which then reauthorizes the query and finds a healthy Gateway
-   to resolve it.
-1. The Gateway resolves the query, remembering the Client that just asked it,
-   and then returns all of the resolved IP addresses to the stub resolver in the
-   Client.
-1. The stub resolver then generates a unique IP address for each resolved IP
-   address, adds them to our host's routing table, and returns these to the
-   application that made the query.
+1. Upon receiving the Resource definition, the Client configures the stub
+   resolver to begin intercepting queries for `*.slack.com`.
+1. When it sees a match, the stub resolver forwards the query to the Policy
+   Engine, which reauthorizes the query and finds a healthy Gateway to resolve
+   it.
+1. The Gateway resolves the query, taking note of which Client asked it, and
+   then returns all of the resolved IP addresses for the query to the stub
+   resolver in the Client.
+1. The stub resolver then generates a unique, mapped IP address for each
+   resolved IP address, and the Client adds these addresses to the host's
+   routing table.
+1. The stub resolver returns the mapped IP addresses to the application on the
+   host that made the query.
 1. The application then begins sending packets to the dummy IP address, where
-   they're routed through a secure WireGuard tunnel to Gateway we just resolved
-   the query with.
+   they're routed through a newly-established WireGuard tunnel to Gateway we
+   just resolved the query with.
 
-Similar to the way sentinel generation works above, the stub resolver generates
-a single IPv4 or IPv6 address for _each_ resolved IP address the Gateway finds,
-picking a sequential address from the `100.96.0.0/11` and
-`fd00:2021:1111:8000::/107` ranges to use for the mapping respectively. This
-ensures that things like `NXDOMAIN` behavior and round-robin DNS continue to
-function with Firezone enabled just as they did before, without affecting
-applications.
+Similar to the way the sentinel addresses work above, the stub resolver
+generates a single IPv4 or IPv6 address for _each_ resolved IP address returned
+by the Gateway, picking a sequential address from the `100.96.0.0/11` and
+`fd00:2021:1111:8000::/107` ranges to to map `A` and `AAAA` records
+respectively. This ensures that things like timeout behavior and round-robin DNS
+continue to function with Firezone enabled just as they did before, without
+affecting applications.
 
 ## Conclusion
 
-So now when you `dig` a Firezone Resource, you know where those strange IPs are
-coming from -- within the Client itself. There's even more detail (and of
-course, lots of edge cases) we didn't cover here, so if you _really_ want a peek
-under the hood,
+So now you know where those strange IPs are coming from -- within the Client
+itself. Now when you `dig` a service and get a response that looks like
+`100.96.X.X`, you can be sure Firezone is working to secure access to it.
+
+We could go on for some time about all the fun edge cases that arise from doing
+this sort of thing, but we'll stop here. If you _really_ want a peek under the
+hood at how all this works, it's all open source --
 [take a look](https://github.com/firezone/firezone/blob/main/rust/connlib/tunnel/src/dns.rs)
-for yourself! All of the code that powers Firezone is available
-[in our monorepo](https://www.github.com/firezone/firezone) for anyone to see.
+for yourself!
