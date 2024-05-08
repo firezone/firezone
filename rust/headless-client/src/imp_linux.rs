@@ -31,20 +31,20 @@ use url::Url;
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-pub(crate) struct Signals {
+pub struct Signals {
     sighup: tokio::signal::unix::Signal,
     sigint: tokio::signal::unix::Signal,
 }
 
 impl Signals {
-    pub(crate) fn new() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let sighup = tokio::signal::unix::signal(TokioSignalKind::hangup())?;
         let sigint = tokio::signal::unix::signal(TokioSignalKind::interrupt())?;
 
         Ok(Self { sighup, sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+    pub fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(super::SignalKind::Interrupt);
         }
@@ -81,7 +81,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     run_ipc_service(cli, rt, shutdown_rx)
 }
 
-pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
+pub fn check_token_permissions(path: &Path) -> Result<()> {
     let Ok(stat) = nix::sys::stat::fstatat(None, path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read
         tracing::info!(

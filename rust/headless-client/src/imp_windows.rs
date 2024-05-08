@@ -1,6 +1,4 @@
-use crate::Cli;
 use anyhow::{Context as _, Result};
-use clap::Parser;
 use connlib_client_shared::file_logger;
 use std::{
     ffi::OsString,
@@ -24,17 +22,17 @@ use windows_service::{
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
-pub(crate) struct Signals {
+pub struct Signals {
     sigint: tokio::signal::windows::CtrlC,
 }
 
 impl Signals {
-    pub(crate) fn new() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let sigint = tokio::signal::windows::ctrl_c()?;
         Ok(Self { sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+    pub fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(super::SignalKind::Interrupt);
         }
@@ -44,12 +42,12 @@ impl Signals {
 
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
-pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
+pub fn check_token_permissions(_path: &Path) -> Result<()> {
     // TODO: Make sure the token is only readable by admin / our service user on Windows
     Ok(())
 }
 
-pub(crate) fn default_token_path() -> std::path::PathBuf {
+pub fn default_token_path() -> std::path::PathBuf {
     // TODO: System-wide default token path for Windows
     PathBuf::from("token.txt")
 }
@@ -80,7 +78,6 @@ const SERVICE_RUST_LOG: &str = "info";
 
 // Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
-    let cli = Cli::parse();
     let log_path =
         crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
@@ -138,7 +135,7 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
-    if let Err(error) = run_ipc_service(cli, rt, shutdown_rx) {
+    if let Err(error) = run_ipc_service(rt, shutdown_rx) {
         tracing::error!(?error, "error from run_ipc_service");
     }
 
@@ -161,15 +158,15 @@ fn fallible_windows_service_run() -> Result<()> {
 /// we'll have a dev-only mode that runs all the IPC code as a normal process
 /// in an admin console.
 pub(crate) fn run_ipc_service(
-    cli: Cli,
     rt: tokio::runtime::Runtime,
     shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
     tracing::info!("run_ipc_service");
-    rt.block_on(async { ipc_listen(cli, shutdown_rx).await })
+    rt.block_on(async { ipc_listen(shutdown_rx).await })
 }
 
-async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+// TODO: Rename as like, "This is where async kicks in"
+async fn ipc_listen(mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
     shutdown_rx.recv().await;
 
     Ok(())
