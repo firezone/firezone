@@ -19,7 +19,7 @@ make_hash "$BINARY_DEST_PATH.msi"
 make_hash "$BINARY_DEST_PATH.pdb"
 
 # Test-install the MSI package, since it already exists here
-msiexec /i "$BINARY_DEST_PATH.msi" /quiet /log install.log /qn
+msiexec //i "$BINARY_DEST_PATH.msi" //log install.log //qn
 # For debugging
 cat install.log
 sc query FirezoneClientIpcService | grep RUNNING
