@@ -543,7 +543,7 @@ mod proptests {
             &src.clone().into_iter().map(Into::into).collect_vec(),
         );
 
-        peer.add_resource(resource_addr, resource_id, filters.clone(), None);
+        peer.add_resource(resource_addr, resource_id, filters, None);
 
         for dest in dest {
             for src in &src {
