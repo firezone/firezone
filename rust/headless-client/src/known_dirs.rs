@@ -53,12 +53,14 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 mod imp {
+    use connlib_shared::BUNDLE_ID;
     use known_folders::{get_known_folder_path, KnownFolder};
     use std::path::PathBuf;
 
     pub fn ipc_service_logs() -> Option<PathBuf> {
         Some(
             get_known_folder_path(KnownFolder::ProgramData)?
+                .join(BUNDLE_ID)
                 .join("data")
                 .join("logs"),
         )

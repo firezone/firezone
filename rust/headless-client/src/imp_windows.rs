@@ -2,14 +2,16 @@ use crate::Cli;
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::file_logger;
-use firezone_cli_utils::setup_global_subscriber;
 use std::{
     ffi::OsString,
     net::IpAddr,
     path::{Path, PathBuf},
+    str::FromStr,
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
+use tracing::subscriber::set_global_default;
+use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 use windows_service::{
     service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
@@ -69,13 +71,22 @@ fn windows_service_run(_arguments: Vec<OsString>) {
     }
 }
 
+#[cfg(debug_assertions)]
+const SERVICE_RUST_LOG: &str = "debug";
+
+#[cfg(not(debug_assertions))]
+const SERVICE_RUST_LOG: &str = "info";
+
 // Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
     let cli = Cli::parse();
-    let (layer, _handle) = file_logger::layer(
-        &crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?,
-    );
-    setup_global_subscriber(layer);
+    let log_path =
+        crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
+    std::fs::create_dir_all(&log_path)?;
+    let (layer, _handle) = file_logger::layer(&log_path);
+    let filter = EnvFilter::from_str(SERVICE_RUST_LOG)?;
+    let subscriber = Registry::default().with(layer.with_filter(filter));
+    set_global_default(subscriber)?;
     tracing::info!(git_version = crate::GIT_VERSION);
 
     let rt = tokio::runtime::Runtime::new()?;
