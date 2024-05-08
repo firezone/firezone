@@ -112,7 +112,7 @@ pub fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
+pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     match get_dns_control_from_env() {
         None => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
