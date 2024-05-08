@@ -200,7 +200,7 @@ impl ClientOnGateway {
 
     pub(crate) fn add_resource(
         &mut self,
-        ip: IpNetwork,
+        ips: Vec<IpNetwork>,
         resource: ResourceId,
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
@@ -208,7 +208,7 @@ impl ClientOnGateway {
         self.resources.insert(
             resource,
             ResourceOnGateway {
-                ip,
+                ips,
                 filters,
                 expires_at,
             },
@@ -236,19 +236,23 @@ impl ClientOnGateway {
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
         for resource in self.resources.values() {
-            let mut filter_engine = FilterEngine::empty();
-            let filters = self
-                .resources
-                .values()
-                .filter_map(|r| network_contains_network(r.ip, resource.ip).then_some(&r.filters));
+            for ip in &resource.ips {
+                let mut filter_engine = FilterEngine::empty();
+                let filters = self.resources.values().filter_map(|r| {
+                    r.ips
+                        .iter()
+                        .any(|r_ip| network_contains_network(*r_ip, *ip))
+                        .then_some(&r.filters)
+                });
 
-            // Empty filters means permit all
-            if filters.clone().any(|f| f.is_empty()) {
-                filter_engine.permit_all();
+                // Empty filters means permit all
+                if filters.clone().any(|f| f.is_empty()) {
+                    filter_engine.permit_all();
+                }
+
+                filter_engine.add_filters(filters.flatten());
+                self.filters.insert(*ip, filter_engine);
             }
-
-            filter_engine.add_filters(filters.flatten());
-            self.filters.insert(resource.ip, filter_engine);
         }
     }
 
@@ -345,7 +349,7 @@ impl GatewayOnClient {
 }
 
 struct ResourceOnGateway {
-    ip: IpNetwork,
+    ips: Vec<IpNetwork>,
     filters: Filters,
     expires_at: Option<DateTime<Utc>>,
 }
@@ -378,7 +382,7 @@ mod tests {
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
         peer.add_resource(
-            cidr_v4_resource().into(),
+            vec![cidr_v4_resource().into()],
             resource_id(),
             vec![Filter::Tcp(PortRange {
                 port_range_start: 20,
@@ -388,7 +392,7 @@ mod tests {
         );
 
         peer.add_resource(
-            cidr_v4_resource().into(),
+            vec![cidr_v4_resource().into()],
             resource2_id(),
             vec![Filter::Udp(PortRange {
                 port_range_start: 20,
@@ -504,7 +508,7 @@ mod proptests {
             let Some((filter, _)) = filters.next() else {
                 break;
             };
-            peer.add_resource(addr, resources_id[resources], filter.clone(), None);
+            peer.add_resource(vec![addr], resources_id[resources], filter.clone(), None);
             resources += 1;
             resource_addr = supernet(addr);
         }
@@ -516,6 +520,46 @@ mod proptests {
                 Protocol::Icmp => icmp_request_packet(src, dest),
             };
             assert!(peer.ensure_allowed(&packet).is_ok());
+        }
+    }
+
+    #[test_strategy::proptest()]
+    fn gateway_accepts_allowed_packet_multiple_ips_resource(
+        #[strategy(client_id())] client_id: ClientId,
+        #[strategy(resource_id())] resource_id: ResourceId,
+        #[strategy(collection::vec(source_resource_and_host_within(), 1..=5))] config: Vec<(
+            IpAddr,
+            IpNetwork,
+            IpAddr,
+        )>,
+        #[strategy(filters_with_allowed_protocol())] protocol_config: (Filters, Protocol),
+        #[strategy(any::<u16>())] sport: u16,
+        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
+    ) {
+        let (src, resource_addr, dest): (Vec<_>, Vec<_>, Vec<_>) = config.into_iter().multiunzip();
+        let (filters, protocol) = protocol_config;
+        let mut peer = ClientOnGateway::new(
+            client_id,
+            &src.clone().into_iter().map(Into::into).collect_vec(),
+        );
+
+        peer.add_resource(resource_addr, resource_id, filters.clone(), None);
+
+        for dest in dest {
+            for src in &src {
+                if dest.is_ipv4() == src.is_ipv4() {
+                    let packet = match protocol {
+                        Protocol::Tcp { dport } => {
+                            tcp_packet(*src, dest, sport, dport, payload.clone())
+                        }
+                        Protocol::Udp { dport } => {
+                            udp_packet(*src, dest, sport, dport, payload.clone())
+                        }
+                        Protocol::Icmp => icmp_request_packet(*src, dest),
+                    };
+                    assert!(peer.ensure_allowed(&packet).is_ok());
+                }
+            }
         }
     }
 
@@ -536,7 +580,7 @@ mod proptests {
         for (filters, _) in &protocol_config {
             // This test could be extended to test multiple src
             peer.add_resource(
-                resource_addr,
+                vec![resource_addr],
                 *resources_ids.next().unwrap(),
                 filters.clone(),
                 None,
@@ -573,7 +617,7 @@ mod proptests {
             Protocol::Icmp => icmp_request_packet(src, dest),
         };
 
-        peer.add_resource(resource_addr, resource_id, filters, None);
+        peer.add_resource(vec![resource_addr], resource_id, filters, None);
 
         assert!(matches!(
             peer.ensure_allowed(&packet),
@@ -613,13 +657,18 @@ mod proptests {
         };
 
         peer.add_resource(
-            supernet(resource_addr).unwrap_or(resource_addr),
+            vec![supernet(resource_addr).unwrap_or(resource_addr)],
             resource_id_allowed,
             filters_allowed,
             None,
         );
 
-        peer.add_resource(resource_addr, resource_id_removed, filters_removed, None);
+        peer.add_resource(
+            vec![resource_addr],
+            resource_id_removed,
+            filters_removed,
+            None,
+        );
         peer.remove_resource(&resource_id_removed);
 
         assert!(peer.ensure_allowed(&packet_allowed).is_ok());
