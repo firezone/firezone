@@ -68,6 +68,7 @@ pub fn default_token_path() -> PathBuf {
 /// On Linux this is the same as running with `ipc-service`
 pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
+    // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);

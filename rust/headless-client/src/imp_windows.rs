@@ -73,10 +73,7 @@ fn windows_service_run(_arguments: Vec<OsString>) {
 fn fallible_windows_service_run() -> Result<()> {
     let cli = Cli::parse();
     let (layer, _handle) = file_logger::layer(
-        &connlib_shared::windows::app_local_data_dir()
-            .unwrap()
-            .join("data")
-            .join("logs"),
+        &crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?,
     );
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);
@@ -141,10 +138,8 @@ pub(crate) fn run_ipc_service(
 }
 
 async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    let log_dir = connlib_shared::windows::app_local_data_dir()
-        .unwrap()
-        .join("data")
-        .join("logs")
+    let log_dir = crate::known_dirs::ipc_service_logs()
+        .context("Can't compute IPC service logs dir")?
         .display()
         .to_string();
     tokio::fs::write(

@@ -37,6 +37,7 @@ dirs = "5.0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
+known-folders = "1.1.0"
 windows-service = "0.7.0"
 
 [lints]
