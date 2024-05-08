@@ -38,10 +38,15 @@ From there, you can select the type of Resource you want to create:
   before creating the Resource.
 </Alert>
 
-Firezone does not currently filter traffic based on any layer 4 details such as
-transport protocol (UDP / TCP) or port number. If you're interested in a feature
-like this,
-[leave a comment on our public roadmap](https://github.com/firezone/firezone/issues/2030).
+<PlanBadge plans={["team", "enterprise"]}>
+
+### Traffic restrictions
+
+</PlanBadge>
+
+You can specify optional port range(s) and protocols on the Resource for finer
+access control, useful for restricting certain services while allowing others.
+Supported protocols currently include `ICMP`, `TCP`, and `UDP`.
 
 <NextStep href="/kb/deploy/groups">Next: Create Groups</NextStep>
 
