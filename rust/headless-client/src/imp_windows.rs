@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
@@ -93,6 +94,7 @@ fn fallible_windows_service_run() -> Result<()> {
     let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
+        tracing::debug!(?control_event);
         match control_event {
             // TODO
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
@@ -120,6 +122,7 @@ fn fallible_windows_service_run() -> Result<()> {
         }
     };
 
+    // Tell Windows that we're running (equivalent to sd_notify in systemd)
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
@@ -127,11 +130,23 @@ fn fallible_windows_service_run() -> Result<()> {
         controls_accepted: ServiceControlAccept::STOP,
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
-        wait_hint: std::time::Duration::default(),
+        wait_hint: Duration::default(),
         process_id: None,
     })?;
 
-    run_ipc_service(cli, rt, shutdown_rx)
+    run_ipc_service(cli, rt, shutdown_rx)?;
+
+    // Tell Windows that we're stopping
+    status_handle.set_service_status(ServiceStatus {
+        service_type: SERVICE_TYPE,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+    Ok(())
 }
 
 /// Common entry point for both the Windows-wrapped IPC service and the debug IPC service
@@ -149,17 +164,6 @@ pub(crate) fn run_ipc_service(
 }
 
 async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    let log_dir = crate::known_dirs::ipc_service_logs()
-        .context("Can't compute IPC service logs dir")?
-        .display()
-        .to_string();
-    tokio::fs::write(
-        "C:/ProgramData/dev.firezone.client/service.txt",
-        log_dir.as_bytes(),
-    )
-    .await
-    .context("couldn't write debug file service.txt")?;
-
     shutdown_rx.recv().await;
 
     Ok(())
