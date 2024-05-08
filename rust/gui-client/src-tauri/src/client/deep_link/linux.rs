@@ -1,5 +1,5 @@
-use crate::client::known_dirs;
 use anyhow::{bail, Context, Result};
+use firezone_headless_client::known_dirs;
 use secrecy::{ExposeSecret, Secret};
 use std::{path::PathBuf, process::Command};
 use tokio::{

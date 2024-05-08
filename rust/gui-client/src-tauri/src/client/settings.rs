@@ -1,11 +1,9 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::client::{
-    gui::{self, ControllerRequest, Managed},
-    known_dirs,
-};
+use crate::client::gui::{self, ControllerRequest, Managed};
 use anyhow::{Context, Result};
+use firezone_headless_client::known_dirs;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::oneshot;

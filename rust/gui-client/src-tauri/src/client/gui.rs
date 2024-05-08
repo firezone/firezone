@@ -755,7 +755,8 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let session_dir = crate::client::known_dirs::session().context("Couldn't find session dir")?;
+    let session_dir =
+        firezone_headless_client::known_dirs::session().context("Couldn't find session dir")?;
     let ran_before_path = session_dir.join("ran_before.txt");
     if !tokio::fs::try_exists(&ran_before_path).await? {
         let win = app

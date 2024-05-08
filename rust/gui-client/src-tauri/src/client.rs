@@ -10,7 +10,6 @@ mod debug_commands;
 mod deep_link;
 mod elevation;
 mod gui;
-mod known_dirs;
 mod logging;
 mod network_changes;
 mod resolvers;

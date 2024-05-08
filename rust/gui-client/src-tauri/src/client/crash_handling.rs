@@ -12,9 +12,9 @@
 //! - Use dump_syms to convert the pdb to a syms file
 //! - `minidump-stackwalk --symbols-path firezone.syms crash.dmp`
 
-use crate::client::known_dirs;
 use anyhow::{anyhow, bail, Context, Result};
 use crash_handler::CrashHandler;
+use firezone_headless_client::known_dirs;
 use std::{fs::File, io::Write, path::PathBuf};
 
 /// Attaches a crash handler to the client process

@@ -1,11 +1,9 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::{
-    gui::{ControllerRequest, CtlrTx, Managed},
-    known_dirs,
-};
+use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
 use anyhow::{bail, Context, Result};
 use connlib_client_shared::file_logger;
+use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
     fs, io,

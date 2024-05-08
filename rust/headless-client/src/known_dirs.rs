@@ -7,7 +7,7 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub(crate) use imp::{logs, runtime, session, settings};
+pub use imp::{logs, runtime, session, settings};
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod imp {
@@ -18,14 +18,14 @@ mod imp {
     ///
     /// Logs are considered cache because they're not configs and it's technically okay
     /// if the system / user deletes them to free up space
-    pub(crate) fn logs() -> Option<PathBuf> {
+    pub fn logs() -> Option<PathBuf> {
         Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
     }
 
     /// e.g. `/run/user/1000/dev.firezone.client/data`
     ///
     /// Crash handler socket and other temp files go here
-    pub(crate) fn runtime() -> Option<PathBuf> {
+    pub fn runtime() -> Option<PathBuf> {
         Some(dirs::runtime_dir()?.join(BUNDLE_ID).join("data"))
     }
 
@@ -34,14 +34,14 @@ mod imp {
     /// Things like actor name are stored here because they're kind of config,
     /// the system / user should not delete them to free up space, but they're not
     /// really config since the program will rewrite them automatically to persist sessions.
-    pub(crate) fn session() -> Option<PathBuf> {
+    pub fn session() -> Option<PathBuf> {
         Some(dirs::data_local_dir()?.join(BUNDLE_ID).join("data"))
     }
 
     /// e.g. `/home/alice/.config/dev.firezone.client/config`
     ///
     /// See connlib docs for details
-    pub(crate) fn settings() -> Option<PathBuf> {
+    pub fn settings() -> Option<PathBuf> {
         Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("config"))
     }
 }
@@ -53,7 +53,7 @@ mod imp {
     /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data\logs`
     ///
     /// See connlib docs for details
-    pub(crate) fn logs() -> Option<PathBuf> {
+    pub fn logs() -> Option<PathBuf> {
         Some(
             connlib_shared::windows::app_local_data_dir()
                 .ok()?
@@ -65,7 +65,7 @@ mod imp {
     /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`
     ///
     /// Crash handler socket and other temp files go here
-    pub(crate) fn runtime() -> Option<PathBuf> {
+    pub fn runtime() -> Option<PathBuf> {
         Some(
             connlib_shared::windows::app_local_data_dir()
                 .ok()?
@@ -76,7 +76,7 @@ mod imp {
     /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`
     ///
     /// Things like actor name go here
-    pub(crate) fn session() -> Option<PathBuf> {
+    pub fn session() -> Option<PathBuf> {
         Some(
             connlib_shared::windows::app_local_data_dir()
                 .ok()?
@@ -87,7 +87,7 @@ mod imp {
     /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\config`
     ///
     /// See connlib docs for details
-    pub(crate) fn settings() -> Option<PathBuf> {
+    pub fn settings() -> Option<PathBuf> {
         Some(
             connlib_shared::windows::app_local_data_dir()
                 .ok()?

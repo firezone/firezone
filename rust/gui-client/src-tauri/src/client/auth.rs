@@ -1,6 +1,6 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
-use crate::client::known_dirs;
+use firezone_headless_client::known_dirs;
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, SecretString};
 use std::path::PathBuf;
