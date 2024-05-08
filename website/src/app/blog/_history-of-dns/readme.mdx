@@ -85,7 +85,7 @@ Here's a quick summary of how it works:
 1. If _this_ query misses the cache, the upstream resolver begins the full
    process of resolution. It starts by forwarding the query to a **root
    nameserver**. The root nameserver is at the top of the DNS hierarchy.
-1. The root nameserver responds to the upsteam resolver with the IP address of
+1. The root nameserver responds to the upstream resolver with the IP address of
    the **TLD nameserver** for the root in question, for example `com` or `net`.
    The upstream resolver then forwards the query to the TLD nameserver.
 1. The TLD nameserver responds with the IP address of the **authoritative
