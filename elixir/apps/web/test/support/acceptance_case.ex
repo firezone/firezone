@@ -134,7 +134,8 @@ defmodule Web.AcceptanceCase do
     if env = System.get_env("E2E_DEFAULT_WAIT_SECONDS") do
       String.to_integer(env)
     else
-      2
+      # GitHub shared runners can be very slow during peak hours
+      5
     end
   end
 
