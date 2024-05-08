@@ -11,7 +11,6 @@ defmodule Domain.Mocks.OpenIDConnect do
 
     Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
       conn = fetch_conn_params(conn)
-      send(test_pid, {:request, conn})
 
       attrs = %{
         "issuer" => "#{endpoint}/",
@@ -91,7 +90,14 @@ defmodule Domain.Mocks.OpenIDConnect do
         "request_parameter_supported" => false
       }
 
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+
+      # Process may not be alive in slow CI environments
+      if Process.alive?(test_pid) do
+        send(test_pid, {:request, conn})
+        Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      else
+        Plug.Conn.resp(conn, 503, "")
+      end
     end)
 
     bypass
@@ -102,8 +108,14 @@ defmodule Domain.Mocks.OpenIDConnect do
 
     Bypass.expect(bypass, "POST", "/oauth/token", fn conn ->
       conn = fetch_conn_params(conn)
-      send(test_pid, {:request, conn})
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+
+      # Process may not be alive in slow CI environments
+      if Process.alive?(test_pid) do
+        send(test_pid, {:request, conn})
+        Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      else
+        Plug.Conn.resp(conn, 503, "")
+      end
     end)
 
     bypass
@@ -114,8 +126,14 @@ defmodule Domain.Mocks.OpenIDConnect do
 
     Bypass.expect(bypass, "POST", "/oauth/token", fn conn ->
       conn = fetch_conn_params(conn)
-      send(test_pid, {:request, conn})
-      Plug.Conn.resp(conn, 401, Jason.encode!(attrs))
+
+      # Process may not be alive in slow CI environments
+      if Process.alive?(test_pid) do
+        send(test_pid, {:request, conn})
+        Plug.Conn.resp(conn, 401, Jason.encode!(attrs))
+      else
+        Plug.Conn.resp(conn, 503, "")
+      end
     end)
 
     bypass
@@ -142,8 +160,14 @@ defmodule Domain.Mocks.OpenIDConnect do
         )
 
       conn = fetch_conn_params(conn)
-      send(test_pid, {:request, conn})
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+
+      # Process may not be alive in slow CI environments
+      if Process.alive?(test_pid) do
+        send(test_pid, {:request, conn})
+        Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      else
+        Plug.Conn.resp(conn, 503, "")
+      end
     end)
 
     bypass
