@@ -24,6 +24,21 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
+            title="How DNS Works in Firezone"
+            date="May 8, 2024"
+            href="/blog/how-dns-works-in-firezone"
+            authorName="Gabriel Steinberg"
+            authorAvatarSrc={gravatar("gabriel@firezone.dev")}
+            type="Learn"
+          >
+            <p className="mb-2">
+              Firezone's approach to DNS works a bit differently than one might
+              expect. One question we often get from new users is, "why do my
+              DNS Resources resolve to a different IP address with Firezone
+              enabled?". Great question -- read on to find out.
+            </p>
+          </SummaryCard>
+          <SummaryCard
             title="April 2024 Update: GA"
             date="April 1, 2024"
             href="/blog/apr-2024-update"

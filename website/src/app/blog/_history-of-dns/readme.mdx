@@ -1,0 +1,127 @@
+{/_ Saved from the how-dns-works-in-firezone blog post. I decided to remove /_}
+{/* all the history cruft in that one and want to save this here for future use. */}
+
+## A brief history lesson
+
+But before we dive into all the fun details, it's helpful to first understand
+the problem DNS was originally designed to solve.
+
+DNS was created in the early 1980s to address a classic scalability problem with
+the early ARPANET.
+
+<Image
+  src="/images/blog/how-dns-works-in-firezone/arpanet-logical-map.png"
+  alt="Early ARPANET logical map"
+  width={1200}
+  height={1200}
+  className="mx-auto rounded shadow"
+/>
+
+<p className="text-sm italic text-center mx-auto">
+  Figure 1: Early ARPANET logical map
+</p>
+
+The [ARPANET](https://en.wikipedia.org/wiki/ARPANET), the precursor to the
+modern internet, was a network of computers that connected various research
+institutions and government agencies across the United States. It was the first
+network to use the new TCP/IP protocol suite, which provided an IP address to
+each host on the network.
+
+To connect to a host on the ARPANET, you needed its IP address. To avoid having
+to remember the IP address of each host you wanted to connect to, a simple
+system was created to map each address to a human-friendly "hostname".
+
+<p className="text-sm italic text-center mx-auto">
+  Figure 2: Artist's rendition of the original HOSTS.TXT file
+</p>
+
+Hostname to IP address mappings were kept in a single file, aptly named
+`HOSTS.TXT`, and stored on the `SRI-NIC` server -- a system maintained by the
+Network Information Center (NIC) at the Stanford Research Institute (SRI).
+
+Simple enough, right? Well, not quite. The system was perhaps a bit _too_
+simple.
+
+### Files don't scale
+
+Whenever an ARPANET member organization (yes, you had to be a member at that
+time) wanted to add a host to the file or update its IP address, it had to
+contact the SRI (during standard business hours!) and file a formal request
+containing the updated mapping.
+
+Need to make an update over the weekend or on a US holiday? Too bad, you were
+out of luck! The system worked ok when there were only a handful of hosts to
+maintain. But, as you can imagine, it became increasingly unmanageable as more
+hosts joined.
+
+## Enter the Domain Name System (DNS)
+
+Over the course of several meetings, early ARPANET engineers (who would later go
+on to form the [IETF](https://www.ietf.org/)) devised a clever solution to the
+scalability problem they were facing: instead of storing the hostname lookup
+table in a single `HOSTS.TXT` file, they would chop it up instead and distribute
+the entries across several _Nameservers_, each one responsible for maintaining
+the hosts that belonged to a particular network, or _Domain_.
+
+Hence the name: the Domain Name System, or DNS for short.
+
+### How DNS works
+
+At a high level, DNS is a hierarchical system that distributes the
+responsibility of resolving a fully-qualified domain name (FQDN) to a series of
+nameservers, each one responsible for resolving a different part.
+
+<p className="text-sm italic text-center mx-auto">Figure 3: How DNS works</p>
+
+Here's a quick summary of how it works:
+
+1. An application makes a query. The first stop is the **stub resolver**, a
+   small piece of software on the host that's responsible for resolving DNS
+   queries.
+1. The stub resolver typically maintains a small cache of recent queries. If the
+   query misses the cache, it forwards the query to an **upstream resolver**.
+   This is like the stub resolver but with a much larger cache and run by your
+   ISP (or more recently, a public DNS service like NextDNS or Cloudflare).
+1. If _this_ query misses the cache, the upstream resolver begins the full
+   process of resolution. It starts by forwarding the query to a **root
+   nameserver**. The root nameserver is at the top of the DNS hierarchy.
+1. The root nameserver responds to the upstream resolver with the IP address of
+   the **TLD nameserver** for the root in question, for example `com` or `net`.
+   The upstream resolver then forwards the query to the TLD nameserver.
+1. The TLD nameserver responds with the IP address of the **authoritative
+   nameserver** for the domain in question. This is the nameserver the owner of
+   the domain will configure to respond to queries for that domain. It's where
+   you typically configure your DNS records.
+1. The upstream resolver then forwards the query to the authoritative
+   nameserver.
+1. Finally, the authoritative nameserver responds with the IP address of the
+   host in question, and the upstream resolver returns the final answer to the
+   stub resolver on the host that originally made the query.
+1. The application on the host can now connect to the IP address returned by the
+   stub resolver.
+
+The system of root, TLD, and authoritative nameservers replace the function of
+the original `HOSTS.TXT` file maintained by NIC in the ARPANET. However, now
+it's distributed -- no one server or organization is responsible for maintaining
+the entire database, and the system can scale as more hosts, domains, and IP
+addresses are added.
+
+On today's internet, the whole process for resolving a query typically takes a
+few hundred milliseconds. Caching resolvers help to speed up the process by
+storing the results of queries for a certain amount of time, known as the
+record's time-to-live (TTL).
+
+This means that if a host makes the same query multiple times, the stub or
+upstream resolver can return the result immediately (assuming the TTL hasn't
+expired) without having to query the hierarchy of root, TLD, and authoritative
+nameservers again. This can speed up query times by orders of magnitude, to the
+point where stub resolvers responding with cached responses are nearly
+instantaneous.
+
+So hostnames are now mapped to IP addresses in a scalable way, and queries are
+pretty fast on average. DNS worked quite well for the ARPANET! So well, in fact,
+that it was adopted mostly unchanged by the internet as it grew to become the
+modern network we know it as today.
+
+But hold your champagne bottles. There's just one problem with all these
+delightfully distributed domain lookups: security.
