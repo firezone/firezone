@@ -216,6 +216,19 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    // Note: we only allow updating filters and names
+    // but names updates have no effect on the gateway
+    pub(crate) fn update_resource(
+        &mut self,
+        resource: &connlib_shared::messages::gateway::ResourceDescription,
+    ) {
+        let Some(old_resource) = self.resources.get_mut(&resource.id()) else {
+            return;
+        };
+        old_resource.filters = resource.filters();
+        self.recalculate_filters();
+    }
+
     // Call this after any resources change
     //
     // This recalculate the ip-table rules, this allows us to remove and add resources and keep the allow-list correct
