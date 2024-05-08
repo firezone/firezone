@@ -331,6 +331,56 @@ defmodule Web.Live.Resources.EditTest do
     assert saved_resource.filters == []
   end
 
+  test "maintains selection of site when multi-site is false", %{
+    account: account,
+    group: _group,
+    resource: resource,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:multi_site_resources, false)
+    group2 = Fixtures.Gateways.create_group(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    lv
+    |> form("form")
+    |> render_change(%{"resource[connections][0][gateway_group_id]" => group2.id})
+
+    assert has_element?(
+             lv,
+             "select[name='resource[connections][0][gateway_group_id]'] option[value='#{group2.id}'][selected]"
+           )
+  end
+
+  test "maintains selection of sites when multi-site is true", %{
+    account: account,
+    group: group,
+    resource: resource,
+    identity: identity,
+    conn: conn
+  } do
+    group2 = Fixtures.Gateways.create_group(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    lv
+    |> form("form")
+    |> render_change(%{
+      "resource[connections][#{group.id}][enabled]" => false,
+      "resource[connections][#{group2.id}][enabled]" => true
+    })
+
+    refute has_element?(lv, "input[name='resource[connections][#{group.id}][enabled]'][checked]")
+    assert has_element?(lv, "input[name='resource[connections][#{group2.id}][enabled]'][checked]")
+  end
+
   test "disables traffic filters form fields when traffic filters disabled", %{
     account: account,
     group: group,
