@@ -385,7 +385,7 @@ works the same for any third-party SaaS service.
 
 1. An admin defines a DNS Resource with address `*.slack.com` in the Firezone
    admin portal. Notice the wildcard -- this will route all subdomains for Slack
-   through Firezone as well, which helps ensure all requests are routed.
+   through Firezone as well, which helps ensure all relevant Slack traffic is routed.
 1. The admin then defines a corresponding Policy with the Groups that should
    have access.
 1. All connected Clients affected by the Policy will immediately receive the new
