@@ -9,8 +9,8 @@ SERVICE_NAME=firezone-client-headless
 debug_exit() {
     echo "Bailing out. Waiting a couple seconds for things to settle..."
     sleep 5
-    resolvectl dns tun-firezone
-    systemctl status "$SERVICE_NAME"
+    resolvectl dns tun-firezone || true
+    systemctl status "$SERVICE_NAME" || true
     exit 1
 }
 
