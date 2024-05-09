@@ -69,16 +69,19 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 /// On Windows, this is wrapped specially so that Windows' service controller
 /// can launch it.
 pub fn run_only_ipc_service() -> Result<()> {
-    windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run)?;
+    windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher::start failed. This is running from the service controller, not from an interactive terminal, right?")?;
     Ok(())
 }
 
 // Generates `ffi_service_run` from `service_run`
-windows_service::define_windows_service!(ffi_service_run, windows_service_run);
+windows_service::define_windows_service!(ffi_service_run, infallible_windows_service_run);
 
-fn windows_service_run(_arguments: Vec<OsString>) {
-    if let Err(_e) = fallible_windows_service_run() {
-        todo!();
+// At this point we are definitely running as a Windows service.
+// However, `windows_service` doesn't handle `Result` values, so we have
+// to decide what to do with those.
+fn infallible_windows_service_run(_arguments: Vec<OsString>) {
+    if let Err(error) = windows_service_run() {
+        tracing::error!(?error, "Error from windows_service_run");
     }
 }
 
@@ -88,9 +91,11 @@ const SERVICE_RUST_LOG: &str = "debug";
 #[cfg(not(debug_assertions))]
 const SERVICE_RUST_LOG: &str = "info";
 
-// Most of the Windows-specific service stuff should go here
-fn fallible_windows_service_run() -> Result<()> {
-    let cli = Cli::parse();
+// Now we have error handling set up and we're definitely a Windows service.
+// Keep all the Window service-specific code in here.
+fn windows_service_run() -> Result<()> {
+    // Set up file-only logging for Window services. AFAIK they don't have consoles.
+    // I don't think their stdout and stderr goes anywhere.
     let log_path =
         crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
@@ -100,7 +105,8 @@ fn fallible_windows_service_run() -> Result<()> {
     set_global_default(subscriber)?;
     tracing::info!(git_version = crate::GIT_VERSION);
 
-    let rt = tokio::runtime::Runtime::new()?;
+    let cli = Cli::parse();
+
     let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
@@ -133,7 +139,7 @@ fn fallible_windows_service_run() -> Result<()> {
     };
 
     // Tell Windows that we're running (equivalent to sd_notify in systemd)
-    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler).context("Couldn't register with Windows service controller")?;
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Running,
@@ -144,6 +150,7 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
+    let rt = tokio::runtime::Runtime::new()?;
     if let Err(error) = run_ipc_service(cli, rt, shutdown_rx) {
         tracing::error!(?error, "error from run_ipc_service");
     }
