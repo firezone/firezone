@@ -175,6 +175,9 @@ async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()
     Ok(())
 }
 
+/// Get the underlying system resolvers, e.g. the LAN gateway or Cloudflare
+///
+/// pub because it's shared between the headless and GUI Clients
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
