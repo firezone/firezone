@@ -321,6 +321,7 @@ where
 
                 tracing::debug!(resource_id = %offline_resource, "Resource is offline");
 
+                self.tunnel.offline_resource(offline_resource);
                 self.tunnel.cleanup_connection(offline_resource);
             }
 
