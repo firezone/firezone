@@ -138,6 +138,10 @@ fn windows_service_run() -> Result<()> {
         }
     };
 
+    // Fixes <https://github.com/firezone/firezone/issues/4899>,
+    // DNS rules persisting after reboot
+    connlib_shared::deactivate_dns_control().ok();
+
     // Tell Windows that we're running (equivalent to sd_notify in systemd)
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler).context("Couldn't register with Windows service controller")?;
     status_handle.set_service_status(ServiceStatus {
@@ -268,6 +272,9 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
     todo!()
 }
 
+/// Get the underlying system resolvers, e.g. the LAN gateway or Cloudflare
+///
+/// pub because it's shared between the headless and GUI Clients
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()

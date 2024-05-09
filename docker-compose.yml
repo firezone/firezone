@@ -322,6 +322,7 @@ services:
         PACKAGE: firezone-headless-client
     # Add "standalone" to the command here once PR $4604 merges
     image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/client}:${CLIENT_TAG:-main}
+    command: ["firezone-linux-client", "standalone"]
     cap_add:
       - NET_ADMIN
     sysctls:

@@ -54,7 +54,7 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[command(author, version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Cmd>,
+    command: Cmd,
 
     #[arg(
         short = 'u',
@@ -104,18 +104,8 @@ struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
-impl Cli {
-    fn command(&self) -> Cmd {
-        // Needed for backwards compatibility with old Docker images
-        self.command.unwrap_or(Cmd::Auto)
-    }
-}
-
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
-    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC service. This will be removed in a future version.
-    #[command(hide = true)]
-    Auto,
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     #[command(hide = true)]
     IpcService,
@@ -170,14 +160,7 @@ pub fn run() -> Result<()> {
         .build()?;
     let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
-    match cli.command() {
-        Cmd::Auto => {
-            if let Some(token) = get_token(token_env_var, &cli)? {
-                run_standalone(cli, rt, &token)
-            } else {
-                imp::run_ipc_service(cli, rt, shutdown_rx)
-            }
-        }
+    match cli.command {
         Cmd::IpcService => imp::run_ipc_service(cli, rt, shutdown_rx),
         Cmd::Standalone => {
             let token = get_token(token_env_var, &cli)?.with_context(|| {
