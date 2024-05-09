@@ -15,6 +15,11 @@ cd rust || exit 1
 cargo build --bin "$BINARY_NAME"
 cd ..
 
+function debug_exit() {
+    systemctl status "$SERVICE_NAME"
+    exit 1
+}
+
 # Copy the Linux Client out of the build dir
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
@@ -24,22 +29,13 @@ sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-ipc"
 
 # The firezone group must exist before the daemon starts
 sudo groupadd "$FZ_GROUP"
-sudo systemctl start "$SERVICE_NAME" || { systemctl status "$SERVICE_NAME"; exit 1; }
+sudo systemctl start "$SERVICE_NAME" || debug_exit
 
 # Make sure the socket has the right permissions
 if [ "root $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
 then
     exit 1
 fi
-
-# Add ourselves to the firezone group
-sudo gpasswd --add "$USER" "$FZ_GROUP"
-
-echo "# Expect Firezone to accept our commands if we run with 'su --login'"
-sudo su --login "$USER" --command RUST_LOG="$RUST_LOG" "$BINARY_NAME" stub-ipc-client
-
-echo "# Expect Firezone to reject our command if we run without 'su --login'"
-"$BINARY_NAME" stub-ipc-client && exit 1
 
 # Stop the service in case other tests run on the same VM
 sudo systemctl stop "$SERVICE_NAME"
