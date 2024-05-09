@@ -53,9 +53,6 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    command: Cmd,
-
     #[arg(
         short = 'u',
         long,
@@ -102,15 +99,6 @@ struct Cli {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
-}
-
-#[derive(clap::Subcommand, Clone, Copy)]
-enum Cmd {
-    /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
-    #[command(hide = true)]
-    IpcService,
-    /// Act as a CLI-only Client
-    Standalone,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
