@@ -64,8 +64,6 @@ pub fn default_token_path() -> PathBuf {
 }
 
 /// Only called from the GUI Client's build of the IPC service
-///
-/// On Linux this is the same as running with `ipc-service`
 pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
     // systemd supplies this but maybe we should hard-code a better default

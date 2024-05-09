@@ -47,7 +47,7 @@ write_files:
       Environment="RUST_LOG=${firezone_client_log_level}"
       Environment="LOG_DIR=/var/log/firezone"
 
-      ExecStart=/usr/local/bin/firezone-linux-client standalone
+      ExecStart=/usr/local/bin/firezone-linux-client
       Type=notify
       User=root
 
