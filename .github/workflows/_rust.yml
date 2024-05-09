@@ -129,6 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri
       - run: ../scripts/tests/${{ matrix.test }}.sh
         name: "test script"
         shell: bash
