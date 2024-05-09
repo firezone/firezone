@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 
-source "../scripts/tests/lib.sh"
+source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-headless-client
 TOKEN="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 TOKEN_PATH="token"
 
+cd rust || exit 1
 cargo build -p "$BINARY_NAME"
+cd ..
 
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 

@@ -133,4 +133,4 @@ jobs:
       - run: ../scripts/tests/${{ matrix.test }}.sh
         name: "test script"
         shell: bash
-        working-directory: rust
+        working-directory: ./

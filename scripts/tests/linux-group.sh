@@ -3,7 +3,7 @@
 # The integration tests call this to test security for Linux IPC.
 # Only users in the `firezone` group should be able to control the privileged tunnel process.
 
-source "../scripts/tests/lib.sh"
+source "./scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-client-ipc
 FZ_GROUP="firezone-client"
@@ -11,7 +11,9 @@ SERVICE_NAME=firezone-client-ipc
 SOCKET=/run/dev.firezone.client/ipc.sock
 export RUST_LOG=info
 
+cd rust || exit 1
 cargo build --bin "$BINARY_NAME"
+cd ..
 
 # Copy the Linux Client out of the build dir
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
