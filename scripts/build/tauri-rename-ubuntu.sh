@@ -49,4 +49,4 @@ firezone-client-gui --help | grep "Usage: firezone-client-gui"
 
 # Try to start the IPC service
 sudo groupadd --force "$FZ_GROUP"
-sudo systemctl start "SERVICE_NAME" || debug_exit
+sudo systemctl start "$SERVICE_NAME" || debug_exit
