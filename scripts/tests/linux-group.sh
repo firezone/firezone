@@ -3,7 +3,7 @@
 # The integration tests call this to test security for Linux IPC.
 # Only users in the `firezone` group should be able to control the privileged tunnel process.
 
-source "./scripts/tests/lib.sh"
+source "../scripts/tests/lib.sh"
 
 BINARY_NAME=firezone-client-ipc
 FZ_GROUP="firezone-client"
