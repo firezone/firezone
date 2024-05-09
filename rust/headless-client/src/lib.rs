@@ -129,7 +129,7 @@ pub enum IpcServerMsg {
     TunnelReady,
 }
 
-pub fn run() -> Result<()> {
+pub fn run_headless() -> Result<()> {
     let mut cli = Cli::parse();
 
     // Modifying the environment of a running process is unsafe. If any other
@@ -158,20 +158,14 @@ pub fn run() -> Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
-    match cli.command {
-        Cmd::IpcService => imp::run_ipc_service(cli, rt, shutdown_rx),
-        Cmd::Standalone => {
-            let token = get_token(token_env_var, &cli)?.with_context(|| {
-                format!(
-                    "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-                    cli.token_path
-                )
-            })?;
-            run_standalone(cli, rt, &token)
-        }
-    }
+    let token = get_token(token_env_var, &cli)?.with_context(|| {
+        format!(
+            "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
+            cli.token_path
+        )
+    })?;
+    run_standalone(cli, rt, &token)
 }
 
 // Allow dead code because Windows doesn't have an obvious SIGHUP equivalent
