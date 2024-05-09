@@ -292,7 +292,7 @@ defmodule Web.Resources.Components do
       %Domain.Resources.Connection{} = connection ->
         [connection.gateway_group_id]
 
-      {id, _attrs} ->
+      {_, %{"gateway_group_id" => id}} ->
         [id]
     end)
   end

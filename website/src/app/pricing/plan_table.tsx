@@ -680,6 +680,32 @@ export default function PlanTable() {
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="traffic-restrictions-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Traffic restrictions
+            </span>
+            <div
+              id="traffic-restrictions-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Restrict access to specific ports and protocols
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
         <tr>
           <td
             colSpan={4}

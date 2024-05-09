@@ -72,8 +72,20 @@ pub enum Filter {
 pub struct PortRange {
     // TODO: we can use a custom deserializer
     // or maybe change the control plane to use start and end would suffice
+    #[serde(default = "max_port")]
     pub port_range_end: u16,
+    #[serde(default = "min_port")]
     pub port_range_start: u16,
+}
+
+// Note: these 2 functions are needed since serde doesn't yet support default_value
+// see serde-rs/serde#368
+fn min_port() -> u16 {
+    0
+}
+
+fn max_port() -> u16 {
+    u16::MAX
 }
 
 impl ResourceDescription<ResourceDescriptionDns> {
@@ -95,6 +107,22 @@ impl ResourceDescription<ResourceDescriptionDns> {
                 filters,
             }),
             ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
+        }
+    }
+}
+
+impl ResourceDescription<ResourceDescriptionDns> {
+    pub fn id(&self) -> ResourceId {
+        match self {
+            ResourceDescription::Dns(r) => r.id,
+            ResourceDescription::Cidr(r) => r.id,
+        }
+    }
+
+    pub fn filters(&self) -> Vec<Filter> {
+        match self {
+            ResourceDescription::Dns(r) => r.filters.clone(),
+            ResourceDescription::Cidr(r) => r.filters.clone(),
         }
     }
 }
@@ -140,11 +168,37 @@ mod tests {
     }
 
     #[test]
+    fn can_deserialize_empty_udp_filter() {
+        let msg = r#"{ "protocol": "udp" }"#;
+        let expected_filter = Filter::Udp(PortRange {
+            port_range_start: 0,
+            port_range_end: u16::MAX,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
     fn can_deserialize_tcp_filter() {
         let msg = r#"{ "protocol": "tcp", "port_range_start": 10, "port_range_end": 20 }"#;
         let expected_filter = Filter::Tcp(PortRange {
             port_range_start: 10,
             port_range_end: 20,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_empty_tcp_filter() {
+        let msg = r#"{ "protocol": "tcp" }"#;
+        let expected_filter = Filter::Tcp(PortRange {
+            port_range_start: 0,
+            port_range_end: u16::MAX,
         });
 
         let actual_filter = serde_json::from_str(msg).unwrap();
