@@ -1,5 +1,7 @@
 pub(crate) use imp::{check, elevate};
 
+pub(crate) const FIREZONE_GROUP: &str = "firezone-client";
+
 #[cfg(target_os = "linux")]
 mod imp {
     use crate::client::gui::Error;
@@ -14,7 +16,7 @@ mod imp {
             return Ok(false);
         }
 
-        let fz_gid = firezone_headless_client::imp::firezone_group()?.gid;
+        let fz_gid = firezone_group()?.gid;
         let groups = nix::unistd::getgroups().context("`nix::unistd::getgroups`")?;
         if !groups.contains(&fz_gid) {
             return Err(Error::UserNotInFirezoneGroup);
@@ -25,6 +27,13 @@ mod imp {
 
     pub(crate) fn elevate() -> Result<()> {
         anyhow::bail!("Firezone must not elevate on Linux.");
+    }
+
+    fn firezone_group() -> Result<nix::unistd::Group> {
+        let group = nix::unistd::Group::from_name(super::FIREZONE_GROUP)
+            .context("can't get group by name")?
+            .context("`{FIREZONE_GROUP}` group must exist on the system")?;
+        Ok(group)
     }
 }
 

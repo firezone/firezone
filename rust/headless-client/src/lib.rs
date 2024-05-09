@@ -31,8 +31,6 @@ pub mod imp_windows;
 #[cfg(target_os = "windows")]
 pub use imp_windows as imp;
 
-/// Only used on Linux
-pub const FIREZONE_GROUP: &str = "firezone-client";
 pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 /// Output of `git describe` at compile time

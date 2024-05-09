@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
@@ -31,20 +31,20 @@ use url::Url;
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-pub struct Signals {
+pub(crate) struct Signals {
     sighup: tokio::signal::unix::Signal,
     sigint: tokio::signal::unix::Signal,
 }
 
 impl Signals {
-    pub fn new() -> Result<Self> {
+    pub(crate) fn new() -> Result<Self> {
         let sighup = tokio::signal::unix::signal(TokioSignalKind::hangup())?;
         let sigint = tokio::signal::unix::signal(TokioSignalKind::interrupt())?;
 
         Ok(Self { sighup, sigint })
     }
 
-    pub fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(super::SignalKind::Interrupt);
         }
@@ -57,7 +57,7 @@ impl Signals {
     }
 }
 
-pub fn default_token_path() -> PathBuf {
+pub(crate) fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
         .join("token")
@@ -81,7 +81,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     run_ipc_service(cli, rt, shutdown_rx)
 }
 
-pub fn check_token_permissions(path: &Path) -> Result<()> {
+pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     let Ok(stat) = nix::sys::stat::fstatat(None, path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read
         tracing::info!(
@@ -112,7 +112,7 @@ pub fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn system_resolvers() -> Result<Vec<IpAddr>> {
+pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
     match get_dns_control_from_env() {
         None => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
@@ -145,6 +145,8 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
+///
+/// Pub because both the headless Client and GUI Client need this.
 pub fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
@@ -191,13 +193,6 @@ pub(crate) fn run_ipc_service(
 ) -> Result<()> {
     tracing::info!("run_ipc_service");
     rt.block_on(async { ipc_listen(cli).await })
-}
-
-pub fn firezone_group() -> Result<nix::unistd::Group> {
-    let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
-        .context("can't get group by name")?
-        .context("`{FIREZONE_GROUP}` group must exist on the system")?;
-    Ok(group)
 }
 
 async fn ipc_listen(cli: Cli) -> Result<()> {
