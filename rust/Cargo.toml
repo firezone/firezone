@@ -9,6 +9,7 @@ members = [
   "gateway",
   "firezone-cli-utils",
   "headless-client",
+  "linux-client",
   "snownet-tests",
   "phoenix-channel",
   "relay",

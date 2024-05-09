@@ -47,7 +47,7 @@ write_files:
       Environment="RUST_LOG=${firezone_client_log_level}"
       Environment="LOG_DIR=/var/log/firezone"
 
-      ExecStart=/usr/local/bin/firezone-headless-client standalone
+      ExecStart=/usr/local/bin/firezone-linux-client standalone
       Type=notify
       User=root
 
@@ -236,6 +236,6 @@ runcmd:
   - 'sudo apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install google-cloud-ops-agent'
   - sudo docker pull ${client_container_image}
   - sudo docker create --name fz-client ${client_container_image}
-  - 'sudo docker cp fz-client:/bin/firezone-headless-client /usr/local/bin/firezone-headless-client'
+  - 'sudo docker cp fz-client:/bin/firezone-linux-client /usr/local/bin/firezone-linux-client'
   - sudo docker rm -v fz-client
   - sudo systemctl enable --now firezone.service

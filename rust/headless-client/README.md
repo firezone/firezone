@@ -3,7 +3,7 @@
 This crate acts as the CLI / headless Client, and the privileged tunnel service for the GUI Client, for both Linux and Windows.
 
 It is built as:
-- `headless-client` to act as the Linux / Windows headless Client
+- `linux-client` to act as the Linux headless Client
 - `firezone-headless-client` to act as the Linux tunnel service, Windows headless Client, or Windows tunnel service
 
 In general, the brand name should be part of the file name, but the OS name should not be.
