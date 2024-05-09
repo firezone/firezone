@@ -176,10 +176,15 @@ where
     }
 
     pub fn offline_resource(&mut self, id: ResourceId) {
-        let Some(resource) = self.role_state.resource_ids.get_mut(&id) else {
+        let Some(resource) = self.role_state.resource_ids.get(&id).cloned() else {
             return;
         };
-        *resource.status() = Status::Offline;
+
+        self.role_state
+            .update_resources_status(&resource, Status::Offline);
+
+        self.callbacks
+            .on_update_resources(self.role_state.resources());
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -317,8 +322,16 @@ impl ClientState {
         }
     }
 
-    fn resources(&self) -> Vec<ResourceDescription> {
+    pub(crate) fn resources(&self) -> Vec<ResourceDescription> {
         self.resource_ids.values().sorted().cloned().collect_vec()
+    }
+
+    // This updates the status for all resources sharing the same gateway groups
+    fn update_resources_status(&mut self, resource: &ResourceDescription, status: Status) {
+        self.resource_ids
+            .values_mut()
+            .filter(|r| r.gateway_groups() == resource.gateway_groups())
+            .for_each(|r| *r.status_mut() = status);
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -870,14 +883,21 @@ impl ClientState {
     }
 
     fn set_gateways_resources_status(&mut self, gateway_id: GatewayId, status: Status) {
-        self.resource_ids
-            .iter_mut()
-            .filter(|(r_id, _)| {
+        let resources = self
+            .resource_ids
+            .iter()
+            .filter_map(|(r_id, r)| {
                 self.resources_gateways
                     .get(r_id)
                     .is_some_and(|g_id| *g_id == gateway_id)
+                    .then_some(r)
             })
-            .for_each(|(_, r)| *r.status() = status);
+            .cloned()
+            .collect_vec();
+
+        for r in resources {
+            self.update_resources_status(&r, status);
+        }
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -924,10 +944,18 @@ impl ClientState {
 
     pub(crate) fn add_resources(&mut self, resources: &[ResourceDescription]) {
         for resource_description in resources {
+            let mut resource_description = resource_description.clone();
+
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
-                if resource.has_different_address(resource_description) {
+                if resource.has_different_address(&resource_description) {
                     self.remove_resources(&[resource.id()]);
                 }
+            }
+
+            if let Some(status) = self.resources().iter().find_map(|r| {
+                (r.gateway_groups() == resource_description.gateway_groups()).then_some(r.status())
+            }) {
+                *resource_description.status_mut() = status;
             }
 
             match &resource_description {
@@ -940,7 +968,7 @@ impl ClientState {
             }
 
             self.resource_ids
-                .insert(resource_description.id(), resource_description.clone());
+                .insert(resource_description.id(), resource_description);
         }
     }
 
@@ -953,7 +981,7 @@ impl ClientState {
             self.cidr_resources.retain(|_, r| r.id != *id);
             self.deferred_dns_queries.retain(|(r, _), _| r.id != *id);
 
-            self.resource_ids.remove(id);
+            let resource = self.resource_ids.remove(id);
 
             let Some(gateway_id) = self.resources_gateways.remove(id) else {
                 tracing::debug!("No gateway associated with resource");
@@ -987,6 +1015,10 @@ impl ClientState {
             // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
             if peer.allowed_ips.is_empty() {
                 self.peers.remove(&gateway_id);
+                // TODO: multi-site resources would need a bit extra thought here
+                if let Some(resource) = resource {
+                    self.update_resources_status(&resource, Status::Unknown);
+                }
                 // TODO: should we have a Node::remove_connection?
             }
         }

@@ -1,6 +1,6 @@
 //! Client related messages that are needed within connlib
 
-use std::{borrow::Cow, str::FromStr};
+use std::{borrow::Cow, collections::HashSet, str::FromStr};
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -101,6 +101,13 @@ impl ResourceDescription {
         }
     }
 
+    pub fn gateway_groups(&self) -> HashSet<&GatewayGroup> {
+        match self {
+            ResourceDescription::Dns(r) => HashSet::from_iter(r.gateway_groups.iter()),
+            ResourceDescription::Cidr(r) => HashSet::from_iter(r.gateway_groups.iter()),
+        }
+    }
+
     /// What the GUI clients should show as the user-friendly display name, e.g. `Firezone GitHub`
     pub fn name(&self) -> &str {
         match self {
@@ -129,10 +136,17 @@ impl ResourceDescription {
         }
     }
 
-    pub fn status(&mut self) -> &mut Status {
+    pub fn status_mut(&mut self) -> &mut Status {
         match self {
             ResourceDescription::Dns(r) => &mut r.status,
             ResourceDescription::Cidr(r) => &mut r.status,
+        }
+    }
+
+    pub fn status(&self) -> Status {
+        match self {
+            ResourceDescription::Dns(r) => r.status,
+            ResourceDescription::Cidr(r) => r.status,
         }
     }
 }
