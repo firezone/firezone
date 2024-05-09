@@ -258,6 +258,7 @@ impl Callbacks for CallbackHandlerIpc {
 }
 
 async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
+    // TODO: Shouldn't this be up in the IPC loop?
     connlib_shared::deactivate_dns_control()?;
     let (rx, tx) = stream.into_split();
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());

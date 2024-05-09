@@ -1,18 +1,28 @@
-use crate::Cli;
+//! Implementation of headless Client and IPC service for Windows
+//!
+//! Try not to panic in the IPC service. Windows doesn't seem to accept
+//! the process ending as a signal that the service is stopped, we have to
+//! explicitly tell it. I am not sure why.
+
+use crate::{Cli, IpcClientMsg, IpcServerMsg};
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::file_logger;
+use connlib_shared::BUNDLE_ID;
+use futures::{SinkExt, StreamExt};
 use std::{
-    ffi::OsString,
+    ffi::{c_void, OsString},
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::sync::mpsc;
+use tokio::{net::windows::named_pipe, sync::mpsc};
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
+use windows::Win32::Security as WinSec;
 use windows_service::{
     service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
@@ -134,7 +144,9 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
-    run_ipc_service(cli, rt, shutdown_rx)?;
+    if let Err(error) = run_ipc_service(cli, rt, shutdown_rx) {
+        tracing::error!(?error, "error from run_ipc_service");
+    }
 
     // Tell Windows that we're stopping
     status_handle.set_service_status(ServiceStatus {
@@ -154,19 +166,99 @@ fn fallible_windows_service_run() -> Result<()> {
 /// Running as a Windows service is complicated, so to make debugging easier
 /// we'll have a dev-only mode that runs all the IPC code as a normal process
 /// in an admin console.
+///
+/// Parameters:
+/// * `_cli` - Used on Linux, need to match the signature
+/// * `rt` - The Tokio runtime to use
+/// * `shutdown_rx` - Shutdown signal channel
 pub(crate) fn run_ipc_service(
-    cli: Cli,
+    _cli: Cli,
     rt: tokio::runtime::Runtime,
-    shutdown_rx: mpsc::Receiver<()>,
+    mut shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
     tracing::info!("run_ipc_service");
-    rt.block_on(async { ipc_listen(cli, shutdown_rx).await })
+    rt.block_on(async {
+        tokio::select!(
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Got shutdown signal");
+                Ok(())
+            }
+            r = ipc_listen() => r
+        )
+    })
 }
 
-async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    shutdown_rx.recv().await;
+async fn ipc_listen() -> Result<()> {
+    loop {
+        connlib_shared::deactivate_dns_control()?;
+        let server = create_pipe_server()?;
+        tracing::info!("Listening for GUI to connect over IPC...");
+        server
+            .connect()
+            .await
+            .context("Couldn't accept IPC connection from GUI")?;
+        if let Err(error) = handle_ipc_client(server).await {
+            tracing::error!(?error, "Error while handling IPC client");
+        }
+    }
+}
 
-    Ok(())
+fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
+    let mut server_options = named_pipe::ServerOptions::new();
+    server_options.first_pipe_instance(true);
+
+    // This will allow non-admin clients to connect to us even though we're running with privilege
+    let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
+    let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
+    // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
+    // or lifetime problems because we only pass pointers to our local vars to
+    // Win32, and Win32 shouldn't save them anywhere.
+    unsafe {
+        // ChatGPT pointed me to these functions, it's better than the official MS docs
+        WinSec::InitializeSecurityDescriptor(
+            psd,
+            windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
+        )
+        .context("InitializeSecurityDescriptor failed")?;
+        WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
+            .context("SetSecurityDescriptorDacl failed")?;
+    }
+
+    let mut sa = WinSec::SECURITY_ATTRIBUTES {
+        nLength: 0,
+        lpSecurityDescriptor: psd.0,
+        bInheritHandle: false.into(),
+    };
+    sa.nLength = std::mem::size_of_val(&sa)
+        .try_into()
+        .context("Size of SECURITY_ATTRIBUTES struct is not right")?;
+
+    let sa_ptr = &mut sa as *mut _ as *mut c_void;
+    // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
+    // or lifetime problems because we only pass pointers to our local vars to
+    // Win32, and Win32 shouldn't save them anywhere.
+    let server = unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
+        .context("Failed to listen on named pipe")?;
+    Ok(server)
+}
+
+/// Named pipe for IPC between a non-privileged GUI and the privileged IPC service
+pub fn pipe_path() -> String {
+    named_pipe_path(format!("{BUNDLE_ID}.ipc_service"))
+}
+
+async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
+    let mut framed = Framed::new(server, LengthDelimitedCodec::new());
+    let msg = framed
+        .next()
+        .await
+        .context("expected a message from the IPC client")??;
+    let _msg: IpcClientMsg = serde_json::from_slice(&msg)?;
+    let response = IpcServerMsg::Ok;
+    framed
+        .send(serde_json::to_string(&response)?.into())
+        .await?;
+    todo!()
 }
 
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
@@ -183,4 +275,24 @@ pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     // This is private, so keep it at `debug` or `trace`
     tracing::debug!(?resolvers);
     Ok(resolvers)
+}
+
+/// Returns a valid name for a Windows named pipe
+///
+/// # Arguments
+///
+/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
+pub fn named_pipe_path<S: AsRef<str>>(id: S) -> String {
+    format!(r"\\.\pipe\{}", id.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn named_pipe_path() {
+        assert_eq!(
+            super::named_pipe_path("dev.firezone.client"),
+            r"\\.\pipe\dev.firezone.client"
+        );
+    }
 }

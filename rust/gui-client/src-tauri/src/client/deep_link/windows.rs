@@ -32,7 +32,7 @@ impl Server {
         let mut server_options = named_pipe::ServerOptions::new();
         server_options.first_pipe_instance(true);
 
-        // This will allow non-admin clients to connect to us even if we're running as admin
+        // This will allow non-admin clients to connect to us even if we're running as admin. TODO: Remove after process separation is done
         let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
         let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
@@ -58,15 +58,13 @@ impl Server {
             bInheritHandle: false.into(),
         };
 
-        // TODO: On the IPC branch I found that this will cause prefix issues
-        // with other named pipes. Change it.
-        let path = named_pipe_path(BUNDLE_ID);
         let sa_ptr = &mut sa as *mut _ as *mut c_void;
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
         // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
-        let server = unsafe { server_options.create_with_security_attributes_raw(path, sa_ptr) }
-            .map_err(|_| super::Error::CantListen)?;
+        let server =
+            unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
+                .map_err(|_| super::Error::CantListen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
@@ -101,7 +99,7 @@ impl Server {
 
 /// Open a deep link by sending it to the already-running instance of the app
 pub async fn open(url: &url::Url) -> Result<()> {
-    let path = named_pipe_path(BUNDLE_ID);
+    let path = pipe_path();
     let mut client = named_pipe::ClientOptions::new()
         .open(path)
         .context("Couldn't connect to named pipe server")?;
@@ -110,6 +108,11 @@ pub async fn open(url: &url::Url) -> Result<()> {
         .await
         .context("Couldn't write bytes to named pipe server")?;
     Ok(())
+}
+
+/// Named pipe for our deep links
+fn pipe_path() -> String {
+    firezone_headless_client::imp::named_pipe_path(format!("{BUNDLE_ID}.deep_link"))
 }
 
 /// Registers the current exe as the handler for our deep link scheme.
@@ -146,24 +149,4 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
 
     Ok(())
-}
-
-/// Returns a valid name for a Windows named pipe
-///
-/// # Arguments
-///
-/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
-fn named_pipe_path(id: &str) -> String {
-    format!(r"\\.\pipe\{}", id)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn named_pipe_path() {
-        assert_eq!(
-            super::named_pipe_path("dev.firezone.client"),
-            r"\\.\pipe\dev.firezone.client"
-        );
-    }
 }
