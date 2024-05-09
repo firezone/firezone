@@ -39,6 +39,33 @@ export default function Page() {
             </p>
           </SummaryCard>
           <SummaryCard
+            title="May 2024 Update"
+            date="May 1, 2024"
+            href="/blog/may-2024-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Learn"
+          >
+            <div className="mb-2">
+              In this update:
+              <ul className="list-inside list-disc ml-4">
+                <li>
+                  <strong>New feature:</strong> Traffic restrictions
+                </li>
+                <li>
+                  Blog:{" "}
+                  <Link
+                    href="/blog/how-dns-works-in-firezone"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    How DNS works in Firezone
+                  </Link>
+                </li>
+                <li>Connectivity and reliability improvements</li>
+              </ul>
+            </div>
+          </SummaryCard>
+          <SummaryCard
             title="April 2024 Update: GA"
             date="April 1, 2024"
             href="/blog/apr-2024-update"
