@@ -29,8 +29,8 @@ external networks like the internet.
   where this web app is located.
 
 <Alert color="warning">
-  For reliable access to high-traffic web apps, set up
-  multiple Gateways for load balancing. See [Deploying multiple
+  For reliable access to high-traffic web apps, set up multiple Gateways for
+  load balancing. See [Deploying multiple
   Gateways](/kb/deploy/gateways#deploying-multiple-gateways).
 </Alert>
 
@@ -42,6 +42,9 @@ external networks like the internet.
 1. Enter the address of the web app you want to secure access to. For example:
    `metabase.company.com`. This address must be resolvable by all of the
    Gateway(s) in your Site.
+1. Optionally, add a traffic restriction for `TCP/80` and/or `TCP/443` to
+   further limit access to this Resource to HTTP and/or HTTPS traffic only (Team
+   and Enterprise plans).
 1. Enter a descriptive name for the Resource, e.g.
    `Procurement team Metabase instance`. This will be used to identify the
    Resource in the Firezone admin portal.

@@ -48,6 +48,16 @@ You can specify optional port range(s) and protocols on the Resource for finer
 access control, useful for restricting certain services while allowing others.
 Supported protocols currently include `ICMP`, `TCP`, and `UDP`.
 
+One popular use case for traffic restrictions is segmenting access to individual
+services on a host. To do this, simply create a Resource for each service on the
+host you want to allow access to, and add the appropriate traffic restrictions
+to each one.
+
+For example, create an Resource with the `TCP/22` restriction to allow SSH
+access for your DevOps team, then add another Resource with the `TCP/443`
+restriction to allow access to an HTTPS service for the rest of your
+organization.
+
 <NextStep href="/kb/deploy/groups">Next: Create Groups</NextStep>
 
 <SupportOptions />
