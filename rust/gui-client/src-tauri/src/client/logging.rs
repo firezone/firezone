@@ -42,8 +42,6 @@ pub(crate) enum Error {
     #[error("Log filter couldn't be parsed")]
     Parse(#[from] tracing_subscriber::filter::ParseError),
     #[error(transparent)]
-    SetGlobalDefault(#[from] tracing::subscriber::SetGlobalDefaultError),
-    #[error(transparent)]
     SetLogger(#[from] tracing_log::log_tracer::SetLoggerError),
 }
 
@@ -71,17 +69,6 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
         _logger: logger,
         _reloader: reloader,
     })
-}
-
-/// Sets up logging for stderr only, with INFO level by default
-pub(crate) fn debug_command_setup() -> Result<(), Error> {
-    let filter = EnvFilter::builder()
-        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
-        .from_env_lossy();
-    let layer = fmt::layer().with_filter(filter);
-    let subscriber = Registry::default().with(layer);
-    set_global_default(subscriber)?;
-    Ok(())
 }
 
 #[tauri::command]

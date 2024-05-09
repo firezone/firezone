@@ -26,7 +26,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
 }
 
 fn check_for_updates() -> Result<()> {
-    client::logging::debug_command_setup()?;
+    firezone_headless_client::debug_command_setup()?;
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let version = rt.block_on(client::updates::check())?;

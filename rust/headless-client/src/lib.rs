@@ -17,6 +17,8 @@ use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{future, net::IpAddr, path::PathBuf, task::Poll};
 use tokio::sync::mpsc;
+use tracing::subscriber::set_global_default;
+use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 
 use imp::default_token_path;
 
@@ -106,7 +108,15 @@ struct Cli {
 
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
+    /// Listen for IPC connections and print debug info to stderr
+    ///
+    /// This will not be supported, it's used internally to debug IPC on Linux and Windows.
+    #[command(hide = true)]
+    DebugIpcService,
     /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
+    ///
+    /// Not intended for human use. On Linux, systemd will call this. On Windows,
+    /// the service controller will.
     #[command(hide = true)]
     IpcService,
     /// Act as a CLI-only Client
@@ -129,7 +139,7 @@ pub enum IpcServerMsg {
     TunnelReady,
 }
 
-pub fn run() -> Result<()> {
+pub fn run_headless_client() -> Result<()> {
     let mut cli = Cli::parse();
 
     // Modifying the environment of a running process is unsafe. If any other
@@ -155,13 +165,11 @@ pub fn run() -> Result<()> {
 
     tracing::info!(git_version = crate::GIT_VERSION);
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
-
     match cli.command {
-        Cmd::IpcService => imp::run_ipc_service(cli, rt, shutdown_rx),
+        Cmd::DebugIpcService => {
+            anyhow::bail!("DebugIpcService should not be used from the headless Client binary")
+        }
+        Cmd::IpcService => imp::run_ipc_service(cli),
         Cmd::Standalone => {
             let token = get_token(token_env_var, &cli)?.with_context(|| {
                 format!(
@@ -169,6 +177,9 @@ pub fn run() -> Result<()> {
                     cli.token_path
                 )
             })?;
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
             run_standalone(cli, rt, &token)
         }
     }
@@ -236,8 +247,10 @@ fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -
                     continue;
                 }
                 Poll::Ready(SignalKind::Interrupt) => return Poll::Ready(Ok(())),
-                Poll::Pending => return Poll::Pending,
+                Poll::Pending => {}
             }
+
+            return Poll::Pending;
         })
         .await
     });
@@ -319,4 +332,15 @@ fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
 
     tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token))
+}
+
+/// Sets up logging for stderr only, with INFO level by default
+pub fn debug_command_setup() -> Result<()> {
+    let filter = EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+        .from_env_lossy();
+    let layer = fmt::layer().with_filter(filter);
+    let subscriber = Registry::default().with(layer);
+    set_global_default(subscriber)?;
+    Ok(())
 }
