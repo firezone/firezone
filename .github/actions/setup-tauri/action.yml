@@ -23,8 +23,14 @@ runs:
       if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get install at-spi2-core xvfb
       shell: bash
-    - name: Download WebView2 bootstrapper
+    - uses: actions/cache@v4
       if: ${{ runner.os == 'Windows' }}
+      id: cache-webview2-installer
+      with:
+        path: WebView2Installer.exe
+        key: ${{ runner.os }}-webview2-installer
+    - name: Download WebView2 bootstrapper
+      if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' }}
       # This is the "Evergreen" bootstrapper from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
       # Unfortunately, this makes the test non-deterministic.
