@@ -11,8 +11,10 @@ SERVICE_NAME=firezone-client-ipc
 SOCKET=/run/dev.firezone.client/ipc.sock
 export RUST_LOG=info
 
+cargo build --bin "$BINARY_NAME"
+
 # Copy the Linux Client out of the build dir
-sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
+sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 # Set up the systemd service
 sudo cp "rust/gui-client/src-tauri/deb_files/$SERVICE_NAME.service" /usr/lib/systemd/system/

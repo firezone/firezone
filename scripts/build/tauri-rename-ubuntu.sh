@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euox pipefail
 
+FZ_GROUP="firezone-client"
+SERVICE_NAME=firezone-client-ipc
+
+function debug_exit() {
+    systemctl status "$SERVICE_NAME"
+    exit 1
+}
+
 # For debugging
 ls ../target/release ../target/release/bundle/deb
 
@@ -40,5 +48,5 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 firezone-client-gui --help | grep "Usage: firezone-client-gui"
 
 # Try to start the IPC service
-sudo groupadd --force firezone-client
-sudo systemctl start firezone-client-ipc || systemctl status firezone-client-ipc
+sudo groupadd --force "$FZ_GROUP"
+sudo systemctl start "SERVICE_NAME" || debug_exit

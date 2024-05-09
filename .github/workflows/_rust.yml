@@ -129,9 +129,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - run: cargo build -p firezone-headless-client
-        name: "cargo build"
-        shell: bash
       - run: scripts/tests/${{ matrix.test }}.sh
         name: "test script"
         shell: bash

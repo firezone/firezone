@@ -2,11 +2,13 @@
 
 source "./scripts/tests/lib.sh"
 
-BINARY_NAME=firezone-linux-client
+BINARY_NAME=firezone-headless-client
 TOKEN="n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 TOKEN_PATH="token"
 
-sudo cp "rust/target/debug/firezone-headless-client" "/usr/bin/$BINARY_NAME"
+cargo build -p "$BINARY_NAME"
+
+sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 # Fails because there's no token yet
 sudo "$BINARY_NAME" --check standalone && exit 1
