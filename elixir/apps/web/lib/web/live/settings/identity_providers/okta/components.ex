@@ -119,7 +119,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Components do
   end
 
   def scopes do
-    Domain.Auth.Adapters.Okta.Settings.scope()
+    Domain.Auth.Adapters.Okta.ProviderConfig.scope()
     |> Enum.join("\n")
   end
 

@@ -321,8 +321,8 @@ defmodule Domain.AuthTest do
       Domain.Fixture.update!(provider, %{
         disabled_at: DateTime.utc_now(),
         adapter_state: %{
-          "access_token" => "OIDC_ACCESS_TOKEN",
-          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "access_token" => Fixtures.Auth.encode_secret!("OIDC_ACCESS_TOKEN"),
+          "refresh_token" => Fixtures.Auth.encode_secret!("OIDC_REFRESH_TOKEN"),
           "expires_at" => DateTime.utc_now()
         }
       })
@@ -336,8 +336,8 @@ defmodule Domain.AuthTest do
       Domain.Fixture.update!(provider, %{
         deleted_at: DateTime.utc_now(),
         adapter_state: %{
-          "access_token" => "OIDC_ACCESS_TOKEN",
-          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "access_token" => Fixtures.Auth.encode_secret!("OIDC_ACCESS_TOKEN"),
+          "refresh_token" => Fixtures.Auth.encode_secret!("OIDC_REFRESH_TOKEN"),
           "expires_at" => DateTime.utc_now()
         }
       })
@@ -351,9 +351,9 @@ defmodule Domain.AuthTest do
       Domain.Fixture.update!(provider, %{
         provisioner: :manual,
         adapter_state: %{
-          "access_token" => "OIDC_ACCESS_TOKEN",
-          "refresh_token" => "OIDC_REFRESH_TOKEN",
-          "claims" => "openid email profile offline_access",
+          "access_token" => Fixtures.Auth.encode_secret!("OIDC_ACCESS_TOKEN"),
+          "refresh_token" => Fixtures.Auth.encode_secret!("OIDC_REFRESH_TOKEN"),
+          "claims" => %{},
           "expires_at" => DateTime.utc_now()
         }
       })
@@ -366,10 +366,10 @@ defmodule Domain.AuthTest do
 
       Domain.Fixture.update!(provider, %{
         adapter_state: %{
-          "access_token" => "OIDC_ACCESS_TOKEN",
-          "refresh_token" => "OIDC_REFRESH_TOKEN",
+          "access_token" => Fixtures.Auth.encode_secret!("OIDC_ACCESS_TOKEN"),
+          "refresh_token" => Fixtures.Auth.encode_secret!("OIDC_REFRESH_TOKEN"),
           "expires_at" => DateTime.utc_now() |> DateTime.add(28, :minute),
-          "claims" => "openid email profile offline_access"
+          "claims" => %{}
         }
       })
 
@@ -384,10 +384,10 @@ defmodule Domain.AuthTest do
 
       Domain.Fixture.update!(provider, %{
         adapter_state: %{
-          "access_token" => "OIDC_ACCESS_TOKEN",
+          "access_token" => Fixtures.Auth.encode_secret!("OIDC_ACCESS_TOKEN"),
           "refresh_token" => nil,
           "expires_at" => DateTime.utc_now() |> DateTime.add(28, :minute),
-          "claims" => "openid email profile offline_access"
+          "claims" => %{}
         }
       })
 

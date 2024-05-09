@@ -83,24 +83,30 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       assert provider.name == attrs.name
       assert provider.adapter == attrs.adapter
 
-      assert provider.adapter_config == %{
-               "scope" =>
-                 Enum.join(
-                   [
-                     "openid",
-                     "email",
-                     "profile",
-                     "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
-                     "https://www.googleapis.com/auth/admin.directory.group.readonly",
-                     "https://www.googleapis.com/auth/admin.directory.user.readonly"
-                   ],
-                   " "
-                 ),
+      scope =
+        Enum.join(
+          [
+            "openid",
+            "email",
+            "profile",
+            "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+            "https://www.googleapis.com/auth/admin.directory.group.readonly",
+            "https://www.googleapis.com/auth/admin.directory.user.readonly"
+          ],
+          " "
+        )
+
+      assert %{
+               "scope" => ^scope,
                "response_type" => "code",
                "client_id" => "client_id",
-               "client_secret" => "client_secret",
-               "discovery_document_uri" => discovery_document_url
-             }
+               "client_secret" => client_secret,
+               "discovery_document_uri" => ^discovery_document_url
+             } = provider.adapter_config
+
+      assert client_secret
+             |> Base.decode64!()
+             |> Domain.Vault.decrypt!() == "client_secret"
     end
   end
 

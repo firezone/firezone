@@ -67,7 +67,8 @@ defmodule Domain.Config.Definitions do
          :database_pool_size,
          :database_ssl_enabled,
          :database_ssl_opts,
-         :database_parameters
+         :database_parameters,
+         :database_encryption_key
        ]},
       {"Cloud Platform",
        [
@@ -290,6 +291,22 @@ defmodule Domain.Config.Definitions do
   defconfig(:database_parameters, :map,
     default: %{application_name: "firezone-#{Application.spec(:domain, :vsn)}"},
     dump: &Dumper.keyword/1
+  )
+
+  @doc """
+  List of base64-encoded encryption keys that are used to encrypt the database.
+
+  First key will be used as default key and rest are retired ones that
+  can still be used during the key rotation.
+
+  To migrate the encrypted data use `migrate_encryption_keys` boot command or run `Domain.Vault.migrate_keys()`
+  in the iex shell.
+  """
+  defconfig(:database_encryption_keys, {:array, :string},
+    sensitive: true,
+    changeset: &Domain.Repo.Changeset.validate_base64/2,
+    dump: fn values -> Enum.map(values, &Base.decode64!/1) end,
+    default: []
   )
 
   ##############################################

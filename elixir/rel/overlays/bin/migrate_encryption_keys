@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+. "$(dirname -- "$0")/bootstrap"
+exec ./"$APPLICATION_NAME" eval Domain.Vault.migrate_keys

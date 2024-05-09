@@ -29,6 +29,20 @@ config :domain, Domain.Repo,
   migration_timestamps: [type: :timestamptz],
   start_apps_before_migration: [:ssl, :logger_json]
 
+config :domain,
+  cloak_repo: Domain.Repo,
+  cloak_schemas: [
+    Domain.Auth.Provider,
+    Domain.Auth.Identity
+  ]
+
+config :domain, Domain.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: Base.decode64!("h/spvF1P7omufNosGWWTnaC5gjupsAYiK54ZcjWjP3w=")}
+  ]
+
 config :domain, Domain.Tokens,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
   salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"

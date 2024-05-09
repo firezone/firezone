@@ -23,8 +23,9 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
   end
 
   def gather_provider_data(provider, task_supervisor_pid) do
-    endpoint = provider.adapter_config["api_base_url"]
-    access_token = provider.adapter_state["access_token"]
+    provider = Okta.load(provider)
+    endpoint = provider.adapter_config.api_base_url
+    access_token = provider.adapter_state.access_token
 
     async_results =
       DirectorySync.run_async_requests(task_supervisor_pid,

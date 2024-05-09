@@ -90,7 +90,7 @@ defmodule Domain.Fixtures.Auth do
       openid_connect_adapter_config(
         discovery_document_uri:
           "http://localhost:#{bypass.port}/.well-known/openid-configuration",
-        scope: Domain.Auth.Adapters.GoogleWorkspace.Settings.scope() |> Enum.join(" ")
+        scope: Domain.Auth.Adapters.GoogleWorkspace.ProviderConfig.scope() |> Enum.join(" ")
       )
 
     provider =
@@ -108,7 +108,7 @@ defmodule Domain.Fixtures.Auth do
       openid_connect_adapter_config(
         discovery_document_uri:
           "http://localhost:#{bypass.port}/.well-known/openid-configuration",
-        scope: Domain.Auth.Adapters.MicrosoftEntra.Settings.scope() |> Enum.join(" ")
+        scope: Domain.Auth.Adapters.MicrosoftEntra.ProviderConfig.scope() |> Enum.join(" ")
       )
 
     provider =
@@ -128,7 +128,7 @@ defmodule Domain.Fixtures.Auth do
         api_base_url: api_base_url,
         okta_account_domain: api_base_url,
         discovery_document_uri: "#{api_base_url}/.well-known/openid-configuration",
-        scope: Domain.Auth.Adapters.Okta.Settings.scope() |> Enum.join(" ")
+        scope: Domain.Auth.Adapters.Okta.ProviderConfig.scope() |> Enum.join(" ")
       )
 
     provider =
@@ -185,10 +185,10 @@ defmodule Domain.Fixtures.Auth do
     update!(provider,
       disabled_at: nil,
       adapter_state: %{
-        "access_token" => "OIDC_ACCESS_TOKEN",
-        "refresh_token" => "OIDC_REFRESH_TOKEN",
+        "access_token" => encode_secret!("OIDC_ACCESS_TOKEN"),
+        "refresh_token" => encode_secret!("OIDC_REFRESH_TOKEN"),
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
-        "claims" => "openid email profile offline_access"
+        "claims" => %{}
       }
     )
   end
@@ -212,10 +212,10 @@ defmodule Domain.Fixtures.Auth do
     update!(provider,
       disabled_at: nil,
       adapter_state: %{
-        "access_token" => "OIDC_ACCESS_TOKEN",
-        "refresh_token" => "OIDC_REFRESH_TOKEN",
+        "access_token" => encode_secret!("OIDC_ACCESS_TOKEN"),
+        "refresh_token" => encode_secret!("OIDC_REFRESH_TOKEN"),
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
-        "claims" => "openid email profile offline_access"
+        "claims" => %{}
       }
     )
   end
@@ -239,10 +239,10 @@ defmodule Domain.Fixtures.Auth do
     update!(provider,
       disabled_at: nil,
       adapter_state: %{
-        "access_token" => "OIDC_ACCESS_TOKEN",
-        "refresh_token" => "OIDC_REFRESH_TOKEN",
+        "access_token" => encode_secret!("OIDC_ACCESS_TOKEN"),
+        "refresh_token" => encode_secret!("OIDC_REFRESH_TOKEN"),
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
-        "claims" => "openid email profile offline_access"
+        "claims" => %{}
       }
     )
   end
@@ -597,5 +597,10 @@ defmodule Domain.Fixtures.Auth do
 
   def add_permission(%Auth.Subject{} = subject, permission) do
     %{subject | permissions: MapSet.put(subject.permissions, permission)}
+  end
+
+  def encode_secret!(value) do
+    {:ok, value} = Domain.Types.EncryptedString.dump(value)
+    value
   end
 end

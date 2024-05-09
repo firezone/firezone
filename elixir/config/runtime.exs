@@ -18,6 +18,14 @@ if config_env() == :prod do
     ssl_opts: compile_config!(:database_ssl_opts),
     parameters: compile_config!(:database_parameters)
 
+  ciphers =
+    for key <- compile_config!(:database_encryption_keys) do
+      label = Domain.Crypto.hash(:sha1, key) |> String.slice(0, 8)
+      {label, {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: key}}
+    end
+
+  config :domain, Domain.Vault, ciphers: ciphers
+
   config :domain, Domain.Tokens,
     key_base: compile_config!(:tokens_key_base),
     salt: compile_config!(:tokens_salt)

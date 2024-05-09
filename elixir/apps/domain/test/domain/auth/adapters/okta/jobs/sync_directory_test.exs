@@ -229,7 +229,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         OktaDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
       end)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       groups = Actors.Group |> Repo.all()
       assert length(groups) == 2
@@ -268,12 +269,16 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
 
       updated_provider = Repo.get!(Domain.Auth.Provider, provider.id)
       assert updated_provider.last_synced_at != provider.last_synced_at
+
+      assert_receive {:bypass_request, %{request_path: "/api/v1/groups"} = conn}
+      assert {"authorization", "Bearer OIDC_ACCESS_TOKEN"} in conn.req_headers
     end
 
     test "does not crash on endpoint errors", %{bypass: bypass} do
       Bypass.down(bypass)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert Repo.aggregate(Actors.Group, :count) == 0
     end
@@ -323,7 +328,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       OktaDirectory.mock_groups_list_endpoint(bypass, [])
       OktaDirectory.mock_users_list_endpoint(bypass, users)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_identity =
                Repo.get(Domain.Auth.Identity, identity.id)
@@ -652,7 +658,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         one_member
       )
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_group = Repo.get(Domain.Actors.Group, group.id)
       assert updated_group.name == "Group:Engineering"
@@ -744,7 +751,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         end)
       end
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at
@@ -760,7 +768,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         end)
       end
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at

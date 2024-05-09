@@ -1,12 +1,12 @@
-defmodule Domain.Auth.Adapters.UserPass.Password.Changeset do
+defmodule Domain.Auth.Adapters.UserPass.IdentityState.Changeset do
   use Domain, :changeset
-  alias Domain.Auth.Adapters.UserPass.Password
+  alias Domain.Auth.Adapters.UserPass.IdentityState
 
   @fields ~w[password password_confirmation]a
   @min_password_length 12
   @max_password_length 72
 
-  def changeset(%Password{} = struct, attrs) do
+  def changeset(%IdentityState{} = struct, attrs) do
     struct
     |> cast(attrs, @fields)
     |> validate_required(@fields)

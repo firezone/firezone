@@ -23,7 +23,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
   end
 
   def gather_provider_data(provider, task_supervisor_pid) do
-    access_token = provider.adapter_state["access_token"]
+    provider = MicrosoftEntra.load(provider)
+    access_token = provider.adapter_state.access_token
 
     async_results =
       DirectorySync.run_async_requests(task_supervisor_pid,

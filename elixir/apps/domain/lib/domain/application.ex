@@ -16,6 +16,7 @@ defmodule Domain.Application do
     [
       # Core services
       Domain.Repo,
+      Domain.Vault,
       Domain.PubSub,
 
       # Infrastructure services

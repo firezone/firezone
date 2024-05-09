@@ -12,10 +12,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokensTest do
       provider =
         Domain.Fixture.update!(provider, %{
           adapter_state: %{
-            "access_token" => "OIDC_ACCESS_TOKEN",
-            "refresh_token" => "OIDC_REFRESH_TOKEN",
+            "access_token" => Fixtures.Auth.encode_secret!("OIDC_ACCESS_TOKEN"),
+            "refresh_token" => Fixtures.Auth.encode_secret!("OIDC_REFRESH_TOKEN"),
             "expires_at" => DateTime.utc_now() |> DateTime.add(15, :minute),
-            "claims" => "openid email profile offline_access"
+            "claims" => %{}
           }
         })
 
@@ -54,7 +54,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokensTest do
                "access_token" => "MY_ACCESS_TOKEN",
                "claims" => ^claims,
                "expires_at" => expires_at,
-               "refresh_token" => "OIDC_REFRESH_TOKEN",
+               "refresh_token" => refresh_token,
                "userinfo" => %{
                  "email" => "ada@example.com",
                  "email_verified" => true,
@@ -68,7 +68,27 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokensTest do
                }
              } = provider.adapter_state
 
+      assert refresh_token
+             |> Base.decode64!()
+             |> Domain.Vault.decrypt!() == "OIDC_REFRESH_TOKEN"
+
       assert expires_at
+
+      assert_receive {:request, %{request_path: "/oauth/token"} = conn}
+
+      adapter_config =
+        Ecto.embedded_load(
+          Domain.Auth.Adapters.GoogleWorkspace.ProviderConfig,
+          provider.adapter_config,
+          :json
+        )
+
+      assert conn.body_params == %{
+               "client_id" => adapter_config.client_id,
+               "client_secret" => adapter_config.client_secret,
+               "grant_type" => "refresh_token",
+               "refresh_token" => "OIDC_REFRESH_TOKEN"
+             }
     end
 
     test "does not crash when endpoint it not available", %{

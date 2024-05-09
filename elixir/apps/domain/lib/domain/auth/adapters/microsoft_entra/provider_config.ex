@@ -1,4 +1,4 @@
-defmodule Domain.Auth.Adapters.MicrosoftEntra.Settings do
+defmodule Domain.Auth.Adapters.MicrosoftEntra.ProviderConfig do
   use Domain, :schema
 
   @scope ~w[
@@ -15,7 +15,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Settings do
     field :scope, :string, default: Enum.join(@scope, " ")
     field :response_type, :string, default: "code"
     field :client_id, :string
-    field :client_secret, :string
+    field :client_secret, Domain.Types.EncryptedString
     field :discovery_document_uri, :string
   end
 

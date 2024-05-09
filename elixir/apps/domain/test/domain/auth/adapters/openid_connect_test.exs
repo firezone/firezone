@@ -2,7 +2,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
   use Domain.DataCase, async: true
   import Domain.Auth.Adapters.OpenIDConnect
   alias Domain.Auth
-  alias Domain.Auth.Adapters.OpenIDConnect.{PKCE, State}
+  alias Domain.Auth.Adapters.OpenIDConnect.{PKCE, ProviderConfig, ProviderState}
 
   describe "identity_changeset/2" do
     setup do
@@ -11,7 +11,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       {provider, bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      changeset = %Auth.Identity{} |> Ecto.Changeset.change()
+      changeset =
+        %Auth.Identity{}
+        |> Ecto.Changeset.change()
 
       %{
         bypass: bypass,
@@ -104,13 +106,26 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert provider.name == attrs.name
       assert provider.adapter == attrs.adapter
 
-      assert provider.adapter_config == %{
+      assert %{
                "scope" => "openid email profile",
                "response_type" => "code",
                "client_id" => "client_id",
-               "client_secret" => "client_secret",
-               "discovery_document_uri" => discovery_document_url
-             }
+               "client_secret" => client_secret,
+               "discovery_document_uri" => ^discovery_document_url
+             } = provider.adapter_config
+
+      assert client_secret
+             |> Base.decode64!()
+             |> Domain.Vault.decrypt!() == "client_secret"
+
+      assert Ecto.embedded_load(ProviderConfig, provider.adapter_config, :json) ==
+               %Domain.Auth.Adapters.OpenIDConnect.ProviderConfig{
+                 scope: "openid email profile",
+                 response_type: "code",
+                 client_id: "client_id",
+                 client_secret: "client_secret",
+                 discovery_document_uri: discovery_document_url
+               }
     end
   end
 
@@ -173,13 +188,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
   describe "ensure_states_equal/2" do
     test "returns ok when two states are equal" do
-      state = State.new()
+      state = authorization_uri_state()
       assert ensure_states_equal(state, state) == :ok
     end
 
     test "returns error when two states are equal" do
-      state1 = State.new()
-      state2 = State.new()
+      state1 = authorization_uri_state()
+      state2 = authorization_uri_state()
       assert ensure_states_equal(state1, state2) == {:error, :invalid_state}
     end
   end
@@ -557,14 +572,18 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       provider =
         Repo.get(Domain.Auth.Provider, provider.id)
         |> Ecto.Changeset.change(
-          adapter_state: %{"refresh_token" => "foo", "access_token" => "bar"}
+          adapter_state: %{
+            "refresh_token" => Fixtures.Auth.encode_secret!("foo"),
+            "access_token" => Fixtures.Auth.encode_secret!("bar")
+          }
         )
         |> Repo.update!()
 
       assert refresh_access_token(provider) == {:error, :expired}
 
       provider = Repo.get(Domain.Auth.Provider, provider.id)
-      assert provider.adapter_state == %{"access_token" => "bar"}
+      provider = load(provider)
+      assert provider.adapter_state == %ProviderState{access_token: "bar"}
     end
   end
 end
