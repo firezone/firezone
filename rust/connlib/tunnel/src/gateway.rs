@@ -133,9 +133,12 @@ where
 
         let peer = self.role_state.peers.get_mut(&client)?;
 
-        for address in resource.addresses() {
-            peer.add_resource(address, resource.id(), resource.filters(), expires_at);
-        }
+        peer.add_resource(
+            resource.addresses(),
+            resource.id(),
+            resource.filters(),
+            expires_at,
+        );
 
         tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
@@ -151,6 +154,12 @@ where
         }
 
         None
+    }
+
+    pub fn update_resource(&mut self, resource: ResourceDescription) {
+        for peer in self.role_state.peers.iter_mut() {
+            peer.update_resource(&resource);
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource, %client))]
@@ -190,9 +199,7 @@ where
     ) {
         let mut peer = ClientOnGateway::new(client_id, &ips);
 
-        for address in resource_addresses {
-            peer.add_resource(address, resource, filters.clone(), expires_at);
-        }
+        peer.add_resource(resource_addresses, resource, filters, expires_at);
 
         self.role_state.peers.insert(peer, &ips);
     }

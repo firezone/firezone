@@ -30,7 +30,7 @@ export default function SummaryCard({
         <span className="text-sm font-semibold">{date}</span>
       </div>
       <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-800 ">
-        {title}
+        <Link href={href}>{title}</Link>
       </h2>
       <div className="mb-5 font-medium text-neutral-800 ">{children}</div>
       <div className="flex justify-between items-center">
@@ -42,7 +42,7 @@ export default function SummaryCard({
             src={authorAvatarSrc}
             alt={authorName + " avatar"}
           />
-          <span className="font-medium ">{authorName}</span>
+          <span className="font-medium">{authorName}</span>
         </div>
         <ActionLink
           href={href}

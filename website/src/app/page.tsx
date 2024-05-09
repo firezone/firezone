@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 function ActionButtons() {
   return (
-    <div className="w-full max-w-screen-sm flex justify-between mt-8">
+    <div className="w-full max-w-screen-sm flex space-x-2 justify-between mt-8">
       <button
         type="button"
         className="w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
