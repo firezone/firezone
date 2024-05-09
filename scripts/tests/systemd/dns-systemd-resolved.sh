@@ -6,6 +6,14 @@ source "./scripts/tests/lib.sh"
 BINARY_NAME=firezone-linux-client
 SERVICE_NAME=firezone-client-headless
 
+debug_exit() {
+    echo "Bailing out. Waiting a couple seconds for things to settle..."
+    sleep 5
+    resolvectl dns tun-firezone
+    systemctl status "$SERVICE_NAME"
+    exit 1
+}
+
 # Copy the Linux Client out of its container
 docker compose exec client cat firezone-linux-client > "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
@@ -22,6 +30,9 @@ HTTPBIN=dns.httpbin
 DOCKER_IFACE="docker0"
 FZ_IFACE="tun-firezone"
 
+echo "# Make sure gateway can reach httpbin by DNS"
+gateway sh -c "curl --fail $HTTPBIN/get"
+
 echo "# Accessing a resource should fail before the client is up"
 # Force curl to try the Firezone interface. I can't block off the Docker interface yet
 # because it may be needed for the client to reach the portal.
@@ -30,9 +41,9 @@ curl --interface "$FZ_IFACE" $HTTPBIN/get && exit 1
 echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
 stat /usr/bin/firezone-linux-client
-sudo systemctl start "$SERVICE_NAME" || systemctl status "$SERVICE_NAME"
+sudo systemctl start "$SERVICE_NAME" || debug_exit
 resolvectl dns tun-firezone
-resolvectl query "$HTTPBIN"
+resolvectl query "$HTTPBIN" || debug_exit
 
 # Accessing a resource should succeed after the client is up
 # Block off Docker's DNS.
