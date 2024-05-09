@@ -10,18 +10,15 @@ use super::ResourceId;
 
 // TODO: decide if we keep the same ResourceDescription message or we separate into a non-deserializable thing
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default,
+)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub enum Status {
+    #[default]
     Unknown,
     Online,
     Offline,
-}
-
-impl Default for Status {
-    fn default() -> Self {
-        Status::Unknown
-    }
 }
 
 /// Description of a resource that maps to a DNS record.
