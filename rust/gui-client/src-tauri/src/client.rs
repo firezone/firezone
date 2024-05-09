@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Parser};
-use elevation::FIREZONE_GROUP;
+use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
 
 mod about;

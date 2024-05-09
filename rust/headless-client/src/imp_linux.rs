@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
+use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
@@ -57,7 +57,7 @@ impl Signals {
     }
 }
 
-pub(crate) fn default_token_path() -> PathBuf {
+pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
         .join("token")
@@ -145,8 +145,6 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
-///
-/// Pub because both the headless Client and GUI Client need this.
 pub fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
@@ -193,6 +191,13 @@ pub(crate) fn run_ipc_service(
 ) -> Result<()> {
     tracing::info!("run_ipc_service");
     rt.block_on(async { ipc_listen(cli).await })
+}
+
+pub fn firezone_group() -> Result<nix::unistd::Group> {
+    let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
+        .context("can't get group by name")?
+        .context("`{FIREZONE_GROUP}` group must exist on the system")?;
+    Ok(group)
 }
 
 async fn ipc_listen(cli: Cli) -> Result<()> {
