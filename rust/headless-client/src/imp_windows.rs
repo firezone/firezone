@@ -22,17 +22,17 @@ use windows_service::{
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
-pub struct Signals {
+pub(crate) struct Signals {
     sigint: tokio::signal::windows::CtrlC,
 }
 
 impl Signals {
-    pub fn new() -> Result<Self> {
+    pub(crate) fn new() -> Result<Self> {
         let sigint = tokio::signal::windows::ctrl_c()?;
         Ok(Self { sigint })
     }
 
-    pub fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(super::SignalKind::Interrupt);
         }
@@ -42,12 +42,12 @@ impl Signals {
 
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
-pub fn check_token_permissions(_path: &Path) -> Result<()> {
+pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     // TODO: Make sure the token is only readable by admin / our service user on Windows
     Ok(())
 }
 
-pub fn default_token_path() -> std::path::PathBuf {
+pub(crate) fn default_token_path() -> std::path::PathBuf {
     // TODO: System-wide default token path for Windows
     PathBuf::from("token.txt")
 }
@@ -172,6 +172,9 @@ async fn ipc_listen(mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
     Ok(())
 }
 
+/// Get the underlying system resolvers, e.g. the LAN gateway or Cloudflare
+///
+/// pub because it's shared between the headless and GUI Clients
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
