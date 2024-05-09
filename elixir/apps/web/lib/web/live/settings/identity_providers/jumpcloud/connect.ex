@@ -45,7 +45,13 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Connect do
       with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject),
            {:ok, _identity} <-
              JumpCloud.verify_and_upsert_identity(subject.actor, provider, payload),
-           attrs = %{adapter_state: %{status: :connected}, disabled_at: nil},
+           attrs = %{
+             adapter_state: %{status: :connected},
+             disabled_at: nil,
+             last_syncs_failed: 0,
+             last_sync_error: nil,
+             sync_disabled_at: nil
+           },
            {:ok, _provider} <- Domain.Auth.update_provider(provider, attrs, subject) do
         redirect(conn,
           to: ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider_id}"

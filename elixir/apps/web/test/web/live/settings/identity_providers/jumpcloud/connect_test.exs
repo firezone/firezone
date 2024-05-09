@@ -146,71 +146,70 @@ defmodule Web.Live.Settings.IdentityProviders.JumpCloud.Connect do
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
-    ## TODO: Re-work this test since the API key is hard coded/long lived for JumpCloud API
-    # test "resets the sync error when IdP is reconnected", %{
-    #  account: account,
-    #  conn: conn
-    # } do
-    #  {provider, bypass} =
-    #    Fixtures.Auth.start_and_create_jumpcloud_provider(account: account)
+    test "resets the sync error when IdP is reconnected", %{
+      account: account,
+      conn: conn
+    } do
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_jumpcloud_provider(account: account)
 
-    #  provider = Fixtures.Auth.fail_provider_sync(provider)
+      provider = Fixtures.Auth.fail_provider_sync(provider)
 
-    #  actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    #  identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
 
-    #  redirected_conn =
-    #    conn
-    #    |> authorize_conn(identity)
-    #    |> assign(:account, account)
-    #    |> get(
-    #      ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}/redirect",
-    #      %{}
-    #    )
+      redirected_conn =
+        conn
+        |> authorize_conn(identity)
+        |> assign(:account, account)
+        |> get(
+          ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}/redirect",
+          %{}
+        )
 
-    #  sub = Ecto.UUID.generate()
+      sub = Ecto.UUID.generate()
 
-    #  {token, _claims} =
-    #    Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
-    #      "oid" => Ecto.UUID.generate(),
-    #      "sub" => sub
-    #    })
+      {token, _claims} =
+        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
+          "oid" => Ecto.UUID.generate(),
+          "sub" => sub
+        })
 
-    #  Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-    #  Mocks.OpenIDConnect.expect_userinfo(bypass, %{"sub" => sub})
+      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
+      Mocks.OpenIDConnect.expect_userinfo(bypass, %{"sub" => sub})
 
-    #  cookie_key = "fz_auth_state_#{provider.id}"
-    #  redirected_conn = fetch_cookies(redirected_conn)
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
 
-    #  {_params, state, _verifier} =
-    #    redirected_conn.cookies[cookie_key]
-    #    |> :erlang.binary_to_term([:safe])
+      {_params, state, _verifier} =
+        redirected_conn.cookies[cookie_key]
+        |> :erlang.binary_to_term([:safe])
 
-    #  %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
-    #  conn =
-    #    conn
-    #    |> authorize_conn(identity)
-    #    |> assign(:account, account)
-    #    |> put_req_cookie(cookie_key, signed_state)
-    #    |> put_session(:foo, "bar")
-    #    |> put_session(:preferred_locale, "en_US")
-    #    |> get(
-    #      ~p"/#{account.id}/settings/identity_providers/jumpcloud/#{provider.id}/handle_callback",
-    #      %{
-    #        "state" => state,
-    #        "code" => "MyFakeCode"
-    #      }
-    #    )
+      conn =
+        conn
+        |> authorize_conn(identity)
+        |> assign(:account, account)
+        |> put_req_cookie(cookie_key, signed_state)
+        |> put_session(:foo, "bar")
+        |> put_session(:preferred_locale, "en_US")
+        |> get(
+          ~p"/#{account.id}/settings/identity_providers/jumpcloud/#{provider.id}/handle_callback",
+          %{
+            "state" => state,
+            "code" => "MyFakeCode"
+          }
+        )
 
-    #  assert redirected_to(conn) ==
-    #           ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}"
+      assert redirected_to(conn) ==
+               ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}"
 
-    #  assert provider = Repo.get(Domain.Auth.Provider, provider.id)
-    #  assert provider.last_sync_error == nil
-    #  assert provider.last_syncs_failed == 0
-    #  assert provider.sync_disabled_at == nil
-    # end
+      assert provider = Repo.get(Domain.Auth.Provider, provider.id)
+      assert provider.last_sync_error == nil
+      assert provider.last_syncs_failed == 0
+      assert provider.sync_disabled_at == nil
+    end
 
     test "redirects to the actors index when credentials are valid and return path is empty", %{
       account: account,
