@@ -40,6 +40,9 @@ firewall, but still need to access it from external networks like the internet.
 1. Select `DNS` or `IP` as the Resource type depending on how you plan to access
    the database. If you're using a DNS name, the address should be resolvable by
    all of the Gateways in your Site.
+1. Optionally, add a traffic restriction for `TCP/5432` (or the port your
+   Postgres database is running on) to restrict access to the Postgres service
+   only (Team and Enterprise plans).
 1. Enter the address of the Postgres database you want to secure access to.
 
 <Link
