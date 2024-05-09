@@ -1967,6 +1967,7 @@ dependencies = [
  "url",
 ]
 
+[[package]]
 name = "firezone-relay"
 version = "1.0.4"
 dependencies = [
