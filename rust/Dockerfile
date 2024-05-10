@@ -62,10 +62,13 @@ RUN set -xe \
 
 COPY ./docker-init.sh .
 
-## iptables are needed only by gateway for masquerading
 ARG PACKAGE
+## iptables are needed only by gateway for masquerading
 RUN set -xe \
   && \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
+## For backwards compatibility, this can be removed after PR #4942 merges
+RUN set -xe \
+  && \[ "${PACKAGE}" = "firezone-headless-client" ] && ln firezone-headless-client firezone-linux-client
 
 ENTRYPOINT ["docker-init.sh"]
 
