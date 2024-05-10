@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Test Linux DNS control using `systemd-resolved` directly inside the CI runner
+# This needs Docker Compose so we can run httpbin.
 
 source "./scripts/tests/lib.sh"
 
@@ -15,7 +16,9 @@ debug_exit() {
 }
 
 # Copy the Linux Client out of its container
-docker compose exec client cat "$BINARY_NAME" > "$BINARY_NAME"
+docker compose exec client cat "$BINARY_NAME" > "$BINARY_NAME" ||
+docker compose exec client cat "firezone-linux-client" > "$BINARY_NAME" ||
+exit 1
 chmod u+x "$BINARY_NAME"
 sudo chown root:root "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
