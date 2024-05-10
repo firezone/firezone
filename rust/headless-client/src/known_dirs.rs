@@ -7,17 +7,12 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub use imp::{ipc_service_logs, logs, runtime, session, settings};
+pub use imp::{logs, runtime, session, settings};
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-mod imp {
+pub mod imp {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;
-
-    /// Unimplemented. systemd injects this on LInux
-    pub fn ipc_service_logs() -> Option<PathBuf> {
-        unimplemented!()
-    }
 
     /// e.g. `/home/alice/.cache/dev.firezone.client/data/logs`
     ///
@@ -52,7 +47,7 @@ mod imp {
 }
 
 #[cfg(target_os = "windows")]
-mod imp {
+pub mod imp {
     use connlib_shared::BUNDLE_ID;
     use known_folders::{get_known_folder_path, KnownFolder};
     use std::path::PathBuf;

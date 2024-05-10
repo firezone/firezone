@@ -82,7 +82,7 @@ const SERVICE_RUST_LOG: &str = "info";
 fn fallible_windows_service_run() -> Result<()> {
     let cli = Cli::parse();
     let log_path =
-        crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
+        crate::known_dirs::imp::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
     let (layer, _handle) = file_logger::layer(&log_path);
     let filter = EnvFilter::from_str(SERVICE_RUST_LOG)?;
