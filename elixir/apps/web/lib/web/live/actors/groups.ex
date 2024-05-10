@@ -109,6 +109,7 @@ defmodule Web.Actors.EditGroups do
               <div class="flex justify-end">
                 <.button
                   :if={member?(@current_group_ids, group, @added, @removed)}
+                  size="xs"
                   phx-click={:remove_group}
                   phx-value-id={group.id}
                   phx-value-name={group.name}
@@ -117,6 +118,7 @@ defmodule Web.Actors.EditGroups do
                 </.button>
                 <.button
                   :if={not member?(@current_group_ids, group, @added, @removed)}
+                  size="xs"
                   phx-click={:add_group}
                   phx-value-id={group.id}
                   phx-value-name={group.name}
