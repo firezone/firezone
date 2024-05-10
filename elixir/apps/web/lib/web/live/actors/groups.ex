@@ -109,6 +109,7 @@ defmodule Web.Actors.EditGroups do
               <div class="flex justify-end">
                 <.button
                   :if={member?(@current_group_ids, group, @added, @removed)}
+                  size="xs"
                   phx-click={:remove_group}
                   phx-value-id={group.id}
                   phx-value-name={group.name}
@@ -117,6 +118,7 @@ defmodule Web.Actors.EditGroups do
                 </.button>
                 <.button
                   :if={not member?(@current_group_ids, group, @added, @removed)}
+                  size="xs"
                   phx-click={:add_group}
                   phx-value-id={group.id}
                   phx-value-name={group.name}
@@ -126,9 +128,14 @@ defmodule Web.Actors.EditGroups do
               </div>
             </:col>
           </.live_table>
-          <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
-            Save
-          </.button>
+          <div class="flex justify-between items-center">
+            <p class="px-4 text-sm text-gray-500">
+              Note: Users will always belong to the <strong>Everyone</strong> group.
+            </p>
+            <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
+              Save
+            </.button>
+          </div>
         </div>
       </:content>
     </.section>
@@ -218,7 +225,12 @@ defmodule Web.Actors.EditGroups do
     remove = if removed_names != [], do: "remove #{Enum.join(removed_names, ", ")}"
     change = [add, remove] |> Enum.reject(&is_nil/1) |> Enum.join(" and ")
 
-    "Are you sure you want to #{change}?"
+    if change == "" do
+      # Don't show confirmation message if no changes were made
+      nil
+    else
+      "Are you sure you want to #{change}?"
+    end
   end
 
   defp remove_non_editable_memberships(memberships, editable_groups) do
