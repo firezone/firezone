@@ -128,7 +128,10 @@ defmodule Web.Actors.EditGroups do
               </div>
             </:col>
           </.live_table>
-          <div class="flex justify-end">
+          <div class="flex justify-between items-center">
+            <p class="px-4 text-sm text-gray-500">
+              Note: Users will always belong to the <strong>Everyone</strong> group.
+            </p>
             <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
               Save
             </.button>
@@ -222,7 +225,12 @@ defmodule Web.Actors.EditGroups do
     remove = if removed_names != [], do: "remove #{Enum.join(removed_names, ", ")}"
     change = [add, remove] |> Enum.reject(&is_nil/1) |> Enum.join(" and ")
 
-    "Are you sure you want to #{change}?"
+    if change == "" do
+      # Don't show confirmation message if no changes were made
+      nil
+    else
+      "Are you sure you want to #{change}?"
+    end
   end
 
   defp remove_non_editable_memberships(memberships, editable_groups) do
