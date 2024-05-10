@@ -17,6 +17,8 @@ use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{future, net::IpAddr, path::PathBuf, task::Poll};
 use tokio::sync::mpsc;
+use tracing::subscriber::set_global_default;
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
 
 use imp::default_token_path;
 
@@ -313,4 +315,15 @@ fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
 
     tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token))
+}
+
+/// Sets up logging for stderr only, with INFO level by default
+pub fn debug_command_setup() -> Result<()> {
+    let filter = EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+        .from_env_lossy();
+    let layer = fmt::layer().with_filter(filter);
+    let subscriber = Registry::default().with(layer);
+    set_global_default(subscriber)?;
+    Ok(())
 }
