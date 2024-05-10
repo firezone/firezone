@@ -53,7 +53,7 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    // Needed to preserver CLI arg compatibility
+    // Needed to preserve CLI arg compatibility
     // TODO: Remove
     #[command(subcommand)]
     _command: Option<Cmd>,
