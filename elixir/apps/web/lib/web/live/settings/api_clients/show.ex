@@ -147,6 +147,7 @@ defmodule Web.Settings.ApiClients.Show do
           </:col>
           <:action :let={token}>
             <.delete_button
+              size="xs"
               phx-click="revoke_token"
               data-confirm="Are you sure you want to revoke this token?"
               phx-value-id={token.id}
