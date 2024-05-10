@@ -349,7 +349,9 @@ end
 
 {:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
 {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
-{:ok, synced_group} = Actors.create_group(%{name: "Synced Group with long name", type: :static}, admin_subject)
+
+{:ok, synced_group} =
+  Actors.create_group(%{name: "Synced Group with long name", type: :static}, admin_subject)
 
 for group <- [eng_group, finance_group, synced_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")
