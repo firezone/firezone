@@ -1,6 +1,6 @@
 //! Client related messages that are needed within connlib
 
-use std::{borrow::Cow, collections::HashSet, str::FromStr};
+use std::{collections::HashSet, str::FromStr};
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -93,14 +93,6 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.name,
             ResourceDescription::Cidr(r) => &r.name,
-        }
-    }
-
-    /// What the GUI clients should paste to the clipboard, e.g. `https://github.com/firezone`
-    pub fn pastable(&self) -> Cow<'_, str> {
-        match self {
-            ResourceDescription::Dns(r) => Cow::from(&r.address),
-            ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
         }
     }
 

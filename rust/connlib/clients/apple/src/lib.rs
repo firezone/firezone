@@ -2,7 +2,7 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Callbacks::ResourceDescription, Cidrv4, Cidrv6, Error,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
     LoginUrl, Session, Sockets,
 };
 use secrecy::SecretString;

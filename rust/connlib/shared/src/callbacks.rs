@@ -1,5 +1,6 @@
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -41,14 +42,14 @@ impl From<Ipv6Network> for Cidrv6 {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Status {
     Unknown,
     Online,
     Offline,
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
@@ -69,9 +70,38 @@ impl ResourceDescription {
             }
         }
     }
+
+    pub fn name(&self) -> &str {
+        match self {
+            ResourceDescription::Dns(r) => &r.name,
+            ResourceDescription::Cidr(r) => &r.name,
+        }
+    }
+
+    pub fn status(&self) -> Status {
+        match self {
+            ResourceDescription::Dns(r) => r.status,
+            ResourceDescription::Cidr(r) => r.status,
+        }
+    }
+
+    pub fn id(&self) -> ResourceId {
+        match self {
+            ResourceDescription::Dns(r) => r.id,
+            ResourceDescription::Cidr(r) => r.id,
+        }
+    }
+
+    /// What the GUI clients should paste to the clipboard, e.g. `https://github.com/firezone`
+    pub fn pastable(&self) -> Cow<'_, str> {
+        match self {
+            ResourceDescription::Dns(r) => Cow::from(&r.address),
+            ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+        }
+    }
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -105,7 +135,7 @@ impl ResourceDescriptionDns {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,

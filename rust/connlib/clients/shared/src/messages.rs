@@ -103,7 +103,7 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        client::{GatewayGroup, ResourceDescriptionCidr, ResourceDescriptionDns, Status},
+        client::{GatewayGroup, ResourceDescriptionCidr, ResourceDescriptionDns},
         DnsServer, IpDnsServer, Stun, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
