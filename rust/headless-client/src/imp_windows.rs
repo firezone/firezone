@@ -82,7 +82,7 @@ const SERVICE_RUST_LOG: &str = "info";
 fn fallible_windows_service_run() -> Result<()> {
     let cli = Cli::parse();
     let log_path =
-        crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
+        crate::known_dirs::imp::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
     let (layer, _handle) = file_logger::layer(&log_path);
     let filter = EnvFilter::from_str(SERVICE_RUST_LOG)?;
@@ -104,21 +104,21 @@ fn fallible_windows_service_run() -> Result<()> {
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::UserEvent(_) => ServiceControlHandlerResult::NoError,
-            ServiceControl::Continue => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindAdd => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindDisable => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindEnable => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindRemove => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::ParamChange => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::Pause => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::Preshutdown => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::Shutdown => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::HardwareProfileChange(_) => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::PowerEvent(_) => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::SessionChange(_) => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::TimeChange => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
-            _ => todo!(),
+            ServiceControl::Continue
+            | ServiceControl::NetBindAdd
+            | ServiceControl::NetBindDisable
+            | ServiceControl::NetBindEnable
+            | ServiceControl::NetBindRemove
+            | ServiceControl::ParamChange
+            | ServiceControl::Pause
+            | ServiceControl::Preshutdown
+            | ServiceControl::Shutdown
+            | ServiceControl::HardwareProfileChange(_)
+            | ServiceControl::PowerEvent(_)
+            | ServiceControl::SessionChange(_)
+            | ServiceControl::TimeChange
+            | ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
+            _ => ServiceControlHandlerResult::NotImplemented,
         }
     };
 

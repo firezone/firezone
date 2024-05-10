@@ -45,14 +45,6 @@ Restrictions are enforced at the **Gateway** level. If a user tries to access a
 service on the host not allowed by the restriction, the Gateway will simply drop
 the traffic, preventing it from ever reaching the service in question.
 
-One popular use case for traffic restrictions is segmenting access to individual
-services on a host. To do this, simply create a Resource for each service on the
-host you want to allow access to, and add the appropriate traffic restrictions
-to each one. Create an Resource with the `TCP/22` restriction to allow SSH
-access for your DevOps team, then add another Resource with the `TCP/443`
-restriction to allow access to an HTTPS service for the rest of your
-organization.
-
 Traffic restrictions are supported on all Resource types, including DNS, IP, and
 CIDR-based Resources, and can be enabled on the Team and Enterprise plans.
 
