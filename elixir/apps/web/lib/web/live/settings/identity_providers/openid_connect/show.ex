@@ -95,7 +95,11 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Type</:label>
-              <:value>OpenID Connect</:value>
+              <:value>
+                <span class="flex items-center gap-x-1">
+                  <.provider_icon adapter={@provider.adapter} class="w-3.5 h-3.5" /> OpenID Connect
+                </span>
+              </:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Response Type</:label>
