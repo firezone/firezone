@@ -113,6 +113,39 @@ defmodule Domain.Repo.Changeset do
 
   # Validations
 
+  def validate_list(
+        %Ecto.Changeset{} = changeset,
+        field,
+        element_type,
+        fun \\ fn changeset, _field -> changeset end
+      ) do
+    validate_change(changeset, field, fn _current_field, value ->
+      cond do
+        not is_list(value) ->
+          [{field, "must be a list"}]
+
+        Enum.empty?(value) ->
+          []
+
+        true ->
+          value
+          |> Enum.flat_map(fn value ->
+            {%{}, %{value: element_type}}
+            |> Ecto.Changeset.cast(%{value: value}, [:value])
+            |> fun.(:value)
+            |> Ecto.Changeset.apply_action(:insert)
+            |> case do
+              {:ok, _} ->
+                []
+
+              {:error, %{errors: errors}} ->
+                [{field, errors[:value]}]
+            end
+          end)
+      end
+    end)
+  end
+
   def validate_email(%Ecto.Changeset{} = changeset, field) do
     changeset
     |> validate_format(field, ~r/^[^\s]+@[^\s]+$/, message: "is an invalid email address")

@@ -1,7 +1,7 @@
 defmodule Domain.Policies do
   alias Domain.{Repo, PubSub}
-  alias Domain.{Auth, Accounts, Actors, Resources, Flows}
-  alias Domain.Policies.{Authorizer, Policy}
+  alias Domain.{Auth, Accounts, Actors, Clients, Resources, Flows}
+  alias Domain.Policies.{Authorizer, Policy, Constraint}
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -163,6 +163,18 @@ defmodule Domain.Policies do
       end)
 
     {:ok, policies}
+  end
+
+  def ensure_client_conforms_policy_constraints(%Clients.Client{}, %Policy{constraints: []}) do
+    :ok
+  end
+
+  def ensure_client_conforms_policy_constraints(%Clients.Client{} = client, %Policy{} = policy) do
+    if Constraint.Evaluator.conforms?(policy.constraints, client) do
+      :ok
+    else
+      {:error, :unauthorized}
+    end
   end
 
   def ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do

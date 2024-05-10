@@ -1,5 +1,4 @@
 defmodule Domain.PoliciesTest do
-  alias Web.Policies
   use Domain.DataCase, async: true
   import Domain.Policies
   alias Domain.Policies
@@ -230,6 +229,74 @@ defmodule Domain.PoliciesTest do
       assert {:ok, policy} = create_policy(attrs, subject)
       assert policy.actor_group_id == actor_group.id
       assert policy.resource_id == resource.id
+    end
+
+    test "creates a policy with conditions", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      attrs = %{
+        actor_group_id: actor_group.id,
+        resource_id: resource.id,
+        constraints: [
+          %{
+            property: :remote_ip,
+            operator: :is_in_cidr,
+            values: ["10.10.0.0/24"]
+          },
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_in,
+            values: ["US"]
+          },
+          %{
+            property: :provider_id,
+            operator: :is_not_in,
+            values: ["3c712b5d-b1af-4b5a-9f33-aa3d1a4dc296"]
+          },
+          %{
+            property: :current_utc_datetime,
+            operator: :is_in_day_of_week_time_ranges,
+            values: [
+              "M/13:00:00-15:00:00,19:00:00-22:00:00",
+              "F/08:00:00-20:00:00",
+              "S/true"
+            ]
+          }
+        ]
+      }
+
+      assert {:ok, policy} = create_policy(attrs, subject)
+
+      assert policy.constraints == [
+               %Policies.Constraint{
+                 property: :remote_ip,
+                 operator: :is_in_cidr,
+                 values: ["10.10.0.0/24"]
+               },
+               %Policies.Constraint{
+                 property: :remote_ip_location_region,
+                 operator: :is_in,
+                 values: ["US"]
+               },
+               %Policies.Constraint{
+                 property: :provider_id,
+                 operator: :is_not_in,
+                 values: ["3c712b5d-b1af-4b5a-9f33-aa3d1a4dc296"]
+               },
+               %Policies.Constraint{
+                 property: :current_utc_datetime,
+                 operator: :is_in_day_of_week_time_ranges,
+                 values: [
+                   "M/13:00:00-15:00:00,19:00:00-22:00:00",
+                   "F/08:00:00-20:00:00",
+                   "S/true"
+                 ]
+               }
+             ]
     end
 
     test "broadcasts an account message when policy is created", %{
@@ -893,6 +960,44 @@ defmodule Domain.PoliciesTest do
     } do
       subject = Fixtures.Auth.create_subject()
       assert delete_policies_for(resource, subject) == {:ok, []}
+    end
+  end
+
+  describe "ensure_client_conforms_policy_constraints/2" do
+    test "returns :ok when client conforms to policy constraints", %{} do
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip_location_region: "US"
+      }
+
+      policy = %Policies.Policy{
+        constraints: [
+          %Policies.Constraint{
+            property: :remote_ip_location_region,
+            operator: :is_in,
+            values: ["US"]
+          }
+        ]
+      }
+
+      assert ensure_client_conforms_policy_constraints(client, policy) == :ok
+    end
+
+    test "returns error when client conforms to policy constraints", %{} do
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip_location_region: "US"
+      }
+
+      policy = %Policies.Policy{
+        constraints: [
+          %Policies.Constraint{
+            property: :remote_ip_location_region,
+            operator: :is_in,
+            values: ["CA"]
+          }
+        ]
+      }
+
+      assert ensure_client_conforms_policy_constraints(client, policy) == {:error, :unauthorized}
     end
   end
 end
