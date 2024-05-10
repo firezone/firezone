@@ -35,7 +35,7 @@ Once you have a token, you can start the Linux Client using the following
 command:
 
 ```
-sudo FIREZONE_TOKEN=<TOKEN> ./linux-client-x64
+sudo FIREZONE_TOKEN=<TOKEN> ./headless-client-x64
 ```
 
 Set some environment variables to configure it:
@@ -46,7 +46,7 @@ export FIREZONE_ID="some unique identifier"
 export FIREZONE_TOKEN=<TOKEN>
 export DNS_CONTROL="systemd-resolved" # or "etc-resolv-conf"
 export LOG_DIR="./"
-sudo -E ./linux-client-x64
+sudo -E ./headless-client-x64
 ```
 
 See [below](#environment-variable-reference) for a full list of environment
@@ -55,9 +55,9 @@ variables.
 A sample output of the help command is shown below:
 
 ```
-> sudo ./linux-client-x64 -h
+> sudo ./headless-client-x64 -h
 
-Usage: linux-client-x64 [OPTIONS] [COMMAND]
+Usage: headless-client [OPTIONS] [COMMAND]
 
 Commands:
   standalone  Act as a CLI-only Client

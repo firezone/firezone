@@ -1968,14 +1968,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-linux-client"
-version = "1.0.4"
-dependencies = [
- "anyhow",
- "firezone-headless-client",
-]
-
-[[package]]
 name = "firezone-relay"
 version = "1.0.4"
 dependencies = [
