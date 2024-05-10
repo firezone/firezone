@@ -1,6 +1,6 @@
 use crate::messages::{
     client::ResourceDescriptionCidr,
-    client::{GatewayGroup, ResourceDescriptionDns, SiteId, Status},
+    client::{GatewayGroup, ResourceDescription, ResourceDescriptionDns, SiteId, Status},
     ClientId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -11,50 +11,73 @@ use proptest::{
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
+pub fn resource(gateway_groups: Vec<GatewayGroup>) -> impl Strategy<Value = ResourceDescription> {
+    any::<bool>().prop_flat_map(move |is_dns| {
+        if is_dns {
+            dns_resource_with_groups(gateway_groups.clone())
+                .prop_map(|r| ResourceDescription::Dns(r))
+                .boxed()
+        } else {
+            cidr_resource_with_groups(8, gateway_groups.clone())
+                .prop_map(|r| ResourceDescription::Cidr(r))
+                .boxed()
+        }
+    })
+}
+
+pub fn dns_resource_with_groups(
+    gateway_groups: Vec<GatewayGroup>,
+) -> impl Strategy<Value = ResourceDescriptionDns> {
     (
         resource_id(),
         resource_name(),
         dns_resource_address(),
-        gateway_groups(),
         address_description(),
         any::<Status>(),
     )
-        .prop_map(
-            |(id, name, address, gateway_groups, address_description, status)| {
-                ResourceDescriptionDns {
-                    id,
-                    address,
-                    name,
-                    gateway_groups,
-                    address_description,
-                    status,
-                }
-            },
-        )
+        .prop_map(move |(id, name, address, address_description, status)| {
+            ResourceDescriptionDns {
+                id,
+                address,
+                name,
+                gateway_groups: gateway_groups.clone(),
+                address_description,
+                status,
+            }
+        })
 }
 
-pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
+pub fn cidr_resource_with_groups(
+    host_mask_bits: usize,
+    gateway_groups: Vec<GatewayGroup>,
+) -> impl Strategy<Value = ResourceDescriptionCidr> {
     (
         resource_id(),
         resource_name(),
         ip_network(host_mask_bits),
-        gateway_groups(),
         address_description(),
         any::<Status>(),
     )
-        .prop_map(
-            |(id, name, address, gateway_groups, address_description, status)| {
-                ResourceDescriptionCidr {
-                    id,
-                    address,
-                    name,
-                    gateway_groups,
-                    address_description,
-                    status,
-                }
-            },
-        )
+        .prop_map(move |(id, name, address, address_description, status)| {
+            ResourceDescriptionCidr {
+                id,
+                address,
+                name,
+                gateway_groups: gateway_groups.clone(),
+                address_description,
+                status,
+            }
+        })
+}
+
+pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
+    gateway_groups().prop_flat_map(|gateway_groups| dns_resource_with_groups(gateway_groups))
+}
+
+pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    gateway_groups().prop_flat_map(move |gateway_groups| {
+        cidr_resource_with_groups(host_mask_bits, gateway_groups)
+    })
 }
 
 pub fn address_description() -> impl Strategy<Value = String> {

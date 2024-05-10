@@ -1,14 +1,15 @@
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
+use connlib_shared::callbacks::Status;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
-use connlib_shared::messages::client::Status;
+use connlib_shared::messages::client::{GatewayGroup, SiteId};
 use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, client::ResourceDescriptionDns,
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
     IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{Callbacks, Dname, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, Callbacks, Dname, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -180,8 +181,9 @@ where
             return;
         };
 
-        self.role_state
-            .update_resources_status(&resource, Status::Offline);
+        for GatewayGroup { id, .. } in resource.gateway_groups() {
+            self.role_state.sites_status.insert(*id, Status::Offline);
+        }
 
         self.callbacks
             .on_update_resources(self.role_state.resources());
@@ -204,7 +206,9 @@ where
         resource_id: ResourceId,
         gateway_id: GatewayId,
         relays: Vec<Relay>,
+        site_id: SiteId,
     ) -> connlib_shared::Result<Request> {
+        self.role_state.gateways_site.insert(gateway_id, site_id);
         self.role_state.create_or_reuse_connection(
             resource_id,
             gateway_id,
@@ -290,6 +294,9 @@ pub struct ClientState {
     next_dns_refresh: Option<Instant>,
 
     system_resolvers: Vec<IpAddr>,
+
+    gateways_site: HashMap<GatewayId, SiteId>,
+    sites_status: HashMap<SiteId, Status>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -319,19 +326,41 @@ impl ClientState {
             next_dns_refresh: Default::default(),
             node: ClientNode::new(private_key),
             system_resolvers: Default::default(),
+            sites_status: Default::default(),
+            gateways_site: Default::default(),
         }
     }
 
-    pub(crate) fn resources(&self) -> Vec<ResourceDescription> {
-        self.resource_ids.values().sorted().cloned().collect_vec()
+    pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
+        self.resource_ids
+            .values()
+            .sorted()
+            .cloned()
+            .map(|r| {
+                let status = self.status(&r);
+                callbacks::ResourceDescription::with_status(r, status)
+            })
+            .collect_vec()
     }
 
-    // This updates the status for all resources sharing the same gateway groups
-    fn update_resources_status(&mut self, resource: &ResourceDescription, status: Status) {
-        self.resource_ids
-            .values_mut()
-            .filter(|r| r.gateway_groups() == resource.gateway_groups())
-            .for_each(|r| *r.status_mut() = status);
+    fn status(&self, resource: &ResourceDescription) -> Status {
+        if resource.gateway_groups().iter().any(|s| {
+            self.sites_status
+                .get(&s.id)
+                .is_some_and(|s| *s == Status::Online)
+        }) {
+            return Status::Online;
+        }
+
+        if resource.gateway_groups().iter().all(|s| {
+            self.sites_status
+                .get(&s.id)
+                .is_some_and(|s| *s == Status::Offline)
+        }) {
+            return Status::Offline;
+        }
+
+        Status::Unknown
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -855,7 +884,7 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    self.set_gateways_resources_status(id, Status::Unknown);
+                    self.update_site_status_by_gateway(&id, Status::Unknown)
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -876,28 +905,22 @@ impl ClientState {
                         candidate,
                     }),
                 snownet::Event::ConnectionEstablished(id) => {
-                    self.set_gateways_resources_status(id, Status::Online);
+                    self.update_site_status_by_gateway(&id, Status::Online);
                 }
             }
         }
     }
 
-    fn set_gateways_resources_status(&mut self, gateway_id: GatewayId, status: Status) {
-        let resources = self
-            .resource_ids
-            .iter()
-            .filter_map(|(r_id, r)| {
-                self.resources_gateways
-                    .get(r_id)
-                    .is_some_and(|g_id| *g_id == gateway_id)
-                    .then_some(r)
-            })
-            .cloned()
-            .collect_vec();
-
-        for r in resources {
-            self.update_resources_status(&r, status);
-        }
+    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: Status) {
+        // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
+        // connected at the same time.
+        self.sites_status.insert(
+            *self
+                .gateways_site
+                .get(gateway_id)
+                .expect("inconsistent state"),
+            status,
+        );
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -944,18 +967,10 @@ impl ClientState {
 
     pub(crate) fn add_resources(&mut self, resources: &[ResourceDescription]) {
         for resource_description in resources {
-            let mut resource_description = resource_description.clone();
-
             if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
                 if resource.has_different_address(&resource_description) {
                     self.remove_resources(&[resource.id()]);
                 }
-            }
-
-            if let Some(status) = self.resources().iter().find_map(|r| {
-                (r.gateway_groups() == resource_description.gateway_groups()).then_some(r.status())
-            }) {
-                *resource_description.status_mut() = status;
             }
 
             match &resource_description {
@@ -968,7 +983,7 @@ impl ClientState {
             }
 
             self.resource_ids
-                .insert(resource_description.id(), resource_description);
+                .insert(resource_description.id(), resource_description.clone());
         }
     }
 
@@ -981,7 +996,7 @@ impl ClientState {
             self.cidr_resources.retain(|_, r| r.id != *id);
             self.deferred_dns_queries.retain(|(r, _), _| r.id != *id);
 
-            let resource = self.resource_ids.remove(id);
+            self.resource_ids.remove(id);
 
             let Some(gateway_id) = self.resources_gateways.remove(id) else {
                 tracing::debug!("No gateway associated with resource");
@@ -1015,10 +1030,7 @@ impl ClientState {
             // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
             if peer.allowed_ips.is_empty() {
                 self.peers.remove(&gateway_id);
-                // TODO: multi-site resources would need a bit extra thought here
-                if let Some(resource) = resource {
-                    self.update_resources_status(&resource, Status::Unknown);
-                }
+                self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
                 // TODO: should we have a Node::remove_connection?
             }
         }
@@ -1545,7 +1557,6 @@ mod proptests {
             name: resource.name,
             address_description: resource.address_description,
             gateway_groups: resource.gateway_groups,
-            status: resource.status,
         };
 
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
@@ -1618,4 +1629,29 @@ mod proptests {
             expected_routes(vec![cidr_resource2.address])
         );
     }
+
+    // #[test_strategy::proptest]
+    // fn setting_status_for_a_resource_updates_any_resource_with_the_same_gateway_group(
+    //     #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
+    //     #[strategy(ip_network(8))] new_address: IpNetwork,
+    // ) {
+    //     let mut client_state = ClientState::for_test();
+    //     client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
+
+    //     let updated_resource = ResourceDescriptionCidr {
+    //         address: new_address,
+    //         ..resource
+    //     };
+
+    //     client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
+
+    //     assert_eq!(
+    //         hashset(client_state.resources().iter()),
+    //         hashset(&[ResourceDescription::Cidr(updated_resource),])
+    //     );
+    //     assert_eq!(
+    //         hashset(client_state.routes()),
+    //         expected_routes(vec![new_address])
+    //     );
+    // }
 }

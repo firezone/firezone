@@ -1,6 +1,7 @@
 use connlib_shared::messages::{
-    client::ResourceDescription, GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence,
-    RequestConnection, ResourceId, ReuseConnection,
+    client::{ResourceDescription, SiteId},
+    GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection,
+    ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, net::IpAddr};
@@ -25,6 +26,7 @@ pub struct ConnectionDetails {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_remote_ip: IpAddr,
+    pub gateway_group_id: SiteId,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -237,7 +239,6 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
-                        status: Status::Unknown,
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
@@ -248,7 +249,6 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
-                        status: Status::Unknown,
                     }),
                 ],
                 relays: vec![],
@@ -312,7 +312,6 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
-                        status: Status::Unknown,
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
@@ -323,7 +322,6 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
-                        status: Status::Unknown,
                     }),
                 ],
                 relays: vec![],
@@ -539,6 +537,7 @@ mod test {
                 gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                 gateway_remote_ip: "172.28.0.1".parse().unwrap(),
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                gateway_group_id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
                         id: "c9cb8892-e355-41e6-a882-b6d6c38beb66".parse().unwrap(),
@@ -576,6 +575,7 @@ mod test {
                         "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
                         "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
                         "gateway_remote_ip": "172.28.0.1",
+                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4",
                         "relays": [
                             {
                                 "id": "c9cb8892-e355-41e6-a882-b6d6c38beb66",

@@ -269,6 +269,7 @@ where
                 gateway_id,
                 resource_id,
                 relays,
+                gateway_group_id,
                 ..
             }) => {
                 let should_accept = self
@@ -280,10 +281,12 @@ where
                     return;
                 }
 
-                match self
-                    .tunnel
-                    .create_or_reuse_connection(resource_id, gateway_id, relays)
-                {
+                match self.tunnel.create_or_reuse_connection(
+                    resource_id,
+                    gateway_id,
+                    relays,
+                    gateway_group_id,
+                ) {
                     Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
                         // TODO: keep track for the response
                         let _id = self.portal.send(
