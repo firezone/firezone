@@ -228,6 +228,11 @@ defmodule Web.Groups.EditActors do
     remove = if removed_names != [], do: "remove #{Enum.join(removed_names, ", ")}"
     change = [add, remove] |> Enum.reject(&is_nil/1) |> Enum.join(" and ")
 
-    "Are you sure you want to #{change}?"
+    if change == "" do
+      # Don't show confirmation message if no changes were made
+      nil
+    else
+      "Are you sure you want to #{change}?"
+    end
   end
 end
