@@ -480,7 +480,7 @@ defmodule Web.FormComponents do
 
   def delete_button(assigns) do
     ~H"""
-    <.button style="danger" size={@size} con="hero-trash-solid" {@rest}>
+    <.button style="danger" size={@size} icon="hero-trash-solid" {@rest}>
       <%= render_slot(@inner_block) %>
     </.button>
     """
