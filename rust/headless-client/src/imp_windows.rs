@@ -1,4 +1,4 @@
-use crate::Cli;
+use crate::CliIpcService;
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::file_logger;
@@ -80,7 +80,7 @@ const SERVICE_RUST_LOG: &str = "info";
 
 // Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = CliIpcService::parse();
     let log_path =
         crate::known_dirs::imp::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
@@ -161,7 +161,7 @@ fn fallible_windows_service_run() -> Result<()> {
 /// we'll have a dev-only mode that runs all the IPC code as a normal process
 /// in an admin console.
 pub(crate) fn run_ipc_service(
-    cli: Cli,
+    cli: CliIpcService,
     rt: tokio::runtime::Runtime,
     shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
@@ -169,7 +169,7 @@ pub(crate) fn run_ipc_service(
     rt.block_on(async { ipc_listen(cli, shutdown_rx).await })
 }
 
-async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+async fn ipc_listen(_cli: CliIpcService, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
     shutdown_rx.recv().await;
 
     Ok(())
