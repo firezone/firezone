@@ -241,6 +241,7 @@ defmodule Web.Actors.Show do
           <:action :let={identity}>
             <.button
               :if={identity_has_email?(identity)}
+              size="xs"
               icon="hero-envelope"
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
@@ -251,12 +252,10 @@ defmodule Web.Actors.Show do
           <:action :let={identity}>
             <.delete_button
               :if={identity.created_by != :provider}
+              size="xs"
               phx-click="delete_identity"
               data-confirm="Are you sure you want to delete this identity?"
               phx-value-id={identity.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-neutral-100"
-              ]}
             >
               Delete
             </.delete_button>
@@ -363,12 +362,10 @@ defmodule Web.Actors.Show do
           </:col>
           <:action :let={token}>
             <.delete_button
+              size="xs"
               phx-click="revoke_token"
               data-confirm="Are you sure you want to revoke this token?"
               phx-value-id={token.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-gray-100"
-              ]}
             >
               Revoke
             </.delete_button>

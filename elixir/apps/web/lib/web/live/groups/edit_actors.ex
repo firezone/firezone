@@ -25,7 +25,7 @@ defmodule Web.Groups.EditActors do
         )
         |> assign_live_table("actors",
           query_module: Actors.Actor.Query,
-          limit: 25,
+          limit: 10,
           sortable_fields: [
             {:actors, :name}
           ],
@@ -117,6 +117,7 @@ defmodule Web.Groups.EditActors do
             <:col :let={actor} class="w-1/6">
               <.button
                 :if={member?(@current_member_ids, actor, @added, @removed)}
+                size="xs"
                 phx-click={:remove_actor}
                 phx-value-id={actor.id}
               >
@@ -124,6 +125,7 @@ defmodule Web.Groups.EditActors do
               </.button>
               <.button
                 :if={not member?(@current_member_ids, actor, @added, @removed)}
+                size="xs"
                 phx-click={:add_actor}
                 phx-value-id={actor.id}
               >
@@ -132,9 +134,11 @@ defmodule Web.Groups.EditActors do
             </:col>
           </.live_table>
 
-          <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
-            Save
-          </.button>
+          <div class="flex justify-end">
+            <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
+              Save
+            </.button>
+          </div>
         </div>
       </:content>
     </.section>

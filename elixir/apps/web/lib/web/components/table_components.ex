@@ -96,13 +96,12 @@ defmodule Web.TableComponents do
           render = render_slot(action, @mapper.(@row))
           not_empty_render?(render)
         end) %>
-      <td
-        :if={@actions != [] and show_actions?}
-        class="px-4 py-3 flex space-x-1 items-center justify-end"
-      >
-        <span :for={action <- @actions}>
-          <%= render_slot(action, @mapper.(@row)) %>
-        </span>
+      <td :if={@actions != [] and show_actions?} class="px-4 py-3">
+        <div class="flex space-x-1 items-center justify-end">
+          <span :for={action <- @actions}>
+            <%= render_slot(action, @mapper.(@row)) %>
+          </span>
+        </div>
       </td>
     </tr>
     """

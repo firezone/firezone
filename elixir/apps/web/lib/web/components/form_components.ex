@@ -476,10 +476,11 @@ defmodule Web.FormComponents do
   """
   slot :inner_block, required: true
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  attr :size, :string, default: "md", doc: "The size of the button"
 
   def delete_button(assigns) do
     ~H"""
-    <.button style="danger" icon="hero-trash-solid" {@rest}>
+    <.button style="danger" size={@size} icon="hero-trash-solid" {@rest}>
       <%= render_slot(@inner_block) %>
     </.button>
     """
