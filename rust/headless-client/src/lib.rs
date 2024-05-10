@@ -52,7 +52,10 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
-struct Cli {
+struct CliHeadlessClient {
+    #[command(subcommand)]
+    command: Option<CmdHeadlessClient>,
+
     #[arg(
         short = 'u',
         long,
@@ -95,6 +98,40 @@ struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
+#[derive(clap::Parser)]
+#[command(author, version, about, long_about = None)]
+struct CliIpcService {
+    #[command(subcommand)]
+    command: Option<CmdIpcService>,
+
+    /// Identifier used by the portal to identify and display the device.
+
+    // AKA `device_id` in the Windows and Linux GUI clients
+    // Generated automatically if not provided
+    #[arg(short = 'i', long, env = "FIREZONE_ID")]
+    pub firezone_id: Option<String>,
+
+    /// File logging directory. Should be a path that's writeable by the current user.
+    #[arg(short, long, env = "LOG_DIR")]
+    log_dir: Option<PathBuf>,
+
+    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
+    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
+    #[arg(short, long, env = "MAX_PARTITION_TIME")]
+    max_partition_time: Option<humantime::Duration>,
+}
+
+// Needed for compatibility tests to pass, probably
+#[derive(clap::Subcommand, Clone, Copy)]
+enum CmdHeadlessClient {
+    Standalone,
+}
+
+#[derive(clap::Subcommand, Clone, Copy)]
+enum CmdIpcService {
+    IpcService,
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcClientMsg {
     Connect { api_url: String, token: String },
@@ -130,7 +167,7 @@ pub fn run_headless() -> Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
-    let cli = Cli::parse();
+    let cli = CliHeadlessClient::parse();
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
 
@@ -156,7 +193,11 @@ enum SignalKind {
     Interrupt,
 }
 
-fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -> Result<()> {
+fn run_standalone(
+    cli: CliHeadlessClient,
+    rt: tokio::runtime::Runtime,
+    token: &SecretString,
+) -> Result<()> {
     tracing::info!("Running in standalone mode");
     let _guard = rt.enter();
     // TODO: Should this default to 30 days?
@@ -251,7 +292,10 @@ impl Callbacks for CallbackHandler {
 /// - `Ok(None)` if there is no token to be found
 /// - `Ok(Some(_))` if we found the token
 /// - `Err(_)` if we found the token on disk but failed to read it
-fn get_token(token_env_var: Option<SecretString>, cli: &Cli) -> Result<Option<SecretString>> {
+fn get_token(
+    token_env_var: Option<SecretString>,
+    cli: &CliHeadlessClient,
+) -> Result<Option<SecretString>> {
     // This is very simple but I don't want to write it twice
     if let Some(token) = token_env_var {
         tracing::debug!("Got token from env var");
@@ -263,7 +307,7 @@ fn get_token(token_env_var: Option<SecretString>, cli: &Cli) -> Result<Option<Se
 /// Try to retrieve the token from disk
 ///
 /// Sync because we do blocking file I/O
-fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
+fn read_token_file(cli: &CliHeadlessClient) -> Result<Option<SecretString>> {
     let path = PathBuf::from(&cli.token_path);
 
     if std::fs::metadata(&path).is_err() {

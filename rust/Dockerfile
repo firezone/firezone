@@ -62,8 +62,8 @@ RUN set -xe \
 
 COPY ./docker-init.sh .
 
-ARG PACKAGE
 ## iptables are needed only by gateway for masquerading
+ARG PACKAGE
 RUN set -xe \
   && \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
 
@@ -90,9 +90,6 @@ FROM test AS debug
 ARG TARGET
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/release/${PACKAGE} .`
 COPY ${PACKAGE} .
-## For backwards compatibility, this can be removed after PR #4942 merges
-RUN set -xe \
-  && \[ "${PACKAGE}" = "firezone-headless-client" ] && ln firezone-headless-client firezone-linux-client || true
 
 RUN set -xe \
   && apk add --no-cache nodejs npm chromium

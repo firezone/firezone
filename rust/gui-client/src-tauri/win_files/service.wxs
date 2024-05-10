@@ -6,6 +6,7 @@
           <File Id="FirezoneClientIpcServiceExe" Name="firezone-client-ipc.exe" Source="../../firezone-client-ipc.exe" KeyPath="yes" />
           <ServiceInstall
               Id="FirezoneClientServiceInstaller"
+              Arguments="ipc-service"
               Type="ownProcess"
               Vital="yes"
               Name="FirezoneClientIpcService"

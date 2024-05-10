@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{CliIpcService, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
@@ -65,7 +65,7 @@ pub fn default_token_path() -> PathBuf {
 
 /// Only called from the GUI Client's build of the IPC service
 pub fn run_only_ipc_service() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = CliIpcService::parse();
     // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
@@ -183,7 +183,7 @@ pub fn sock_path() -> PathBuf {
 }
 
 pub(crate) fn run_ipc_service(
-    cli: Cli,
+    cli: CliIpcService,
     rt: tokio::runtime::Runtime,
     _shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
@@ -198,7 +198,7 @@ pub fn firezone_group() -> Result<nix::unistd::Group> {
     Ok(group)
 }
 
-async fn ipc_listen(cli: Cli) -> Result<()> {
+async fn ipc_listen(cli: CliIpcService) -> Result<()> {
     // Remove the socket if a previous run left it there
     let sock_path = sock_path();
     tokio::fs::remove_file(&sock_path).await.ok();
@@ -255,7 +255,7 @@ impl Callbacks for CallbackHandlerIpc {
     }
 }
 
-async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
+async fn handle_ipc_client(cli: &CliIpcService, stream: UnixStream) -> Result<()> {
     connlib_shared::deactivate_dns_control()?;
     let (rx, tx) = stream.into_split();
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
