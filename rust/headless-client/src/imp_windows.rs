@@ -104,21 +104,21 @@ fn fallible_windows_service_run() -> Result<()> {
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::UserEvent(_) => ServiceControlHandlerResult::NoError,
-            ServiceControl::Continue => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindAdd => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindDisable => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindEnable => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::NetBindRemove => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::ParamChange => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::Pause => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::Preshutdown => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::Shutdown => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::HardwareProfileChange(_) => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::PowerEvent(_) => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::SessionChange(_) => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::TimeChange => ServiceControlHandlerResult::NotImplemented,
-            ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
-            _ => todo!(),
+            ServiceControl::Continue
+            | ServiceControl::NetBindAdd
+            | ServiceControl::NetBindDisable
+            | ServiceControl::NetBindEnable
+            | ServiceControl::NetBindRemove
+            | ServiceControl::ParamChange
+            | ServiceControl::Pause
+            | ServiceControl::Preshutdown
+            | ServiceControl::Shutdown
+            | ServiceControl::HardwareProfileChange(_)
+            | ServiceControl::PowerEvent(_)
+            | ServiceControl::SessionChange(_)
+            | ServiceControl::TimeChange
+            | ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
+            _ => ServiceControlHandlerResult::NotImplemented,
         }
     };
 
