@@ -154,11 +154,13 @@ defmodule Web.Groups.Show do
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
           <:col :let={actor} label="IDENTITIES">
-            <.identity_identifier
-              :for={identity <- actor.identities}
-              account={@account}
-              identity={identity}
-            />
+            <span class="flex items-center">
+              <.identity_identifier
+                :for={identity <- actor.identities}
+                account={@account}
+                identity={identity}
+              />
+            </span>
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
