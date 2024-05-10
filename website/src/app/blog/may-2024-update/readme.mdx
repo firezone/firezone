@@ -1,270 +1,84 @@
 import Image from "next/image";
 
 <Image
-  src="/images/blog/may-2024-update/traffic-restrictions.png"
-  alt="Traffic restrictions"
-  width={800}
-  height={800}
-  className="mx-auto rounded shadow"
+  src="/images/blog/may-2024-update/hero.webp"
+  alt="Abstract illustration of Firezone traffic filters"
+  width={400}
+  height={400}
+  className="mx-auto shadow rounded"
 />
-
----
 
 ## In this update:
 
-- Restrict access to specific ports and protocols
+- **New feature:** Traffic restrictions
+- Blog: [How DNS works in Firezone](/blog/how-dns-works-in-firezone)
+- Connectivity and reliability improvements
 
-### Firezone 1.0 GA
+Continue reading below for more details.
 
-After months of beta testing with our early adopters, today we're announcing
-that Firezone 1.0 is now generally available. We couldn't be more excited for
-you to try it.
+### Traffic restrictions
 
-[Sign up now](https://app.firezone.dev/sign_up) to get started.
+At Firezone our mission is to improve your organization's security. You've
+already been able to define Group-based access policies to restrict access to a
+particular host, but we've taken this a step further. You can now add port and
+protocol (ICMP, UDP, and TCP currently supported) restrictions on each Resource
+to define even more granular access controls.
 
-#### The road to 1.0
+<Image
+  src="/images/blog/may-2024-update/traffic-restrictions.png"
+  alt="Firezone traffic restrictions"
+  width={600}
+  height={600}
+  className="mx-auto"
+/>
 
-This release marks a significant milestone for Firezone.
+Simply add the desired filters when creating or editing a Resource, and only
+that type of traffic will be allowed. This is useful for allowing access to some
+services running on a host but not all of them.
 
-When we [announced](/blog/firezone-1-0) Firezone 1.0 was coming last July, we
-knew we had our work cut out for us. Until that point, Firezone was a simple web
-app into a single Docker image. Although a great fit for homelabbers and small
-groups, it wasn't suited to address the remote access needs of larger
-organizations.
+#### How it works
 
-It was easy to get up and running quickly with Firezone, but as the number of
-users, devices, and networks to protect grew within an organization, so did the
-complexity of managing it all.
+When you add traffic restrictions to a Resource, all Gateways that can serve
+that Resource will immediately receive the updated Resource configuration.
 
-So we went back to the whiteboard to reimagine how Firezone would look if we
-rebuilt it from the ground up The Right Way™ -- with scalability and ease of
-use in mind.
+Restrictions are enforced at the **Gateway** level. If a user tries to access a
+service on the host not allowed by the restriction, the Gateway will simply drop
+the traffic, preventing it from ever reaching the service in question.
 
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-  <Image
-    src="/images/blog/apr-2024-update/whiteboard1.jpeg"
-    alt="Whiteboard 1"
-    width={320}
-    height={320}
-    className="rounded shadow"
-  />
-  <Image
-    src="/images/blog/apr-2024-update/whiteboard2.jpeg"
-    alt="Whiteboard 2"
-    width={320}
-    height={320}
-    className="rounded shadow"
-  />
-</div>
+Traffic restrictions are supported on all Resource types, including DNS, IP, and
+CIDR-based Resources, and can be enabled on the Team and Enterprise plans.
 
-{/* Wrapping in JSX to avoid MDX from inserting p tags */}
+### Blog: How DNS works in Firezone
 
-{(<div className="text-center italic text-sm p-0">
+Firezone's approach to DNS works a bit differently than one might expect. One
+question we get a lot is, "why do my DNS Resources resolve to different IPs with
+Firezone enabled?". Great question! We've written an in-depth explanation of
+this in [this blog post](/blog/how-dns-works-in-firezone).
 
-  <span>
-    We don't always work together IRL, but when we do, we rearchitect
-    everything.
-  </span>
-</div>)}
+<Image
+  src="/images/blog/how-dns-works-in-firezone/dns-based-traffic-routing.svg"
+  alt="How DNS works in Firezone"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
 
-We spent the next several months prototyping, testing, and iterating on a new
-architecture that would allow Firezone to scale to hundreds of thousands of
-users and millions of devices.
+So if you've ever wondered why your DNS Resources resolve to different IPs with
+Firezone enabled, or if you're just curious about how DNS works in Firezone, go
+read the post!
 
-#### The stack
+### Connectivity and reliability improvements
 
-We weren't going to squander a good opportunity to rethink our stack choice, but
-it remained largely the same: the new Firezone would be built with Elixir for
-the control plane and Rust for the data plane.
+Last but not least, we've made several improvements to the way Firezone Clients
+stay connected to Gateways, even when switching WiFi networks or moving between
+cellular, WiFi, and ethernet connections.
 
-Why?
+Connections were already quite stable before, but could take a few seconds to
+resume when switching networks. We've made several improvements to the way
+Clients handle network changes to improve reconnection times considerably, to
+the point where you shouldn't notice any interruption at all.
 
-Elixir has been getting lots of acclaim in recent years for its concurrency
-model and fault-tolerance features. And for good reason: it runs on Erlang's
-BEAM VM, the same technology that powers the telecom industry's most reliable
-systems. There's a good chance the device you're reading this on has an IP
-address handed out by an Erlang-powered telecom switch.
-
-As it turns out, managing connections for a remote access product is _a lot_
-like managing messages across a telecom network:
-
-```
-1. Peer A wants to connect to Peer B.
-2. Is it allowed?
-  Yes: here are their addresses and keys to secure the connection.
-  No: drop the connection.
-```
-
-And Elixir's concurrency model makes it easy to manage thousands of these
-connection "intents" on very little hardware -- just a few tiny VMs orchestrate
-all connections across all our customers, globally.
-
-And what about the data plane? For that, we turned to Rust.
-
-Rust forms the network backbone of Firezone, handling all the heavy lifting of
-encrypting and decrypting packets as they flow between Clients and Gateways. As
-far as systems languages go, Rust couldn't be a better fit for the job. Its
-memory safety guarantees eliminate entire classes of bugs that plague other
-systems languages, making it a great choice for a security-critical application
-like Firezone.
-
-And it has build targets for just about every platform under the sun. Our
-[core connectivity library](https://github.com/firezone/firezone/tree/main/rust/connlib),
-for example, runs reliably on iOS, Android, Windows, Linux, and macOS.
-
-We'll be sharing more about our stack choices in future blog posts, but suffice
-to say, we're very happy with the results so far.
-
-### What's unique about Firezone?
-
-There are a lot of remote access solutions out there, so what makes Firezone
-different?
-
-For starters, Firezone uses [WireGuard®](https://www.wireguard.com/) under the
-hood -- a new VPN protocol that's
-[faster](https://www.wireguard.com/performance) and
-[more secure](https://www.wireguard.com/formal-verification/) than traditional
-VPNs. But that's just the start.
-
-We learned from Firezone 0.x that organizations grappling with remote access at
-scale needed things like integrations with identity providers that keep
-directory information in sync, high availability features, and an easier way to
-manage access policies that don't require a PhD in network security.
-
-Firezone 1.0 delivers on all of that and more.
-
-#### Core concepts in 1.0
-
-Before we dive into the new features, let's first cover some core concepts new
-to Firezone:
-
-- **Resource**: A [Resource](/kb/deploy/resources) is any DNS name, IP, or
-  network (CIDR range) you wish to manage access for. DNS-based Resources can be
-  used to manage access to internal or external applications and optionally be
-  configured to match all subdomains as well. CIDR-based Resources can be used
-  to manage access for an entire subnets, similar to a traditional VPN.
-- **Gateway**: [Gateways](/kb/deploy/gateways) are Firezone servers that run on
-  your infrastructure. Gateways must be defined within a Site, and any traffic
-  to/from Resources associated with a Site will pass through one of that Site’s
-  Gateways. Gateways are designed to be lightweight and don't require persistent
-  storage to function.
-- **Site**: [Sites](/kb/deploy/sites) are user-created environments where admins
-  can manage Resources and the Gateways that enable access to those Resources. A
-  typical Site name might be `SJC lab 1`, `Chicago office`, or
-  `Testbench subnet`. All Gateways and Resources in a Site are assumed to be
-  able to reach each other in a shared network context such as a VPC or LAN.
-
-For a more detailed overview of these concepts, check out the
-[FAQ](/kb/reference/faq) and [glossary](/kb/reference/glossary) sections of our
-documentation.
-
-#### High availability
-
-The first major feature in 1.0 we should discuss is high availability. Firezone
-achieves high availability by allowing you to deploy multiple Gateways within a
-given Site.
-
-Each Firezone Gateway is a tiny, self-contained binary that needs
-[only a single environment](/kb/deploy/gateways) variable to function. Throw it
-in a VM, a container, or on an IoT device -- it's lightweight enough to run
-everywhere. Its sole purpose is to shuttle encrypted packets between Clients and
-Resources.
-
-After you [create a Site](/kb/deploy/sites), you can deploy as many Gateways
-into that Site as you'd like. All Gateways in the Site will work in unison to
-provide load balancing and automatic failover for all connections to Resources
-in the Site.
-
-If a Gateway goes offline or becomes overloaded, any Clients connected to it
-will automatically migrate their connections to a healthy Gateway in the Site.
-This process is completely transparent to the user and happens in most cases
-within a few seconds.
-
-Armed with this ability, admins can now enjoy a simple maintenance process: (1)
-take a Gateway down, (2) upgrade it, and (3) bring it back up. _That's it_. No
-more lengthy maintenance windows, backing up configurations, or worrying about
-extended downtime.
-
-A nice side effect of this architecture is that it provides near infinite
-horizontal scalability, which works as follows:
-
-When a Client wants to connect to a protected resource, it sends a connection
-intent message to the control plane API. If the intent is approved, the control
-plane responds with a healthy Gateway to connect to. If there are multiple
-healthy Gateways, the control plane will round-robin between them, effectively
-splitting the load across all Gateways in the Site.
-
-Need more throughput? Simple: deploy more Gateways. The control plane will
-automatically distribute the load across all of them.
-
-We think high availability is such a core feature in a remote access solution
-that we made failover and load balancing available **on all plans**, including
-the Starter tier. [Read more](/kb/deploy/gateways) about how it works in our
-documentation.
-
-#### Firewall hole-punching
-
-You know what's not fun? Configuring firewalls.
-
-More precisely, configuring your organization's cloud or corporate firewalls to
-allow incoming connections from the internet. Not only is it a pain to manage at
-scale, it also exposes your organization to all kinds of security risks.
-
-So we rearchitected Firezone to include the same NAT traversal techniques that
-WebRTC applications have enjoyed for years now:
-[STUN](https://www.rfc-editor.org/rfc/rfc8489.html) and
-[TURN](https://www.rfc-editor.org/rfc/rfc8553), known collectively as
-[ICE](https://datatracker.ietf.org/doc/html/rfc8445).
-
-As you can probably surmise from the above links, these are well-established
-standards for doing reliable NAT traversal. These have been battle-tested in the
-field for years across all kinds of products -- Firezone is only the latest to
-benefit from them.
-
-What does this mean for you? It means you can deploy Firezone without touching a
-single firewall configuration and still enjoy the same level of performance as
-if you did. Attack surface is minimized and connections are direct. It's a
-win-win.
-
-For the curious readers, you can find our implementation of ICE, aptly named
-"snownet", in our repository
-[here](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet).
-
-#### Directory sync
-
-The last feature we want to highlight in this announcement is directory sync.
-Firezone currently supports directory sync for [Okta](https://www.okta.com/),
-[Entra ID](https://azure.microsoft.com/en-us/services/active-directory/), and
-[Google Workspace](https://workspace.google.com/), with more providers on the
-way.
-
-Anyone who's ever managed a large organization knows the pain of keeping user
-and group information in sync across multiple systems. It's a nightmare to
-manage manually. And it's error-prone, leading to security risks and compliance
-issues.
-
-Experienced admins will now be thinking, "But what about
-[SCIM](https://datatracker.ietf.org/doc/html/rfc7644)? Doesn't that make this
-easy?". Sadly, SCIM today is one of those standards that isn't. Entire
-[business models](https://www.workos.com) have been optimized to leverage
-inconsistencies in SCIM implementations across different identity providers.
-
-So Firezone doesn't use SCIM. Instead, we
-[built our very own directory sync engine](https://github.com/firezone/firezone/tree/main/elixir/apps/domain/lib/domain/auth)
-that can be extended to virtually any source of identity data, regardless of
-whether they support SCIM. If it has a REST API, we can probably sync with it.
-
-Directory sync is available only for the Enterprise plan so we can be sure it'll
-work reliably for your organization.
-[Read more](/kb/authenticate/directory-sync) about how it works or
-[contact sales](/contact/sales) if you'd like a first-hand demo.
-
-### What's next?
-
-We covered only a fraction of what's new in Firezone in this post. Go
-[sign up](https://app.firezone.dev/sign_up) and see what else is new for
-yourself, or [request a demo](/contact/sales) if you'd like to better understand
-how Firezone can help your organization.
-
-We have more to announce in the coming weeks, so
-[subscribe to our newsletter](/product/newsletter) below to stay in the loop.
+We also added more Points of Presence (PoPs) in several regions to improve
+latency and reliability for users in those areas. See our updated
+[PoP list](/kb/architecture/tech-stack#regional-availability) for more details
+on where Firezone's Relay and control plane servers are available.
