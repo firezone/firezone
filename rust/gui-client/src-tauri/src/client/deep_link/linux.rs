@@ -81,7 +81,7 @@ impl Server {
 }
 
 pub(crate) async fn open(url: &url::Url) -> Result<()> {
-    crate::client::logging::debug_command_setup()?;
+    firezone_headless_client::debug_command_setup()?;
 
     let path = sock_path()?;
     let mut stream = UnixStream::connect(&path).await?;

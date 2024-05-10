@@ -33,6 +33,7 @@ impl Server {
         server_options.first_pipe_instance(true);
 
         // This will allow non-admin clients to connect to us even if we're running as admin
+        // TODO: Remove after process separation for Windows is done
         let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
         let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
