@@ -72,7 +72,7 @@ defmodule Web.Actors.Index do
           </:col>
 
           <:col :let={actor} label="identifiers">
-            <div class="flex flex-wrap gap-y-1">
+            <div class="flex flex-wrap gap-y-2">
               <.identity_identifier
                 :for={identity <- actor.identities}
                 account={@account}
@@ -88,7 +88,7 @@ defmodule Web.Actors.Index do
               </:empty>
 
               <:item :let={group}>
-                <div class="flex flex-wrap gap-y-1 mr-1">
+                <div class="flex flex-wrap gap-y-2 mr-2">
                   <.group account={@account} group={group} />
                 </div>
               </:item>
