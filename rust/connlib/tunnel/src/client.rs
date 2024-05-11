@@ -177,13 +177,7 @@ where
     }
 
     pub fn offline_resource(&mut self, id: ResourceId) {
-        let Some(resource) = self.role_state.resource_ids.get(&id).cloned() else {
-            return;
-        };
-
-        for GatewayGroup { id, .. } in resource.gateway_groups() {
-            self.role_state.sites_status.insert(*id, Status::Offline);
-        }
+        self.role_state.offline_resource(id);
 
         self.callbacks
             .on_update_resources(self.role_state.resources());
@@ -361,6 +355,16 @@ impl ClientState {
         }
 
         Status::Unknown
+    }
+
+    fn offline_resource(&mut self, id: ResourceId) {
+        let Some(resource) = self.resource_ids.get(&id).cloned() else {
+            return;
+        };
+
+        for GatewayGroup { id, .. } in resource.gateway_groups() {
+            self.sites_status.insert(*id, Status::Offline);
+        }
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -1660,28 +1664,99 @@ mod proptests {
         );
     }
 
-    // #[test_strategy::proptest]
-    // fn setting_status_for_a_resource_updates_any_resource_with_the_same_gateway_group(
-    //     #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
-    //     #[strategy(ip_network(8))] new_address: IpNetwork,
-    // ) {
-    //     let mut client_state = ClientState::for_test();
-    //     client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
+    #[test_strategy::proptest]
+    fn setting_gateway_online_sets_all_related_resources_online(
+        #[strategy(resources_sharing_group())] resource_config_online: (
+            Vec<ResourceDescription>,
+            GatewayGroup,
+        ),
+        #[strategy(resources_sharing_group())] resource_config_unknown: (
+            Vec<ResourceDescription>,
+            GatewayGroup,
+        ),
+        #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
+    ) {
+        let (resources_online, gateway_group) = resource_config_online;
+        let (resources_unknown, _) = resource_config_unknown;
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&resources_online);
+        client_state.add_resources(&resources_unknown);
+        client_state.resources_gateways.insert(
+            resources_online.first().unwrap().id(),
+            first_resource_gateway_id,
+        );
+        client_state
+            .gateways_site
+            .insert(first_resource_gateway_id, gateway_group.id);
 
-    //     let updated_resource = ResourceDescriptionCidr {
-    //         address: new_address,
-    //         ..resource
-    //     };
+        client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
 
-    //     client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
+        for resource in resources_online {
+            assert_eq!(client_state.status(&resource), Status::Online);
+        }
 
-    //     assert_eq!(
-    //         hashset(client_state.resources().iter()),
-    //         hashset(&[ResourceDescription::Cidr(updated_resource),])
-    //     );
-    //     assert_eq!(
-    //         hashset(client_state.routes()),
-    //         expected_routes(vec![new_address])
-    //     );
-    // }
+        for resource in resources_unknown {
+            assert_eq!(client_state.status(&resource), Status::Unknown);
+        }
+    }
+
+    #[test_strategy::proptest]
+    fn disconnecting_gateway_sets_related_resources_unknown(
+        #[strategy(resources_sharing_group())] resource_config: (
+            Vec<ResourceDescription>,
+            GatewayGroup,
+        ),
+        #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
+    ) {
+        let (resources, gateway_group) = resource_config;
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&resources);
+        client_state
+            .resources_gateways
+            .insert(resources.first().unwrap().id(), first_resource_gateway_id);
+        client_state
+            .gateways_site
+            .insert(first_resource_gateway_id, gateway_group.id);
+
+        client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
+        client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Unknown);
+
+        for resource in resources {
+            assert_eq!(client_state.status(&resource), Status::Unknown);
+        }
+    }
+
+    #[test_strategy::proptest]
+    fn setting_resource_offline_doesnt_set_all_related_resources_offline(
+        #[strategy(resources_sharing_group())] resource_config_online: (
+            Vec<ResourceDescription>,
+            GatewayGroup,
+        ),
+    ) {
+        let (mut resources, _) = resource_config_online;
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&resources);
+        let resource_offline = resources.pop().unwrap();
+
+        client_state.offline_resource(resource_offline.id());
+
+        assert_eq!(client_state.status(&resource_offline), Status::Offline);
+        for resource in resources {
+            assert_eq!(client_state.status(&resource), Status::Unknown);
+        }
+    }
+
+    #[test_strategy::proptest]
+    fn setting_resource_offline_set_all_resources_sharing_all_groups_offline(
+        #[strategy(resources_sharing_all_groups())] resources: Vec<ResourceDescription>,
+    ) {
+        let mut client_state = ClientState::for_test();
+        client_state.add_resources(&resources);
+
+        client_state.offline_resource(resources.first().unwrap().id());
+
+        for resource in resources {
+            assert_eq!(client_state.status(&resource), Status::Offline);
+        }
+    }
 }

@@ -1,15 +1,40 @@
 use crate::messages::{
     client::ResourceDescriptionCidr,
     client::{GatewayGroup, ResourceDescription, ResourceDescriptionDns, SiteId},
-    ClientId, ResourceId,
+    ClientId, GatewayId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use itertools::Itertools;
 use proptest::{
     arbitrary::{any, any_with},
     collection, sample,
-    strategy::Strategy,
+    strategy::{Just, Strategy},
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
+
+// Generate resources sharing 1 gateway group
+pub fn resources_sharing_group() -> impl Strategy<Value = (Vec<ResourceDescription>, GatewayGroup)>
+{
+    (collection::vec(gateway_groups(), 1..=100), gateway_group()).prop_flat_map(|(groups, g)| {
+        (
+            groups
+                .iter()
+                .map(|gs| {
+                    let mut groups = gs.clone();
+                    groups.push(g.clone());
+                    resource(groups.clone())
+                })
+                .collect_vec(),
+            Just(g),
+        )
+    })
+}
+
+// Generate resources sharing all gateway groups
+pub fn resources_sharing_all_groups() -> impl Strategy<Value = Vec<ResourceDescription>> {
+    gateway_groups()
+        .prop_flat_map(|gateway_groups| collection::vec(resource(gateway_groups.clone()), 1..=100))
+}
 
 pub fn resource(gateway_groups: Vec<GatewayGroup>) -> impl Strategy<Value = ResourceDescription> {
     any::<bool>().prop_flat_map(move |is_dns| {
@@ -93,6 +118,10 @@ pub fn gateway_group() -> impl Strategy<Value = GatewayGroup> {
 
 pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
     any::<u128>().prop_map(ResourceId::from_u128)
+}
+
+pub fn gateway_id() -> impl Strategy<Value = GatewayId> + Clone {
+    any::<u128>().prop_map(GatewayId::from_u128)
 }
 
 pub fn client_id() -> impl Strategy<Value = ClientId> {
