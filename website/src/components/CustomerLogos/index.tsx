@@ -6,11 +6,12 @@ export default function CustomerLogos() {
   return (
     <>
       <div className="flex justify-center items-center p-8 mb-8">
-        <h3 className="text-2xl sm:text-3xl tracking-tight font-bold uppercase text-neutral-800">
+        <h3 className="text-xl sm:text-3xl tracking-tight font-bold uppercase text-neutral-800">
           Trusted by organizations like
         </h3>
       </div>
-      <Marquee>
+      {/* Strangely, Safari has animation bugs with the default left direction */}
+      <Marquee autoFill pauseOnHover direction="right">
         <Link href="https://bunq.com" className="mx-12 flex items-center">
           <Image
             alt="bunq logo"

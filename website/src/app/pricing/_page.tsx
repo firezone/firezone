@@ -16,10 +16,10 @@ export default function _Page() {
       <section className="bg-neutral-100">
         <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
           <div className="mx-auto max-w-screen-md sm:text-center">
-            <h1 className="justify-center mb-4 text-2xl font-extrabold leading-none tracking-tight text-neutral-900 sm:text-6xl">
+            <h1 className="text-center justify-center mb-4 text-3xl font-extrabold leading-none tracking-tight text-neutral-900 sm:text-6xl">
               Plans & Pricing
             </h1>
-            <h2 className="justify-center mb-8 tracking-tight text-neutral-900 md:mb-12 text-xl">
+            <h2 className="text-center justify-center mb-8 tracking-tight text-neutral-900 md:mb-12 sm:text-2xl text-xl">
               Pick a plan that best suits your needs. No credit card required to
               sign up.
             </h2>
@@ -51,7 +51,7 @@ export default function _Page() {
           </span>
         </div>
         <div className="mx-auto max-w-screen-2xl md:grid md:grid-cols-3 pt-14 md:gap-4 px-4">
-          <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
+          <div className="p-8 bg-neutral-50 border-2 border-neutral-200 mb-4">
             <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
               Starter
             </h3>
@@ -116,7 +116,7 @@ export default function _Page() {
               </li>
             </ul>
           </div>
-          <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
+          <div className="p-8 bg-neutral-50 border-2 border-neutral-200 mb-4">
             <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
               Team
             </h3>
@@ -191,7 +191,7 @@ export default function _Page() {
               </li>
             </ul>
           </div>
-          <div className="p-8 bg-neutral-50 border-2 border-neutral-200">
+          <div className="p-8 bg-neutral-50 border-2 border-neutral-200 mb-4">
             <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
               Enterprise
             </h3>

@@ -52,9 +52,6 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
     remotePatterns: [
       {
-        hostname: "img.shields.io",
-      },
-      {
         hostname: "github.com",
       },
       {
