@@ -101,6 +101,19 @@ impl ResourceDescription {
     }
 }
 
+impl From<ResourceDescription> for crate::messages::client::ResourceDescription {
+    fn from(value: ResourceDescription) -> Self {
+        match value {
+            ResourceDescription::Dns(r) => {
+                crate::messages::client::ResourceDescription::Dns(r.into())
+            }
+            ResourceDescription::Cidr(r) => {
+                crate::messages::client::ResourceDescription::Cidr(r.into())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
@@ -130,6 +143,18 @@ impl ResourceDescriptionDns {
             address_description: r.address_description,
             gateway_groups: r.gateway_groups,
             status,
+        }
+    }
+}
+
+impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
+    fn from(r: ResourceDescriptionDns) -> Self {
+        crate::messages::client::ResourceDescriptionDns {
+            id: r.id,
+            address: r.address,
+            address_description: r.address_description,
+            name: r.name,
+            gateway_groups: r.gateway_groups,
         }
     }
 }
@@ -164,6 +189,18 @@ impl ResourceDescriptionCidr {
             address_description: r.address_description,
             gateway_groups: r.gateway_groups,
             status,
+        }
+    }
+}
+
+impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
+    fn from(r: ResourceDescriptionCidr) -> Self {
+        crate::messages::client::ResourceDescriptionCidr {
+            id: r.id,
+            address: r.address,
+            address_description: r.address_description,
+            name: r.name,
+            gateway_groups: r.gateway_groups,
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::messages::{
     client::ResourceDescriptionCidr,
-    client::{GatewayGroup, ResourceDescription, ResourceDescriptionDns, SiteId, Status},
+    client::{GatewayGroup, ResourceDescription, ResourceDescriptionDns, SiteId},
     ClientId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -33,18 +33,16 @@ pub fn dns_resource_with_groups(
         resource_name(),
         dns_resource_address(),
         address_description(),
-        any::<Status>(),
     )
-        .prop_map(move |(id, name, address, address_description, status)| {
-            ResourceDescriptionDns {
+        .prop_map(
+            move |(id, name, address, address_description)| ResourceDescriptionDns {
                 id,
                 address,
                 name,
                 gateway_groups: gateway_groups.clone(),
                 address_description,
-                status,
-            }
-        })
+            },
+        )
 }
 
 pub fn cidr_resource_with_groups(
@@ -56,18 +54,16 @@ pub fn cidr_resource_with_groups(
         resource_name(),
         ip_network(host_mask_bits),
         address_description(),
-        any::<Status>(),
     )
-        .prop_map(move |(id, name, address, address_description, status)| {
-            ResourceDescriptionCidr {
+        .prop_map(
+            move |(id, name, address, address_description)| ResourceDescriptionCidr {
                 id,
                 address,
                 name,
                 gateway_groups: gateway_groups.clone(),
                 address_description,
-                status,
-            }
-        })
+            },
+        )
 }
 
 pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {

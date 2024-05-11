@@ -1499,8 +1499,13 @@ mod proptests {
         ]);
 
         assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(&[
+            hashset(
+                client_state
+                    .resources()
+                    .into_iter()
+                    .map_into::<ResourceDescription>()
+            ),
+            hashset([
                 ResourceDescription::Cidr(resource1.clone()),
                 ResourceDescription::Dns(resource2.clone())
             ])
@@ -1509,8 +1514,13 @@ mod proptests {
         client_state.add_resources(&[ResourceDescription::Cidr(resource3.clone())]);
 
         assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(&[
+            hashset(
+                client_state
+                    .resources()
+                    .into_iter()
+                    .map_into::<ResourceDescription>()
+            ),
+            hashset([
                 ResourceDescription::Cidr(resource1),
                 ResourceDescription::Dns(resource2),
                 ResourceDescription::Cidr(resource3)
@@ -1534,8 +1544,13 @@ mod proptests {
         client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
 
         assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(&[ResourceDescription::Cidr(updated_resource),])
+            hashset(
+                client_state
+                    .resources()
+                    .into_iter()
+                    .map_into::<ResourceDescription>()
+            ),
+            hashset([ResourceDescription::Cidr(updated_resource),])
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1562,8 +1577,13 @@ mod proptests {
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
 
         assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(&[ResourceDescription::Cidr(dns_as_cidr_resource),])
+            hashset(
+                client_state
+                    .resources()
+                    .into_iter()
+                    .map_into::<ResourceDescription>()
+            ),
+            hashset([ResourceDescription::Cidr(dns_as_cidr_resource),])
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1585,8 +1605,13 @@ mod proptests {
         client_state.remove_resources(&[dns_resource.id]);
 
         assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(&[ResourceDescription::Cidr(cidr_resource.clone())])
+            hashset(
+                client_state
+                    .resources()
+                    .into_iter()
+                    .map_into::<ResourceDescription>()
+            ),
+            hashset([ResourceDescription::Cidr(cidr_resource.clone())])
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1618,8 +1643,13 @@ mod proptests {
         ]);
 
         assert_eq!(
-            hashset(client_state.resources().iter()),
-            hashset(&[
+            hashset(
+                client_state
+                    .resources()
+                    .into_iter()
+                    .map_into::<ResourceDescription>()
+            ),
+            hashset([
                 ResourceDescription::Dns(dns_resource2),
                 ResourceDescription::Cidr(cidr_resource2.clone()),
             ])
