@@ -243,7 +243,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
-         {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
+         {:ok, userinfo} <- fetch_userinfo(config, tokens) do
       expires_at =
         cond do
           not is_nil(tokens["expires_in"]) ->
@@ -274,7 +274,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {:error, :invalid_token}
 
       {:error, {status, _reason} = other} when status in 400..499 ->
-        Logger.info("Failed to connect OpenID Connect provider",
+        Logger.info("Failed to fetch OpenID Connect state",
           provider_id: provider.id,
           reason: inspect(other)
         )
@@ -282,13 +282,21 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         {:error, :invalid_token}
 
       {:error, other} ->
-        Logger.error("Failed to connect OpenID Connect provider",
+        Logger.error("Failed to fetch OpenID Connect state",
           provider_id: provider.id,
           account_id: provider.account_id,
           reason: inspect(other)
         )
 
         {:error, :internal_error}
+    end
+  end
+
+  defp fetch_userinfo(config, tokens) do
+    case OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
+      {:ok, userinfo} -> {:ok, userinfo}
+      {:error, :userinfo_endpoint_is_not_implemented} -> {:ok, %{}}
+      {:error, _reason} -> {:error, :invalid_token}
     end
   end
 
