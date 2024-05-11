@@ -302,7 +302,7 @@ resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
   }
 }
 
-resource "google_monitoring_alert_policy" "genservers_crash_policy" {
+resource "google_monitoring_alert_policy" "errors" {
   project = var.project_id
 
   display_name = "Errors in logs"

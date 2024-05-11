@@ -349,8 +349,19 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.create_log_sink" do
       case Instrumentation.create_remote_log_sink(socket.assigns.client, actor_name, account_slug) do
-        {:ok, signed_url} -> {:reply, {:ok, signed_url}, socket}
-        {:error, :disabled} -> {:reply, {:error, %{reason: :disabled}}, socket}
+        {:ok, signed_url} ->
+          {:reply, {:ok, signed_url}, socket}
+
+        {:error, :disabled} ->
+          {:reply, {:error, %{reason: :disabled}}, socket}
+
+        {:error, reason} ->
+          Logger.error("Failed to create log sink for client",
+            client_id: socket.assigns.client.id,
+            reason: inspect(reason)
+          )
+
+          {:reply, {:error, %{reason: :retry_later}}, socket}
       end
     end
   end

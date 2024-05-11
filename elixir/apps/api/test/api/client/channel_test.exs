@@ -577,6 +577,25 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :disabled}
     end
 
+    test "returns error when google api is not available", %{socket: socket} do
+      bypass = Bypass.open()
+
+      GoogleCloudPlatform.override_endpoint_url(
+        :metadata_endpoint_url,
+        "http://localhost:#{bypass.port}/"
+      )
+
+      GoogleCloudPlatform.override_endpoint_url(
+        :sign_endpoint_url,
+        "http://localhost:#{bypass.port}/service_accounts/"
+      )
+
+      Bypass.down(bypass)
+
+      ref = push(socket, "create_log_sink", %{})
+      assert_reply ref, :error, %{reason: :retry_later}
+    end
+
     test "returns a signed URL which can be used to upload the logs", %{
       account: account,
       socket: socket,
