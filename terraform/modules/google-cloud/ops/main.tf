@@ -320,6 +320,7 @@ resource "google_monitoring_alert_policy" "genservers_crash_policy" {
       -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
       -logName:"/logs/GCEGuestAgent"
       -logName:"/logs/OSConfigAgent"
+      -logName:"/logs/ops-agent-fluent-bit"
       EOT
     }
   }
