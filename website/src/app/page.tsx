@@ -76,12 +76,16 @@ export default function Page() {
               videos.
             </video>
           </div>
-          <CustomerLogos />
         </div>
       </section>
 
+      {/* Customer logos */}
+      <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
+        <CustomerLogos />
+      </section>
+
       {/* Features sections */}
-      <section className="border-t border-neutral-200 bg-white py-24">
+      <section className="bg-white py-24">
         <div className="mx-4 flex flex-col justify-center items-center">
           <h2 className="text-center justify-center mb-4 text-4xl tracking-tight font-bold text-neutral-900 ">
             Least-privileged access to your most valuable resources in just a
