@@ -811,7 +811,7 @@ export default function PlanTable() {
             <Link href="https://app.firezone.dev/sign_up">
               <button
                 type="button"
-                className="md:text-lg md:py-2.5 text-sm px-5 py-1.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
+                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
               >
                 Sign up
               </button>
@@ -821,7 +821,7 @@ export default function PlanTable() {
             <Link href="https://billing.firezone.dev/p/login/5kA9DHeZ8cSI2mQcMM">
               <button
                 type="button"
-                className="md:text-lg md:py-2.5 text-sm px-5 py-1.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
+                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
               >
                 Subscribe
               </button>
@@ -831,7 +831,7 @@ export default function PlanTable() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="md:text-lg md:py-2.5 text-sm px-5 py-1.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
+                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
               >
                 Contact us
               </button>
