@@ -256,14 +256,12 @@ export default function _Page() {
           </div>
         </div>
       </section>
-      <section className="bg-neutral-50 border-t border-neutral-200">
-        <div className="mx-auto max-w-screen-xl">
-          <CustomerLogos />
-        </div>
+      <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
+        <CustomerLogos />
       </section>
-      <section className="bg-white border-t border-neutral-200 py-14">
+      <section className="bg-white py-14">
         <div className="mb-14 mx-auto max-w-screen-lg px-3">
-          <h2 className="mb-14 justify-center text-4xl font-semibold text-neutral-900">
+          <h2 className="mb-14 justify-center text-4xl font-bold text-neutral-900">
             Compare plans
           </h2>
           <PlanTable />
@@ -271,8 +269,8 @@ export default function _Page() {
       </section>
       <section className="bg-neutral-100 border-t border-neutral-200 p-14">
         <div className="mx-auto max-w-screen-sm">
-          <h2 className="mb-14 justify-center text-4xl font-semibold text-neutral-900">
-            Frequently asked questions
+          <h2 className="mb-14 justify-center text-4xl font-bold text-neutral-900">
+            FAQ
           </h2>
 
           <div className="px-4 w-full mb-14">
