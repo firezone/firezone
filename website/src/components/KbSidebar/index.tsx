@@ -22,13 +22,16 @@ export default function KbSidebar() {
       className="sticky left-0 top-0 flex-none z-40 w-64 overflow-y-auto h-[calc(100vh-20px)] pt-20 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0"
     >
       <SearchForm />
-      <div className="mt-5 bg-white pr-3">
+      <div className="mt-5 bg-white">
         <ul className="space-y-2 font-medium">
           <li>
             <Item topLevel href="/kb" label="Overview" />
           </li>
           <li>
             <Item topLevel href="/kb/quickstart" label="Quickstart" />
+          </li>
+          <li className="ml-3 pt-3 border-t border-neutral-200 uppercase font-bold text-neutral-800">
+            Get started
           </li>
           <li>
             <Collapse expanded={p.startsWith("/kb/deploy")} label="Deploy">
@@ -113,6 +116,9 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
+          <li className="ml-3 pt-3 border-t border-neutral-200 uppercase font-bold text-neutral-800">
+            Use Firezone
+          </li>
           <li>
             <Collapse
               expanded={p.startsWith("/kb/administer")}
@@ -187,37 +193,6 @@ export default function KbSidebar() {
           </li>
           <li>
             <Collapse
-              expanded={p.startsWith("/kb/architecture")}
-              label="Architecture"
-            >
-              <li>
-                <Item href="/kb/architecture" label="Overview" />
-              </li>
-              <li>
-                <Item
-                  href="/kb/architecture/core-components"
-                  label="Core components"
-                />
-              </li>
-              <li>
-                <Item href="/kb/architecture/tech-stack" label="Tech stack" />
-              </li>
-              <li>
-                <Item
-                  href="/kb/architecture/critical-sequences"
-                  label="Critical sequences"
-                />
-              </li>
-              <li>
-                <Item
-                  href="/kb/architecture/security-controls"
-                  label="Security controls"
-                />
-              </li>
-            </Collapse>
-          </li>
-          <li>
-            <Collapse
               expanded={p.startsWith("/kb/use-cases")}
               label="Use cases"
             >
@@ -270,6 +245,40 @@ export default function KbSidebar() {
                 <Item
                   href="/kb/use-cases/web-app-access"
                   label="Access a private web app"
+                />
+              </li>
+            </Collapse>
+          </li>
+          <li className="ml-3 pt-3 border-t border-neutral-200 uppercase font-bold text-neutral-800">
+            Learn more
+          </li>
+          <li>
+            <Collapse
+              expanded={p.startsWith("/kb/architecture")}
+              label="Architecture"
+            >
+              <li>
+                <Item href="/kb/architecture" label="Overview" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/core-components"
+                  label="Core components"
+                />
+              </li>
+              <li>
+                <Item href="/kb/architecture/tech-stack" label="Tech stack" />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/critical-sequences"
+                  label="Critical sequences"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/kb/architecture/security-controls"
+                  label="Security controls"
                 />
               </li>
             </Collapse>
