@@ -51,7 +51,7 @@ export default function _Page() {
           </span>
         </div>
         <div className="mx-auto max-w-screen-2xl md:grid md:grid-cols-3 pt-14 md:gap-4 px-4">
-          <div className="p-8 bg-neutral-50 border-2 border-neutral-200 mb-4">
+          <div className="p-8 bg-neutral-50 rounded border-2 border-neutral-200 mb-4">
             <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
               Starter
             </h3>
@@ -116,7 +116,7 @@ export default function _Page() {
               </li>
             </ul>
           </div>
-          <div className="p-8 bg-neutral-50 border-2 border-neutral-200 mb-4">
+          <div className="p-8 bg-neutral-50 rounded border-2 border-neutral-200 mb-4">
             <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
               Team
             </h3>
@@ -191,21 +191,21 @@ export default function _Page() {
               </li>
             </ul>
           </div>
-          <div className="p-8 bg-neutral-50 border-2 border-neutral-200 mb-4">
+          <div className="p-8 bg-neutral-900 text-neutral-50 rounded shadow border border-primary-450 mb-4">
             <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
               Enterprise
             </h3>
-            <p className="mb-8">
+            <p className="mb-8 font-semibold">
               Advanced zero trust network access for enterprises
             </p>
-            <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold text-neutral-900">
+            <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold">
               Contact us
             </h2>
             <div className="mb-16 w-full text-center">
               <Link href="/contact/sales">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
+                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-bold tracking-tight transition transform duration-0 hover:scale-105 rounded bg-primary-450 hover:bg-primary-600"
                 >
                   Request a demo
                 </button>
@@ -216,41 +216,33 @@ export default function _Page() {
             </p>
             <ul role="list" className="font-medium space-y-2">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
-                  Unlimited users
-                </span>
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">Unlimited users</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">
                   Automatically sync users and groups from Google, Entra, or
                   Okta
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
-                  Fastest relay network
-                </span>
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">Fastest relay network</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">
                   Dedicated Slack support channel
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
-                  Roadmap acceleration
-                </span>
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">Roadmap acceleration</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                <span className="leading-tight text-neutral-900 ">
-                  White-glove onboarding
-                </span>
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">White-glove onboarding</span>
               </li>
             </ul>
           </div>
