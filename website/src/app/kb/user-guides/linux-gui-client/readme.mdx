@@ -1,0 +1,71 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+
+# Linux GUI Client
+
+The Linux GUI Client is to designed to be in Linux desktop environments where a
+user is present to authenticate with your identity provider interactively.
+
+<Alert color="info">
+  If you're looking for a headless Client suitable for server or container-based
+  installs, see the [Linux headless Client](/kb/user-guides/linux-client) user
+  guide instead.
+</Alert>
+
+## Prerequisites
+
+- Ubuntu **20.04** or **22.04**. Other distributions may work, but are not
+  officially supported.
+- **x86-64** CPU architecture
+
+## Installation
+
+The Linux GUI Client ships as a self-contained `.deb` package with all
+dependencies bundled. The package can be downloaded from our
+[main repository's releases page](https://github.com/firezone/firezone/releases)
+or using the direct link below:
+
+- [Download the Linux Client for `x86-64`](/dl/firezone-client-headless-linux/latest/x86_64)
+
+After downloading, you can install the package with:
+
+```
+sudo dpkg -i firezone-client-gui-linux_<VERSION>_<ARCH>.deb
+```
+
+## Usage
+
+The Linux GUI Client is composed of a systemd service that manages the Firezone
+tunnel, and a graphical application that connects to the service over an IPC
+interface to control it.
+
+After installation, you can start the IPC daemon with and enable it on boot
+with:
+
+```
+sudo systemctl enable --now firezone-client-ipc
+```
+
+You can then start the GUI Client from your desktop environment's application
+menu or by running `firezone-client-gui` from an interactive shell.
+
+## Upgrading
+
+1. Quit the GUI Client if it's running.
+1. Stop the IPC service: `sudo systemctl stop firezone-client-ipc`.
+1. Download a newer package from one of the [links above](#installation).
+1. Overwrite the existing installation with the new package:
+
+   ```
+   sudo dpkg -i firezone-client-gui-linux_<NEW_VERSION>_<ARCH>.deb
+   ```
+
+1. Start the IPC daemon:
+
+   ```
+   sudo systemctl enable --now firezone-client-ipc
+   ```
+
+1. Restart the GUI Client.
+
+<SupportOptions />

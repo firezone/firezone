@@ -1,42 +1,57 @@
+import SupportOptions from "@/components/SupportOptions";
 import Alert from "@/components/DocsAlert";
 
-# Linux Client
+# Linux Headless Client
 
-Firezone supports Linux with a native, headless client for ARMv7l, ARM64, and
-x86-64 architectures.
+Headless Clients are designed to authenticate with long-lived
+[service account](/kb/authenticate/service-accounts) tokens to enable
+server-to-server connectivity where a user isn't present to authenticate with
+your identity provider interactively.
 
-The Linux Client is a lightweight, standalone binary that runs in the background
-using a service account token.
+<Alert color="info">
+  If you're looking for a desktop Client that authenticates with your identity
+  provider instead, see the [Linux GUI
+  Client](/kb/user-guides/linux-gui-client).
+</Alert>
 
 ## Prerequisites
 
 - Any Linux-based OS with kernel 3.10 or higher
 - ARM64, ARMv7l, or x86-64 CPU
-- Administrator access to your Firezone account in order to create a Service
-  Account and generate a token
+- Administrator access to your Firezone account in order to create a service
+  account and generate a token
 
 ## Installation
 
-The Linux Client is currently in beta and can be downloaded from our
-[main repository's releases page](https://github.com/firezone/firezone/releases).
-Alternatively, download the latest Client binary using one of the links below:
+The Linux headless Client can be downloaded from our
+[main repository's releases page](https://github.com/firezone/firezone/releases),
+or using one of the direct links below:
 
 - [Download the Linux Client for `x86-64`](/dl/firezone-client-headless-linux/latest/x86_64)
 - [Download the Linux Client for `ARMv7l`](/dl/firezone-client-headless-linux/latest/armv7)
 - [Download the Linux Client for `ARM64`](/dl/firezone-client-headless-linux/latest/aarch64)
 
+Remember to make the binary executable before running it:
+
+```
+chmod +x headless-client-x64
+```
+
 ## Usage
 
-The Linux Client requires a Service Account token to authenticate to Firezone.
-If you don't already have a token generated, follow the instructions in the
-[Service Account](/kb/authenticate/service-accounts) documentation.
+Headless Clients require a service account token to authenticate to Firezone. If
+you don't already have a token generated, follow the instructions in the
+[service account](/kb/authenticate/service-accounts) documentation.
 
-Once you have a token, you can start the Linux Client using the following
-command:
+Once you have a token, you can start the Client using the following command:
 
 ```
 sudo FIREZONE_TOKEN=<TOKEN> ./headless-client-x64
 ```
+
+<Alert color="info">
+  `sudo` is required to allow control of the system's DNS settings.
+</Alert>
 
 Set some environment variables to configure it:
 
@@ -80,8 +95,8 @@ Options:
 
 ### Split DNS
 
-By default, Split DNS is **disabled** for the Linux Client. This means that
-access to DNS-based Resources won't be routed through Firezone.
+By default, Split DNS is **disabled** for the Linux headless Client. This means
+that access to DNS-based Resources won't be routed through Firezone.
 
 To enable Split DNS for the Linux Client, set the `FIREZONE_DNS_CONTROL`
 environment variable to `systemd-resolved` or `etc-resolv-conf`.
@@ -155,3 +170,5 @@ client.
 1. Download a newer binary from one of the [links above](#installation).
 1. Replace the existing binary with the new one.
 1. Start the Client with the same environment variables as before.
+
+<SupportOptions />

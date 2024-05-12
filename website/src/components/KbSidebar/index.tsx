@@ -186,7 +186,14 @@ export default function KbSidebar() {
                 <Item
                   nested
                   href="/kb/user-guides/linux-client"
-                  label="Linux"
+                  label="Linux headless"
+                />
+              </li>
+              <li>
+                <Item
+                  nested
+                  href="/kb/user-guides/linux-gui-client"
+                  label="Linux GUI"
                 />
               </li>
             </Collapse>
