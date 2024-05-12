@@ -110,20 +110,24 @@ defmodule Web.Actors.EditGroups do
                 <.button
                   :if={member?(@current_group_ids, group, @added, @removed)}
                   size="xs"
+                  style="info"
+                  icon="hero-minus"
                   phx-click={:remove_group}
                   phx-value-id={group.id}
                   phx-value-name={group.name}
                 >
-                  <.icon name="hero-minus" class="h-3.5 w-3.5 mr-2" /> Remove
+                  Remove
                 </.button>
                 <.button
                   :if={not member?(@current_group_ids, group, @added, @removed)}
                   size="xs"
+                  style="info"
+                  icon="hero-plus"
                   phx-click={:add_group}
                   phx-value-id={group.id}
                   phx-value-name={group.name}
                 >
-                  <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2" /> Add
+                  Add
                 </.button>
               </div>
             </:col>
