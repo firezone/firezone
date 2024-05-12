@@ -18,4 +18,8 @@
   *:is(h1, h2, h3, h4, h5, h6) a:hover {
     text-decoration: underline !important;
   }
+
+  :is(pre, code) {
+    @apply overflow-x-auto;
+  }
 }
