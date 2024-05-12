@@ -26,15 +26,15 @@ export default function Collapse({
         onClick={() => setExpandedState(!expandedState)}
       >
         <span
-          className="uppercase ml-3 flex-1 text-left whitespace-nowrap font-semibold text-neutral-800"
+          className="ml-3 flex-1 text-left whitespace-nowrap font-medium text-neutral-800"
           sidebar-toggle-item="true"
         >
           {label}
         </span>
         {expandedState ? (
-          <HiChevronDown sidebar-toggle-item="true" className="w-4 h-4" />
+          <HiChevronDown sidebar-toggle-item="true" className="w-4 h-4 mr-2" />
         ) : (
-          <HiChevronRight sidebar-toggle-item="true" className="w-4 h-4" />
+          <HiChevronRight sidebar-toggle-item="true" className="w-4 h-4 mr-2" />
         )}
       </button>
       <ul
