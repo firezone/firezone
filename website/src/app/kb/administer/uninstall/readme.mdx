@@ -2,27 +2,76 @@ import SupportOptions from "@/components/SupportOptions";
 import { TabsGroup, TabsItem } from "@/components/DocsTabs";
 import Alert from "@/components/DocsAlert";
 
-# Uninstall Firezone
+# Uninstall Firezone Gateway
 
 This guide covers how to uninstall the Firezone Gateway from your server(s).
 
-<Alert color="info">
-  To uninstall the Firezone Client instead, see the section in the [user
-  guide](/kb/user-guides) for your operating system.
-</Alert>
+{/* add Alert and link to client uninstall docs when that's complete */}
 
-## Perform a clean uninstall
+## Step 1: Stop the Gateway and remove relevant files
 
-If you're trying to deploy a new Gateway and it's not connecting, try running
-some of the troubleshooting commands below to diagnose the issue.
+Use the appropriate instructions below to stop and remove the Gateway depending
+on how it was installed:
 
 <TabsGroup>
 <TabsItem title="Docker" active>
 
+1. Stop the container:
+
+   ```
+   docker stop firezone-gateway
+   ```
+
+1. Remove the container its volumes:
+
+   ```
+   docker rm --volumes firezone-gateway
+   ```
+
+1. Remove the image:
+
+   ```
+   docker rmi ghcr.io/firezone/gateway:1
+   ```
+
+1. Remove the cache directory:
+
+   ```
+   sudo rm -rf /var/lib/firezone
+   ```
+
 </TabsItem>
 <TabsItem title="systemd">
 
+1. Stop the service:
+
+   ```
+   sudo systemctl stop firezone-gateway
+   ```
+
+1. Disable the service:
+
+   ```
+   sudo systemctl disable firezone-gateway
+   ```
+
+1. Remove all relevant files:
+
+   ```
+   sudo rm -rf /etc/systemd/system/firezone-gateway.service \
+        /usr/local/bin/firezone-gateway \
+        /usr/local/bin/firezone-gateway-init \
+        /var/lib/firezone
+   ```
+
 </TabsItem>
 </TabsGroup>
+
+## Step 2 (optional): Delete the data from the admin portal
+
+If you want to remove the Gateway's data from the admin portal as well, navigate
+to the Site where the Gateway was running, click `(see all)` next
+`Online Gateways`, and then delete the offline Gateway corresponding to the
+Gateway you just uninstalled.
 
 <SupportOptions />
