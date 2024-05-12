@@ -108,29 +108,37 @@ defmodule Web.Groups.EditActors do
               />
             </:col>
             <:col :let={actor} label="IDENTITIES">
-              <.identity_identifier
-                :for={identity <- actor.identities}
-                account={@account}
-                identity={identity}
-              />
+              <span class="flex flex-wrap gap-y-2">
+                <.identity_identifier
+                  :for={identity <- actor.identities}
+                  account={@account}
+                  identity={identity}
+                />
+              </span>
             </:col>
             <:col :let={actor} class="w-1/6">
-              <.button
-                :if={member?(@current_member_ids, actor, @added, @removed)}
-                size="xs"
-                phx-click={:remove_actor}
-                phx-value-id={actor.id}
-              >
-                <.icon name="hero-minus" class="h-3.5 w-3.5 mr-2" /> Remove
-              </.button>
-              <.button
-                :if={not member?(@current_member_ids, actor, @added, @removed)}
-                size="xs"
-                phx-click={:add_actor}
-                phx-value-id={actor.id}
-              >
-                <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2" /> Add
-              </.button>
+              <span class="flex justify-end">
+                <.button
+                  :if={member?(@current_member_ids, actor, @added, @removed)}
+                  style="info"
+                  size="xs"
+                  icon="hero-minus"
+                  phx-click={:remove_actor}
+                  phx-value-id={actor.id}
+                >
+                  Remove
+                </.button>
+                <.button
+                  :if={not member?(@current_member_ids, actor, @added, @removed)}
+                  style="info"
+                  size="xs"
+                  icon="hero-plus"
+                  phx-click={:add_actor}
+                  phx-value-id={actor.id}
+                >
+                  Add
+                </.button>
+              </span>
             </:col>
           </.live_table>
 

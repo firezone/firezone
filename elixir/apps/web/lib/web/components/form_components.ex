@@ -436,7 +436,7 @@ defmodule Web.FormComponents do
   def button(assigns) do
     ~H"""
     <button type={@type} class={button_style(@style) ++ button_size(@size) ++ [@class]} {@rest}>
-      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       <%= render_slot(@inner_block) %>
     </button>
     """
@@ -589,5 +589,25 @@ defmodule Web.FormComponents do
     }
 
     [text[size], spacing[size]]
+  end
+
+  defp icon_size(size) do
+    icon_size = %{
+      "xs" => "w-3 h-3",
+      "sm" => "w-3.5 h-3.5",
+      "md" => "w-4 h-4",
+      "lg" => "w-5 h-5",
+      "xl" => "w-6 h-6"
+    }
+
+    spacing = %{
+      "xs" => "mr-1",
+      "sm" => "mr-2",
+      "md" => "mr-3",
+      "lg" => "mr-4",
+      "xl" => "mr-5"
+    }
+
+    [icon_size[size], spacing[size]]
   end
 end
