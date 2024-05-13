@@ -24,9 +24,10 @@ impl TunnelWrapper {
 
     #[allow(clippy::unused_async)]
     pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
-        self.tx.send(serde_json::to_string(msg)
-                    .context("Couldn't encode IPC message as JSON")?
-                    ).await.context("Couldn't send IPC message")?;
+        self.tx
+            .send(serde_json::to_string(msg).context("Couldn't encode IPC message as JSON")?)
+            .await
+            .context("Couldn't send IPC message")?;
         Ok(())
     }
 }
@@ -70,12 +71,13 @@ pub(crate) async fn connect(
                         let msg = serde_json::from_slice(&msg?)?;
                         return Poll::Ready(Ok(IpcEvent::Connlib(msg)));
                     }
-                    Poll::Ready(None) => {},
+                    Poll::Ready(None) => {}
                     Poll::Pending => {}
                 }
 
                 Poll::Pending
-            }).await;
+            })
+            .await;
 
             match ev {
                 Ok(IpcEvent::Client(msg)) => ipc.send(msg.into()).await?,
@@ -88,20 +90,20 @@ pub(crate) async fn connect(
                     IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                         callback_handler.on_set_interface_config(ipv4, ipv6, dns);
                     }
-                }
+                },
                 Err(e) => return Err(e),
             }
         }
     });
 
-    let mut client = TunnelWrapper {
-        task,
-        tx,
-    };
+    let mut client = TunnelWrapper { task, tx };
     let token = token.expose_secret().clone();
-    client.send_msg(&IpcClientMsg::Connect {
-        api_url: api_url.to_string(),
-        token,
-    }).await.context("Couldn't send Connect message")?;
+    client
+        .send_msg(&IpcClientMsg::Connect {
+            api_url: api_url.to_string(),
+            token,
+        })
+        .await
+        .context("Couldn't send Connect message")?;
     Ok(client)
 }
