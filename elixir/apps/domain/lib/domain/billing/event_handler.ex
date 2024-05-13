@@ -223,6 +223,9 @@ defmodule Domain.Billing.EventHandler do
 
     account_slug =
       cond do
+        not is_nil(metadata["account_slug"]) ->
+          metadata["account_slug"]
+
         uri.host ->
           uri.host
           |> String.split(".")
