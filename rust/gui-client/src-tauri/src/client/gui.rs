@@ -6,6 +6,7 @@
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
+    tunnel_wrapper::{self, CallbackHandler},
     Failure,
 };
 use anyhow::{bail, Context, Result};
@@ -16,7 +17,6 @@ use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
-use tunnel_wrapper::CallbackHandler;
 use url::Url;
 
 use ControllerRequest as Req;
@@ -38,21 +38,6 @@ mod os;
 #[path = "gui/os_windows.rs"]
 #[allow(clippy::unnecessary_wraps)]
 mod os;
-
-// This syntax is odd, but it helps `cargo-mutants` understand the platform-specific modules
-#[cfg(target_os = "windows")]
-#[path = "tunnel-wrapper/in_proc.rs"]
-mod tunnel_wrapper_in_proc;
-
-#[cfg(target_os = "linux")]
-#[path = "tunnel-wrapper/ipc.rs"]
-mod tunnel_wrapper_ipc;
-
-#[cfg(target_os = "windows")]
-use tunnel_wrapper_in_proc as tunnel_wrapper;
-
-#[cfg(target_os = "linux")]
-use tunnel_wrapper_ipc as tunnel_wrapper;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 

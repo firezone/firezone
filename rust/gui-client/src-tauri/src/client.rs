@@ -14,6 +14,7 @@ mod logging;
 mod network_changes;
 mod resolvers;
 mod settings;
+mod tunnel_wrapper;
 mod updates;
 mod uptime;
 mod welcome;

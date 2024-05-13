@@ -20,8 +20,7 @@ use std::{
 };
 use tokio::sync::Notify;
 
-use super::ControllerRequest;
-use super::CtlrTx;
+use crate::client::gui::{ControllerRequest, CtlrTx};
 
 /// We have valid use cases for headless Windows clients
 /// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days if there's
