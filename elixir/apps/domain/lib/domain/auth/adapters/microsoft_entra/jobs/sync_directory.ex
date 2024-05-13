@@ -4,7 +4,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
     every: :timer.minutes(5),
     executor: Domain.Jobs.Executors.Concurrent
 
-  alias Domain.Auth.Adapter.DirectorySync
+  alias Domain.Auth.Adapter.OpenIDConnect.DirectorySync
   alias Domain.Auth.Adapters.MicrosoftEntra
   require Logger
   require OpenTelemetry.Tracer

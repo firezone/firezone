@@ -346,7 +346,7 @@ defmodule Web.Live.Actors.ShowTest do
       |> table_to_map()
       |> with_table_row(
         "identity",
-        "#{admin_identity.provider.name} #{admin_identity.provider_identifier}",
+        "#{admin_identity.provider_identifier}",
         fn row ->
           assert row["actions"] =~ "Delete"
           assert around_now?(row["last signed in"])
@@ -355,7 +355,7 @@ defmodule Web.Live.Actors.ShowTest do
       )
       |> with_table_row(
         "identity",
-        "#{invited_identity.provider.name} #{invited_identity.provider_identifier}",
+        "#{invited_identity.provider_identifier}",
         fn row ->
           assert row["actions"] =~ "Delete"
           assert row["created"] =~ "by #{actor.name}"
@@ -364,7 +364,7 @@ defmodule Web.Live.Actors.ShowTest do
       )
       |> with_table_row(
         "identity",
-        "#{synced_identity.provider.name} #{synced_identity.provider_identifier}",
+        "#{synced_identity.provider_identifier}",
         fn row ->
           refute row["actions"]
           assert row["created"] =~ "by #{synced_identity.provider.name} sync"

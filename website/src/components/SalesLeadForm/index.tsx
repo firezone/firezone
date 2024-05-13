@@ -7,9 +7,11 @@ export default function SalesLeadForm() {
         <h1 className="justify-center mb-8 md:mb-12 text-5xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl ">
           Talk to a Firezone expert.
         </h1>
-        <h2 className="mx-auto mb-8 max-w-2xl font-semibold tracking-tight text-neutral-800 md:mb-12 text-xl">
-          Ready to manage secure remote access for your organization? Learn how
-          Firezone can help.
+        <h2 className="mx-auto mb-2 max-w-2xl justify-center font-semibold tracking-tight text-neutral-800 md:mb-4 text-2xl">
+          Ready to manage secure remote access for your organization?
+        </h2>
+        <h2 className="mx-auto mb-8 max-w-2xl justify-center font-semibold tracking-tight text-neutral-800 md:mb-12 text-2xl">
+          Learn how Firezone can help.
         </h2>
       </div>
       <div className="pt-8 grid sm:grid-cols-2 gap-4 items-top">
