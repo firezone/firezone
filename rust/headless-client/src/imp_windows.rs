@@ -7,12 +7,14 @@
 use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{Callbacks, file_logger, keypair, LoginUrl, ResourceDescription, Sockets};
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, LoginUrl, ResourceDescription, Sockets,
+};
 use connlib_shared::BUNDLE_ID;
 use futures::{SinkExt, Stream};
 use std::{
     ffi::{c_void, OsString},
-    future::{Future, poll_fn},
+    future::{poll_fn, Future},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::{Path, PathBuf},
     pin::pin,
@@ -361,7 +363,11 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
         let ev = poll_fn(|cx| {
             match cb_rx.poll_recv(cx) {
                 Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Connlib(msg))),
-                Poll::Ready(None) => return Poll::Ready(Err(anyhow!("Impossible - MPSC channel from connlib closed"))),
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow!(
+                        "Impossible - MPSC channel from connlib closed"
+                    )))
+                }
                 Poll::Pending => {}
             }
 
@@ -375,7 +381,8 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
             }
 
             Poll::Pending
-        }).await;
+        })
+        .await;
 
         match ev {
             Ok(IpcEvent::Client(msg)) => match msg {
@@ -386,19 +393,37 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
                         .context("Failed to read / create device ID")?;
                     let (private_key, public_key) = keypair();
 
-                    let login = LoginUrl::client(Url::parse(&api_url)?, &token, device_id.id, None, public_key.to_bytes())?;
+                    let login = LoginUrl::client(
+                        Url::parse(&api_url)?,
+                        &token,
+                        device_id.id,
+                        None,
+                        public_key.to_bytes(),
+                    )?;
 
                     // TODO: Configurable max partition time?
-                    connlib = Some(connlib_client_shared::Session::connect(login, Sockets::new(), private_key, None, callback_handler.clone(), None, tokio::runtime::Handle::try_current()?));
+                    connlib = Some(connlib_client_shared::Session::connect(
+                        login,
+                        Sockets::new(),
+                        private_key,
+                        None,
+                        callback_handler.clone(),
+                        None,
+                        tokio::runtime::Handle::try_current()?,
+                    ));
                 }
                 IpcClientMsg::Disconnect => {
                     if let Some(connlib) = connlib.take() {
                         connlib.disconnect();
                     }
                 }
-                IpcClientMsg::Reconnect => connlib.as_mut().context("No connlib session")?.reconnect(),
-                IpcClientMsg::SetDns(v) => connlib.as_mut().context("No connlib session")?.set_dns(v),
-            }
+                IpcClientMsg::Reconnect => {
+                    connlib.as_mut().context("No connlib session")?.reconnect()
+                }
+                IpcClientMsg::SetDns(v) => {
+                    connlib.as_mut().context("No connlib session")?.set_dns(v)
+                }
+            },
             Ok(IpcEvent::Connlib(msg)) => framed.send(serde_json::to_string(&msg)?.into()).await?,
             Ok(IpcEvent::IpcDisconnect) => {
                 tracing::info!("IPC client disconnected");

@@ -14,8 +14,7 @@ use tokio::{
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use super::ControllerRequest;
-use super::CtlrTx;
+use crate::client::gui::{ControllerRequest, CtlrTx};
 
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
