@@ -96,6 +96,10 @@ jobs:
                 gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
                 gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}.sha256sum.txt
 
+            gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt
+
               # Copy binaries
               gcloud storage cp \
                 gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
@@ -104,6 +108,10 @@ jobs:
               gcloud storage cp \
                 gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
                 gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}
+
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}
             done
           done
 
