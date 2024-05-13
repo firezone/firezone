@@ -231,12 +231,14 @@ defmodule Domain.Billing.EventHandler do
           |> String.split(".")
           |> List.delete_at(-1)
           |> Enum.join("_")
+          |> String.replace("-", "_")
 
         uri.path ->
           uri.path
           |> String.split(".")
           |> List.delete_at(-1)
           |> Enum.join("_")
+          |> String.replace("-", "_")
 
         true ->
           Accounts.generate_unique_slug()
