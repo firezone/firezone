@@ -190,3 +190,24 @@ pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     tracing::debug!(?resolvers);
     Ok(resolvers)
 }
+
+
+/// Returns a valid name for a Windows named pipe
+///
+/// # Arguments
+///
+/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
+pub fn named_pipe_path(id: &str) -> String {
+    format!(r"\\.\pipe\{}", id)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn named_pipe_path() {
+        assert_eq!(
+            super::named_pipe_path("dev.firezone.client"),
+            r"\\.\pipe\dev.firezone.client"
+        );
+    }
+}
