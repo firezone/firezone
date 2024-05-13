@@ -35,7 +35,14 @@
         "icons/icon.png"
       ],
       "publisher": "Firezone",
-      "shortDescription": "Firezone"
+      "shortDescription": "Firezone",
+      "windows": {
+        "wix": {
+          "componentRefs": ["FirezoneClientIpcService"],
+          "fragmentPaths": ["./win_files/service.wxs"],
+          "template": "./win_files/main.wxs"
+        }
+      }
     },
     "security": {
       "csp": null

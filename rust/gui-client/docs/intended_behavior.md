@@ -39,7 +39,7 @@ Best performed on a clean VM
 1. Export the logs
 1. Expect the zip file to start with "firezone_logs_"
 1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
-1. Expect two subdirectories in the zip, "connlib", and "app", each with 3 files, totalling 6 files
+1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2 files respectively, totalling 5 files
 
 ## Settings tab
 
