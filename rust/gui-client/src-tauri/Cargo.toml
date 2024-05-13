@@ -56,7 +56,6 @@ zip = { version = "0.6.6", features = ["deflate", "time"], default-features = fa
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 nix = { version =  "0.28.0", features = ["user"] }
-tokio-util = { version = "0.7.11", features = ["codec"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 

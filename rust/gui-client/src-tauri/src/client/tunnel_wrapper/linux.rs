@@ -46,6 +46,7 @@ pub(crate) async fn connect(
         .await
         .context("Couldn't connect to UDS")?;
     let (rx, tx) = stream.into_split();
+    // Receives messages from the IPC service
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
 
