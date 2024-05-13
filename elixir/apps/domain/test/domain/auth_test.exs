@@ -2989,6 +2989,26 @@ defmodule Domain.AuthTest do
                {:error, :unauthorized}
     end
 
+    test "returns error when secret belongs to a different identity invalid", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      nonce = "test_nonce_for_firezone"
+      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      identity2 = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity2} = Domain.Auth.Adapters.Email.request_sign_in_token(identity2, context)
+      secret = identity2.provider_virtual_state.nonce <> identity2.provider_virtual_state.fragment
+
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+               {:error, :unauthorized}
+    end
+
     test "returns error when nonce is invalid", %{
       account: account,
       provider: provider,
