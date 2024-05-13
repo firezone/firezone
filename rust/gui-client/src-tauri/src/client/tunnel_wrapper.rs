@@ -12,5 +12,3 @@ pub(crate) use tunnel_wrapper_in_proc::*;
 
 #[cfg(target_os = "linux")]
 pub(crate) use tunnel_wrapper_ipc::*;
-
-// TODO: Wrapper both tunnel wrappers with an enum

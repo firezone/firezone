@@ -94,7 +94,7 @@ pub async fn connect(
                     &connlib_client_shared::Error::Other("errors can't be serialized"),
                 ),
                 IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                IpcServerMsg::TunnelReady => callback_handler.on_tunnel_ready(),
+                IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => callback_handler.on_tunnel_ready(ipv4, ipv6, dns),
             }
         }
         Ok(())
@@ -124,20 +124,14 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 
     fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
-        unimplemented!()
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
         tracing::debug!("on_update_resources");
         self.resources.store(resources.into());
         self.notify_controller.notify_one();
-    }
-}
-
-impl CallbackHandler {
-    fn on_tunnel_ready(&self) {
-        self.ctlr_tx
-            .try_send(ControllerRequest::TunnelReady)
-            .expect("controller channel failed");
     }
 }
