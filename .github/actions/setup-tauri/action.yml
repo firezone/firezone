@@ -42,11 +42,5 @@ runs:
       # This downloads about 200 MB and takes about 5 minutes on my VM
       # So we could fault in WebView2 from the client exe without the MSI if we needed.
       # Currently the MSI does this and it's a little janky.
-      #
-      # Also sometimes it never finishes. This appears to be an issue with WebView. https://github.com/firezone/firezone/pull/4935
-      run: |
-        $process = Start-Process WebView2Installer.exe -PassThru -ArgumentList "/install" `
-        if (!$process.WaitForExit(300 * 1000)) { `
-            throw "Process timed out" `
-        }
+      run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
       shell: pwsh
