@@ -63,8 +63,12 @@ pub fn default_token_path() -> PathBuf {
         .join("token")
 }
 
+/// Only called from the GUI Client's build of the IPC service
+///
+/// On Linux this is the same as running with `ipc-service`
 pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
+    // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);
@@ -72,7 +76,9 @@ pub fn run_only_ipc_service() -> Result<()> {
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
-    run_ipc_service(cli)
+    let rt = tokio::runtime::Runtime::new()?;
+    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    run_ipc_service(cli, rt, shutdown_rx)
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
@@ -178,9 +184,12 @@ pub fn sock_path() -> PathBuf {
         .join("ipc.sock")
 }
 
-pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()?;
-    tracing::info!("run_daemon");
+pub(crate) fn run_ipc_service(
+    cli: Cli,
+    rt: tokio::runtime::Runtime,
+    _shutdown_rx: mpsc::Receiver<()>,
+) -> Result<()> {
+    tracing::info!("run_ipc_service");
     rt.block_on(async { ipc_listen(cli).await })
 }
 
