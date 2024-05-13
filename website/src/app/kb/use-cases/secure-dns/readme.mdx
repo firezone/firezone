@@ -27,7 +27,7 @@ with command and control servers and reduce the risk of phishing attacks.
 
 ## Step 1: Choose a resolver to use
 
-You'll first need one more DNS resolvers to use. See the table below for
+You'll first need one or more DNS resolvers to use. See the table below for
 examples of some popular providers that offer malware-blocking and
 privacy-focused DNS resolvers for public use:
 
@@ -41,14 +41,14 @@ privacy-focused DNS resolvers for public use:
 | NextDNS                       | Varies. See [NextDNS](https://nextdns.io/) for more information.     |
 
 <Alert color="warning">
-  Each provider blocks different domains. We recommend
-  testing a few providers to see which one works best for you.
+  Each provider blocks different domains. We recommend testing a few providers
+  to see which one works best for you.
 </Alert>
 
 ## Step 2: Add the resolver in Firezone
 
 1. [Sign in](https://app.firezone.dev) to your Firezone account and navigate to
-   `Settings -> DNS` tab.
+   the `Settings -> DNS` tab.
 1. Add each of the IP addresses of the DNS resolvers you want to use in the
    **Client DNS** section.
 1. Click **Save** to apply the changes. The Firezone Clients will automatically
@@ -68,9 +68,9 @@ privacy-focused DNS resolvers for public use:
 </Link>
 
 <Alert color="info">
-  Firezone only supports upstream resolvers available over UDP/53. See
-  [this GitHub issue](https://github.com/firezone/firezone/issues/4668) if you
-  need support for DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT) resolvers.
+  Firezone only supports upstream resolvers available over UDP/53. See [this
+  GitHub issue](https://github.com/firezone/firezone/issues/4668) if you need
+  support for DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT) resolvers.
 </Alert>
 
 ## Step 3: Verify
