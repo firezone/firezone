@@ -62,8 +62,9 @@ impl Server {
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
         // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
-        let server = unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
-            .map_err(|_| super::Error::CantListen)?;
+        let server =
+            unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
+                .map_err(|_| super::Error::CantListen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })

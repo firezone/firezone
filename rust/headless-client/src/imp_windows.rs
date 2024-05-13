@@ -20,10 +20,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::{
-    net::windows::named_pipe::self,
-    sync::mpsc,
-};
+use tokio::{net::windows::named_pipe, sync::mpsc};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
@@ -110,7 +107,9 @@ fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
         std::future::poll_fn(|cx| {
             match signals.poll(cx) {
                 Poll::Ready(SignalKind::Hangup) => {
-                    return Poll::Ready(Err(anyhow::anyhow!("Impossible, we don't catch Hangup on Windows")));
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "Impossible, we don't catch Hangup on Windows"
+                    )));
                 }
                 Poll::Ready(SignalKind::Interrupt) => {
                     tracing::info!("Caught Interrupt signal");
@@ -121,7 +120,9 @@ fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
 
             match ipc_service.as_mut().poll(cx) {
                 Poll::Ready(Ok(())) => {
-                    return Poll::Ready(Err(anyhow::anyhow!("Impossible, ipc_listencan't return Ok")));
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "Impossible, ipc_listencan't return Ok"
+                    )));
                 }
                 Poll::Ready(Err(error)) => {
                     return Poll::Ready(Err(error).context("ipc_listen failed"));
@@ -130,7 +131,8 @@ fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
             }
 
             Poll::Pending
-        }).await
+        })
+        .await
     })
 }
 
@@ -280,8 +282,13 @@ fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
     // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading or lifetime problems, because we only pass pointers to our local vars to Win32, and Win32 shouldn't sae them anywhere.
     unsafe {
         // ChatGPT pointed me to these functions
-        WinSec::InitializeSecurityDescriptor(psd, windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION).context("InitializeSecurityDescriptor failed")?;
-        WinSec::SetSecurityDescriptorDacl(psd, true, None, false).context("SetSecurityDescriptorDacl failed")?;
+        WinSec::InitializeSecurityDescriptor(
+            psd,
+            windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
+        )
+        .context("InitializeSecurityDescriptor failed")?;
+        WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
+            .context("SetSecurityDescriptorDacl failed")?;
     }
 
     let mut sa = WinSec::SECURITY_ATTRIBUTES {
@@ -295,9 +302,8 @@ fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
 
     let sa_ptr = &mut sa as *mut _ as *mut c_void;
     // SAFETY: Unsafe needed to call Win32 API. We only pass pointers to local vars, and Win32 shouldn't store them, so there shouldn't be any threading of lifetime problems.
-    let server = unsafe {
-        server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr)
-    }.context("Failed to listen on named pipe")?;
+    let server = unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
+        .context("Failed to listen on named pipe")?;
     Ok(server)
 }
 
@@ -308,10 +314,15 @@ pub fn pipe_path() -> String {
 
 async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
     let mut framed = Framed::new(server, LengthDelimitedCodec::new());
-    let msg = framed.next().await.context("Didn't get any message from the IPC client")??;
+    let msg = framed
+        .next()
+        .await
+        .context("Didn't get any message from the IPC client")??;
     let _msg: IpcClientMsg = serde_json::from_slice(&msg)?;
     let response = IpcServerMsg::Ok;
-    framed.send(serde_json::to_string(&response)?.into()).await?;
+    framed
+        .send(serde_json::to_string(&response)?.into())
+        .await?;
     bail!("Not implemented yet");
 }
 
@@ -330,7 +341,6 @@ pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     tracing::debug!(?resolvers);
     Ok(resolvers)
 }
-
 
 /// Returns a valid name for a Windows named pipe
 ///
