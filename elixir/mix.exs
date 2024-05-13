@@ -1,11 +1,13 @@
 defmodule Firezone.MixProject do
   use Mix.Project
 
+  @version "VERSION" |> File.read!() |> String.trim()
+
   def project do
     [
       name: :firezone,
       apps_path: "apps",
-      version: String.trim(File.read!("VERSION")),
+      version: @version,
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [

@@ -100,18 +100,25 @@ defmodule Domain.Auth.Adapters.Email do
 
   @impl true
   def verify_secret(%Identity{} = identity, %Context{} = context, encoded_token) do
-    with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}) do
+    with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}),
+         true <- token.identity_id == identity.id do
       {:ok, identity} =
-        Identity.Changeset.update_identity_provider_state(identity, %{
-          last_used_token_id: token.id
-        })
-        |> Repo.update()
+        Identity.Query.not_disabled()
+        |> Identity.Query.by_id(identity.id)
+        |> Repo.fetch_and_update(Identity.Query,
+          with: fn identity ->
+            Identity.Changeset.update_identity_provider_state(identity, %{
+              last_used_token_id: token.id
+            })
+          end
+        )
 
       {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
 
       {:ok, identity, nil}
     else
       {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
+      false -> {:error, :invalid_secret}
     end
   end
 end
