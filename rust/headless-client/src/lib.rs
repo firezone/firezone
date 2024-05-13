@@ -15,7 +15,12 @@ use connlib_client_shared::{
 };
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
-use std::{future, net::{IpAddr, Ipv4Addr, Ipv6Addr}, path::PathBuf, task::Poll};
+use std::{
+    future,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+    task::Poll,
+};
 use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};

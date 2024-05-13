@@ -336,7 +336,12 @@ impl Callbacks for CallbackHandlerIpc {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) -> Option<i32> {
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+    ) -> Option<i32> {
         tracing::info!("TunnelReady");
         self.cb_tx
             .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })

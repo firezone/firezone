@@ -1,20 +1,11 @@
 use anyhow::{Context, Result};
-use arc_swap::ArcSwap;
-use connlib_client_shared::{Callbacks, ResourceDescription};
+use connlib_client_shared::Callbacks;
 use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    sync::Arc,
-};
-use tokio::{
-    net::{unix::OwnedWriteHalf, UnixStream},
-    sync::Notify,
-};
+use std::net::IpAddr;
+use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-
-use crate::client::gui::{ControllerRequest, CtlrTx};
 
 /// Forwards events to and from connlib
 pub(crate) struct TunnelWrapper {
@@ -87,7 +78,9 @@ pub async fn connect(
                     &connlib_client_shared::Error::Other("errors can't be serialized"),
                 ),
                 IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => callback_handler.on_tunnel_ready(ipv4, ipv6, dns),
+                IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                    callback_handler.on_set_interface_config(ipv4, ipv6, dns);
+                }
             }
         }
         Ok(())
