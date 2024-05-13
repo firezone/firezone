@@ -1967,6 +1967,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "windows 0.56.0",
  "windows-service",
 ]
 

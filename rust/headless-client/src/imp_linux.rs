@@ -210,6 +210,7 @@ async fn ipc_listen(cli: Cli) -> Result<()> {
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
+        connlib_shared::deactivate_dns_control()?;
         tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = listener.accept().await?;
         let cred = stream.peer_cred()?;
@@ -258,7 +259,6 @@ impl Callbacks for CallbackHandlerIpc {
 }
 
 async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
-    connlib_shared::deactivate_dns_control()?;
     let (rx, tx) = stream.into_split();
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());

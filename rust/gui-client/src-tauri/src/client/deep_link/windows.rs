@@ -51,7 +51,6 @@ impl Server {
         }
 
         let mut sa = WinSec::SECURITY_ATTRIBUTES {
-            // TODO: Try `size_of_val` here instead
             nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
                 .try_into()
                 .unwrap(),

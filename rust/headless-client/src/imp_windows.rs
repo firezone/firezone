@@ -1,18 +1,33 @@
-use crate::Cli;
-use anyhow::{Context as _, Result};
+//! Implementation of headless Client and IPC service for Windows
+//!
+//! Try not to panic in the IPC service. Windows doesn't consider the
+//! service to be stopped even if its only process ends, for some reason.
+//! We must tell Windows explicitly when our service is stopping.
+
+use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::file_logger;
+use connlib_shared::BUNDLE_ID;
+use futures::{SinkExt, StreamExt};
 use std::{
-    ffi::OsString,
+    ffi::{c_void, OsString},
+    future::Future,
     net::IpAddr,
     path::{Path, PathBuf},
+    pin::pin,
     str::FromStr,
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::sync::mpsc;
+use tokio::{
+    net::windows::named_pipe::self,
+    sync::mpsc,
+};
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
+use windows::Win32::Security as WinSec;
 use windows_service::{
     service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
@@ -34,11 +49,31 @@ impl Signals {
         Ok(Self { sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<SignalKind> {
         if self.sigint.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Interrupt);
+            return Poll::Ready(SignalKind::Interrupt);
         }
         Poll::Pending
+    }
+}
+
+#[derive(clap::Parser, Default)]
+#[command(author, version, about, long_about = None)]
+struct CliIpcService {
+    #[command(subcommand)]
+    command: CmdIpc,
+}
+
+#[derive(clap::Subcommand)]
+enum CmdIpc {
+    #[command(hide = true)]
+    DebugIpcService,
+    IpcService,
+}
+
+impl Default for CmdIpc {
+    fn default() -> Self {
+        Self::IpcService
     }
 }
 
@@ -59,8 +94,44 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 /// On Windows, this is wrapped specially so that Windows' service controller
 /// can launch it.
 pub fn run_only_ipc_service() -> Result<()> {
-    windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run)?;
-    Ok(())
+    let cli = CliIpcService::parse();
+    match cli.command {
+        CmdIpc::DebugIpcService => run_debug_ipc_service(cli),
+        CmdIpc::IpcService => windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?"),
+    }
+}
+
+fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
+    crate::debug_command_setup()?;
+    let rt = tokio::runtime::Runtime::new()?;
+    let mut ipc_service = pin!(ipc_listen(cli));
+    let mut signals = Signals::new()?;
+    rt.block_on(async {
+        std::future::poll_fn(|cx| {
+            match signals.poll(cx) {
+                Poll::Ready(SignalKind::Hangup) => {
+                    return Poll::Ready(Err(anyhow::anyhow!("Impossible, we don't catch Hangup on Windows")));
+                }
+                Poll::Ready(SignalKind::Interrupt) => {
+                    tracing::info!("Caught Interrupt signal");
+                    return Poll::Ready(Ok(()));
+                }
+                Poll::Pending => {}
+            }
+
+            match ipc_service.as_mut().poll(cx) {
+                Poll::Ready(Ok(())) => {
+                    return Poll::Ready(Err(anyhow::anyhow!("Impossible, ipc_listencan't return Ok")));
+                }
+                Poll::Ready(Err(error)) => {
+                    return Poll::Ready(Err(error).context("ipc_listen failed"));
+                }
+                Poll::Pending => {}
+            }
+
+            Poll::Pending
+        }).await
+    })
 }
 
 // Generates `ffi_service_run` from `service_run`
@@ -80,7 +151,6 @@ const SERVICE_RUST_LOG: &str = "info";
 
 // Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
-    let cli = Cli::parse();
     let log_path =
         crate::known_dirs::imp::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
@@ -91,7 +161,7 @@ fn fallible_windows_service_run() -> Result<()> {
     tracing::info!(git_version = crate::GIT_VERSION);
 
     let rt = tokio::runtime::Runtime::new()?;
-    let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
@@ -138,9 +208,37 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
-    if let Err(error) = run_ipc_service(cli, rt, shutdown_rx) {
-        tracing::error!(?error, "error from run_ipc_service");
-    }
+    let mut ipc_service = pin!(ipc_listen(CliIpcService::default()));
+    rt.block_on(async {
+        std::future::poll_fn(|cx| {
+            match shutdown_rx.poll_recv(cx) {
+                Poll::Ready(Some(())) => {
+                    tracing::info!("Got shutdown signal");
+                    return Poll::Ready(());
+                }
+                Poll::Ready(None) => {
+                    tracing::warn!("shutdown channel unexpectedly dropped, shutting down");
+                    return Poll::Ready(());
+                }
+                Poll::Pending => {}
+            }
+
+            match ipc_service.as_mut().poll(cx) {
+                Poll::Ready(Ok(())) => {
+                    tracing::error!("Impossible, ipc_listen can't return Ok");
+                    return Poll::Ready(());
+                }
+                Poll::Ready(Err(error)) => {
+                    tracing::error!(?error, "error from ipc_listen");
+                    return Poll::Ready(());
+                }
+                Poll::Pending => {}
+            }
+
+            Poll::Pending
+        })
+        .await
+    });
 
     // Tell Windows that we're stopping
     status_handle.set_service_status(ServiceStatus {
@@ -155,24 +253,66 @@ fn fallible_windows_service_run() -> Result<()> {
     Ok(())
 }
 
-/// Common entry point for both the Windows-wrapped IPC service and the debug IPC service
-///
-/// Running as a Windows service is complicated, so to make debugging easier
-/// we'll have a dev-only mode that runs all the IPC code as a normal process
-/// in an admin console.
-pub(crate) fn run_ipc_service(
-    cli: Cli,
-    rt: tokio::runtime::Runtime,
-    shutdown_rx: mpsc::Receiver<()>,
-) -> Result<()> {
-    tracing::info!("run_ipc_service");
-    rt.block_on(async { ipc_listen(cli, shutdown_rx).await })
+async fn ipc_listen(_cli: CliIpcService) -> Result<()> {
+    loop {
+        // This is redundant on the first loop. After that it clears the rules
+        // between GUI instances.
+        connlib_shared::deactivate_dns_control()?;
+        let server = create_pipe_server()?;
+        tracing::info!("Listening for GUI to connect over IPC...");
+        server
+            .connect()
+            .await
+            .context("Couldn't accept IPC connection from GUI")?;
+        if let Err(error) = handle_ipc_client(server).await {
+            tracing::error!(?error, "Error while handling IPC client");
+        }
+    }
 }
 
-async fn ipc_listen(_cli: Cli, mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    shutdown_rx.recv().await;
+fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
+    let mut server_options = named_pipe::ServerOptions::new();
+    server_options.first_pipe_instance(true);
 
-    Ok(())
+    // This will allow non-admin clients to connect to us even though we're running with privilege
+    let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
+    let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
+    // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading or lifetime problems, because we only pass pointers to our local vars to Win32, and Win32 shouldn't sae them anywhere.
+    unsafe {
+        // ChatGPT pointed me to these functions
+        WinSec::InitializeSecurityDescriptor(psd, windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION).context("InitializeSecurityDescriptor failed")?;
+        WinSec::SetSecurityDescriptorDacl(psd, true, None, false).context("SetSecurityDescriptorDacl failed")?;
+    }
+
+    let mut sa = WinSec::SECURITY_ATTRIBUTES {
+        nLength: 0,
+        lpSecurityDescriptor: psd.0,
+        bInheritHandle: false.into(),
+    };
+    sa.nLength = std::mem::size_of_val(&sa)
+        .try_into()
+        .context("Size of SECURITY_ATTRIBUTES struct is not right")?;
+
+    let sa_ptr = &mut sa as *mut _ as *mut c_void;
+    // SAFETY: Unsafe needed to call Win32 API. We only pass pointers to local vars, and Win32 shouldn't store them, so there shouldn't be any threading of lifetime problems.
+    let server = unsafe {
+        server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr)
+    }.context("Failed to listen on named pipe")?;
+    Ok(server)
+}
+
+/// Named pipe for IPC between GUI client and IPC service
+pub fn pipe_path() -> String {
+    named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
+}
+
+async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
+    let mut framed = Framed::new(server, LengthDelimitedCodec::new());
+    let msg = framed.next().await.context("Didn't get any message from the IPC client")??;
+    let _msg: IpcClientMsg = serde_json::from_slice(&msg)?;
+    let response = IpcServerMsg::Ok;
+    framed.send(serde_json::to_string(&response)?.into()).await?;
+    bail!("Not implemented yet");
 }
 
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
