@@ -1,8 +1,9 @@
-use firezone_headless_client::IpcClientMsg;
-use secrecy::SecretString;
-use tokio::net::{unix::OwnedWriteHalf, UnixStream};
+use anyhow::{Context as _, Result};
+use connlib_client_shared::Callbacks;
+use firezone_headless_client::{imp_linux::sock_path, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
+use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 /// Forwards events to and from connlib
@@ -21,7 +22,7 @@ impl TunnelWrapper {
         Ok(())
     }
 
-    pub(crate)async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
+    pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
             .send(
                 serde_json::to_string(msg)

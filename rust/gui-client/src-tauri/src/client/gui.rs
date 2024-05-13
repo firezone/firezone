@@ -6,18 +6,14 @@
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
-    tunnel_wrapper::{self, CallbackHandler, TunnelWrapper}, Failure,
+    tunnel_wrapper::{self, CallbackHandler, TunnelWrapper},
+    Failure,
 };
 use anyhow::{bail, Context, Result};
 use connlib_client_shared::ResourceDescription;
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};

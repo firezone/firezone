@@ -7,12 +7,12 @@ pub(crate) struct TunnelWrapper {}
 impl TunnelWrapper {
     #[allow(clippy::unused_async)]
     pub(crate) async fn disconnect(self) -> Result<()> {
-        todo!()
+        unimplemented!()
     }
 
     #[allow(clippy::unused_async)]
     pub(crate) async fn send_msg(&mut self, _msg: &IpcClientMsg) -> Result<()> {
-        todo!()
+        unimplemented!()
     }
 }
 
@@ -22,5 +22,5 @@ pub(crate) async fn connect(
     _callback_handler: super::CallbackHandler,
     _tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
-    todo!()
+    unimplemented!()
 }

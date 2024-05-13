@@ -1,10 +1,13 @@
-use anyhow::{Context, Result};
+use crate::client::gui::{ControllerRequest, CtlrTx};
+use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::ResourceDescription;
-use crate::client::gui::{ControllerRequest, CtlrTx};
 use firezone_headless_client::IpcClientMsg;
 
-use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::Arc};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 use tokio::sync::Notify;
 
 pub(crate) use imp::{connect, TunnelWrapper};
