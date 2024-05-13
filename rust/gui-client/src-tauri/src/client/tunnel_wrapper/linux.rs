@@ -1,10 +1,8 @@
-use anyhow::{Context, Result};
-use connlib_client_shared::Callbacks;
-use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::IpcClientMsg;
+use secrecy::SecretString;
+use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::net::IpAddr;
-use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 /// Forwards events to and from connlib
@@ -23,24 +21,7 @@ impl TunnelWrapper {
         Ok(())
     }
 
-    pub(crate) async fn reconnect(&mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Reconnect)
-            .await
-            .context("Couldn't send Reconnect")?;
-        Ok(())
-    }
-
-    /// Tell connlib about the system's default resolvers
-    ///
-    /// `dns` is passed as value because the in-proc impl needs that
-    pub(crate) async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
-        self.send_msg(&IpcClientMsg::SetDns(dns))
-            .await
-            .context("Couldn't send SetDns")?;
-        Ok(())
-    }
-
-    async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
+    pub(crate)async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
             .send(
                 serde_json::to_string(msg)
@@ -53,10 +34,10 @@ impl TunnelWrapper {
     }
 }
 
-pub async fn connect(
+pub(crate) async fn connect(
     api_url: &str,
     token: SecretString,
-    callback_handler: crate::client::gui::CallbackHandler,
+    callback_handler: super::CallbackHandler,
     tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
     tracing::info!(pid = std::process::id(), "Connecting to IPC service...");

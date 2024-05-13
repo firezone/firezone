@@ -44,6 +44,7 @@ tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.36.0", features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
+tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-panic = "0.1.2"
