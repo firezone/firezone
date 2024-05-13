@@ -89,20 +89,20 @@ jobs:
             for arch in "${ARCHITECTURES[@]}"; do
               # Copy sha256sum.txt
               gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.sha }}/${arch}.sha256sum.txt \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
                 gs://firezone-prod-artifacts/${image}/latest/${arch}.sha256sum.txt
 
               gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.sha }}/${arch}.sha256sum.txt \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
                 gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}.sha256sum.txt
 
               # Copy binaries
               gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.sha }}/${arch} \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
                 gs://firezone-prod-artifacts/${image}/latest/${arch}
 
               gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.sha }}/${arch} \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
                 gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}
             done
           done
