@@ -25,6 +25,7 @@ runs:
       shell: bash
     - uses: actions/cache@v4
       if: ${{ runner.os == 'Windows' }}
+      timeout-minutes: 5 # Appears to be an issue with WebView. https://github.com/firezone/firezone/pull/4935
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
