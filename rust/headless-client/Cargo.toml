@@ -31,7 +31,7 @@ futures = "0.3.30"
 nix = { version =  "0.28.0", features = ["fs", "user"] }
 resolv-conf = "0.7.0"
 sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
-tokio-util = { version = "0.7.10", features = ["codec"] }
+tokio-util = { version = "0.7.11", features = ["codec"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dirs = "5.0.1"

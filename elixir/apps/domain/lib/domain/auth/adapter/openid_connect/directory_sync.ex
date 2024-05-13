@@ -1,4 +1,4 @@
-defmodule Domain.Auth.Adapter.DirectorySync do
+defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
   alias Domain.Repo
   alias Domain.Jobs.Executors.Concurrent
   alias Domain.{Auth, Actors}
