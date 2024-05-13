@@ -3,7 +3,6 @@ name: "Setup Tauri"
 description: "Sets up the dependencies for building and testing Tauri apps"
 runs:
   using: "composite"
-  timeout-minutes: 5 # Appears to be an issue with WebView. https://github.com/firezone/firezone/pull/4935
   steps:
     - name: Apt-get update
       if: ${{ runner.os == 'Linux' }}
@@ -43,5 +42,11 @@ runs:
       # This downloads about 200 MB and takes about 5 minutes on my VM
       # So we could fault in WebView2 from the client exe without the MSI if we needed.
       # Currently the MSI does this and it's a little janky.
-      run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
+      #
+      # Also sometimes it never finishes. This appears to be an issue with WebView. https://github.com/firezone/firezone/pull/4935
+      run: |
+        $process = Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait `
+        if (!$process.WaitForExit(300 * 1000)) { `
+            throw "Process timed out" `
+        }
       shell: pwsh
