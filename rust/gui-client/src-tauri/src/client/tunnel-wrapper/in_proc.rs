@@ -71,7 +71,7 @@ impl TunnelWrapper {
 pub async fn connect(
     api_url: &str,
     token: SecretString,
-    callback_handler: CallbackHandler,
+    callback_handler: crate::client::gui::CallbackHandler,
     tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
     // Device ID should be in the tunnel process

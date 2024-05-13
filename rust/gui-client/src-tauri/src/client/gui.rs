@@ -6,14 +6,15 @@
 use crate::client::{
     self, about, deep_link, logging, network_changes,
     settings::{self, AdvancedSettings},
-    tunnel_wrapper::{self, CallbackHandler},
+    tunnel_wrapper,
     Failure,
 };
 use anyhow::{bail, Context, Result};
+use arc_swap::ArcSwap;
 use connlib_client_shared::ResourceDescription;
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr}, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -66,6 +67,37 @@ pub(crate) enum Error {
     WebViewNotInstalled,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+#[derive(Clone)]
+pub(crate) struct CallbackHandler {
+    pub notify_controller: Arc<Notify>,
+    pub ctlr_tx: CtlrTx,
+    pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
+}
+
+// Callbacks must all be non-blocking
+// TODO: DRY
+impl connlib_client_shared::Callbacks for CallbackHandler {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+        tracing::debug!("on_disconnect {error:?}");
+        self.ctlr_tx
+            .try_send(ControllerRequest::Disconnected)
+            .expect("controller channel failed");
+    }
+
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+        self.ctlr_tx
+            .try_send(ControllerRequest::TunnelReady)
+            .expect("controller channel failed");
+        None
+    }
+
+    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
+        tracing::debug!("on_update_resources");
+        self.resources.store(resources.into());
+        self.notify_controller.notify_one();
+    }
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error

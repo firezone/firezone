@@ -16,13 +16,6 @@ use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use crate::client::gui::{ControllerRequest, CtlrTx};
 
-#[derive(Clone)]
-pub(crate) struct CallbackHandler {
-    pub notify_controller: Arc<Notify>,
-    pub ctlr_tx: CtlrTx,
-    pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
-}
-
 /// Forwards events to and from connlib
 pub(crate) struct TunnelWrapper {
     recv_task: tokio::task::JoinHandle<Result<()>>,
@@ -72,7 +65,7 @@ impl TunnelWrapper {
 pub async fn connect(
     api_url: &str,
     token: SecretString,
-    callback_handler: CallbackHandler,
+    callback_handler: crate::client::gui::CallbackHandler,
     tokio_handle: tokio::runtime::Handle,
 ) -> Result<TunnelWrapper> {
     tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
@@ -111,27 +104,4 @@ pub async fn connect(
         .context("Couldn't send Connect message")?;
 
     Ok(client)
-}
-
-// Callbacks must all be non-blocking
-// TODO: DRY
-impl connlib_client_shared::Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::debug!("on_disconnect {error:?}");
-        self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected)
-            .expect("controller channel failed");
-    }
-
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
-        self.ctlr_tx
-            .try_send(ControllerRequest::TunnelReady)
-            .expect("controller channel failed");
-    }
-
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
-        tracing::debug!("on_update_resources");
-        self.resources.store(resources.into());
-        self.notify_controller.notify_one();
-    }
 }
