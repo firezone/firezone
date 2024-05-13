@@ -45,7 +45,7 @@ runs:
       #
       # Also sometimes it never finishes. This appears to be an issue with WebView. https://github.com/firezone/firezone/pull/4935
       run: |
-        $process = Start-Process WebView2Installer.exe -PassThru -ArgumentList "/install" -Wait `
+        $process = Start-Process WebView2Installer.exe -PassThru -ArgumentList "/install" `
         if (!$process.WaitForExit(300 * 1000)) { `
             throw "Process timed out" `
         }
