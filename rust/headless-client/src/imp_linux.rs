@@ -196,7 +196,7 @@ pub(crate) fn run_ipc_service(
 pub fn firezone_group() -> Result<nix::unistd::Group> {
     let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
         .context("can't get group by name")?
-        .context("`{FIREZONE_GROUP}` group must exist on the system")?;
+        .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
     Ok(group)
 }
 
