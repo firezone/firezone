@@ -64,8 +64,6 @@ impl TunnelWrapper {
     }
 
     /// Tell connlib about the system's default resolvers
-    ///
-    /// `dns` is passed as value because the in-proc impl needs that
     pub(crate) async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
         self.send_msg(&IpcClientMsg::SetDns(dns))
             .await
