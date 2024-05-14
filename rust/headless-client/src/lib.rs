@@ -260,8 +260,6 @@ pub fn run_only_ipc_service() -> Result<()> {
         std::env::remove_var(TOKEN_ENV_KEY);
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
-
-    platform::setup_before_connlib()?;
     platform::run_only_ipc_service()
 }
 

@@ -261,6 +261,7 @@ fn fallible_windows_service_run() -> Result<()> {
 }
 
 async fn ipc_listen(_cli: CliIpcService) -> Result<()> {
+    setup_before_connlib()?;
     loop {
         // This is redundant on the first loop. After that it clears the rules
         // between GUI instances.
