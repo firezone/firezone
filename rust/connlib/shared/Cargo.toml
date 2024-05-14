@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 mock = []
-proptest = ["dep:test-strategy", "dep:proptest", "dep:itertools"]
+proptest = ["dep:proptest", "dep:itertools"]
 
 [dependencies]
 anyhow = "1.0.82"
@@ -35,7 +35,6 @@ libc = "0.2"
 snownet = { workspace = true }
 phoenix-channel = { workspace = true }
 proptest = { version = "1.4.0", optional = true }
-test-strategy = { version = "0.3.1", optional = true }
 itertools = { version = "0.12", optional = true }
 
 # Needed for Android logging until tracing is working

@@ -33,18 +33,18 @@ pub fn resources_sharing_group() -> impl Strategy<Value = (Vec<ResourceDescripti
 // Generate resources sharing all gateway groups
 pub fn resources_sharing_all_groups() -> impl Strategy<Value = Vec<ResourceDescription>> {
     gateway_groups()
-        .prop_flat_map(|gateway_groups| collection::vec(resource(gateway_groups.clone()), 1..=100))
+        .prop_flat_map(|gateway_groups| collection::vec(resource(gateway_groups), 1..=100))
 }
 
 pub fn resource(gateway_groups: Vec<GatewayGroup>) -> impl Strategy<Value = ResourceDescription> {
     any::<bool>().prop_flat_map(move |is_dns| {
         if is_dns {
             dns_resource_with_groups(gateway_groups.clone())
-                .prop_map(|r| ResourceDescription::Dns(r))
+                .prop_map(ResourceDescription::Dns)
                 .boxed()
         } else {
             cidr_resource_with_groups(8, gateway_groups.clone())
-                .prop_map(|r| ResourceDescription::Cidr(r))
+                .prop_map(ResourceDescription::Cidr)
                 .boxed()
         }
     })
@@ -92,7 +92,7 @@ pub fn cidr_resource_with_groups(
 }
 
 pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
-    gateway_groups().prop_flat_map(|gateway_groups| dns_resource_with_groups(gateway_groups))
+    gateway_groups().prop_flat_map(dns_resource_with_groups)
 }
 
 pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
