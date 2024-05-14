@@ -222,10 +222,16 @@ fn log_paths() -> Result<Vec<LogPath>> {
     ])
 }
 
-/// Windows doesn't have separate connlib logs until #3712 merges
 #[cfg(not(target_os = "linux"))]
 fn log_paths() -> Result<Vec<LogPath>> {
-    Ok(vec![app_log_path()?])
+    Ok(vec![
+        LogPath {
+            src: firezone_headless_client::known_dirs::imp::ipc_service_logs()
+                .context("Can't compute IPC service logs dir")?,
+            dst: PathBuf::from("connlib"),
+        },
+        app_log_path()?,
+    ])
 }
 
 /// Log dir for just the GUI app
