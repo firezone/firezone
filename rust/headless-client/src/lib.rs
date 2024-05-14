@@ -278,12 +278,6 @@ impl Callbacks for CallbackHandler {
         resources: Vec<connlib_client_shared::callbacks::ResourceDescription>,
     ) {
         // See easily with `export RUST_LOG=firezone_headless_client=debug`
-
-        let status = resources
-            .iter()
-            .map(|r| (r.name(), r.status()))
-            .collect::<HashMap<&str, Status>>();
-        tracing::info!(?status, "Resource Status");
         for resource in &resources {
             tracing::debug!(?resource);
         }

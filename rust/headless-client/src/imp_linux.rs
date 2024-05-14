@@ -241,7 +241,7 @@ impl Callbacks for CallbackHandlerIpc {
     }
 
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
-        tracing::info!(?resources, "New resource list");
+        tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(IpcServerMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");
