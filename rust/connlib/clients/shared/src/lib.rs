@@ -192,7 +192,7 @@ mod tests {
     async fn device_windows() {
         // Install wintun so the test can run
         // CI only needs x86_64 for now
-        let wintun_bytes = include_bytes!("../../../../gui-client/wintun/bin/amd64/wintun.dll");
+        let wintun_bytes = include_bytes!("../../../../headless-client/src/windows/wintun/bin/amd64/wintun.dll");
         let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
         tokio::fs::create_dir_all(wintun_path.parent().unwrap())
             .await

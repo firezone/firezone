@@ -25,19 +25,19 @@ use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
 
-use imp::default_token_path;
+use platform::default_token_path;
 
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "linux")]
-pub use linux as imp;
+pub use linux as platform;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
 #[cfg(target_os = "windows")]
-pub use windows as imp;
+pub use windows as platform;
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -153,7 +153,8 @@ pub fn run_only_headless_client() -> Result<()> {
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
-    // thing to run after entering `main`. So nobody else is reading the environment.
+    // thing to run after entering `main` and parsing CLI args.
+    // So nobody else is reading the environment.
     #[allow(unused_unsafe)]
     unsafe {
         // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
@@ -176,18 +177,7 @@ pub fn run_only_headless_client() -> Result<()> {
             cli.token_path
         )
     })?;
-    run_standalone(cli, rt, &token)
-}
-
-// Allow dead code because Windows doesn't have an obvious SIGHUP equivalent
-#[allow(dead_code)]
-enum SignalKind {
-    Hangup,
-    Interrupt,
-}
-
-fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -> Result<()> {
-    tracing::info!("Running in standalone mode");
+    tracing::info!("Running in headless / standalone mode");
     let _guard = rt.enter();
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
@@ -199,7 +189,7 @@ fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -
     };
 
     let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(cli.api_url, token, firezone_id, None, public_key.to_bytes())?;
+    let login = LoginUrl::client(cli.api_url, &token, firezone_id, None, public_key.to_bytes())?;
 
     if cli.check {
         tracing::info!("Check passed");
@@ -209,6 +199,7 @@ fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -
     let (on_disconnect_tx, mut on_disconnect_rx) = mpsc::channel(1);
     let callback_handler = CallbackHandler { on_disconnect_tx };
 
+    platform::setup_before_connlib()?;
     let session = Session::connect(
         login,
         Sockets::new(),
@@ -219,9 +210,9 @@ fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -
         rt.handle().clone(),
     );
     // TODO: this should be added dynamically
-    session.set_dns(imp::system_resolvers().unwrap_or_default());
+    session.set_dns(platform::system_resolvers().unwrap_or_default());
 
-    let mut signals = imp::Signals::new()?;
+    let mut signals = platform::Signals::new()?;
 
     let result = rt.block_on(async {
         future::poll_fn(|cx| loop {
@@ -250,6 +241,29 @@ fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -
     session.disconnect();
 
     result
+}
+
+pub fn run_only_ipc_service() -> Result<()> {
+    // Docs indicate that `remove_var` should actually be marked unsafe
+    // SAFETY: We haven't spawned any other threads, this code should be the first
+    // thing to run after entering `main` and parsing CLI args.
+    // So nobody else is reading the environment.
+    #[allow(unused_unsafe)]
+    unsafe {
+        // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
+        std::env::remove_var(TOKEN_ENV_KEY);
+    }
+    assert!(std::env::var(TOKEN_ENV_KEY).is_err());
+
+    platform::setup_before_connlib()?;
+    platform::run_only_ipc_service()
+}
+
+// Allow dead code because Windows doesn't have an obvious SIGHUP equivalent
+#[allow(dead_code)]
+enum SignalKind {
+    Hangup,
+    Interrupt,
 }
 
 #[derive(Clone)]
@@ -311,7 +325,7 @@ fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
     if std::fs::metadata(&path).is_err() {
         return Ok(None);
     }
-    imp::check_token_permissions(&path)?;
+    platform::check_token_permissions(&path)?;
 
     let Ok(bytes) = std::fs::read(&path) else {
         // We got the metadata a second ago, but can't read the file itself.

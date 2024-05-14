@@ -66,7 +66,7 @@ pub fn default_token_path() -> PathBuf {
 /// Only called from the GUI Client's build of the IPC service
 ///
 /// On Linux this is the same as running with `ipc-service`
-pub fn run_only_ipc_service() -> Result<()> {
+pub(crate) fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
     // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
@@ -145,7 +145,7 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
-pub fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
+fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //
@@ -320,6 +320,14 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
 
     send_task.abort();
 
+    Ok(())
+}
+
+/// Platform-specific setup needed for connlib
+///
+/// On Linux this does nothing
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn setup_before_connlib() -> Result<()> {
     Ok(())
 }
 

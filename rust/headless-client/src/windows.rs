@@ -36,6 +36,8 @@ use windows_service::{
     service_control_handler::{self, ServiceControlHandlerResult},
 };
 
+mod wintun_install;
+
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
@@ -93,7 +95,7 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 ///
 /// On Windows, this is wrapped specially so that Windows' service controller
 /// can launch it.
-pub fn run_only_ipc_service() -> Result<()> {
+pub(crate) fn run_only_ipc_service() -> Result<()> {
     let cli = CliIpcService::parse();
     match cli.command {
         CmdIpc::DebugIpcService => run_debug_ipc_service(cli),
@@ -463,6 +465,15 @@ pub fn system_resolvers() -> Result<Vec<IpAddr>> {
 /// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
 pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
+}
+
+/// Platform-specific setup needed for connlib
+///
+/// On Windows this installs wintun.dll
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn setup_before_connlib() -> Result<()> {
+    wintun_install::ensure_dll()?;
+    Ok(())
 }
 
 #[cfg(test)]
