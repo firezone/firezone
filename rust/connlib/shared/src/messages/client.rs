@@ -8,8 +8,6 @@ use uuid::Uuid;
 
 use super::ResourceId;
 
-// TODO: decide if we keep the same ResourceDescription message or we separate into a non-deserializable thing
-
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
