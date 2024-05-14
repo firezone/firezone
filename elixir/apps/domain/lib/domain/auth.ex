@@ -110,7 +110,8 @@ defmodule Domain.Auth do
     |> Enum.map(fn adapter ->
       capabilities = Adapters.fetch_capabilities!(adapter)
       requires_idp_sync_feature? = capabilities[:default_provisioner] == :custom
-      {adapter, enabled: idp_sync_enabled? or not requires_idp_sync_feature?}
+      enabled_for_account? = idp_sync_enabled? or not requires_idp_sync_feature?
+      {adapter, enabled: enabled_for_account?, sync: requires_idp_sync_feature?}
     end)
   end
 

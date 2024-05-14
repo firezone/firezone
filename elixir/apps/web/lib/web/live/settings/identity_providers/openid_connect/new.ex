@@ -3,7 +3,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
   import Web.Settings.IdentityProviders.OpenIDConnect.Components
   alias Domain.Auth
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     id = Ecto.UUID.generate()
     account = socket.assigns.account
 
@@ -17,7 +17,8 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
       assign(socket,
         id: id,
         form: to_form(changeset),
-        page_title: "New Identity Provider"
+        page_title: "New Identity Provider",
+        provider: params["provider"]
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -41,7 +42,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
         Add a new OpenID Connect Identity Provider
       </:title>
       <:content>
-        <.provider_form account={@account} id={@id} form={@form} />
+        <.provider_form account={@account} id={@id} form={@form} show_sync_msg={!!@provider} />
       </:content>
     </.section>
     """

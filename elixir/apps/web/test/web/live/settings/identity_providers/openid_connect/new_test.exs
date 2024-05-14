@@ -35,7 +35,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.NewTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, lv, _html} =
+    {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/new")
@@ -51,6 +51,36 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.NewTest do
              "provider[adapter_config][scope]",
              "provider[name]"
            ]
+
+    refute html =~ "Enable Directory Sync"
+  end
+
+  test "renders provider creation form with blurred sync step", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(
+        ~p"/#{account}/settings/identity_providers/openid_connect/new?provider=google_workspace"
+      )
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "provider[adapter_config][_persistent_id]",
+             "provider[adapter_config][client_id]",
+             "provider[adapter_config][client_secret]",
+             "provider[adapter_config][discovery_document_uri]",
+             "provider[adapter_config][response_type]",
+             "provider[adapter_config][scope]",
+             "provider[name]"
+           ]
+
+    assert html =~ "Enable Directory Sync"
+    assert html =~ "UPGRADE TO UNLOCK"
   end
 
   test "creates a new provider on valid attrs", %{
