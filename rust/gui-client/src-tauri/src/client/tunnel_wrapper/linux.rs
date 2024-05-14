@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
-use firezone_headless_client::{imp_linux::sock_path, IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{platform::sock_path, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use tokio::net::{unix::OwnedWriteHalf, UnixStream};
