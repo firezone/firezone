@@ -17,7 +17,7 @@ mod imp {
             return Ok(false);
         }
 
-        let fz_gid = firezone_headless_client::imp::firezone_group()?.gid;
+        let fz_gid = firezone_headless_client::platform::firezone_group()?.gid;
         let groups = nix::unistd::getgroups().context("`nix::unistd::getgroups`")?;
         if !groups.contains(&fz_gid) {
             return Err(Error::UserNotInFirezoneGroup);
