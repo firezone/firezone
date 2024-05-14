@@ -5,9 +5,8 @@ use super::FZ_SCHEME;
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 use secrecy::Secret;
-use std::{ffi::c_void, io, path::Path};
+use std::{io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
-use windows::Win32::Security as WinSec;
 
 /// A server for a named pipe, so we can receive deep links from other instances
 /// of the client launched by web browsers
@@ -32,39 +31,10 @@ impl Server {
         let mut server_options = named_pipe::ServerOptions::new();
         server_options.first_pipe_instance(true);
 
-        // This will allow non-admin clients to connect to us even if we're running as admin
-        // TODO: Remove after process separation for Windows is done
-        let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
-        let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
         // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
         // or lifetime problems because we only pass pointers to our local vars to
         // Win32, and Win32 shouldn't save them anywhere.
-        unsafe {
-            // ChatGPT pointed me to these functions, it's better than the official MS docs
-            WinSec::InitializeSecurityDescriptor(
-                psd,
-                windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
-            )
-            .context("InitializeSecurityDescriptor failed")?;
-            WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
-                .context("SetSecurityDescriptorDacl failed")?;
-        }
-
-        let mut sa = WinSec::SECURITY_ATTRIBUTES {
-            nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
-                .try_into()
-                .unwrap(),
-            lpSecurityDescriptor: psd.0,
-            bInheritHandle: false.into(),
-        };
-
-        let sa_ptr = &mut sa as *mut _ as *mut c_void;
-        // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
-        // or lifetime problems because we only pass pointers to our local vars to
-        // Win32, and Win32 shouldn't save them anywhere.
-        let server =
-            unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
-                .map_err(|_| super::Error::CantListen)?;
+        let server = server_options.create(pipe_path()).map_err(|_| super::Error::CantListen)?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
