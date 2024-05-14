@@ -44,8 +44,6 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
 
     assert has_element?(lv, "#idp-option-google_workspace")
     assert html =~ "Google Workspace"
-    assert html =~ "Feature available on a higher pricing plan"
-    assert html =~ "UPGRADE TO UNLOCK"
 
     assert has_element?(lv, "#idp-option-microsoft_entra")
     assert html =~ "Microsoft Entra"
@@ -55,5 +53,54 @@ defmodule Web.Live.Settings.IdentityProviders.NewTest do
 
     assert has_element?(lv, "#idp-option-openid_connect")
     assert html =~ "OpenID Connect"
+  end
+
+  test "next step for non-idp-sync plans is OIDC form", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/new")
+
+    lv
+    |> element("#idp-option-google_workspace")
+    |> render_click()
+
+    assert_redirect(
+      lv,
+      ~p"/#{account}/settings/identity_providers/openid_connect/new?provider=google_workspace"
+    )
+  end
+
+  test "next step for idp-sync plans is to custom adapter form", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:idp_sync, true)
+
+    {:ok, account} =
+      Domain.Accounts.update_account(account, %{
+        features: %{
+          idp_sync: true
+        }
+      })
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers/new")
+
+    lv
+    |> element("#idp-option-google_workspace")
+    |> render_click()
+
+    assert_redirect(
+      lv,
+      ~p"/#{account}/settings/identity_providers/google_workspace/new"
+    )
   end
 end
