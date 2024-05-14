@@ -176,6 +176,22 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert token.deleted_at
     end
 
+    test "returns error when token belongs to a different identity", %{
+      account: account,
+      provider: provider,
+      identity: identity,
+      context: context
+    } do
+      other_identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, other_identity} = request_sign_in_token(other_identity, context)
+
+      nonce = other_identity.provider_virtual_state.nonce
+      fragment = other_identity.provider_virtual_state.fragment
+      token = nonce <> fragment
+
+      assert verify_secret(identity, context, token) == {:error, :invalid_secret}
+    end
+
     test "returns error when token is expired", %{
       context: context,
       identity: identity,

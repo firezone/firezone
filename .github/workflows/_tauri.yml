@@ -66,6 +66,7 @@ jobs:
           # Cache needs to be scoped per OS version
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: ./.github/actions/setup-tauri
+        timeout-minutes: 5
       - name: Install pnpm deps
         run: pnpm install
       - name: Install AzureSignTool

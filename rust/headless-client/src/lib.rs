@@ -53,8 +53,10 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    // Needed to preserve CLI arg compatibility
+    // TODO: Remove
     #[command(subcommand)]
-    command: Option<Cmd>,
+    _command: Option<Cmd>,
 
     #[arg(
         short = 'u',
@@ -104,22 +106,10 @@ struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
-impl Cli {
-    fn command(&self) -> Cmd {
-        // Needed for backwards compatibility with old Docker images
-        self.command.unwrap_or(Cmd::Auto)
-    }
-}
-
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
-    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC service. This will be removed in a future version.
-    #[command(hide = true)]
-    Auto,
-    /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     #[command(hide = true)]
     IpcService,
-    /// Act as a CLI-only Client
     Standalone,
 }
 
@@ -139,7 +129,7 @@ pub enum IpcServerMsg {
     TunnelReady,
 }
 
-pub fn run() -> Result<()> {
+pub fn run_only_headless_client() -> Result<()> {
     let mut cli = Cli::parse();
 
     // Modifying the environment of a running process is unsafe. If any other
@@ -165,25 +155,17 @@ pub fn run() -> Result<()> {
 
     tracing::info!(git_version = crate::GIT_VERSION);
 
-    match cli.command() {
-        Cmd::Auto => {
-            if let Some(token) = get_token(token_env_var, &cli)? {
-                run_standalone(cli, &token)
-            } else {
-                imp::run_ipc_service(cli)
-            }
-        }
-        Cmd::IpcService => imp::run_ipc_service(cli),
-        Cmd::Standalone => {
-            let token = get_token(token_env_var, &cli)?.with_context(|| {
-                format!(
-                    "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-                    cli.token_path
-                )
-            })?;
-            run_standalone(cli, &token)
-        }
-    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    let token = get_token(token_env_var, &cli)?.with_context(|| {
+        format!(
+            "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
+            cli.token_path
+        )
+    })?;
+    run_standalone(cli, rt, &token)
 }
 
 // Allow dead code because Windows doesn't have an obvious SIGHUP equivalent
@@ -193,11 +175,8 @@ enum SignalKind {
     Interrupt,
 }
 
-fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
+fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -> Result<()> {
     tracing::info!("Running in standalone mode");
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
     let _guard = rt.enter();
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
