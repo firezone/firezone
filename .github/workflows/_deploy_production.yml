@@ -118,7 +118,7 @@ jobs:
   deploy-production:
     needs: push
     runs-on: ubuntu-22.04
-    environment: production
+    environment: gcp_production
     permissions:
       contents: write
     env:
