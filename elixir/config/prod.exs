@@ -26,7 +26,7 @@ config :api, API.Endpoint, server: true
 ##### Third-party configs #####
 ###############################
 
-config :phoenix, :filter_parameters, [
+secret_keys = [
   "password",
   "secret",
   "nonce",
@@ -38,6 +38,8 @@ config :phoenix, :filter_parameters, [
   "preshared_key"
 ]
 
+config :phoenix, :filter_parameters, secret_keys
+
 # Do not print debug messages in production and handle all
 # other reports by Elixir Logger with JSON back-end so that.
 # we can parse them in log analysis tools.
@@ -48,7 +50,12 @@ config :logger,
   handle_otp_reports: true
 
 config :logger, :default_handler,
-  formatter: {LoggerJSON.Formatters.GoogleCloud, metadata: {:all_except, [:socket, :conn]}}
+  formatter:
+    {LoggerJSON.Formatters.GoogleCloud,
+     metadata: {:all_except, [:socket, :conn]},
+     redactors: [
+       {LoggerJSON.Redactors.RedactKeys, secret_keys}
+     ]}
 
 config :logger, level: :info
 
