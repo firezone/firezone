@@ -11,19 +11,19 @@ defmodule Domain.AuthTest do
       account = Fixtures.Accounts.create_account(features: %{idp_sync: true})
 
       assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
-               google_workspace: [enabled: true],
-               microsoft_entra: [enabled: true],
-               okta: [enabled: true],
-               openid_connect: [enabled: true]
+               google_workspace: [enabled: true, sync: true],
+               microsoft_entra: [enabled: true, sync: true],
+               okta: [enabled: true, sync: true],
+               openid_connect: [enabled: true, sync: false]
              ]
 
       account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
 
       assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
-               google_workspace: [enabled: false],
-               microsoft_entra: [enabled: false],
-               okta: [enabled: false],
-               openid_connect: [enabled: true]
+               google_workspace: [enabled: false, sync: true],
+               microsoft_entra: [enabled: false, sync: true],
+               okta: [enabled: false, sync: true],
+               openid_connect: [enabled: true, sync: false]
              ]
     end
   end
