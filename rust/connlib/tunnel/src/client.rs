@@ -803,7 +803,7 @@ impl ClientState {
     }
 
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
-        self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
+        self.update_site_status_by_gateway(gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
         self.dns_resources_internal_ips.retain(|resource, _| {
             !self

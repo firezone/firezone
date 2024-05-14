@@ -11,10 +11,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
-use connlib_shared::callbacks::{self, Status};
+use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
-use std::{collections::HashMap, future, net::IpAddr, path::PathBuf, task::Poll};
+use std::{future, net::IpAddr, path::PathBuf, task::Poll};
 use tokio::sync::mpsc;
 
 use imp::default_token_path;
