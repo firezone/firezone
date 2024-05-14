@@ -38,7 +38,7 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 mod imp {
-    use crate::client::{gui::Error};
+    use crate::client::gui::Error;
 
     /// Returns true if the elevation is correct.
     ///

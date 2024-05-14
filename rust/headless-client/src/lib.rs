@@ -189,7 +189,13 @@ pub fn run_only_headless_client() -> Result<()> {
     };
 
     let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(cli.api_url, &token, firezone_id, None, public_key.to_bytes())?;
+    let login = LoginUrl::client(
+        cli.api_url,
+        &token,
+        firezone_id,
+        None,
+        public_key.to_bytes(),
+    )?;
 
     if cli.check {
         tracing::info!("Check passed");
