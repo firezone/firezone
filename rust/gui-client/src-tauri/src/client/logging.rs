@@ -167,7 +167,7 @@ fn add_dir_to_zip(
     src_dir: &Path,
     dst_stem: &Path,
 ) -> Result<()> {
-    let options = zip::write::FileOptions::default();
+    let options = zip::write::SimpleFileOptions::default();
     for entry in fs::read_dir(src_dir).context("Failed to `read_dir` log dir")? {
         let entry = entry.context("Got bad entry from `read_dir`")?;
         let Some(path) = dst_stem

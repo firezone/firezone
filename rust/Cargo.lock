@@ -149,6 +149,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f538837af36e6f6a9be0faa67f9a314f8119e4e4b5867c6ab40ed60360142519"
 
 [[package]]
+name = "arbitrary"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d5a26814d8dcb93b0e5a0ff3c6d80a8843bafb21b39e8e18a6f05471870e110"
+dependencies = [
+ "derive_arbitrary",
+]
+
+[[package]]
 name = "arboard"
 version = "3.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,9 +577,9 @@ checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "base64"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9475866fec1451be56a3c2400fd081ff546538961565ccb5b7142cbd22bc7a51"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bimap"
@@ -1088,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1107,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1126,7 +1135,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1153,11 +1162,11 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "atomicwrites",
- "base64 0.22.0",
+ "base64 0.22.1",
  "boringtun",
  "chrono",
  "domain",
@@ -1490,6 +1499,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_arbitrary"
+version = "1.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67e77553c4162a157adbf834ebae5b415acbecbeafc7a74b0e886657506a7611"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.57",
+]
+
+[[package]]
 name = "derive_more"
 version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1572,6 +1592,17 @@ name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
+
+[[package]]
+name = "displaydoc"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "487585f4d0c6655fe74905e2504d8ad6908e4db67f744eb140876906c2f3175d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.57",
+]
 
 [[package]]
 name = "dns-lookup"
@@ -1845,7 +1876,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "clap",
  "tracing",
@@ -1856,7 +1887,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1889,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1942,7 +1973,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -1974,11 +2005,11 @@ dependencies = [
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "backoff",
- "base64 0.22.0",
+ "base64 0.22.1",
  "bytecodec",
  "bytes",
  "clap",
@@ -2015,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2846,7 +2877,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2861,7 +2892,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3120,7 +3151,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "pnet_packet",
 ]
@@ -4455,10 +4486,10 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "backoff",
- "base64 0.22.0",
+ "base64 0.22.1",
  "futures",
  "hex",
  "hostname 0.4.0",
@@ -5071,7 +5102,7 @@ version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "566cafdd92868e0939d3fb961bd0dc25fcfaaed179291093b3d43e6b3150ea10"
 dependencies = [
- "base64 0.22.0",
+ "base64 0.22.1",
  "bytes",
  "futures-core",
  "futures-util",
@@ -5243,7 +5274,7 @@ version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29993a25686778eb88d4189742cd713c9bce943bc54251a33509dc63cbacf73d"
 dependencies = [
- "base64 0.22.0",
+ "base64 0.22.1",
  "rustls-pki-types",
 ]
 
@@ -5719,7 +5750,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5740,7 +5771,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "boringtun",
@@ -8142,14 +8173,17 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "0.6.6"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "760394e246e4c28189f19d488c058bf16f564016aefac5d32bb1f3b51d5e9261"
+checksum = "c700ea425e148de30c29c580c1f9508b93ca57ad31c9f4e96b83c194c37a7a8f"
 dependencies = [
- "byteorder",
+ "arbitrary",
  "crc32fast",
  "crossbeam-utils",
+ "displaydoc",
  "flate2",
+ "indexmap 2.2.6",
+ "thiserror",
  "time",
 ]
 
