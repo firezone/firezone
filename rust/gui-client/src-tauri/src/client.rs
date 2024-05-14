@@ -64,7 +64,7 @@ pub(crate) fn run() -> Result<()> {
 
     match cli.command {
         None => {
-            match elevation::check() {
+            match elevation::is_normal_user() {
                 // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
@@ -86,8 +86,8 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
-            // Check for elevation. This also ensures wintun.dll is installed.
-            if !elevation::check()? {
+            // z
+            if !elevation::is_normal_user()? {
                 anyhow::bail!("`smoke-test` failed its elevation check");
             }
 
