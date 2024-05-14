@@ -47,7 +47,7 @@ pub(crate) async fn connect(
 ) -> Result<TunnelWrapper> {
     tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
     let ipc = named_pipe::ClientOptions::new()
-        .open(firezone_headless_client::imp_windows::pipe_path())
+        .open(firezone_headless_client::windows::pipe_path())
         .context("Couldn't connect to named pipe server")?;
     let ipc = Framed::new(ipc, LengthDelimitedCodec::new());
     // This channel allows us to communicate with the GUI even though NamedPipeClient

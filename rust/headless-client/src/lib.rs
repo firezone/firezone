@@ -30,14 +30,14 @@ use imp::default_token_path;
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
-pub mod imp_linux;
+pub mod linux;
 #[cfg(target_os = "linux")]
-pub use imp_linux as imp;
+pub use linux as imp;
 
 #[cfg(target_os = "windows")]
-pub mod imp_windows;
+pub mod windows;
 #[cfg(target_os = "windows")]
-pub use imp_windows as imp;
+pub use windows as imp;
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
