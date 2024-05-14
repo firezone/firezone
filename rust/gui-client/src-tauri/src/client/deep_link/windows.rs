@@ -31,9 +31,6 @@ impl Server {
         let mut server_options = named_pipe::ServerOptions::new();
         server_options.first_pipe_instance(true);
 
-        // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
-        // or lifetime problems because we only pass pointers to our local vars to
-        // Win32, and Win32 shouldn't save them anywhere.
         let server = server_options
             .create(pipe_path())
             .map_err(|_| super::Error::CantListen)?;
