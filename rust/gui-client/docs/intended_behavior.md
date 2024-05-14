@@ -8,7 +8,6 @@ Best performed on a clean VM
 
 1. Run `scripts/firezone-client-gui-install.sh`
 1. Expect "Reboot to finish..." message
-1. Expect `systemctl status firezone-client-ipc.service` to show "enabled" and "running"
 1. Run the Firezone GUI
 1. Expect an error saying that you are not a member of the group `firezone-client`
 1. Reboot
@@ -16,7 +15,6 @@ Best performed on a clean VM
 1. Run the Firezone GUI
 1. Expect the "Welcome to Firezone." screen
 1. Open the Settings window and change to staging if needed
-1. Expect `stat /run/user/1000/dev.firezone.client/data/deep_link.sock /run/dev.firezone.client/ipc.sock` to show both sockets existing
 1. Click "Sign in"
 1. Expect a browser to open
 1. Sign in
@@ -72,7 +70,9 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 
 ## Upgrade checklist (Linux)
 
-TODO
+1. Close the Firezone GUI
+1. Run `scripts/firezone-client-gui-install.sh $NEW_DEB`
+1. Run the Firezone GUI
 
 ## Upgrade checklist (Windows)
 
@@ -82,7 +82,9 @@ TODO
 
 ## Un-install checklist (Linux)
 
-TODO
+1. Close the Firezone GUI
+1. Run `sudo systemctl stop firezone-client-ipc.service`
+1. Run `sudo apt-get remove firezone-client-gui`
 
 ## Un-install checklist (Windows)
 
