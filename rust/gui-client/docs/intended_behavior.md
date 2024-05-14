@@ -70,6 +70,26 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 1. Expect the zip to contain a single directory in the root of the zip, to prevent zip bombing
 1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files each, totalling 4 files
 
+## Upgrade checklist (Linux)
+
+TODO
+
+## Upgrade checklist (Windows)
+
+1. Close the Firezone GUI
+1. Run the new MSI
+1. Run the Firezone GUI
+
+## Un-install checklist (Linux)
+
+TODO
+
+## Un-install checklist (Windows)
+
+1. Quit the Firezone GUI
+1. Go to "Add or Remove Programs"
+1. Search for Firezone and click "Uninstall"
+
 ## Settings tab
 
 - Pressing Enter on a text field immediately saves and applies the settings
