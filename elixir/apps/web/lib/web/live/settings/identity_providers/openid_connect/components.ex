@@ -118,7 +118,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
           </:title>
           <:content>
             Directory sync is not enabled on your current plan.
-            <div class="blur-md">
+            <div class="blur-sm">
               <p class="mb-4">
                 Ensure the following scopes are added to the OAuth application:
               </p>
