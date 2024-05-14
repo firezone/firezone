@@ -179,6 +179,8 @@ where
     pub fn set_resource_offline(&mut self, id: ResourceId) {
         self.role_state.set_resource_offline(id);
 
+        self.role_state.on_connection_failed(id);
+
         self.callbacks
             .on_update_resources(self.role_state.resources());
     }
