@@ -273,10 +273,7 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to tell the main thread that we disconnected");
     }
 
-    fn on_update_resources(
-        &self,
-        resources: Vec<connlib_client_shared::callbacks::ResourceDescription>,
-    ) {
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         // See easily with `export RUST_LOG=firezone_headless_client=debug`
         for resource in &resources {
             tracing::debug!(?resource);
