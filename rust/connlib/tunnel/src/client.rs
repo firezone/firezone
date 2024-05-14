@@ -1668,11 +1668,11 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_gateway_online_sets_all_related_resources_online(
-        #[strategy(resources_sharing_group())] resource_config_online: (
+        #[strategy(resources_sharing_site())] resource_config_online: (
             Vec<ResourceDescription>,
             Site,
         ),
-        #[strategy(resources_sharing_group())] resource_config_unknown: (
+        #[strategy(resources_sharing_site())] resource_config_unknown: (
             Vec<ResourceDescription>,
             Site,
         ),
@@ -1704,7 +1704,7 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn disconnecting_gateway_sets_related_resources_unknown(
-        #[strategy(resources_sharing_group())] resource_config: (Vec<ResourceDescription>, Site),
+        #[strategy(resources_sharing_site())] resource_config: (Vec<ResourceDescription>, Site),
         #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
     ) {
         let (resources, site) = resource_config;
@@ -1727,7 +1727,7 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_resource_offline_doesnt_set_all_related_resources_offline(
-        #[strategy(resources_sharing_group())] resource_config_online: (
+        #[strategy(resources_sharing_site())] resource_config_online: (
             Vec<ResourceDescription>,
             Site,
         ),
@@ -1750,7 +1750,7 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_resource_offline_set_all_resources_sharing_all_groups_offline(
-        #[strategy(resources_sharing_all_groups())] resources: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_all_sites())] resources: Vec<ResourceDescription>,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&resources);
