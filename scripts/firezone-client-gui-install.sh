@@ -24,7 +24,9 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
 # Check if the user is already in the group
-if ! groups "$USER" | grep "$GROUP_NAME" &>/dev/null; then
+if ! groups | grep "$GROUP_NAME" &>/dev/null; then
     # Unfortunately Ubuntu seems to need a reboot here, at least 20.04 does
     echo "Reboot to finish adding yourself to the group"
+else
+    echo "Finished installing / upgrading Firezone Client."
 fi
