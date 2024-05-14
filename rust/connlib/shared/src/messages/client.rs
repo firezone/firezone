@@ -34,7 +34,7 @@ impl ResourceDescriptionDns {
             address: self.address,
             name: self.name,
             address_description: self.address_description,
-            gateway_groups: self.sites,
+            sites: self.sites,
             status,
         }
     }
@@ -53,7 +53,8 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<Site>,
+    #[serde(rename = "gateway_groups")]
+    pub sites: Vec<Site>,
 }
 
 impl ResourceDescriptionCidr {
@@ -63,7 +64,7 @@ impl ResourceDescriptionCidr {
             address: self.address,
             name: self.name,
             address_description: self.address_description,
-            gateway_groups: self.gateway_groups,
+            sites: self.sites,
             status,
         }
     }
@@ -108,10 +109,10 @@ impl ResourceDescription {
         }
     }
 
-    pub fn gateway_groups(&self) -> HashSet<&Site> {
+    pub fn sites(&self) -> HashSet<&Site> {
         match self {
             ResourceDescription::Dns(r) => HashSet::from_iter(r.sites.iter()),
-            ResourceDescription::Cidr(r) => HashSet::from_iter(r.gateway_groups.iter()),
+            ResourceDescription::Cidr(r) => HashSet::from_iter(r.sites.iter()),
         }
     }
 

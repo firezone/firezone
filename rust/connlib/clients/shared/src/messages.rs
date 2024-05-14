@@ -236,7 +236,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: "cidr resource".to_string(),
-                        gateway_groups: vec![Site {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -309,7 +309,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: "cidr resource".to_string(),
-                        gateway_groups: vec![Site {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],

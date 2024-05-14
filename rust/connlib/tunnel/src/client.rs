@@ -338,7 +338,7 @@ impl ClientState {
     }
 
     fn resource_status(&self, resource: &ResourceDescription) -> Status {
-        if resource.gateway_groups().iter().any(|s| {
+        if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
                 .is_some_and(|s| *s == Status::Online)
@@ -346,7 +346,7 @@ impl ClientState {
             return Status::Online;
         }
 
-        if resource.gateway_groups().iter().all(|s| {
+        if resource.sites().iter().all(|s| {
             self.sites_status
                 .get(&s.id)
                 .is_some_and(|s| *s == Status::Offline)
@@ -362,7 +362,7 @@ impl ClientState {
             return;
         };
 
-        for Site { id, .. } in resource.gateway_groups() {
+        for Site { id, .. } in resource.sites() {
             self.sites_status.insert(*id, Status::Offline);
         }
     }
@@ -922,10 +922,9 @@ impl ClientState {
         // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
         // connected at the same time.
         self.sites_status.insert(
-            *self
-                .gateways_site
-                .get(gateway_id)
-                .expect("inconsistent state"),
+            *self.gateways_site.get(gateway_id).expect(
+                "if we're updating a site status there should be an associated site to a gateway",
+            ),
             status,
         );
     }
@@ -1578,7 +1577,7 @@ mod proptests {
             id: resource.id,
             name: resource.name,
             address_description: resource.address_description,
-            gateway_groups: resource.sites,
+            sites: resource.sites,
         };
 
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
@@ -1679,7 +1678,7 @@ mod proptests {
         ),
         #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
     ) {
-        let (resources_online, gateway_group) = resource_config_online;
+        let (resources_online, site) = resource_config_online;
         let (resources_unknown, _) = resource_config_unknown;
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&resources_online);
@@ -1690,7 +1689,7 @@ mod proptests {
         );
         client_state
             .gateways_site
-            .insert(first_resource_gateway_id, gateway_group.id);
+            .insert(first_resource_gateway_id, site.id);
 
         client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
 
@@ -1708,7 +1707,7 @@ mod proptests {
         #[strategy(resources_sharing_group())] resource_config: (Vec<ResourceDescription>, Site),
         #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
     ) {
-        let (resources, gateway_group) = resource_config;
+        let (resources, site) = resource_config;
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&resources);
         client_state
@@ -1716,7 +1715,7 @@ mod proptests {
             .insert(resources.first().unwrap().id(), first_resource_gateway_id);
         client_state
             .gateways_site
-            .insert(first_resource_gateway_id, gateway_group.id);
+            .insert(first_resource_gateway_id, site.id);
 
         client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
         client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Unknown);

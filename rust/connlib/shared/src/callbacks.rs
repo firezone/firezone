@@ -112,7 +112,7 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<Site>,
+    pub sites: Vec<Site>,
 
     pub status: Status,
 }
@@ -124,7 +124,7 @@ impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescripti
             address: r.address,
             address_description: r.address_description,
             name: r.name,
-            sites: r.gateway_groups,
+            sites: r.sites,
         }
     }
 }
@@ -142,7 +142,7 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<Site>,
+    pub sites: Vec<Site>,
 
     pub status: Status,
 }
@@ -154,7 +154,7 @@ impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescript
             address: r.address,
             address_description: r.address_description,
             name: r.name,
-            gateway_groups: r.gateway_groups,
+            sites: r.sites,
         }
     }
 }
