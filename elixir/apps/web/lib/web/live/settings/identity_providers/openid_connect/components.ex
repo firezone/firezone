@@ -1,6 +1,11 @@
 defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
   use Web, :component_library
 
+  attr :id, :string
+  attr :account, :any
+  attr :form, :any
+  attr :show_sync_msg, :boolean, default: false
+
   def provider_form(assigns) do
     ~H"""
     <div class="max-w-2xl px-4 py-8 mx-auto lg:py-12">
@@ -95,12 +100,47 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
                 </div>
               </.inputs_for>
             </div>
-
-            <.submit_button>
-              Connect Identity Provider
-            </.submit_button>
           </:content>
         </.step>
+        <.step :if={@show_sync_msg}>
+          <:title>
+            Step 3. Enable Directory Sync <.icon name="hero-arrow-path" class="w-5 h-5 ml-2" />
+            <span class="inline-flex w-1/2 justify-end">
+              <.link
+                navigate={~p"/#{@account}/settings/billing"}
+                class="text-sm text-primary-500 ml-2"
+              >
+                <.badge type="primary" title="Feature available on a higher pricing plan">
+                  <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+                </.badge>
+              </.link>
+            </span>
+          </:title>
+          <:content>
+            Directory sync is not enabled on your current plan.
+            <div class="blur-md">
+              <p class="mb-4">
+                Ensure the following scopes are added to the OAuth application:
+              </p>
+              <.code_block
+                id="scope-fake"
+                class="w-full text-xs mb-4 whitespace-pre-line rounded"
+                phx-no-format
+              ><%= "placeholder\nscopes\nfor\nsync" %></.code_block>
+              <p class="mb-4">
+                Placeholder for any additional instructions here:
+              </p>
+              <.code_block
+                id="placeholder-instructions"
+                class="w-full text-xs mb-4 whitespace-pre-line rounded"
+                phx-no-format
+              >placeholder instructions here</.code_block>
+            </div>
+          </:content>
+        </.step>
+        <.submit_button>
+          Connect Identity Provider
+        </.submit_button>
       </.form>
     </div>
     """
