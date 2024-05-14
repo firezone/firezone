@@ -26,7 +26,8 @@ pub struct ConnectionDetails {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_remote_ip: IpAddr,
-    pub gateway_group_id: SiteId,
+    #[serde(rename = "gateway_group_id")]
+    pub site_id: SiteId,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -103,7 +104,7 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        client::{GatewayGroup, ResourceDescriptionCidr, ResourceDescriptionDns},
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site},
         DnsServer, IpDnsServer, Stun, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
@@ -235,7 +236,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: "cidr resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        gateway_groups: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -245,7 +246,7 @@ mod test {
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
                         address_description: "dns resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -308,7 +309,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: "cidr resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        gateway_groups: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -318,7 +319,7 @@ mod test {
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
                         address_description: "dns resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -537,7 +538,7 @@ mod test {
                 gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                 gateway_remote_ip: "172.28.0.1".parse().unwrap(),
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-                gateway_group_id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
+                site_id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
                         id: "c9cb8892-e355-41e6-a882-b6d6c38beb66".parse().unwrap(),

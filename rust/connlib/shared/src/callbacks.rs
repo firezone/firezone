@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::messages::client::GatewayGroup;
+use crate::messages::client::Site;
 use crate::messages::ResourceId;
 
 // Avoids having to map types for Windows
@@ -57,20 +57,6 @@ pub enum ResourceDescription {
 }
 
 impl ResourceDescription {
-    pub fn with_status(
-        r: crate::messages::client::ResourceDescription,
-        status: Status,
-    ) -> ResourceDescription {
-        match r {
-            crate::messages::client::ResourceDescription::Dns(r) => {
-                ResourceDescription::Dns(ResourceDescriptionDns::with_status(r, status))
-            }
-            crate::messages::client::ResourceDescription::Cidr(r) => {
-                ResourceDescription::Cidr(ResourceDescriptionCidr::with_status(r, status))
-            }
-        }
-    }
-
     pub fn name(&self) -> &str {
         match self {
             ResourceDescription::Dns(r) => &r.name,
@@ -126,25 +112,9 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<GatewayGroup>,
+    pub gateway_groups: Vec<Site>,
 
     pub status: Status,
-}
-
-impl ResourceDescriptionDns {
-    fn with_status(
-        r: crate::messages::client::ResourceDescriptionDns,
-        status: Status,
-    ) -> ResourceDescriptionDns {
-        ResourceDescriptionDns {
-            id: r.id,
-            address: r.address,
-            name: r.name,
-            address_description: r.address_description,
-            gateway_groups: r.gateway_groups,
-            status,
-        }
-    }
 }
 
 impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
@@ -154,7 +124,7 @@ impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescripti
             address: r.address,
             address_description: r.address_description,
             name: r.name,
-            gateway_groups: r.gateway_groups,
+            sites: r.gateway_groups,
         }
     }
 }
@@ -172,25 +142,9 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<GatewayGroup>,
+    pub gateway_groups: Vec<Site>,
 
     pub status: Status,
-}
-
-impl ResourceDescriptionCidr {
-    fn with_status(
-        r: crate::messages::client::ResourceDescriptionCidr,
-        status: Status,
-    ) -> ResourceDescriptionCidr {
-        ResourceDescriptionCidr {
-            id: r.id,
-            address: r.address,
-            name: r.name,
-            address_description: r.address_description,
-            gateway_groups: r.gateway_groups,
-            status,
-        }
-    }
 }
 
 impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {

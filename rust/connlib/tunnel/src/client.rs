@@ -3,7 +3,7 @@ use crate::{dns, dns::DnsQuery};
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
 use connlib_shared::error::{ConnlibError as Error, ConnlibError};
-use connlib_shared::messages::client::{GatewayGroup, SiteId};
+use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, client::ResourceDescriptionDns,
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
@@ -176,8 +176,8 @@ where
         self.role_state.on_connection_failed(id);
     }
 
-    pub fn offline_resource(&mut self, id: ResourceId) {
-        self.role_state.offline_resource(id);
+    pub fn set_resource_offline(&mut self, id: ResourceId) {
+        self.role_state.set_resource_offline(id);
 
         self.callbacks
             .on_update_resources(self.role_state.resources());
@@ -202,10 +202,10 @@ where
         relays: Vec<Relay>,
         site_id: SiteId,
     ) -> connlib_shared::Result<Request> {
-        self.role_state.gateways_site.insert(gateway_id, site_id);
         self.role_state.create_or_reuse_connection(
             resource_id,
             gateway_id,
+            site_id,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays),
         )
@@ -331,13 +331,13 @@ impl ClientState {
             .sorted()
             .cloned()
             .map(|r| {
-                let status = self.status(&r);
-                callbacks::ResourceDescription::with_status(r, status)
+                let status = self.resource_status(&r);
+                r.with_status(status)
             })
             .collect_vec()
     }
 
-    fn status(&self, resource: &ResourceDescription) -> Status {
+    fn resource_status(&self, resource: &ResourceDescription) -> Status {
         if resource.gateway_groups().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
@@ -357,12 +357,12 @@ impl ClientState {
         Status::Unknown
     }
 
-    fn offline_resource(&mut self, id: ResourceId) {
+    fn set_resource_offline(&mut self, id: ResourceId) {
         let Some(resource) = self.resource_ids.get(&id).cloned() else {
             return;
         };
 
-        for GatewayGroup { id, .. } in resource.gateway_groups() {
+        for Site { id, .. } in resource.gateway_groups() {
             self.sites_status.insert(*id, Status::Offline);
         }
     }
@@ -488,10 +488,13 @@ impl ClientState {
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
+        site_id: SiteId,
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
     ) -> connlib_shared::Result<Request> {
         tracing::trace!("create_or_reuse_connection");
+
+        self.gateways_site.insert(gateway_id, site_id);
 
         let desc = self
             .resource_ids
@@ -800,6 +803,7 @@ impl ClientState {
     }
 
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
+        self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
         self.dns_resources_internal_ips.retain(|resource, _| {
             !self
@@ -888,7 +892,6 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    self.update_site_status_by_gateway(&id, Status::Unknown)
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -1575,7 +1578,7 @@ mod proptests {
             id: resource.id,
             name: resource.name,
             address_description: resource.address_description,
-            gateway_groups: resource.gateway_groups,
+            gateway_groups: resource.sites,
         };
 
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
@@ -1668,11 +1671,11 @@ mod proptests {
     fn setting_gateway_online_sets_all_related_resources_online(
         #[strategy(resources_sharing_group())] resource_config_online: (
             Vec<ResourceDescription>,
-            GatewayGroup,
+            Site,
         ),
         #[strategy(resources_sharing_group())] resource_config_unknown: (
             Vec<ResourceDescription>,
-            GatewayGroup,
+            Site,
         ),
         #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
     ) {
@@ -1692,20 +1695,17 @@ mod proptests {
         client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
 
         for resource in resources_online {
-            assert_eq!(client_state.status(&resource), Status::Online);
+            assert_eq!(client_state.resource_status(&resource), Status::Online);
         }
 
         for resource in resources_unknown {
-            assert_eq!(client_state.status(&resource), Status::Unknown);
+            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
         }
     }
 
     #[test_strategy::proptest]
     fn disconnecting_gateway_sets_related_resources_unknown(
-        #[strategy(resources_sharing_group())] resource_config: (
-            Vec<ResourceDescription>,
-            GatewayGroup,
-        ),
+        #[strategy(resources_sharing_group())] resource_config: (Vec<ResourceDescription>, Site),
         #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
     ) {
         let (resources, gateway_group) = resource_config;
@@ -1722,7 +1722,7 @@ mod proptests {
         client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Unknown);
 
         for resource in resources {
-            assert_eq!(client_state.status(&resource), Status::Unknown);
+            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
         }
     }
 
@@ -1730,7 +1730,7 @@ mod proptests {
     fn setting_resource_offline_doesnt_set_all_related_resources_offline(
         #[strategy(resources_sharing_group())] resource_config_online: (
             Vec<ResourceDescription>,
-            GatewayGroup,
+            Site,
         ),
     ) {
         let (mut resources, _) = resource_config_online;
@@ -1738,11 +1738,14 @@ mod proptests {
         client_state.add_resources(&resources);
         let resource_offline = resources.pop().unwrap();
 
-        client_state.offline_resource(resource_offline.id());
+        client_state.set_resource_offline(resource_offline.id());
 
-        assert_eq!(client_state.status(&resource_offline), Status::Offline);
+        assert_eq!(
+            client_state.resource_status(&resource_offline),
+            Status::Offline
+        );
         for resource in resources {
-            assert_eq!(client_state.status(&resource), Status::Unknown);
+            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
         }
     }
 
@@ -1753,10 +1756,10 @@ mod proptests {
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&resources);
 
-        client_state.offline_resource(resources.first().unwrap().id());
+        client_state.set_resource_offline(resources.first().unwrap().id());
 
         for resource in resources {
-            assert_eq!(client_state.status(&resource), Status::Offline);
+            assert_eq!(client_state.resource_status(&resource), Status::Offline);
         }
     }
 }

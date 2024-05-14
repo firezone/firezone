@@ -6,6 +6,8 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::callbacks::Status;
+
 use super::ResourceId;
 
 /// Description of a resource that maps to a DNS record.
@@ -21,7 +23,21 @@ pub struct ResourceDescriptionDns {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<GatewayGroup>,
+    #[serde(rename = "gateway_groups")]
+    pub sites: Vec<Site>,
+}
+
+impl ResourceDescriptionDns {
+    fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
+        crate::callbacks::ResourceDescriptionDns {
+            id: self.id,
+            address: self.address,
+            name: self.name,
+            address_description: self.address_description,
+            gateway_groups: self.sites,
+            status,
+        }
+    }
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -37,11 +53,24 @@ pub struct ResourceDescriptionCidr {
     pub name: String,
 
     pub address_description: String,
-    pub gateway_groups: Vec<GatewayGroup>,
+    pub gateway_groups: Vec<Site>,
+}
+
+impl ResourceDescriptionCidr {
+    fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
+        crate::callbacks::ResourceDescriptionCidr {
+            id: self.id,
+            address: self.address,
+            name: self.name,
+            address_description: self.address_description,
+            gateway_groups: self.gateway_groups,
+            status,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct GatewayGroup {
+pub struct Site {
     pub name: String,
     pub id: SiteId,
 }
@@ -79,9 +108,9 @@ impl ResourceDescription {
         }
     }
 
-    pub fn gateway_groups(&self) -> HashSet<&GatewayGroup> {
+    pub fn gateway_groups(&self) -> HashSet<&Site> {
         match self {
-            ResourceDescription::Dns(r) => HashSet::from_iter(r.gateway_groups.iter()),
+            ResourceDescription::Dns(r) => HashSet::from_iter(r.sites.iter()),
             ResourceDescription::Cidr(r) => HashSet::from_iter(r.gateway_groups.iter()),
         }
     }
@@ -103,6 +132,17 @@ impl ResourceDescription {
                 cidr_a.address != cidr_b.address
             }
             _ => true,
+        }
+    }
+
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescription {
+        match self {
+            ResourceDescription::Dns(r) => {
+                crate::callbacks::ResourceDescription::Dns(r.with_status(status))
+            }
+            ResourceDescription::Cidr(r) => {
+                crate::callbacks::ResourceDescription::Cidr(r.with_status(status))
+            }
         }
     }
 }
