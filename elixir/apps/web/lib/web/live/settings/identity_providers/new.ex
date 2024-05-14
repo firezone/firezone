@@ -96,20 +96,24 @@ defmodule Web.Settings.IdentityProviders.New do
   end
 
   def next_step_path("google_workspace" = provider, account) do
-    next_path(provider, account)
+    if Domain.Accounts.idp_sync_enabled?(account) do
+      ~p"/#{account}/settings/identity_providers/google_workspace/new"
+    else
+      ~p"/#{account}/settings/identity_providers/openid_connect/new?provider=#{provider}"
+    end
   end
 
   def next_step_path("microsoft_entra" = provider, account) do
-    next_path(provider, account)
+    if Domain.Accounts.idp_sync_enabled?(account) do
+      ~p"/#{account}/settings/identity_providers/microsoft_entra/new"
+    else
+      ~p"/#{account}/settings/identity_providers/openid_connect/new?provider=#{provider}"
+    end
   end
 
   def next_step_path("okta" = provider, account) do
-    next_path(provider, account)
-  end
-
-  defp next_path(provider, account) do
     if Domain.Accounts.idp_sync_enabled?(account) do
-      ~p"/#{account}/settings/identity_providers/#{provider}/new"
+      ~p"/#{account}/settings/identity_providers/okta/new"
     else
       ~p"/#{account}/settings/identity_providers/openid_connect/new?provider=#{provider}"
     end
