@@ -7,12 +7,18 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub use imp::{logs, runtime, session, settings};
+pub use platform::{ipc_service_logs, logs, runtime, session, settings};
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-pub mod imp {
+pub mod platform {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;
+
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn ipc_service_logs() -> Option<PathBuf> {
+        // TODO: This is magic, it must match the systemd file
+        Some(PathBuf::from("/var/log").join(connlib_shared::BUNDLE_ID))
+    }
 
     /// e.g. `/home/alice/.cache/dev.firezone.client/data/logs`
     ///
@@ -47,7 +53,7 @@ pub mod imp {
 }
 
 #[cfg(target_os = "windows")]
-pub mod imp {
+pub mod platform {
     use connlib_shared::BUNDLE_ID;
     use known_folders::{get_known_folder_path, KnownFolder};
     use std::path::PathBuf;
@@ -113,7 +119,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        for dir in [logs(), runtime(), session(), settings()] {
+        for dir in [ipc_service_logs(), logs(), runtime(), session(), settings()] {
             let dir = dir.expect("should have gotten Some(path)");
             assert!(dir
                 .components()
