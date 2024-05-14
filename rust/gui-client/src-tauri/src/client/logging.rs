@@ -220,6 +220,6 @@ fn log_paths() -> Result<Vec<LogPath>> {
         LogPath {
             src: known_dirs::logs().context("Can't compute app log dir")?,
             dst: PathBuf::from("app"),
-        }
+        },
     ])
 }
