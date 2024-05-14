@@ -15,7 +15,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.4"
+  VERSION: "1.0.5"
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
