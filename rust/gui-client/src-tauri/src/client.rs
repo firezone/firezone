@@ -86,7 +86,6 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
-            // z
             if !elevation::is_normal_user()? {
                 anyhow::bail!("`smoke-test` failed its elevation check");
             }
