@@ -19,10 +19,7 @@ sleep 1
 docker network connect firezone_app firezone-client-1 --ip 172.28.0.200 # Reconnect client with a different IP
 
 # Send SIGHUP, triggering `reconnect` internally
-# The second command is needed for backwards compatibility with older Docker images
-sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)" ||
-sudo kill -s HUP "$(ps -C firezone-linux-client -o pid=)" ||
-exit 1
+sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"
 
 wait $DOWNLOAD_PID || {
     echo "Download process failed"

@@ -16,9 +16,7 @@ debug_exit() {
 }
 
 # Copy the Linux Client out of its container
-docker compose cp client:/bin/"$BINARY_NAME" "$BINARY_NAME" ||
-    docker compose cp client:/bin/firezone-linux-client "$BINARY_NAME" ||
-    exit 1
+docker compose cp client:/bin/"$BINARY_NAME" "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo chown root:root "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
