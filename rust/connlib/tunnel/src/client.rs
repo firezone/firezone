@@ -856,7 +856,9 @@ impl ClientState {
         earliest(self.next_dns_refresh, self.node.poll_timeout())
     }
 
-    pub fn handle_timeout(&mut self, now: Instant) {
+    /// Returns whether resources statuses have updated
+    pub fn handle_timeout(&mut self, now: Instant) -> bool {
+        let mut resources_updated = false;
         self.node.handle_timeout(now);
 
         match self.next_dns_refresh {
@@ -894,6 +896,7 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
+                    resources_updated = true;
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -915,9 +918,12 @@ impl ClientState {
                     }),
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
+                    resources_updated = true;
                 }
             }
         }
+
+        resources_updated
     }
 
     fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: Status) {
