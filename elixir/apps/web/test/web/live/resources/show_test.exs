@@ -252,17 +252,17 @@ defmodule Web.Live.Resources.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
 
-    assert row["client, actor (ip)"] =~ flow.client.name
-    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
+    assert row["client, actor"] =~ flow.client.name
+    assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
+    assert row["client, actor"] =~ to_string(flow.client_remote_ip)
   end
 
   test "allows deleting resource", %{
