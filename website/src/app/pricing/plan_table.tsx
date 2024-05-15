@@ -395,7 +395,7 @@ export default function PlanTable() {
           </td>
           <td className="gmx-1 py-4 flex-wrap text-center">Basic</td>
           <td className="gmx-1 py-4 flex-wrap text-center">Standard</td>
-          <td className="gmx-1 py-4 flex-wrap text-center">Premium</td>
+          <td className="gmx-1 py-4 flex-wrap text-center">Unthrottled</td>
         </tr>
         <tr>
           <td
@@ -706,12 +706,57 @@ export default function PlanTable() {
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="compliance-audit-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Compliance certifications
+            </span>
+            <div
+              id="compliance-audit-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Independent auditing for compliance with industry standards
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">SOC 2</td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="pentesting-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Independent pentest
+            </span>
+            <div
+              id="pentesting-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Penetration testing for security vulnerabilities conducted by a
+              third party firm
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">40 hours</td>
+        </tr>
         <tr>
           <td
             colSpan={4}
             className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
           >
-            Support
+            Support & Customer success
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -802,6 +847,136 @@ export default function PlanTable() {
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="uptime-sla-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Uptime SLA
+            </span>
+            <div
+              id="uptime-sla-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Guaranteed uptime for your Firezone service
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">99.99%</td>
+        </tr>
+        <tr>
+          <td
+            colSpan={4}
+            className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
+          >
+            Billing & payment
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="credit-card-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Payment by credit card
+            </span>
+            <div
+              id="credit-card-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Pay for your subscription using a credit card
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4 text-center">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="ach-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Payment by ACH transfer
+            </span>
+            <div
+              id="ach-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Pay for your subscription using an ACH transfer
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4 text-center">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="wire-transfer-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Payment by wire transfer
+            </span>
+            <div
+              id="wire-transfer-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Pay your invoice using a wire transfer
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="annual-invoicing-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Annual invoicing
+            </span>
+            <div
+              id="annual-invoicing-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Pay for your subscription annually
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="gmx-1 py-4 text-center">
             <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
