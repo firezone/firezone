@@ -1,6 +1,7 @@
 use connlib_shared::messages::{
-    client::ResourceDescription, GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence,
-    RequestConnection, ResourceId, ReuseConnection,
+    client::{ResourceDescription, SiteId},
+    GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection,
+    ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, net::IpAddr};
@@ -25,6 +26,8 @@ pub struct ConnectionDetails {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_remote_ip: IpAddr,
+    #[serde(rename = "gateway_group_id")]
+    pub site_id: SiteId,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -101,8 +104,7 @@ mod test {
     use super::*;
     use chrono::DateTime;
     use connlib_shared::messages::{
-        client::ResourceDescriptionCidr,
-        client::{GatewayGroup, ResourceDescriptionDns},
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site},
         DnsServer, IpDnsServer, Stun, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
@@ -234,7 +236,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: "cidr resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -244,7 +246,7 @@ mod test {
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
                         address_description: "dns resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -307,7 +309,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: "cidr resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -317,7 +319,7 @@ mod test {
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
                         address_description: "dns resource".to_string(),
-                        gateway_groups: vec![GatewayGroup {
+                        sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
@@ -536,6 +538,7 @@ mod test {
                 gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                 gateway_remote_ip: "172.28.0.1".parse().unwrap(),
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                site_id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                 relays: vec![
                     Relay::Stun(Stun {
                         id: "c9cb8892-e355-41e6-a882-b6d6c38beb66".parse().unwrap(),
@@ -573,6 +576,7 @@ mod test {
                         "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
                         "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
                         "gateway_remote_ip": "172.28.0.1",
+                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4",
                         "relays": [
                             {
                                 "id": "c9cb8892-e355-41e6-a882-b6d6c38beb66",

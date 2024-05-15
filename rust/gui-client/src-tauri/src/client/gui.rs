@@ -10,7 +10,7 @@ use crate::client::{
     Failure,
 };
 use anyhow::{bail, Context, Result};
-use connlib_client_shared::ResourceDescription;
+use connlib_client_shared::callbacks::ResourceDescription;
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};

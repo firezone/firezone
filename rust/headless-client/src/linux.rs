@@ -3,9 +3,9 @@
 use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
+use connlib_client_shared::{file_logger, Callbacks, Sockets};
 use connlib_shared::{
-    keypair,
+    callbacks, keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
     LoginUrl,
 };
@@ -255,8 +255,8 @@ impl Callbacks for CallbackHandlerIpc {
         None
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
-        tracing::info!(len = resources.len(), "New resource list");
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
+        tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(IpcServerMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");

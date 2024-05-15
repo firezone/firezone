@@ -1,7 +1,7 @@
 use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::ResourceDescription;
+use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::IpcClientMsg;
 
 use std::{

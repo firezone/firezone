@@ -1,7 +1,7 @@
 //! Main connlib library for clients.
 pub use connlib_shared::messages::client::ResourceDescription;
 pub use connlib_shared::{
-    keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
+    callbacks, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
 pub use firezone_tunnel::Sockets;
 pub use tracing_appender::non_blocking::WorkerGuard;

@@ -10,9 +10,8 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{
-    file_logger, keypair, Callbacks, LoginUrl, ResourceDescription, Session, Sockets,
-};
+use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
+use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{
@@ -132,12 +131,12 @@ pub enum IpcClientMsg {
 pub enum IpcServerMsg {
     Ok,
     OnDisconnect,
-    OnUpdateResources(Vec<ResourceDescription>),
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
 
 pub fn run_only_headless_client() -> Result<()> {
@@ -284,9 +283,8 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to tell the main thread that we disconnected");
     }
 
-    fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         // See easily with `export RUST_LOG=firezone_headless_client=debug`
-        tracing::debug!(len = resources.len(), "Printing the resource list one time");
         for resource in &resources {
             tracing::debug!(?resource);
         }

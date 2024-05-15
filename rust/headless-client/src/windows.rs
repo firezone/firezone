@@ -8,7 +8,7 @@ use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, LoginUrl, ResourceDescription, Sockets,
+    callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets,
 };
 use connlib_shared::BUNDLE_ID;
 use futures::{SinkExt, Stream};
@@ -352,7 +352,7 @@ impl Callbacks for CallbackHandlerIpc {
         None
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         tracing::info!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(IpcServerMsg::OnUpdateResources(resources))
