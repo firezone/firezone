@@ -7,9 +7,7 @@
 use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{
-    callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets,
-};
+use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets};
 use connlib_shared::BUNDLE_ID;
 use futures::{SinkExt, Stream};
 use std::{
