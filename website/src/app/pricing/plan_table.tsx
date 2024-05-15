@@ -56,7 +56,7 @@ export default function PlanTable() {
             </div>
           </td>
           <td className="gmx-1 py-4 text-center">6</td>
-          <td className="gmx-1 py-4 text-center">25</td>
+          <td className="gmx-1 py-4 text-center">100</td>
           <td className="gmx-1 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -78,7 +78,7 @@ export default function PlanTable() {
             </div>
           </td>
           <td className="gmx-1 py-4 text-center">10</td>
-          <td className="gmx-1 py-4 text-center">25</td>
+          <td className="gmx-1 py-4 text-center">100</td>
           <td className="gmx-1 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -124,7 +124,7 @@ export default function PlanTable() {
             </div>
           </td>
           <td className="gmx-1 py-4 text-center">1</td>
-          <td className="gmx-1 py-4 text-center">3</td>
+          <td className="gmx-1 py-4 text-center">10</td>
           <td className="gmx-1 py-4 text-center">No limit</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
