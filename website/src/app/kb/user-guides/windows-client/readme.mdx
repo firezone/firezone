@@ -1,34 +1,78 @@
-# Windows Client
+import SupportOptions from "@/components/SupportOptions";
 
-Firezone supports Microsoft Windows with a native client for the x86-64
-architecture.
+# Windows GUI Client
+
+The Windows GUI Client is designed for Windows computesr where a user is present
+to authenticate with your identity provider interactively.
 
 ## Prerequisites
 
-- Windows 10 or higher
-- x86-64 CPU
+- Windows **10** or higher
+- **x86_64** CPU
+- **WebView2** (The installer will install this automatically if needed)
 
 ## Installation
 
-The Windows Client is currently in beta and can be downloaded from the following
-link:
+The Windows Client is currently in beta and can be downloaded from our
+[main repository's releases page](https://github.com/firezone/firezone/releases)
+or using the direct link below:
 
-- [Download the MSI installer package](/dl/firezone-client-gui-windows/latest/x86_64)
+- [Download the Windows MSI installer for `x86_64`](/dl/firezone-client-gui-windows/latest/x86_64)
+
+After downloading, run the MSI to install the Firezone GUI Client.
 
 ## Usage
 
-The Windows Client must be run as an administrator to function correctly. **Be
-sure to click "Allow" when prompted by the User Account Control dialog.**
+### Signing in
 
-If that dialog does not appear, you may need to explicitly run Firezone as an
-administrator. To do so, right-click the Firezone icon and select "Run as
-administrator."
+1. Run Firezone
+1. At the Welcome screen, click "Sign in". This will open the Firezone sign-in page in your
+default web browser.
+1. Sign in using your account slug and identity provider.
+1. If your browser asks whether it should open Firezone links, check "Always allow" and open the link.
+1. When you see the "Firezone connected" notification, the tunnel is ready.
+
+The Welcome screen only appears for your first sign-in. After that,
+you can use the tray menu to sign in.
+
+### Accessing a Resource
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Open a Resource and click on its address to copy it.
+1. Paste the address into your web browser's URL bar and hit Enter.
+The web browser will use Firezone to securely connect to the Resource.
+
+### Quitting
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Click "Disconnect and Quit" or "Quit".
+
+The tunnel is now stopped. If you were signed in, the tunnel will restart
+next time you open Firezone.
+
+### Signing out
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Click "Sign out".
+
+The tunnel is now stopped until you sign in again.
 
 ## Upgrading
 
 The Windows Client will automatically check for updates on launch and prompt you
 to upgrade when a new version is available. Simply download the latest MSI
-installer package above and install it over the existing version.
+installer package above, quit the GUI, and install it over the existing version.
+
+## Diagnostic logs
+
+(Same as Linux except you right-click)
+
+## Un-installing
+
+1. Quit Firezone.
+1. Open the Start Menu and search for "Remove programs"
+1. In the "Add or remove programs" dialog, search for "Firezone".
+1. Click on Firezone and click "Uninstall".
 
 ## Known issues
 
@@ -37,3 +81,7 @@ resolution. See
 [this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing) to
 disable DNS-over-HTTPS if you're experiencing issues connecting to DNS Resources
 within your browser.
+
+#4764 - Logs aren't written after you clear the logs
+
+#2875 - Firezone does not register itself with Windows as a VPN
