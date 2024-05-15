@@ -154,14 +154,14 @@ defmodule Web.Live.Policies.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
-    assert row["client, actor (ip)"] =~ flow.client.name
-    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
+    assert row["authorized"]
+    assert row["expires"]
+    assert row["client, actor"] =~ flow.client.name
+    assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
+    assert row["client, actor"] =~ to_string(flow.client_remote_ip)
 
     assert row["gateway (ip)"] =~
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "allows deleting policy", %{
