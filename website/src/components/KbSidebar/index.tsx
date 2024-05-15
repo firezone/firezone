@@ -124,7 +124,7 @@ export default function KbSidebar() {
                 <Item href="/kb/administer">Overview</Item>
               </li>
               <li>
-                <Item href="/kb/administer/upgrading">Upgrading Gateways</Item>
+                <Item href="/kb/administer/upgrading">Upgrade Gateways</Item>
               </li>
               <li>
                 <Item href="/kb/administer/backup-restore">
@@ -138,6 +138,9 @@ export default function KbSidebar() {
                 <Item href="/kb/administer/troubleshooting">
                   Troubleshooting
                 </Item>
+              </li>
+              <li>
+                <Item href="/kb/administer/uninstall">Uninstall Firezone</Item>
               </li>
             </Collapse>
           </li>
