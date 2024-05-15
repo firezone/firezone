@@ -140,10 +140,7 @@ export default function KbSidebar() {
                 </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/administer/uninstall"
-                  label="Uninstall Firezone"
-                />
+                <Item href="/kb/administer/uninstall">Uninstall Firezone</Item>
               </li>
             </Collapse>
           </li>
