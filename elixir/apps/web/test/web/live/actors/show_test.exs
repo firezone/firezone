@@ -545,13 +545,13 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row1["type"] == "browser"
       assert row1["expires"] in ["tomorrow", "in 24 hours"]
-      assert row1["last used (ip)"] == "never"
+      assert row1["last used"] == "never"
       assert around_now?(row1["created"])
       assert row1["actions"] == "Revoke"
 
       assert row2["type"] == "client"
       assert row2["expires"] in ["tomorrow", "in 24 hours"]
-      assert row2["last used (ip)"] == "never"
+      assert row2["last used"] == "never"
       assert around_now?(row2["created"])
       assert row2["actions"] == "Revoke"
     end
@@ -968,13 +968,13 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row1["type"] == "browser"
       assert row1["expires"] in ["tomorrow", "in 24 hours"]
-      assert row1["last used (ip)"] == "never"
+      assert row1["last used"] == "never"
       assert around_now?(row1["created"])
       assert row1["actions"] == "Revoke"
 
       assert row2["type"] == "client"
       assert row2["expires"] in ["tomorrow", "in 24 hours"]
-      assert row2["last used (ip)"] == "never"
+      assert row2["last used"] == "never"
       assert around_now?(row2["created"])
       assert row2["actions"] == "Revoke"
     end

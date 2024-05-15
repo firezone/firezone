@@ -160,7 +160,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
     assert row["client, actor"] =~ to_string(flow.client_remote_ip)
 
-    assert row["gateway (ip)"] =~
+    assert row["gateway"] =~
              "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
