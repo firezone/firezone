@@ -1,8 +1,11 @@
-use crate::messages::client::ResourceDescription;
-use ip_network::{Ipv4Network, Ipv6Network};
-use serde::Serialize;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+use crate::messages::client::Site;
+use crate::messages::ResourceId;
 
 // Avoids having to map types for Windows
 type RawFd = i32;
@@ -35,6 +38,123 @@ impl From<Ipv6Network> for Cidrv6 {
         Self {
             address: value.network_address(),
             prefix: value.netmask(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Status {
+    Unknown,
+    Online,
+    Offline,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResourceDescription {
+    Dns(ResourceDescriptionDns),
+    Cidr(ResourceDescriptionCidr),
+}
+
+impl ResourceDescription {
+    pub fn name(&self) -> &str {
+        match self {
+            ResourceDescription::Dns(r) => &r.name,
+            ResourceDescription::Cidr(r) => &r.name,
+        }
+    }
+
+    pub fn status(&self) -> Status {
+        match self {
+            ResourceDescription::Dns(r) => r.status,
+            ResourceDescription::Cidr(r) => r.status,
+        }
+    }
+
+    pub fn id(&self) -> ResourceId {
+        match self {
+            ResourceDescription::Dns(r) => r.id,
+            ResourceDescription::Cidr(r) => r.id,
+        }
+    }
+
+    /// What the GUI clients should paste to the clipboard, e.g. `https://github.com/firezone`
+    pub fn pastable(&self) -> Cow<'_, str> {
+        match self {
+            ResourceDescription::Dns(r) => Cow::from(&r.address),
+            ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+        }
+    }
+}
+
+impl From<ResourceDescription> for crate::messages::client::ResourceDescription {
+    fn from(value: ResourceDescription) -> Self {
+        match value {
+            ResourceDescription::Dns(r) => {
+                crate::messages::client::ResourceDescription::Dns(r.into())
+            }
+            ResourceDescription::Cidr(r) => {
+                crate::messages::client::ResourceDescription::Cidr(r.into())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceDescriptionDns {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub address: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub address_description: String,
+    pub sites: Vec<Site>,
+
+    pub status: Status,
+}
+
+impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
+    fn from(r: ResourceDescriptionDns) -> Self {
+        crate::messages::client::ResourceDescriptionDns {
+            id: r.id,
+            address: r.address,
+            address_description: r.address_description,
+            name: r.name,
+            sites: r.sites,
+        }
+    }
+}
+
+/// Description of a resource that maps to a CIDR.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResourceDescriptionCidr {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// CIDR that this resource points to.
+    pub address: IpNetwork,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub address_description: String,
+    pub sites: Vec<Site>,
+
+    pub status: Status,
+}
+
+impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
+    fn from(r: ResourceDescriptionCidr) -> Self {
+        crate::messages::client::ResourceDescriptionCidr {
+            id: r.id,
+            address: r.address,
+            address_description: r.address_description,
+            name: r.name,
+            sites: r.sites,
         }
     }
 }

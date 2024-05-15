@@ -16,9 +16,7 @@ debug_exit() {
 }
 
 # Copy the Linux Client out of its container
-docker compose exec client cat "$BINARY_NAME" > "$BINARY_NAME" ||
-docker compose exec client cat "firezone-linux-client" > "$BINARY_NAME" ||
-exit 1
+docker compose cp client:/bin/"$BINARY_NAME" "$BINARY_NAME"
 chmod u+x "$BINARY_NAME"
 sudo chown root:root "$BINARY_NAME"
 sudo mv "$BINARY_NAME" "/usr/bin/$BINARY_NAME"
@@ -45,6 +43,10 @@ echo "# Start Firezone"
 resolvectl dns tun-firezone && exit 1
 stat "/usr/bin/$BINARY_NAME"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
+
+# Wait for connlib to set DNS sentinel and update Resources
+sleep 1
+
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN" || debug_exit
 

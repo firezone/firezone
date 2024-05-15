@@ -14,7 +14,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.4"
+  VERSION: "1.0.5"
 
 jobs:
   # Builds images that match what's default in docker-compose.yml for
@@ -40,6 +40,7 @@ jobs:
   deploy-staging:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.deploy-staging }}
     runs-on: ubuntu-22.04
+    environment: gcp_staging
     permissions:
       contents: write
     # Cancel old workflow runs if new code is pushed

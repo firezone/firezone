@@ -223,17 +223,22 @@ defmodule Domain.Billing.EventHandler do
 
     account_slug =
       cond do
+        not is_nil(metadata["account_slug"]) ->
+          metadata["account_slug"]
+
         uri.host ->
           uri.host
           |> String.split(".")
           |> List.delete_at(-1)
           |> Enum.join("_")
+          |> String.replace("-", "_")
 
         uri.path ->
           uri.path
           |> String.split(".")
           |> List.delete_at(-1)
           |> Enum.join("_")
+          |> String.replace("-", "_")
 
         true ->
           Accounts.generate_unique_slug()

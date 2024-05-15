@@ -184,12 +184,13 @@ export default function RootNavbar() {
               aria-label="GitHub Repository"
             >
               {/* NextJS's image component has issues with shields images */}
-              <img
-                alt="Github Repo stars"
-                height={50}
-                width={100}
-                src="https://img.shields.io/github/stars/firezone/firezone"
-              />
+              <span className="md:w-24 w-16 flex">
+                <img
+                  className="grow"
+                  alt="Github Repo stars"
+                  src="https://img.shields.io/github/stars/firezone/firezone"
+                />
+              </span>
             </Link>
             <RequestDemoButton />
             <SignUpButton />
