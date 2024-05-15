@@ -19,7 +19,7 @@ export default function KbSidebar() {
       id="kb-sidebar"
       aria-label="Sidebar"
       aria-hidden="true"
-      className="sticky left-0 top-0 flex-none z-40 w-64 overflow-y-auto h-[calc(100vh-20px)] pt-20 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0"
+      className="sticky left-0 top-0 flex-none z-40 w-64 overflow-y-auto h-[calc(100vh)] pt-20 pb-8 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0"
     >
       <SearchForm />
       <div className="mt-5 bg-white">
@@ -124,7 +124,7 @@ export default function KbSidebar() {
                 <Item href="/kb/administer">Overview</Item>
               </li>
               <li>
-                <Item href="/kb/administer/upgrading">Upgrading Gateways</Item>
+                <Item href="/kb/administer/upgrading">Upgrade Gateways</Item>
               </li>
               <li>
                 <Item href="/kb/administer/backup-restore">
@@ -138,6 +138,9 @@ export default function KbSidebar() {
                 <Item href="/kb/administer/troubleshooting">
                   Troubleshooting
                 </Item>
+              </li>
+              <li>
+                <Item href="/kb/administer/uninstall">Uninstall Firezone</Item>
               </li>
             </Collapse>
           </li>
