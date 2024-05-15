@@ -8,7 +8,7 @@ import PlanTable from "./plan_table";
 import { useState } from "react";
 
 export default function _Page() {
-  let [annual, setAnnual] = useState(false);
+  let [annual, setAnnual] = useState(true);
   let teamPrice: string;
 
   return (
@@ -132,10 +132,9 @@ export default function _Page() {
               )}
               {!annual && <span>$5</span>}
               <span className="h-full">
-                <span className="text-sm text-neutral-700 inline-block align-bottom ml-1 mb-1">
+                <span className="text-xs text-neutral-700 inline-block align-bottom ml-1 mb-1">
                   {" "}
                   per user / month
-                  {annual && ", $50 billed annually"}
                 </span>
               </span>
             </h2>
@@ -156,7 +155,7 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
-                  Up to 25 users
+                  Up to 100 users
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -192,11 +191,16 @@ export default function _Page() {
             </ul>
           </div>
           <div className="p-8 bg-neutral-900 text-neutral-50 rounded shadow border border-primary-450 mb-4">
-            <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
-              Enterprise
-            </h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-2xl tracking-tight font-semibold text-primary-450">
+                Enterprise
+              </h3>
+              <span className="font-semibold uppercase text-xs rounded bg-primary-450 text-white px-1 py-0.5">
+                30-day trial
+              </span>
+            </div>
             <p className="mb-8 font-semibold">
-              Advanced zero trust network access for enterprises
+              Compliance-ready security for large organizations
             </p>
             <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold">
               Contact us
@@ -222,13 +226,17 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
-                  Automatically sync users and groups from Google, Entra, or
-                  Okta
+                  Directory sync for Google, Entra ID, and Okta
                 </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
-                <span className="leading-tight">Fastest relay network</span>
+                <span className="leading-tight">
+                  <span className="font-semibold text-primary-450">
+                    Unthrottled
+                  </span>{" "}
+                  relay network
+                </span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
@@ -238,11 +246,30 @@ export default function _Page() {
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">
+                  <span className="font-semibold text-primary-450">99.99%</span>{" "}
+                  uptime SLA
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Roadmap acceleration</span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">White-glove onboarding</span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">Annual invoicing</span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">
+                  Pentested &{" "}
+                  <span className="font-semibold text-primary-450">SOC 2</span>{" "}
+                  compliant
+                </span>
               </li>
             </ul>
           </div>
