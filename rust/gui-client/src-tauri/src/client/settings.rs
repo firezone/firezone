@@ -22,7 +22,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firez.one").unwrap(),
             api_url: Url::parse("wss://api.firez.one").unwrap(),
-            log_filter: "firezone_gui_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info".to_string(),
+            log_filter: "firezone_gui_client=debug,info".to_string(),
         }
     }
 }
@@ -33,7 +33,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
-            log_filter: "str0m=warn,info".to_string(),
+            log_filter: "info".to_string(),
         }
     }
 }

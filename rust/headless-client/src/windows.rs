@@ -38,6 +38,12 @@ use windows_service::{
 
 mod wintun_install;
 
+#[cfg(debug_assertions)]
+const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
+
+#[cfg(not(debug_assertions))]
+const SERVICE_RUST_LOG: &str = "str0m=warn,info";
+
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
@@ -149,12 +155,6 @@ fn windows_service_run(_arguments: Vec<OsString>) {
         todo!();
     }
 }
-
-#[cfg(debug_assertions)]
-const SERVICE_RUST_LOG: &str = "debug";
-
-#[cfg(not(debug_assertions))]
-const SERVICE_RUST_LOG: &str = "info";
 
 // Most of the Windows-specific service stuff should go here
 fn fallible_windows_service_run() -> Result<()> {
