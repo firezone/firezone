@@ -3,39 +3,37 @@ import PlanBadge from "@/components/PlanBadge";
 import Image from "next/image";
 import Link from "next/link";
 
-<PlanBadge plans={["enterprise"]}>
+<PlanBadge plans={["starter", "team", "enterprise"]}>
 
-# SSO + Sync with Google Workspace
+# SSO with Google Workspace
 
 </PlanBadge>
 
 Firezone integrates with [Google Workspace](https://workspace.google.com) using
 a custom connector that supports both authentication and directory sync. Use
 this guide if you're looking to setup SSO with Google Workspace for your
-Firezone Enterprise account and want to automatically sync users, groups, and
-organizational units from Google Workspace to Firezone.
+Firezone account and optionally sync users, groups, and organizational units
+from Google Workspace to Firezone.
 
 <Alert color="info">
-  If you're just looking to authenticate users against Google Workspace
-  **without** automatic directory sync, use our [universal OIDC
-  connector](/kb/authenticate/oidc) instead, available on all plans.
+  Directory sync is supported for the **Enterprise** plan only.
 </Alert>
 
 ## Overview
 
-The Firezone Google Workspace connector integrates with Google's identity APIs
-to support user authentication and directory sync.
+The Firezone Google Workspace connector integrates with Google's OAuth and
+identity APIs to support user authentication and directory sync.
 
-Users, groups, and organizational units are synced every few minutes to ensure
-that your Firezone account remains up-to-date with the latest identity data from
-Google Workspace. [Read more](/kb/authenticate/directory-sync) about how sync
-works.
+On Enteprise plans, users, groups, and organizational units are synced every few
+minutes to ensure that your Firezone account remains up-to-date with the latest
+identity data from Google Workspace.
+[Read more](/kb/authenticate/directory-sync) about how sync works.
 
 ## Setup
 
 Setting up the Google Workspace connector is similar to the process of setting
-up a universal OIDC connector. The main difference is the addition of a few
-extra read-only scopes needed to enable sync.
+up a universal OIDC connector for any other provider. The main difference is the
+addition of a few extra read-only scopes needed to enable sync.
 
 Follow the steps below to setup the Google Workspace connector.
 
@@ -69,10 +67,20 @@ Click **CREATE** after you've filled in the fields above.
   />
 </Link>
 
-### Step 2: Enable the Admin SDK API
+<PlanBadge plans={["enterprise"]}>
 
-[Visit this link](https://console.cloud.google.com/apis/library/admin.googleapis.com)
+### Step 2 (optional): Enable the Admin SDK API
+
+</PlanBadge>
+
+If you're on the Enterprise plan,
+[visit this link](https://console.cloud.google.com/apis/library/admin.googleapis.com)
 to enable the Admin SDK API for the project you just created in Step 1.
+
+If not, skip ahead to [Step 3](#step-3-configure-the-oauth-consent-screen).
+
+This is used to allow Firezone to read users, groups and organizational units
+from your Google Workspace account.
 
 **Important**: Ensure the **Firezone Connector** project you created in Step 1
 is selected before clicking the "ENABLE" button.
@@ -142,31 +150,25 @@ Click **SAVE AND CONTINUE**.
 ### Step 4: Configure scopes
 
 OAuth scopes determine what information the Firezone connector is allowed to
-receive when a user authenticates. Firezone requires the following scopes to
-authenticate users and sync users and groups with your Google Workspace account:
+receive when a user authenticates.
+
+Firezone requires the following scopes to authenticate users on **all** plan
+levels:
 
 - `openid`: Reserved scope required by all OpenID Connect integrations.
 - `profile`: Provides information such as the user's username, given name,
-  surname, and so forth.
+  surname, etc.
 - `email`: The user's email address.
+
+If you're on the Enterprise plan, you'll need to add the following additional
+scopes to sync users, groups, and organizational units:
+
 - `https://www.googleapis.com/auth/admin.directory.orgunit.readonly`: Required
-  to sync Organization Units.
+  to sync organizational units.
 - `https://www.googleapis.com/auth/admin.directory.group.readonly`: Required to
-  sync Groups.
+  sync groups.
 - `https://www.googleapis.com/auth/admin.directory.user.readonly`: Required to
-  sync Users.
-
-```text
-openid
-profile
-email
-https://www.googleapis.com/auth/admin.directory.orgunit.readonly
-https://www.googleapis.com/auth/admin.directory.group.readonly
-https://www.googleapis.com/auth/admin.directory.user.readonly
-```
-
-Click **ADD OR REMOVE SCOPES** and copy-paste the above scopes into the
-**Manually add scopes** field.
+  sync users.
 
 <Link
   href="/images/kb/authenticate/google/gcp-update-scopes.png"
@@ -179,6 +181,36 @@ Click **ADD OR REMOVE SCOPES** and copy-paste the above scopes into the
     height={1200}
   />
 </Link>
+
+Click **ADD OR REMOVE SCOPES** and copy-paste the scopes below depending on your
+plan level into the **Manually add scopes** field.
+
+<PlanBadge plans={["starter", "team"]}>
+
+##### Starter and Team plans
+
+</PlanBadge>
+
+```
+openid
+profile
+email
+```
+
+<PlanBadge plans={["enterprise"]}>
+
+##### Enterprise plan scopes
+
+</PlanBadge>
+
+```
+openid
+profile
+email
+https://www.googleapis.com/auth/admin.directory.orgunit.readonly
+https://www.googleapis.com/auth/admin.directory.group.readonly
+https://www.googleapis.com/auth/admin.directory.user.readonly
+```
 
 Then click **UPDATE** to make sure they're applied.
 
@@ -300,6 +332,7 @@ prompts you.
 </Link>
 
 If you get successfully redirected back to your Firezone admin dashboard, you're
-done! Your Google Workspace connector is now successfully configured. The first
-sync will occur within about 10 minutes. After that, users will be able to
-authenticate to Firezone using their Google Workspace accounts.
+done! Your Google Workspace connector is now successfully configured. If
+directory sync is enabled, the first sync will occur within about 10 minutes.
+After that, users will be able to authenticate to Firezone using their Google
+Workspace accounts.

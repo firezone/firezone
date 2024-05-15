@@ -3,9 +3,9 @@ import PlanBadge from "@/components/PlanBadge";
 import Image from "next/image";
 import Link from "next/link";
 
-<PlanBadge plans={["enterprise"]}>
+<PlanBadge plans={["starter", "team", "enterprise"]}>
 
-# SSO + Sync with Microsoft Entra ID
+# SSO with Microsoft Entra ID
 
 </PlanBadge>
 
@@ -13,13 +13,11 @@ Firezone integrates with
 [Microsoft Entra ID](https://www.microsoft.com/en-us/security/business/identity-access/microsoft-entra-id)
 using a custom connector that supports both authentication and directory sync.
 Use this guide if you're looking to setup SSO with Microsoft Entra ID for your
-Firezone Enterprise account and want to automatically sync users and groups from
-Microsoft Entra ID to Firezone.
+Firezone account and optionally sync users and groups from Microsoft Entra ID to
+Firezone.
 
 <Alert color="info">
-  If you're just looking to authenticate users against Microsoft Entra ID
-  **without** automatic directory sync, use our [universal OIDC
-  connector](/kb/authenticate/oidc) instead, available on all plans.
+  Directory sync is supported for the **Enterprise** plan only.
 </Alert>
 
 ## Overview
@@ -27,9 +25,9 @@ Microsoft Entra ID to Firezone.
 The Firezone Microsoft Entra ID connector integrates with Microsoft's identity
 APIs to support user authentication and directory sync.
 
-Users and groups are synced every few minutes to ensure that your Firezone
-account remains up-to-date with the latest identity data from Entra ID.
-[Read more](/kb/authenticate/directory-sync) about how sync works.
+On Enterprise plans, users and groups are synced every few minutes to ensure
+that your Firezone account remains up-to-date with the latest identity data from
+Entra ID. [Read more](/kb/authenticate/directory-sync) about how sync works.
 
 ## Setup
 
@@ -268,7 +266,14 @@ In the next screen, ensure the following OpenId permissions are selected:
   />
 </Link>
 
-Next, make sure the following Group and User permissions are selected:
+<PlanBadge plans={["enterprise"]}>
+
+#### Directory sync permissions
+
+</PlanBadge>
+
+For Enterprise plans, make sure the following additional Group and User
+permissions are selected:
 
 - `Group.Read.All`
 - `GroupMember.Read.All`
@@ -419,8 +424,8 @@ Go back to the setup page in the Firezone admin portal, ensure all fields are
 filled out, and click **Connect Identity Provider**.
 
 <Alert color="warning">
-  All users and groups are synced by default. You can limit which users and
-  groups are synced in the [Enteprise
+  If directory sync is enabled, all users and groups are synced by default. You
+  can limit which users and groups are synced in the [Enteprise
   Applications](https://portal.azure.com/#view/Microsoft_AAD_IAM/StartboardApplicationsMenuBlade/~/AppAppsPreview)
   section of the Azure portal. See the [Microsoft
   documentation](https://learn.microsoft.com/en-us/entra/identity-platform/howto-restrict-your-app-to-a-set-of-users)
@@ -428,6 +433,6 @@ filled out, and click **Connect Identity Provider**.
 </Alert>
 
 If you get successfully redirected back to your Firezone admin dashboard, you're
-done! Your Entra ID provider is now successfully configured. The first sync will
-occur within about 10 minutes. After that, users will be able to authenticate to
-Firezone using their Entra ID accounts.
+done! Your Entra ID provider is now successfully configured. If directory sync
+is enabled, the first sync will occur within about 10 minutes. After that, users
+will be able to authenticate to Firezone using their Entra ID accounts.

@@ -25,10 +25,14 @@ export default function KbSidebar() {
       <div className="mt-5 bg-white">
         <ul className="space-y-2 font-medium">
           <li>
-            <Item topLevel href="/kb" label="Overview" />
+            <Item topLevel href="/kb">
+              Overview
+            </Item>
           </li>
           <li>
-            <Item topLevel href="/kb/quickstart" label="Quickstart" />
+            <Item topLevel href="/kb/quickstart">
+              Quickstart
+            </Item>
           </li>
           <li className="ml-3 pt-3 border-t border-neutral-200 uppercase font-bold text-neutral-800">
             Get started
@@ -36,31 +40,31 @@ export default function KbSidebar() {
           <li>
             <Collapse expanded={p.startsWith("/kb/deploy")} label="Deploy">
               <li>
-                <Item href="/kb/deploy" label="Overview" />
+                <Item href="/kb/deploy">Overview</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/sites" label="Sites" />
+                <Item href="/kb/deploy/sites">Sites</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/gateways" label="Gateways" />
+                <Item href="/kb/deploy/gateways">Gateways</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/resources" label="Resources" />
+                <Item href="/kb/deploy/resources">Resources</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/groups" label="Groups" />
+                <Item href="/kb/deploy/groups">Groups</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/users" label="Users" />
+                <Item href="/kb/deploy/users">Users</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/policies" label="Policies" />
+                <Item href="/kb/deploy/policies">Policies</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/clients" label="Distribute Clients" />
+                <Item href="/kb/deploy/clients">Clients</Item>
               </li>
               <li>
-                <Item href="/kb/deploy/dns" label="Configure DNS" />
+                <Item href="/kb/deploy/dns">Configure DNS</Item>
               </li>
             </Collapse>
           </li>
@@ -70,49 +74,41 @@ export default function KbSidebar() {
               label="Authenticate"
             >
               <li>
-                <Item href="/kb/authenticate" label="Overview" />
+                <Item href="/kb/authenticate">Overview</Item>
               </li>
               <li>
-                <Item href="/kb/authenticate/email" label="Email (OTP)" />
+                <Item href="/kb/authenticate/email">Email (OTP)</Item>
               </li>
               <li>
-                <Item href="/kb/authenticate/oidc" label="Universal OIDC" />
+                <Item href="/kb/authenticate/google">
+                  SSO with Google Workspace
+                </Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/authenticate/oidc/fusion"
-                  label="Fusion Auth"
-                />
+                <Item href="/kb/authenticate/entra">SSO with Entra ID</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/authenticate/directory-sync"
-                  label="SSO + directory sync"
-                />
+                <Item href="/kb/authenticate/okta">SSO with Okta</Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/authenticate/google"
-                  label="Google Workspace"
-                />
+                <Item href="/kb/authenticate/oidc">
+                  SSO with Universal OIDC
+                </Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/authenticate/entra"
-                  label="Microsoft Entra ID"
-                />
+                <Item nested href="/kb/authenticate/oidc/fusion">
+                  FusionAuth
+                </Item>
               </li>
               <li>
-                <Item nested href="/kb/authenticate/okta" label="Okta" />
+                <Item href="/kb/authenticate/directory-sync">
+                  Directory sync
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/authenticate/service-accounts"
-                  label="Service accounts"
-                />
+                <Item href="/kb/authenticate/service-accounts">
+                  Service accounts
+                </Item>
               </li>
             </Collapse>
           </li>
@@ -125,28 +121,23 @@ export default function KbSidebar() {
               label="Administer"
             >
               <li>
-                <Item href="/kb/administer" label="Overview" />
+                <Item href="/kb/administer">Overview</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/administer/upgrading"
-                  label="Upgrade Gateways"
-                />
+                <Item href="/kb/administer/upgrading">Upgrade Gateways</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/administer/backup-restore"
-                  label="Backup and restore"
-                />
+                <Item href="/kb/administer/backup-restore">
+                  Backup & restore
+                </Item>
               </li>
               <li>
-                <Item href="/kb/administer/logs" label="Viewing logs" />
+                <Item href="/kb/administer/logs">Viewing logs</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/administer/troubleshooting"
-                  label="Troubleshooting"
-                />
+                <Item href="/kb/administer/troubleshooting">
+                  Troubleshooting
+                </Item>
               </li>
               <li>
                 <Item
@@ -162,38 +153,32 @@ export default function KbSidebar() {
               label="End-user guides"
             >
               <li>
-                <Item href="/kb/user-guides" label="Install Clients" />
+                <Item href="/kb/user-guides">Install Clients</Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/user-guides/macos-client"
-                  label="macOS"
-                />
+                <Item nested href="/kb/user-guides/macos-client">
+                  macOS
+                </Item>
               </li>
               <li>
-                <Item nested href="/kb/user-guides/ios-client" label="iOS" />
+                <Item nested href="/kb/user-guides/ios-client">
+                  iOS
+                </Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/user-guides/windows-client"
-                  label="Windows"
-                />
+                <Item nested href="/kb/user-guides/windows-client">
+                  Windows
+                </Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/user-guides/android-client"
-                  label="Android & ChromeOS"
-                />
+                <Item nested href="/kb/user-guides/android-client">
+                  Android & ChromeOS
+                </Item>
               </li>
               <li>
-                <Item
-                  nested
-                  href="/kb/user-guides/linux-client"
-                  label="Linux"
-                />
+                <Item nested href="/kb/user-guides/linux-client">
+                  Linux
+                </Item>
               </li>
             </Collapse>
           </li>
@@ -203,55 +188,45 @@ export default function KbSidebar() {
               label="Use cases"
             >
               <li>
-                <Item href="/kb/use-cases" label="Overview" />
+                <Item href="/kb/use-cases">Overview</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/secure-dns"
-                  label="Block malicious DNS"
-                />
+                <Item href="/kb/use-cases/secure-dns">Block malicious DNS</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/scale-vpc-access"
-                  label="Scale access to a VPC"
-                />
+                <Item href="/kb/use-cases/scale-vpc-access">
+                  Scale access to a VPC
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/nat-gateway"
-                  label="Route through a public IP"
-                />
+                <Item href="/kb/use-cases/nat-gateway">
+                  Route through a public IP
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/postgres-access"
-                  label="Access a Postgres DB"
-                />
+                <Item href="/kb/use-cases/postgres-access">
+                  Access a Postgres DB
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/saas-app-access"
-                  label="Manage access to a SaaS app"
-                />
+                <Item href="/kb/use-cases/saas-app-access">
+                  Manage access to a SaaS app
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/host-access"
-                  label="Access a remote host"
-                />
+                <Item href="/kb/use-cases/host-access">
+                  Access a remote host
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/private-network-access"
-                  label="Access a private network"
-                />
+                <Item href="/kb/use-cases/private-network-access">
+                  Access a private network
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/use-cases/web-app-access"
-                  label="Access a private web app"
-                />
+                <Item href="/kb/use-cases/web-app-access">
+                  Access a private web app
+                </Item>
               </li>
             </Collapse>
           </li>
@@ -264,28 +239,25 @@ export default function KbSidebar() {
               label="Architecture"
             >
               <li>
-                <Item href="/kb/architecture" label="Overview" />
+                <Item href="/kb/architecture">Overview</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/architecture/core-components"
-                  label="Core components"
-                />
+                <Item href="/kb/architecture/core-components">
+                  Core components
+                </Item>
               </li>
               <li>
-                <Item href="/kb/architecture/tech-stack" label="Tech stack" />
+                <Item href="/kb/architecture/tech-stack">Tech stack</Item>
               </li>
               <li>
-                <Item
-                  href="/kb/architecture/critical-sequences"
-                  label="Critical sequences"
-                />
+                <Item href="/kb/architecture/critical-sequences">
+                  Critical sequences
+                </Item>
               </li>
               <li>
-                <Item
-                  href="/kb/architecture/security-controls"
-                  label="Security controls"
-                />
+                <Item href="/kb/architecture/security-controls">
+                  Security controls
+                </Item>
               </li>
             </Collapse>
           </li>
@@ -295,10 +267,10 @@ export default function KbSidebar() {
               label="Reference"
             >
               <li>
-                <Item href="/kb/reference/faq" label="FAQ" />
+                <Item href="/kb/reference/faq">FAQ</Item>
               </li>
               <li>
-                <Item href="/kb/reference/glossary" label="Glossary" />
+                <Item href="/kb/reference/glossary">Glossary</Item>
               </li>
             </Collapse>
           </li>
