@@ -191,14 +191,14 @@ defmodule Web.Live.Clients.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "renders flows even for deleted policies", %{
@@ -227,14 +227,14 @@ defmodule Web.Live.Clients.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "renders flows even for deleted policy assocs", %{
@@ -264,14 +264,14 @@ defmodule Web.Live.Clients.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "allows editing clients", %{
