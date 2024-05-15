@@ -30,6 +30,75 @@ impl TunnelWrapper {
             .context("Couldn't send IPC message")?;
         Ok(())
     }
+
+    pub(crate) async fn connect(
+        api_url: &str,
+        token: SecretString,
+        callback_handler: super::CallbackHandler,
+        tokio_handle: tokio::runtime::Handle,
+    ) -> Result<Self> {
+        tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
+        let ipc = named_pipe::ClientOptions::new()
+            .open(firezone_headless_client::windows::pipe_path())
+            .context("Couldn't connect to named pipe server")?;
+        let ipc = Framed::new(ipc, LengthDelimitedCodec::new());
+        // This channel allows us to communicate with the GUI even though NamedPipeClient
+        // doesn't have `into_split`.
+        let (tx, mut rx) = mpsc::channel(1);
+
+        let task = tokio_handle.spawn(async move {
+            let mut ipc = pin!(ipc);
+            loop {
+                let ev = std::future::poll_fn(|cx| {
+                    match rx.poll_recv(cx) {
+                        Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Client(msg))),
+                        Poll::Ready(None) => {
+                            return Poll::Ready(Err(anyhow!("MPSC channel from GUI closed")))
+                        }
+                        Poll::Pending => {}
+                    }
+
+                    match ipc.as_mut().poll_next(cx) {
+                        Poll::Ready(Some(msg)) => {
+                            let msg = serde_json::from_slice(&msg?)?;
+                            return Poll::Ready(Ok(IpcEvent::Connlib(msg)));
+                        }
+                        Poll::Ready(None) => {}
+                        Poll::Pending => {}
+                    }
+
+                    Poll::Pending
+                })
+                .await;
+
+                match ev {
+                    Ok(IpcEvent::Client(msg)) => ipc.send(msg.into()).await?,
+                    Ok(IpcEvent::Connlib(msg)) => match msg {
+                        IpcServerMsg::Ok => {}
+                        IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
+                            &connlib_client_shared::Error::Other("errors can't be serialized"),
+                        ),
+                        IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
+                        IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                            callback_handler.on_set_interface_config(ipv4, ipv6, dns);
+                        }
+                    },
+                    Err(e) => return Err(e),
+                }
+            }
+        });
+
+        let mut client = Self { task, tx };
+        let token = token.expose_secret().clone();
+        client
+            .send_msg(&IpcClientMsg::Connect {
+                api_url: api_url.to_string(),
+                token,
+            })
+            .await
+            .context("Couldn't send Connect message")?;
+        Ok(client)
+    }
 }
 
 enum IpcEvent {
@@ -37,73 +106,4 @@ enum IpcEvent {
     Client(String),
     /// The connlib instance in the server wants to send a message to the client
     Connlib(IpcServerMsg),
-}
-
-pub(crate) async fn connect(
-    api_url: &str,
-    token: SecretString,
-    callback_handler: super::CallbackHandler,
-    tokio_handle: tokio::runtime::Handle,
-) -> Result<TunnelWrapper> {
-    tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
-    let ipc = named_pipe::ClientOptions::new()
-        .open(firezone_headless_client::windows::pipe_path())
-        .context("Couldn't connect to named pipe server")?;
-    let ipc = Framed::new(ipc, LengthDelimitedCodec::new());
-    // This channel allows us to communicate with the GUI even though NamedPipeClient
-    // doesn't have `into_split`.
-    let (tx, mut rx) = mpsc::channel(1);
-
-    let task = tokio_handle.spawn(async move {
-        let mut ipc = pin!(ipc);
-        loop {
-            let ev = std::future::poll_fn(|cx| {
-                match rx.poll_recv(cx) {
-                    Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Client(msg))),
-                    Poll::Ready(None) => {
-                        return Poll::Ready(Err(anyhow!("MPSC channel from GUI closed")))
-                    }
-                    Poll::Pending => {}
-                }
-
-                match ipc.as_mut().poll_next(cx) {
-                    Poll::Ready(Some(msg)) => {
-                        let msg = serde_json::from_slice(&msg?)?;
-                        return Poll::Ready(Ok(IpcEvent::Connlib(msg)));
-                    }
-                    Poll::Ready(None) => {}
-                    Poll::Pending => {}
-                }
-
-                Poll::Pending
-            })
-            .await;
-
-            match ev {
-                Ok(IpcEvent::Client(msg)) => ipc.send(msg.into()).await?,
-                Ok(IpcEvent::Connlib(msg)) => match msg {
-                    IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
-                        &connlib_client_shared::Error::Other("errors can't be serialized"),
-                    ),
-                    IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                    IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        callback_handler.on_set_interface_config(ipv4, ipv6, dns);
-                    }
-                },
-                Err(e) => return Err(e),
-            }
-        }
-    });
-
-    let mut client = TunnelWrapper { task, tx };
-    let token = token.expose_secret().clone();
-    client
-        .send_msg(&IpcClientMsg::Connect {
-            api_url: api_url.to_string(),
-            token,
-        })
-        .await
-        .context("Couldn't send Connect message")?;
-    Ok(client)
 }

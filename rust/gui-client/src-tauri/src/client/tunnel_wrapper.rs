@@ -10,20 +10,20 @@ use std::{
 };
 use tokio::sync::Notify;
 
-pub(crate) use imp::{connect, TunnelWrapper};
+pub(crate) use platform::TunnelWrapper;
 
 #[cfg(target_os = "linux")]
 #[path = "tunnel_wrapper/linux.rs"]
-mod imp;
+mod platform;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "tunnel_wrapper/macos.rs"]
-mod imp;
+mod platform;
 
 #[cfg(target_os = "windows")]
 #[path = "tunnel_wrapper/windows.rs"]
-mod imp;
+mod platform;
 
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {

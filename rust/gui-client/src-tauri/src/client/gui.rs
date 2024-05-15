@@ -503,7 +503,7 @@ impl Controller {
             "Calling connlib Session::connect"
         );
 
-        let mut connlib = tunnel_wrapper::connect(
+        let mut connlib = tunnel_wrapper::TunnelWrapper::connect(
             api_url.as_str(),
             token,
             callback_handler.clone(),
