@@ -10,8 +10,8 @@
 
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{ResourceDescription, Sockets};
-use connlib_shared::{keypair, LoginUrl};
+use connlib_client_shared::Sockets;
+use connlib_shared::{callbacks::ResourceDescription, keypair, LoginUrl};
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},

@@ -119,6 +119,8 @@ where
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
+                    self.callbacks
+                        .on_update_resources(self.role_state.resources());
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {

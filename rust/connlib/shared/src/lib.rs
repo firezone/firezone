@@ -3,7 +3,7 @@
 //! This includes types provided by external crates, i.e. [boringtun] to make sure that
 //! we are using the same version across our own crates.
 
-mod callbacks;
+pub mod callbacks;
 pub mod error;
 pub mod messages;
 

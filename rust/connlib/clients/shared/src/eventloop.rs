@@ -269,6 +269,7 @@ where
                 gateway_id,
                 resource_id,
                 relays,
+                site_id,
                 ..
             }) => {
                 let should_accept = self
@@ -280,10 +281,12 @@ where
                     return;
                 }
 
-                match self
-                    .tunnel
-                    .create_or_reuse_connection(resource_id, gateway_id, relays)
-                {
+                match self.tunnel.create_or_reuse_connection(
+                    resource_id,
+                    gateway_id,
+                    relays,
+                    site_id,
+                ) {
                     Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
                         // TODO: keep track for the response
                         let _id = self.portal.send(
@@ -321,7 +324,7 @@ where
 
                 tracing::debug!(resource_id = %offline_resource, "Resource is offline");
 
-                self.tunnel.cleanup_connection(offline_resource);
+                self.tunnel.set_resource_offline(offline_resource);
             }
 
             ErrorReply::Disabled => {

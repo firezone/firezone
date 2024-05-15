@@ -4,8 +4,8 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError,
-    ResourceDescription, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
+    LoginUrl, LoginUrlError, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},

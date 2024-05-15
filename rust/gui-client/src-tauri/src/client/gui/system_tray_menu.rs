@@ -3,7 +3,7 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
-use connlib_client_shared::ResourceDescription;
+use connlib_client_shared::callbacks::ResourceDescription;
 use std::str::FromStr;
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
 

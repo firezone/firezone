@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{Callbacks, ResourceDescription};
+use connlib_client_shared::Callbacks;
+use connlib_shared::callbacks::ResourceDescription;
 use firezone_headless_client::{imp::sock_path, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};

@@ -50,6 +50,13 @@ impl ClientId {
     }
 }
 
+impl GatewayId {
+    #[cfg(feature = "proptest")]
+    pub(crate) fn from_u128(v: u128) -> Self {
+        Self(Uuid::from_u128(v))
+    }
+}
+
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct ClientId(Uuid);
 
@@ -315,7 +322,7 @@ mod tests {
 
     use super::{
         client::ResourceDescription,
-        client::{GatewayGroup, ResourceDescriptionDns},
+        client::{ResourceDescriptionDns, Site},
         ResourceId,
     };
 
@@ -325,7 +332,7 @@ mod tests {
             name: name.to_string(),
             address: "unused.example.com".to_string(),
             address_description: "test description".to_string(),
-            gateway_groups: vec![GatewayGroup {
+            sites: vec![Site {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
