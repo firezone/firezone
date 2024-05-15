@@ -137,10 +137,10 @@ defmodule Web.Live.Actors.ShowTest do
     assert row["policy"] =~ flow.policy.resource.name
 
     assert row["client"] ==
-             "#{flow.client.name} (#{client.last_seen_remote_ip})"
+             "#{flow.client.name} #{client.last_seen_remote_ip}"
 
     assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "renders flows even for deleted policies", %{
@@ -217,10 +217,10 @@ defmodule Web.Live.Actors.ShowTest do
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["client (ip)"] ==
+    assert row["client"] ==
              "#{flow.client.name} #{client.last_seen_remote_ip}"
 
-    assert row["gateway (ip)"] ==
+    assert row["gateway"] ==
              "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
