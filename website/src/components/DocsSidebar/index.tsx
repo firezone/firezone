@@ -19,7 +19,7 @@ export default function DocsSidebar() {
       id="docs-sidebar"
       aria-label="Sidebar"
       aria-hidden="true"
-      className="sticky left-0 top-0 flex-none z-40 w-64 overflow-y-auto h-[calc(100vh-20px)] pt-20 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0"
+      className="sticky left-0 top-0 flex-none z-40 w-64 overflow-y-auto h-[calc(100vh)] pt-20 pb-8 transition-transform -translate-x-full bg-white border-r border-neutral-200 md:translate-x-0"
     >
       <SearchForm />
       <div className="mt-5 h-full bg-white pr-3">
