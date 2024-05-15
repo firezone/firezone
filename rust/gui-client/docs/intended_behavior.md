@@ -43,6 +43,8 @@ Best performed on a clean VM
 
 ## Smoke test checklist (Windows)
 
+Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/user-guides/windows-client`
+
 x86_64 only, see issue #2992. Best performed on a clean VM.
 
 1. Run the MSI installer and ensure "Launch Firezone" is checked at the end
