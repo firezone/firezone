@@ -53,6 +53,7 @@ jobs:
         include:
           - runs-on: ubuntu-20.04
           - runs-on: ubuntu-22.04
+          - runs-on: ubuntu-24.04
           - runs-on: macos-12
           - runs-on: macos-13
           - runs-on: macos-14
@@ -83,8 +84,8 @@ jobs:
       matrix:
         include:
           - runs-on: ubuntu-20.04
-          # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
           - runs-on: ubuntu-22.04
+          - runs-on: ubuntu-24.04
           - runs-on: windows-2019
           - runs-on: windows-2022
     runs-on: ${{ matrix.runs-on }}
@@ -126,7 +127,7 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: Add Windows as part of issue #3782
-        runs-on: [ubuntu-20.04, ubuntu-22.04]
+        runs-on: [ubuntu-20.04, ubuntu-22.04, ubuntu-24.04]
         test: [linux-group, token-path]
     runs-on: ${{ matrix.runs-on }}
     steps:
