@@ -3,7 +3,7 @@ import Alert from "@/components/DocsAlert";
 
 # Linux GUI Client
 
-The Linux GUI Client is to designed to be in Linux desktop environments where a
+The Linux GUI Client is to designed for Linux desktop environments where a
 user is present to authenticate with your identity provider interactively.
 
 <Alert color="info">
@@ -16,56 +16,86 @@ user is present to authenticate with your identity provider interactively.
 
 - Ubuntu **20.04** or **22.04**. Other distributions may work, but are not
   officially supported.
-- **x86-64** CPU architecture
+- **x86_64** CPU architecture
+- **systemd-resolved**. Ubuntu already uses this by default.
 
 ## Installation
 
-The Linux GUI Client ships as a self-contained `.deb` package with all
-dependencies bundled. The package can be downloaded from our
+The Linux GUI Client ships as a `.deb` package which uses dependencies from
+the Ubuntu apt repos. The package can be downloaded from our
 [main repository's releases page](https://github.com/firezone/firezone/releases)
 or using the direct link below:
 
-- [Download the Linux Client for `x86-64`](/dl/firezone-client-headless-linux/latest/x86_64)
+- [Download the Linux Client for `x86_64`](/dl/firezone-client-gui-linux/latest/x86_64)
 
-After downloading, you can install the package with:
+After downloading:
 
-```
-sudo dpkg -i firezone-client-gui-linux_<VERSION>_<ARCH>.deb
-```
+1. Install the package: `sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb`
+1. Refresh the system users and groups: `sudo systemd-sysusers`
+1. Grant your user account permissions to control the Client: `sudo adduser "$USER" firezone-client`
+1. Set the tunnel service to start automatically: `sudo systemctl enable --now firezone-client-ipc`
+1. Reboot: `reboot`
+
+Ubuntu requires a reboot in order to finish adding your user account to the Firezone group.
 
 ## Usage
 
-The Linux GUI Client is composed of a systemd service that manages the Firezone
-tunnel, and a graphical application that connects to the service over an IPC
-interface to control it.
+### Signing in
 
-After installation, you can start the IPC daemon with and enable it on boot
-with:
-
-```
-sudo systemctl enable --now firezone-client-ipc
-```
-
-You can then start the GUI Client from your desktop environment's application
+1. Start the GUI from your desktop environment's application
 menu or by running `firezone-client-gui` from an interactive shell.
+1. At the Welcome screen, click "Sign in". This will open the Firezone sign-in page in your default web browser.
+1. Sign in using your account slug and identity provider
+1. On the first run, check "Always allow" to allow your web browser to sign in to Firezone, then click "Open"
+1. Unlock your desktop's keyring, or create one if needed.
+Most desktops, including GNOME, encrypt the keyring with your login password, so your Firezone
+token is encrypted at rest.
+1. When you see the "Firezone connected" notification, the tunnel is ready.
+
+The Welcome screen only appears for your first sign-in. After that,
+you can use the tray menu to sign in.
+
+### Accessing a Resource
+
+1. Click on the Firezone tray icon to open the menu.
+1. Open a Resource and click on its address to copy it.
+1. Paste the address into your web browser's URL bar and hit Enter.
+The web browser will use Firezone to securely connect to the Resource.
+
+### Signing out
+
+1. Click on the Firezone tray icon to open the menu.
+1. Click "Sign out".
+
+The tunnel is now stopped until you sign in again.
 
 ## Upgrading
 
-1. Quit the GUI Client if it's running.
-1. Stop the IPC service: `sudo systemctl stop firezone-client-ipc`.
-1. Download a newer package from one of the [links above](#installation).
-1. Overwrite the existing installation with the new package:
+1. Quit `firezone-client-gui` if it's running.
+1. Install the new package: `sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb`
+1. Restart the tunnel service: `sudo systemctl restart firezone-client-ipc`
+1. Restart `firezone-client-gui`.
 
-   ```
-   sudo dpkg -i firezone-client-gui-linux_<NEW_VERSION>_<ARCH>.deb
-   ```
+## Diagnostic logs
 
-1. Start the IPC daemon:
+Firezone writes logs to the local disk. These logs stay on the disk and are not shared
+with Firezone unless you manually send them to us.
 
-   ```
-   sudo systemctl enable --now firezone-client-ipc
-   ```
+To export your logs as a zip archive, or clear your log directory:
 
-1. Restart the GUI Client.
+1. Click on the Firezone tray icon to open the menu.
+1. Click "Settings".
+1. Click "Diagnostic Logs".
+
+## Un-installing
+
+1. Quit `firezone-client-gui` if it's running.
+1. Stop the tunnel service: `sudo systemctl stop firezone-client-ipc.service`
+1. Remove the package: `sudo apt-get remove firezone-client-gui`
+1. Refresh systemd: `sudo systemctl daemon-reload`
+
+## Known issues
+
+- After clearing diagnostic logs, no more logs are written until the GUI and tunnel service each restart. [#4764](https://github.com/firezone/firezone/issues/4764)
 
 <SupportOptions />

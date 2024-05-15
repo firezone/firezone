@@ -4,6 +4,8 @@ A less exhaustive version of [Manual Testing](manual_testing.md)
 
 ## Smoke test checklist (Ubuntu)
 
+Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/user-guides/linux-gui-client`
+
 Best performed on a clean VM
 
 1. Run `scripts/firezone-client-gui-install.sh`
@@ -83,7 +85,9 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 ## Un-install checklist (Linux)
 
 1. Close the Firezone GUI
+1. Run `sudo systemctl stop firezone-client-ipc.service`
 1. Run `sudo apt-get remove firezone-client-gui`
+1. Run `sudo systemctl daemon-reload`
 
 ## Un-install checklist (Windows)
 
