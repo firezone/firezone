@@ -248,7 +248,7 @@ export default function _Page() {
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
                   <span className="font-semibold text-primary-450">99.99%</span>{" "}
-                  Uptime SLA
+                  uptime SLA
                 </span>
               </li>
               <li className="flex space-x-2.5">
