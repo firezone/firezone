@@ -8,7 +8,6 @@ Best performed on a clean VM
 
 1. Run `scripts/firezone-client-gui-install.sh`
 1. Expect "Reboot to finish..." message
-1. Expect `systemctl status firezone-client-ipc.service` to show "enabled" and "running"
 1. Run the Firezone GUI
 1. Expect an error saying that you are not a member of the group `firezone-client`
 1. Reboot
@@ -16,7 +15,6 @@ Best performed on a clean VM
 1. Run the Firezone GUI
 1. Expect the "Welcome to Firezone." screen
 1. Open the Settings window and change to staging if needed
-1. Expect `stat /run/user/1000/dev.firezone.client/data/deep_link.sock /run/dev.firezone.client/ipc.sock` to show both sockets existing
 1. Click "Sign in"
 1. Expect a browser to open
 1. Sign in
@@ -40,6 +38,60 @@ Best performed on a clean VM
 1. Expect the zip file to start with "firezone_logs_"
 1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
 1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2 files respectively, totalling 5 files
+
+## Smoke test checklist (Windows)
+
+x86_64 only, see issue #2992. Best performed on a clean VM.
+
+1. Run the MSI installer and ensure "Launch Firezone" is checked at the end
+1. Expect the "Welcome to Firezone." screen
+1. Open the Settings window and change to staging if needed
+1. Click "Sign in"
+1. Expect a browser to open
+1. Sign in
+1. Expect the browser to show "This site is trying to open Firezone." modal
+1. Check "Always allow..." and click "Open"
+1. Expect "Firezone connected" notification
+1. Browse to `https://ifconfig.net`
+1. Expect to see the gateway's IP and location
+1. Quit Firezone
+1. Refresh the page
+1. Expect to see your own IP and location
+1. Reboot
+1. Browse to `https://ifconfig.net` (For issue #4899)
+1. Expect to see your own IP and location
+1. Run the Firezone GUI
+1. Expect "Firezone connected" notification
+1. Check the IP again, expect the gateway's IP
+1. Export the logs
+1. Expect the zip file to start with "firezone_logs_"
+1. Expect the zip to contain a single directory in the root of the zip, to prevent zip bombing
+1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files each, totalling 4 files
+
+## Upgrade checklist (Linux)
+
+1. Close the Firezone GUI
+1. Run `scripts/firezone-client-gui-install.sh $NEW_DEB`
+1. Run the Firezone GUI
+
+## Upgrade checklist (Windows)
+
+1. Close the Firezone GUI
+1. Run the new MSI
+1. Run the Firezone GUI
+
+## Un-install checklist (Linux)
+
+1. Close the Firezone GUI
+1. Run `sudo systemctl stop firezone-client-ipc.service`
+1. Run `sudo apt-get remove firezone-client-gui`
+1. Run `sudo systemctl daemon-reload`
+
+## Un-install checklist (Windows)
+
+1. Quit the Firezone GUI
+1. Go to "Add or Remove Programs"
+1. Search for Firezone and click "Uninstall"
 
 ## Settings tab
 
