@@ -2,9 +2,7 @@ import SupportOptions from "@/components/SupportOptions";
 
 # Windows Client
 
-# Windows GUI Client
-
-The Windows GUI Client is designed for Windows computesr where a user is present
+The Windows GUI Client is designed for Windows computers where a user is present
 to authenticate with your identity provider interactively.
 
 ## Prerequisites
@@ -15,13 +13,13 @@ to authenticate with your identity provider interactively.
 
 ## Installation
 
-The Windows Client can be downloaded from our
-[main repository's releases page](https://github.com/firezone/firezone/releases)
-or using the direct link below:
+Download the `.msi` installer from
+[our releases page](https://github.com/firezone/firezone/releases)
+or from the direct link below:
 
-- [Download the Windows MSI installer for `x86-64`](/dl/firezone-client-gui-windows/latest/x86_64)
+- [Download the Windows `.msi` installer for `x86-64`](/dl/firezone-client-gui-windows/latest/x86_64)
 
-After downloading, run the MSI to install the Firezone GUI Client.
+After downloading, run the `.msi` to install the Firezone GUI Client.
 
 ## Usage
 
@@ -39,10 +37,12 @@ you can use the tray menu to sign in.
 
 ### Accessing a Resource
 
+When Firezone is signed in, web browsers and other programs will automatically use it to securely connect to Resources.
+
+To copy-paste the address of a Resource you have access to:
+
 1. Right-click on the Firezone tray icon to open the menu.
-1. Open a Resource and click on its address to copy it.
-1. Paste the address into your web browser's URL bar and hit Enter.
-The web browser will use Firezone to securely connect to the Resource.
+1. Open a Resource's submenu and click on its address to copy it.
 
 ### Quitting
 
@@ -62,12 +62,19 @@ The tunnel is now stopped until you sign in again.
 ## Upgrading
 
 The Windows Client will automatically check for updates on launch and prompt you
-to upgrade when a new version is available. Simply download the latest MSI
+to upgrade when a new version is available. Simply download the latest `.msi`
 installer package above, quit the GUI, and install it over the existing version.
 
 ## Diagnostic logs
 
-(Same as Linux except you right-click)
+Firezone writes log files to disk. These logs stay on your computer and are not
+transmitted anywhere. If you encounter a bug, sending us a zip archive of your logs may help us fix the bug.
+
+To export your logs as a zip archive, or clear your log directory:
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Click "Settings".
+1. Click "Diagnostic Logs".
 
 ## Uninstalling
 
@@ -76,12 +83,19 @@ installer package above, quit the GUI, and install it over the existing version.
 1. In the `Add or remove programs` dialog, search for `Firezone`.
 1. Click on Firezone and click `Uninstall`.
 
+## Troubleshooting
+
+TODO (reverting DNS, check if DNS is controlled)
+
 ## Known issues
 
-Web browsers that enable DNS-over-HTTPS by default may interfere with DNS
+- Web browsers that enable DNS-over-HTTPS by default may interfere with DNS
 resolution. See
 [this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing) to
 disable DNS-over-HTTPS if you're experiencing issues connecting to DNS Resources
 within your browser.
+- Firezone does not register itself with Windows as a VPN [#2875](https://github.com/firezone/firezone/issues/2875)
+- After clearing diagnostic logs, no more logs are written until the GUI and tunnel service each restart. [#4764](https://github.com/firezone/firezone/issues/4764)
+- In rare cases, Firezone gets stuck signing in [#4765](https://github.com/firezone/firezone/issues/4765)
 
 <SupportOptions />

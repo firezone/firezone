@@ -25,7 +25,7 @@ Download the `.deb` package from our
 [releases page](https://github.com/firezone/firezone/releases),
 or from the direct link below:
 
-- [Download for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
+- [Download the Linux GUI `.deb` for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
 
 Run these commands:
 
@@ -59,10 +59,12 @@ you can use the tray menu to sign in.
 
 ### Accessing a Resource
 
+When Firezone is signed in, web browsers and other programs will automatically use it to securely connect to Resources.
+
+To copy-paste the address of a Resource you have access to:
+
 1. Click on the Firezone tray icon to open the menu.
-1. Open a Resource and click on its address to copy it.
-1. Paste the address into your web browser's URL bar and hit Enter.
-The web browser will use Firezone to securely connect to the Resource.
+1. Open a Resource's submenu and click on its address to copy it.
 
 ### Quitting
 
@@ -84,8 +86,8 @@ The tunnel is now stopped until you sign in again.
 
 ## Diagnostic logs
 
-Firezone writes logs to the local disk. These logs stay on the disk and are not shared
-with Firezone unless you manually send them to us.
+Firezone writes log files to disk. These logs stay on your computer and are not
+transmitted anywhere. If you encounter a bug, sending us a zip archive of your logs may help us fix the bug.
 
 To export your logs as a zip archive, or clear your log directory:
 
@@ -100,10 +102,12 @@ To export your logs as a zip archive, or clear your log directory:
 
 ## Troubleshooting
 
-TODO
+TODO (reverting DNS, check if DNS is controlled)
 
 ## Known issues
 
 - After clearing diagnostic logs, no more logs are written until the GUI and tunnel service each restart. [#4764](https://github.com/firezone/firezone/issues/4764)
+- The GUI Client does not run on Ubuntu 24.04 yet [#4883](https://github.com/firezone/firezone/issues/4883)
+- If Firezone is signed in, then closed and re-opened, and you cancel unlocking your keyring, Firezone won't start. [#5016](https://github.com/firezone/firezone/issues/5016)
 
 <SupportOptions />
