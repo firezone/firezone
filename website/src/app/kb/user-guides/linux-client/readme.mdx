@@ -192,8 +192,30 @@ fix the bug.
 
 ## Troubleshooting
 
-To check that requests are going through Firezone, check if `curl` reports a remote IP
-in Firezone's range when you connect to a resource:
+### Check if Firezone is controlling DNS with systemd-resolved DNS
+
+```bash
+resolvectl dns
+```
+
+Firezone Split DNS example:
+
+```
+Global:
+Link 2 (enp0s6): 10.0.2.3 fec0::3
+Link 3 (tun-firezone: 100.100.111.1) fd00:2021:1111:8000:100:100:111:0
+```
+
+Normal DNS example:
+
+```
+Global:
+Link 2 (enp0s6): 10.0.2.3 fec0::3
+```
+
+### Check if Firezone is being used
+
+Check if `curl` reports a remote IP in Firezone's range when you connect to a resource:
 
 ```
 > curl --silent --output /dev/null --write-out %{remote_ip}\\n https://example.com
@@ -202,7 +224,12 @@ in Firezone's range when you connect to a resource:
 
 Firezone resources use the ranges `100.96.0.0/11` and `fd00:2021:1111:8000::/107`.
 
-TODO (DNS control, reverting DNS)
+### Check if Firezone failed to revert DNS control
+
+The `systemd-resolved` method reverts by itself when Firezone closes.
+However, the `etc-resolv-conf` method can fail to revert if Firezone crashes.
+
+TODO
 
 ## Known issues
 
