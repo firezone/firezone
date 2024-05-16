@@ -106,6 +106,10 @@ TODO (reverting DNS, check if DNS is controlled)
 
 ## Known issues
 
+- Web browsers that use DNS-over-HTTPS by default may not work with Firezone. See
+[this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing) to
+disable DNS-over-HTTPS if you're experiencing issues connecting to DNS Resources
+within your browser.
 - After clearing diagnostic logs, no more logs are written until the GUI and tunnel service each restart. [#4764](https://github.com/firezone/firezone/issues/4764)
 - The GUI Client does not run on Ubuntu 24.04 yet [#4883](https://github.com/firezone/firezone/issues/4883)
 - If Firezone is signed in, then closed and re-opened, and you cancel unlocking your keyring, Firezone won't start. [#5016](https://github.com/firezone/firezone/issues/5016)
