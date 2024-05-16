@@ -218,6 +218,7 @@ fn udp_header(
     udp_packet.set_source(sport);
     udp_packet.set_destination(dport);
     udp_packet.set_length(8 + payload.len() as u16);
+    udp_packet.set_payload(payload);
 
     match (saddr, daddr) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
