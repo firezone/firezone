@@ -10,19 +10,12 @@ set -euox pipefail
 # `apt-get` needs either a leading `./` or `/` to recognize a local file path
 DEB_PATH=$(realpath "$1")
 GROUP_NAME="firezone-client"
-SERVICE_NAME="firezone-client-ipc"
 
 echo "Installing Firezone..."
 sudo apt-get install --yes "$DEB_PATH"
 
 echo "Adding your user to the $GROUP_NAME group..."
-# Creates the system group `firezone-client`
-sudo systemd-sysusers
 sudo adduser "$USER" "$GROUP_NAME"
-
-echo "Starting and enabling Firezone IPC service..."
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
 
 # Check if the user is already in the group
 if ! groups | grep "$GROUP_NAME" &>/dev/null; then
