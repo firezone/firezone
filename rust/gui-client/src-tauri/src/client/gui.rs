@@ -4,9 +4,10 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link, logging, network_changes,
+    self, about, deep_link,
+    ipc::{self, CallbackHandler},
+    logging, network_changes,
     settings::{self, AdvancedSettings},
-    tunnel_wrapper::{self, CallbackHandler, TunnelWrapper},
     Failure,
 };
 use anyhow::{bail, Context, Result};
@@ -480,7 +481,7 @@ struct Controller {
 /// Everything related to a signed-in user session
 struct Session {
     callback_handler: CallbackHandler,
-    connlib: TunnelWrapper,
+    connlib: ipc::Client,
 }
 
 impl Controller {
@@ -503,7 +504,7 @@ impl Controller {
             "Calling connlib Session::connect"
         );
 
-        let mut connlib = tunnel_wrapper::TunnelWrapper::connect(
+        let mut connlib = ipc::Client::connect(
             api_url.as_str(),
             token,
             callback_handler.clone(),

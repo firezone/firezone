@@ -10,19 +10,19 @@ use std::{
 };
 use tokio::sync::Notify;
 
-pub(crate) use platform::TunnelWrapper;
+pub(crate) use platform::Client;
 
 #[cfg(target_os = "linux")]
-#[path = "tunnel_wrapper/linux.rs"]
+#[path = "ipc/linux.rs"]
 mod platform;
 
 // Stub only
 #[cfg(target_os = "macos")]
-#[path = "tunnel_wrapper/macos.rs"]
+#[path = "ipc/macos.rs"]
 mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "tunnel_wrapper/windows.rs"]
+#[path = "ipc/windows.rs"]
 mod platform;
 
 #[derive(Clone)]
@@ -55,7 +55,7 @@ impl connlib_client_shared::Callbacks for CallbackHandler {
     }
 }
 
-impl TunnelWrapper {
+impl Client {
     pub(crate) async fn reconnect(&mut self) -> Result<()> {
         self.send_msg(&IpcClientMsg::Reconnect)
             .await

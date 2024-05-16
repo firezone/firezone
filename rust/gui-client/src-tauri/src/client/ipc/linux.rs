@@ -7,12 +7,12 @@ use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 /// Forwards events to and from connlib
-pub(crate) struct TunnelWrapper {
+pub(crate) struct Client {
     recv_task: tokio::task::JoinHandle<Result<()>>,
     tx: FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>,
 }
 
-impl TunnelWrapper {
+impl Client {
     pub(crate) async fn disconnect(mut self) -> Result<()> {
         self.send_msg(&IpcClientMsg::Disconnect)
             .await
@@ -39,7 +39,7 @@ impl TunnelWrapper {
         token: SecretString,
         callback_handler: super::CallbackHandler,
         tokio_handle: tokio::runtime::Handle,
-    ) -> Result<TunnelWrapper> {
+    ) -> Result<Self> {
         tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
         let stream = UnixStream::connect(sock_path())
             .await

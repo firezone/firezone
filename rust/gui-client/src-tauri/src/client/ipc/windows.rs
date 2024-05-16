@@ -7,13 +7,13 @@ use std::{pin::pin, task::Poll};
 use tokio::{net::windows::named_pipe, sync::mpsc};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-pub(crate) struct TunnelWrapper {
+pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
     tx: mpsc::Sender<String>,
 }
 
-impl TunnelWrapper {
+impl Client {
     pub(crate) async fn disconnect(mut self) -> Result<()> {
         self.send_msg(&IpcClientMsg::Disconnect)
             .await
@@ -51,7 +51,7 @@ impl TunnelWrapper {
             loop {
                 let ev = std::future::poll_fn(|cx| {
                     match rx.poll_recv(cx) {
-                        Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Client(msg))),
+                        Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Gui(msg))),
                         Poll::Ready(None) => {
                             return Poll::Ready(Err(anyhow!("MPSC channel from GUI closed")))
                         }
@@ -72,7 +72,7 @@ impl TunnelWrapper {
                 .await;
 
                 match ev {
-                    Ok(IpcEvent::Client(msg)) => ipc.send(msg.into()).await?,
+                    Ok(IpcEvent::Gui(msg)) => ipc.send(msg.into()).await?,
                     Ok(IpcEvent::Connlib(msg)) => match msg {
                         IpcServerMsg::Ok => {}
                         IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
@@ -104,8 +104,8 @@ impl TunnelWrapper {
 }
 
 enum IpcEvent {
-    /// The client wants to send a message to the service
-    Client(String),
-    /// The connlib instance in the server wants to send a message to the client
+    /// The GUI wants to send a message to the service
+    Gui(String),
+    /// The connlib instance in the service wants to send a message to the GUI
     Connlib(IpcServerMsg),
 }
