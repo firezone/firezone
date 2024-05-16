@@ -17,7 +17,7 @@ ls ../target/release ../target/release/bundle/deb
 # Using a glob for the source, there will only be one exe and one deb anyway
 cp ../target/release/firezone-client-gui "$BINARY_DEST_PATH"
 cp ../target/release/firezone-gui-client.dwp "$BINARY_DEST_PATH.dwp"
-cp ../target/release/bundle/deb/*_amd64.deb "$BINARY_DEST_PATH.deb"
+cp ../target/release/bundle/deb/firezone-client-gui.deb "$BINARY_DEST_PATH.deb"
 # TODO: Debug symbols for Linux
 
 function make_hash() {
