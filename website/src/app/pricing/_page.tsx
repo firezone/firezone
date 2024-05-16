@@ -433,8 +433,7 @@ export default function _Page() {
           <p className="mb-8">
             The Starter plan is free and does not require a credit card to get
             started. Team and Enterprise plans can be paid via credit card, ACH,
-            or wire transfer and will have a 100% discount applied for the
-            duration of the beta.
+            or wire transfer.
           </p>
 
           <a id="special-pricing" className="pt-8"></a>
