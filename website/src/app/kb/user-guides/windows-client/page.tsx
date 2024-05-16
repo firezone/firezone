@@ -4,7 +4,7 @@ import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "Windows Client • Firezone Docs",
-  description: "Firezone Documentation",
+  description: "How to install and use the Firezone Linux GUI client.",
 };
 
 export default function Page() {
