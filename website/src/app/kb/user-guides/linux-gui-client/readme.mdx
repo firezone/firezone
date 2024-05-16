@@ -21,22 +21,24 @@ user is present to authenticate with your identity provider interactively.
 
 ## Installation
 
-The Linux GUI Client ships as a `.deb` package which uses dependencies from
-the Ubuntu apt repos. The package can be downloaded from our
-[main repository's releases page](https://github.com/firezone/firezone/releases)
-or using the direct link below:
+Download the `.deb` package from our
+[releases page](https://github.com/firezone/firezone/releases),
+or from the direct link below:
 
-- [Download the Linux Client for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
+- [Download the Linux GUI Client for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
 
-After downloading:
+After downloading, run these commands:
 
-1. Install the package: `sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb`
-1. Refresh the system users and groups: `sudo systemd-sysusers`
-1. Grant your user account permissions to control the Client: `sudo adduser "$USER" firezone-client`
-1. Set the tunnel service to start automatically: `sudo systemctl enable --now firezone-client-ipc`
-1. Reboot: `reboot`
+```bash
+# Install the package
+sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb
 
-Ubuntu requires a reboot in order to finish adding your user account to the Firezone group.
+# Add yourself to the `firezone-client` group so you can use the tunnel service
+sudo usermod -aG firezone-client "$USER"
+
+# Reboot to finish adding yourself to the group
+reboot
+```
 
 ## Usage
 
@@ -73,7 +75,6 @@ The tunnel is now stopped until you sign in again.
 
 1. Quit `firezone-client-gui` if it's running.
 1. Install the new package: `sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb`
-1. Restart the tunnel service: `sudo systemctl restart firezone-client-ipc`
 1. Restart `firezone-client-gui`.
 
 ## Diagnostic logs
@@ -90,9 +91,7 @@ To export your logs as a zip archive, or clear your log directory:
 ## Un-installing
 
 1. Quit `firezone-client-gui` if it's running.
-1. Stop the tunnel service: `sudo systemctl stop firezone-client-ipc.service`
 1. Remove the package: `sudo apt-get remove firezone-client-gui`
-1. Refresh systemd: `sudo systemctl daemon-reload`
 
 ## Known issues
 

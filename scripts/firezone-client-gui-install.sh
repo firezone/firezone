@@ -15,7 +15,7 @@ echo "Installing Firezone..."
 sudo apt-get install --yes "$DEB_PATH"
 
 echo "Adding your user to the $GROUP_NAME group..."
-sudo adduser "$USER" "$GROUP_NAME"
+sudo usermod -aG "$GROUP_NAME" "$USER"
 
 # Check if the user is already in the group
 if ! groups | grep "$GROUP_NAME" &>/dev/null; then
