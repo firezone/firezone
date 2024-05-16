@@ -25,9 +25,9 @@ Download the `.deb` package from our
 [releases page](https://github.com/firezone/firezone/releases),
 or from the direct link below:
 
-- [Download the Linux GUI Client for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
+- [Download for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
 
-After downloading, run these commands:
+Run these commands:
 
 ```bash
 # Install the package
@@ -64,6 +64,11 @@ you can use the tray menu to sign in.
 1. Paste the address into your web browser's URL bar and hit Enter.
 The web browser will use Firezone to securely connect to the Resource.
 
+### Quitting
+
+When you quit the Firezone GUI, your token is still stored on the disk,
+so it will sign in automatically next time you open the GUI.
+
 ### Signing out
 
 1. Click on the Firezone tray icon to open the menu.
@@ -88,10 +93,14 @@ To export your logs as a zip archive, or clear your log directory:
 1. Click "Settings".
 1. Click "Diagnostic Logs".
 
-## Un-installing
+## Uninstalling
 
 1. Quit `firezone-client-gui` if it's running.
 1. Remove the package: `sudo apt-get remove firezone-client-gui`
+
+## Troubleshooting
+
+TODO
 
 ## Known issues
 
