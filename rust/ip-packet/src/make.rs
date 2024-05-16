@@ -1,5 +1,6 @@
 //! Factory module for making all kinds of packets.
 
+use domain::base::{MessageBuilder, Name, Rtype};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -149,6 +150,24 @@ pub fn udp_packet(
             panic!("IPs must be of the same version")
         }
     }
+}
+
+pub fn dns_query(
+    saddr: IpAddr,
+    daddr: IpAddr,
+    sport: u16,
+    dport: u16,
+    fqdn: String,
+) -> MutableIpPacket<'static> {
+    let qname: Name<Vec<u8>> = fqdn.parse().unwrap();
+    let mut question_builder = MessageBuilder::new_vec().question();
+    match (saddr, daddr) {
+        (IpAddr::V4(_), IpAddr::V4(_)) => question_builder.push((qname, Rtype::A)).unwrap(),
+        (IpAddr::V6(_), IpAddr::V6(_)) => question_builder.push((qname, Rtype::AAAA)).unwrap(),
+        (_, _) => panic!("IPs must be of the same version"),
+    }
+    let payload = question_builder.finish();
+    udp_packet(saddr, daddr, sport, dport, payload)
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {

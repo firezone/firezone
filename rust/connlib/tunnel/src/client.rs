@@ -267,6 +267,7 @@ pub struct ClientState {
     resources_gateways: HashMap<ResourceId, GatewayId>,
 
     pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
+
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     pub resource_ids: HashMap<ResourceId, ResourceDescription>,
@@ -831,14 +832,14 @@ impl ClientState {
     }
 
     #[must_use]
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
     #[must_use]
-    fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
+    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
         self.interface_config = Some(config);
 
         self.update_dns_mapping()

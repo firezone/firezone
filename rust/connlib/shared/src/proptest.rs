@@ -7,7 +7,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
     arbitrary::{any, any_with},
-    collection, sample,
+    collection, prop_oneof, sample,
     strategy::{Just, Strategy},
 };
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -126,8 +126,13 @@ pub fn resource_name() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
 
+pub fn address() -> impl Strategy<Value = String> {
+    any_with::<String>(r"([a-z]{1,10}\.){0,3}([a-z]{1,5})".into())
+}
+
 pub fn dns_resource_address() -> impl Strategy<Value = String> {
-    any_with::<String>("[a-z]{4,10}".into())
+    (prop_oneof![Just("?."), Just("*."), Just("")], address())
+        .prop_map(|(pre, addr)| format!("{pre}{addr}"))
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.
