@@ -54,7 +54,7 @@ defmodule Domain.MixProject do
       # Auth-related deps
       {:plug_crypto, "~> 2.0"},
       {:openid_connect,
-       github: "firezone/openid_connect", ref: "76c1a1c9a9da3b8be7b8270306a9240d80d7696f"},
+       github: "firezone/openid_connect", ref: "dee689382699fce7a6ca70084ccbc8bc351d3246"},
       {:argon2_elixir, "~> 4.0"},
 
       # Erlang Clustering
@@ -66,7 +66,7 @@ defmodule Domain.MixProject do
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
-      {:logger_json, github: "nebo15/logger_json"},
+      {:logger_json, "~> 6.0.0-rc.3"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},

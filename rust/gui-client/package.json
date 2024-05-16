@@ -11,7 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^1.0",
+    "@tauri-apps/api": "^1.5",
     "@tauri-apps/cli": "^1.5",
     "flowbite": "^2.3.0"
   },
@@ -20,6 +20,6 @@
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
     "tailwindcss": "^3.4.3",
-    "typescript": "^5.4.3"
+    "typescript": "^5.4.5"
   }
 }

@@ -172,7 +172,7 @@ resource "google_monitoring_alert_policy" "connected_relays_count" {
       comparison = "COMPARISON_GT"
 
       # at least one relay per region must be always online
-      threshold_value = length(module.relays[0].instances)
+      threshold_value = length(module.relays[0].instances) - 1
       duration        = "0s"
 
       trigger {

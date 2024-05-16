@@ -241,6 +241,7 @@ defmodule Web.Actors.Show do
           <:action :let={identity}>
             <.button
               :if={identity_has_email?(identity)}
+              size="xs"
               icon="hero-envelope"
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
@@ -251,12 +252,10 @@ defmodule Web.Actors.Show do
           <:action :let={identity}>
             <.delete_button
               :if={identity.created_by != :provider}
+              size="xs"
               phx-click="delete_identity"
               data-confirm="Are you sure you want to delete this identity?"
               phx-value-id={identity.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-neutral-100"
-              ]}
             >
               Delete
             </.delete_button>
@@ -327,7 +326,7 @@ defmodule Web.Actors.Show do
           <:col :let={token} label="TYPE" class="w-1/12">
             <%= token.type %>
           </:col>
-          <:col :let={token} :if={@actor.type != :service_account} label="IDENTITY" class="w-3/12">
+          <:col :let={token} :if={@actor.type != :service_account} label="IDENTITY" class="w-2/12">
             <.identity_identifier account={@account} identity={token.identity} />
           </:col>
           <:col :let={token} :if={@actor.type == :service_account} label="NAME" class="w-2/12">
@@ -336,18 +335,18 @@ defmodule Web.Actors.Show do
           <:col :let={token} label="CREATED">
             <.created_by account={@account} schema={token} />
           </:col>
-          <:col :let={token} label="LAST USED (IP)">
+          <:col :let={token} label="LAST USED" class="w-3/12">
             <p>
               <.relative_datetime datetime={token.last_seen_at} />
             </p>
             <p :if={not is_nil(token.last_seen_at)}>
-              <.last_seen schema={token} />
+              <code class="text-xs"><.last_seen schema={token} /></code>
             </p>
           </:col>
           <:col :let={token} label="EXPIRES">
             <.relative_datetime datetime={token.expires_at} />
           </:col>
-          <:col :let={token} label="LAST USED BY CLIENTS">
+          <:col :let={token} label="CLIENT">
             <.intersperse_blocks :if={token.type == :client}>
               <:separator>,&nbsp;</:separator>
 
@@ -363,12 +362,10 @@ defmodule Web.Actors.Show do
           </:col>
           <:action :let={token}>
             <.delete_button
+              size="xs"
               phx-click="revoke_token"
               data-confirm="Are you sure you want to revoke this token?"
               phx-value-id={token.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-gray-100"
-              ]}
             >
               Revoke
             </.delete_button>
@@ -423,10 +420,10 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["flows"]}
           metadata={@flows_metadata}
         >
-          <:col :let={flow} label="AUTHORIZED AT">
+          <:col :let={flow} label="AUTHORIZED">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="EXPIRES AT">
+          <:col :let={flow} label="EXPIRES">
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="POLICY">
@@ -434,17 +431,19 @@ defmodule Web.Actors.Show do
               <Web.Policies.Components.policy_name policy={flow.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="CLIENT (IP)">
+          <:col :let={flow} label="CLIENT" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
               <%= flow.client.name %>
             </.link>
-            (<%= flow.client_remote_ip %>)
+            <br />
+            <code class="text-xs"><%= flow.client_remote_ip %></code>
           </:col>
-          <:col :let={flow} label="GATEWAY (IP)">
+          <:col :let={flow} label="GATEWAY" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
-            (<%= flow.gateway_remote_ip %>)
+            <br />
+            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>

@@ -3,31 +3,28 @@ import PlanBadge from "@/components/PlanBadge";
 import Image from "next/image";
 import Link from "next/link";
 
-<PlanBadge plans={["enterprise"]}>
+<PlanBadge plans={["starter", "team", "enterprise"]}>
 
-# SSO + Sync with Okta
+# SSO with Okta
 
 </PlanBadge>
 
 Firezone integrates with Okta using a custom connector that supports both
 authentication and directory sync. Use this guide if you're looking to setup SSO
-with Okta for your Firezone Enterprise account and want to automatically sync
-users and groups from Okta to Firezone.
+with Okta for your Firezone account and optionally sync users and groups from
+Okta to Firezone.
 
 <Alert color="info">
-  If you're just looking to authenticate users against Okta **without**
-  automatic directory sync, use our [universal OIDC
-  connector](/kb/authenticate/oidc) instead, available on all plans.
+  Directory sync is supported for the **Enterprise** plan only.
 </Alert>
-
 ## Overview
 
 The Firezone Okta connector integrates with Okta's APIs to support user
 authentication and directory sync.
 
-Users and groups are synced every few minutes to ensure that your Firezone
-account remains up-to-date with the latest identity data from Okta.
-[Read more](/kb/authenticate/directory-sync) about how sync works.
+On Enterprise plans, users and groups are synced every few minutes to ensure
+that your Firezone account remains up-to-date with the latest identity data from
+Okta. [Read more](/kb/authenticate/directory-sync) about how sync works.
 
 ## Setup
 
@@ -39,7 +36,7 @@ Follow the steps below to setup the Okta connector.
 
 ### Step 1: Start the Okta provider setup in Firezone
 
-In your admin portal, go to `Settings` -> `Identity Providers` and click
+In your admin portal, go to `Settings -> Identity Providers` and click
 `Add Identity Provider`. Then, select `Okta` from the list of identity
 providers.
 
@@ -208,7 +205,14 @@ In the app integration settings in Okta, click **Assignments** and then the
   />
 </Link>
 
-Ensure the `okta.groups.read` and `okta.users.read` scopes are granted.
+<PlanBadge plans={["enterprise"]}>
+
+#### Add directory sync scopes
+
+</PlanBadge>
+
+For Enterprise plans, ensure the `okta.groups.read` and `okta.users.read` scopes
+are granted.
 
 <Link
   href="/images/kb/authenticate/okta/11-grant-groups-read-scope.png"
@@ -265,6 +269,6 @@ Enter this value into the setup form in your Firezone admin portal.
 Ensure all fields are filled out, and click **Connect Identity Provider**.
 
 If you get successfully redirected back to your Firezone admin dashboard, you're
-done! Your Okta provider is now successfully configured. The first sync will
-occur within about 10 minutes. After that, users will be able to authenticate to
-Firezone using their Okta accounts.
+done! Your Okta provider is now successfully configured. If directory sync is
+enabled, the first sync will occur within about 10 minutes. After that, users
+will be able to authenticate to Firezone using their Okta accounts.

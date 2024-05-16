@@ -9,7 +9,6 @@ members = [
   "gateway",
   "firezone-cli-utils",
   "headless-client",
-  "linux-client",
   "snownet-tests",
   "phoenix-channel",
   "relay",
@@ -24,7 +23,7 @@ resolver = "2"
 [workspace.dependencies]
 boringtun = { version = "0.6", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-swift-bridge = "0.1.53"
+swift-bridge = "0.1.55"
 backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }

@@ -1,11 +1,11 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, TOKEN_ENV_KEY};
+use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, ResourceDescription, Sockets};
+use connlib_client_shared::{file_logger, Callbacks, Sockets};
 use connlib_shared::{
-    keypair,
+    callbacks, keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
     LoginUrl,
 };
@@ -63,8 +63,12 @@ pub fn default_token_path() -> PathBuf {
         .join("token")
 }
 
+/// Only called from the GUI Client's build of the IPC service
+///
+/// On Linux this is the same as running with `ipc-service`
 pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
+    // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);
@@ -72,7 +76,9 @@ pub fn run_only_ipc_service() -> Result<()> {
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
-    run_ipc_service(cli)
+    let rt = tokio::runtime::Runtime::new()?;
+    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    run_ipc_service(cli, rt, shutdown_rx)
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
@@ -178,25 +184,27 @@ pub fn sock_path() -> PathBuf {
         .join("ipc.sock")
 }
 
-pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
-    let rt = tokio::runtime::Runtime::new()?;
-    tracing::info!("run_daemon");
+pub(crate) fn run_ipc_service(
+    cli: Cli,
+    rt: tokio::runtime::Runtime,
+    _shutdown_rx: mpsc::Receiver<()>,
+) -> Result<()> {
+    tracing::info!("run_ipc_service");
     rt.block_on(async { ipc_listen(cli).await })
 }
 
-async fn ipc_listen(cli: Cli) -> Result<()> {
-    // Find the `firezone` group
-    let fz_gid = nix::unistd::Group::from_name("firezone")
+pub fn firezone_group() -> Result<nix::unistd::Group> {
+    let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
         .context("can't get group by name")?
-        .context("firezone group must exist on the system")?
-        .gid;
+        .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
+    Ok(group)
+}
 
+async fn ipc_listen(cli: Cli) -> Result<()> {
     // Remove the socket if a previous run left it there
     let sock_path = sock_path();
     tokio::fs::remove_file(&sock_path).await.ok();
     let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
-    std::os::unix::fs::chown(&sock_path, Some(ROOT_USER), Some(fz_gid.into()))
-        .context("can't set firezone as the group for the UDS")?;
     let perms = std::fs::Permissions::from_mode(0o660);
     std::fs::set_permissions(sock_path, perms)?;
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
@@ -241,8 +249,8 @@ impl Callbacks for CallbackHandlerIpc {
         None
     }
 
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
-        tracing::info!(len = resources.len(), "New resource list");
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
+        tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(IpcServerMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");

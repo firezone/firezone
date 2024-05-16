@@ -131,16 +131,16 @@ defmodule Web.Live.Actors.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["client (ip)"] ==
-             "#{flow.client.name} (#{client.last_seen_remote_ip})"
+    assert row["client"] ==
+             "#{flow.client.name} #{client.last_seen_remote_ip}"
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "renders flows even for deleted policies", %{
@@ -171,16 +171,16 @@ defmodule Web.Live.Actors.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["client (ip)"] ==
-             "#{flow.client.name} (#{client.last_seen_remote_ip})"
+    assert row["client"] ==
+             "#{flow.client.name} #{client.last_seen_remote_ip}"
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "renders flows even for deleted policy assocs", %{
@@ -212,16 +212,16 @@ defmodule Web.Live.Actors.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["client (ip)"] ==
-             "#{flow.client.name} (#{client.last_seen_remote_ip})"
+    assert row["client"] ==
+             "#{flow.client.name} #{client.last_seen_remote_ip}"
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "renders groups table", %{
@@ -346,7 +346,7 @@ defmodule Web.Live.Actors.ShowTest do
       |> table_to_map()
       |> with_table_row(
         "identity",
-        "#{admin_identity.provider.name} #{admin_identity.provider_identifier}",
+        "#{admin_identity.provider_identifier}",
         fn row ->
           assert row["actions"] =~ "Delete"
           assert around_now?(row["last signed in"])
@@ -355,7 +355,7 @@ defmodule Web.Live.Actors.ShowTest do
       )
       |> with_table_row(
         "identity",
-        "#{invited_identity.provider.name} #{invited_identity.provider_identifier}",
+        "#{invited_identity.provider_identifier}",
         fn row ->
           assert row["actions"] =~ "Delete"
           assert row["created"] =~ "by #{actor.name}"
@@ -364,7 +364,7 @@ defmodule Web.Live.Actors.ShowTest do
       )
       |> with_table_row(
         "identity",
-        "#{synced_identity.provider.name} #{synced_identity.provider_identifier}",
+        "#{synced_identity.provider_identifier}",
         fn row ->
           refute row["actions"]
           assert row["created"] =~ "by #{synced_identity.provider.name} sync"
@@ -545,13 +545,13 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row1["type"] == "browser"
       assert row1["expires"] in ["tomorrow", "in 24 hours"]
-      assert row1["last used (ip)"] == "never"
+      assert row1["last used"] == "never"
       assert around_now?(row1["created"])
       assert row1["actions"] == "Revoke"
 
       assert row2["type"] == "client"
       assert row2["expires"] in ["tomorrow", "in 24 hours"]
-      assert row2["last used (ip)"] == "never"
+      assert row2["last used"] == "never"
       assert around_now?(row2["created"])
       assert row2["actions"] == "Revoke"
     end
@@ -968,13 +968,13 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row1["type"] == "browser"
       assert row1["expires"] in ["tomorrow", "in 24 hours"]
-      assert row1["last used (ip)"] == "never"
+      assert row1["last used"] == "never"
       assert around_now?(row1["created"])
       assert row1["actions"] == "Revoke"
 
       assert row2["type"] == "client"
       assert row2["expires"] in ["tomorrow", "in 24 hours"]
-      assert row2["last used (ip)"] == "never"
+      assert row2["last used"] == "never"
       assert around_now?(row2["created"])
       assert row2["actions"] == "Revoke"
     end

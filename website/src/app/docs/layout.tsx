@@ -8,7 +8,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <DocsSidebar />
       <main className="p-4 pt-20 -ml-64 md:ml-0 lg:mx-auto">
         <div className="px-4">
-          <article className="max-w-screen-md format format-sm md:format-md lg:format-lg format-firezone">
+          <article className="max-w-screen-md tracking-[-0.01em] format format-sm md:format-md lg:format-lg format-firezone">
+            <Banner />
             {children}
           </article>
         </div>

@@ -11,19 +11,19 @@ defmodule Domain.AuthTest do
       account = Fixtures.Accounts.create_account(features: %{idp_sync: true})
 
       assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
-               google_workspace: [enabled: true],
-               microsoft_entra: [enabled: true],
-               okta: [enabled: true],
-               openid_connect: [enabled: true]
+               google_workspace: [enabled: true, sync: true],
+               microsoft_entra: [enabled: true, sync: true],
+               okta: [enabled: true, sync: true],
+               openid_connect: [enabled: true, sync: false]
              ]
 
       account = Fixtures.Accounts.create_account(features: %{idp_sync: false})
 
       assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
-               google_workspace: [enabled: false],
-               microsoft_entra: [enabled: false],
-               okta: [enabled: false],
-               openid_connect: [enabled: true]
+               google_workspace: [enabled: false, sync: true],
+               microsoft_entra: [enabled: false, sync: true],
+               okta: [enabled: false, sync: true],
+               openid_connect: [enabled: true, sync: false]
              ]
     end
   end
@@ -2986,6 +2986,26 @@ defmodule Domain.AuthTest do
       {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
 
       assert sign_in(provider, identity.provider_identifier, nonce, "foo", context) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when secret belongs to a different identity invalid", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      nonce = "test_nonce_for_firezone"
+      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+
+      identity2 = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity2} = Domain.Auth.Adapters.Email.request_sign_in_token(identity2, context)
+      secret = identity2.provider_virtual_state.nonce <> identity2.provider_virtual_state.fragment
+
+      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
                {:error, :unauthorized}
     end
 

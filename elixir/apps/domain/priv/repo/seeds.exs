@@ -349,7 +349,9 @@ end
 
 {:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
 {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
-{:ok, synced_group} = Actors.create_group(%{name: "Synced Group", type: :static}, admin_subject)
+
+{:ok, synced_group} =
+  Actors.create_group(%{name: "Synced Group with long name", type: :static}, admin_subject)
 
 for group <- [eng_group, finance_group, synced_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")
@@ -628,7 +630,7 @@ IO.puts("")
       address: "google.com",
       address_description: "https://google.com/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -641,7 +643,7 @@ IO.puts("")
       address: "*.firez.one",
       address_description: "https://firez.one/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -654,7 +656,7 @@ IO.puts("")
       address: "?.firezone.dev",
       address_description: "https://firezone.dev/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -667,7 +669,7 @@ IO.puts("")
       address: "example.com",
       address_description: "https://example.com:1234/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -680,7 +682,7 @@ IO.puts("")
       address: "ip6only.me",
       address_description: "https://ip6only.me/",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )
@@ -727,7 +729,7 @@ IO.puts("")
       address: "172.20.0.1/16",
       address_description: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}],
-      filters: [%{protocol: :all}]
+      filters: []
     },
     admin_subject
   )

@@ -10,15 +10,16 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{
-    file_logger, keypair, Callbacks, LoginUrl, ResourceDescription, Session, Sockets,
-};
+use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
+use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
 use std::{future, net::IpAddr, path::PathBuf, task::Poll};
 use tokio::sync::mpsc;
 
 use imp::default_token_path;
+
+pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
 pub mod imp_linux;
@@ -29,6 +30,9 @@ pub use imp_linux as imp;
 pub mod imp_windows;
 #[cfg(target_os = "windows")]
 pub use imp_windows as imp;
+
+/// Only used on Linux
+pub const FIREZONE_GROUP: &str = "firezone-client";
 
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
@@ -48,8 +52,10 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    // Needed to preserve CLI arg compatibility
+    // TODO: Remove
     #[command(subcommand)]
-    command: Option<Cmd>,
+    _command: Option<Cmd>,
 
     #[arg(
         short = 'u',
@@ -99,22 +105,10 @@ struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
-impl Cli {
-    fn command(&self) -> Cmd {
-        // Needed for backwards compatibility with old Docker images
-        self.command.unwrap_or(Cmd::Auto)
-    }
-}
-
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
-    /// If there is a token on disk, run in standalone mode. Otherwise, run as an IPC service. This will be removed in a future version.
-    #[command(hide = true)]
-    Auto,
-    /// Listen for IPC connections and act as a privileged tunnel process for a GUI client
     #[command(hide = true)]
     IpcService,
-    /// Act as a CLI-only Client
     Standalone,
 }
 
@@ -130,11 +124,11 @@ pub enum IpcClientMsg {
 pub enum IpcServerMsg {
     Ok,
     OnDisconnect,
-    OnUpdateResources(Vec<ResourceDescription>),
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
     TunnelReady,
 }
 
-pub fn run() -> Result<()> {
+pub fn run_only_headless_client() -> Result<()> {
     let mut cli = Cli::parse();
 
     // Modifying the environment of a running process is unsafe. If any other
@@ -160,25 +154,17 @@ pub fn run() -> Result<()> {
 
     tracing::info!(git_version = crate::GIT_VERSION);
 
-    match cli.command() {
-        Cmd::Auto => {
-            if let Some(token) = get_token(token_env_var, &cli)? {
-                run_standalone(cli, &token)
-            } else {
-                imp::run_ipc_service(cli)
-            }
-        }
-        Cmd::IpcService => imp::run_ipc_service(cli),
-        Cmd::Standalone => {
-            let token = get_token(token_env_var, &cli)?.with_context(|| {
-                format!(
-                    "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-                    cli.token_path
-                )
-            })?;
-            run_standalone(cli, &token)
-        }
-    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    let token = get_token(token_env_var, &cli)?.with_context(|| {
+        format!(
+            "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
+            cli.token_path
+        )
+    })?;
+    run_standalone(cli, rt, &token)
 }
 
 // Allow dead code because Windows doesn't have an obvious SIGHUP equivalent
@@ -188,11 +174,8 @@ enum SignalKind {
     Interrupt,
 }
 
-fn run_standalone(cli: Cli, token: &SecretString) -> Result<()> {
+fn run_standalone(cli: Cli, rt: tokio::runtime::Runtime, token: &SecretString) -> Result<()> {
     tracing::info!("Running in standalone mode");
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
     let _guard = rt.enter();
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
@@ -271,9 +254,8 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to tell the main thread that we disconnected");
     }
 
-    fn on_update_resources(&self, resources: Vec<connlib_client_shared::ResourceDescription>) {
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         // See easily with `export RUST_LOG=firezone_headless_client=debug`
-        tracing::debug!(len = resources.len(), "Printing the resource list one time");
         for resource in &resources {
             tracing::debug!(?resource);
         }

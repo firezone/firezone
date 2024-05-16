@@ -3,9 +3,9 @@
 resource "google_service_account" "application" {
   project = var.project_id
 
-  account_id   = "app-${local.application_name}"
-  display_name = "${local.application_name} app"
-  description  = "Service account for ${local.application_name} application instances."
+  account_id   = "firezone-${var.name}"
+  display_name = "${var.name} instances"
+  description  = "Service account for ${var.name} Firezone Gateway instances."
 }
 
 ## Allow application service account to pull images from the container registry

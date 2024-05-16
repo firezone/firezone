@@ -1,8 +1,8 @@
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
-        ClientId, ClientPayload, GatewayResponse, Interface, Peer, Relay, RelaysPresence,
-        ResourceDescription, ResourceId,
+        gateway::ResourceDescription, ClientId, ClientPayload, GatewayResponse, Interface, Peer,
+        Relay, RelaysPresence, ResourceId,
     },
     Dname,
 };
@@ -75,6 +75,7 @@ pub enum IngressMessages {
     InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
+    ResourceUpdated(ResourceDescription),
 }
 
 /// A client's ice candidate message.
@@ -115,6 +116,9 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
+    use connlib_shared::messages::gateway::Filter;
+    use connlib_shared::messages::gateway::PortRange;
+    use connlib_shared::messages::gateway::ResourceDescriptionDns;
     use connlib_shared::messages::Turn;
     use phoenix_channel::InitMessage;
     use phoenix_channel::PhoenixMessage;
@@ -146,7 +150,8 @@ mod test {
                     "id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
                     "name": "172.20.0.1/16",
                     "type": "cidr",
-                    "address": "172.20.0.0/16"
+                    "address": "172.20.0.0/16",
+                    "filters": []
                 },
                 "ref": "78e1159d-9dc6-480d-b2ef-1fcec2cd5730",
                 "expires_at": 1719367575,
@@ -327,6 +332,26 @@ mod test {
 
         let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":[true,false],"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
         let ingress_message = serde_json::from_str::<InitMessage<InitGateway>>(message).unwrap();
+        assert_eq!(m, ingress_message);
+    }
+
+    #[test]
+    fn resource_updated() {
+        let message = r#"{"event":"resource_updated","ref":null,"topic":"gateway","payload":{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"icmp"},{"protocol":"tcp"}]}}"#;
+        let m =
+            IngressMessages::ResourceUpdated(ResourceDescription::Dns(ResourceDescriptionDns {
+                id: "57f9ebbb-21d5-4f9f-bf86-b25122fc7a43".parse().unwrap(),
+                address: "?.httpbin".to_string(),
+                name: "?.httpbin".to_string(),
+                filters: vec![
+                    Filter::Icmp,
+                    Filter::Tcp(PortRange {
+                        port_range_end: 65535,
+                        port_range_start: 0,
+                    }),
+                ],
+            }));
+        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
         assert_eq!(m, ingress_message);
     }
 

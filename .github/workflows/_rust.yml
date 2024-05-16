@@ -28,6 +28,12 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
+        timeout-minutes: 5
+      - uses: taiki-e/install-action@cargo-udeps
+      - run: |
+          rustup install --no-self-update nightly-2024-03-26 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
+          cargo +nightly-2024-03-26 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
+        name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
         env:
@@ -37,12 +43,6 @@ jobs:
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
         name: "cargo clippy"
         shell: bash
-
-      - uses: taiki-e/install-action@cargo-udeps
-      - run: |
-          rustup install nightly-2024-03-26 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-03-26 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
-        name: Check for unused dependencies
 
   test:
     name: test-${{ matrix.runs-on }}
@@ -64,6 +64,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
+        timeout-minutes: 5
       - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
@@ -101,6 +102,7 @@ jobs:
           # Cache needs to be scoped per OS version
           key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: ./.github/actions/setup-tauri
+        timeout-minutes: 5
       - name: pnpm install
         run: |
           pnpm install
@@ -130,9 +132,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - run: cargo build -p firezone-headless-client
-        name: "cargo build"
-        shell: bash
+      - uses: ./.github/actions/setup-tauri
+        timeout-minutes: 5
       - run: scripts/tests/${{ matrix.test }}.sh
         name: "test script"
         shell: bash

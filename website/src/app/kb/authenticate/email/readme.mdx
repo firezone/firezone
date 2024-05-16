@@ -4,7 +4,7 @@ import SupportOptions from "@/components/SupportOptions";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
-# Email (OTP) authentication
+# Email (OTP) Authentication
 
 </PlanBadge>
 
@@ -32,8 +32,17 @@ short-lived and can only be used to authenticate once.
 
 The email authentication connector can be **disabled completely** for your
 account, forcing all users and admins to authenticate with another connector.
-However, this can lead to issues signing in if one of your other authentication
-connectors stops working. For that reason, you may want to leave the email
-authentication connector enabled with at least one admin for recovery purposes.
+This can increase security by reducing the number of potential entrypoints into
+your Firezone account.
+
+To do so, navigate to `Settings -> Identity providers`, select the Email
+provider in the list, and then click `Disable` in the upper-right.
+
+<Alert color="warning">
+  Disabling the email provider can lead to issues signing in if all of your
+  other connectors stop working. For that reason, you may want to leave the
+  email authentication connector enabled with at least one admin assigned for
+  recovery purposes.
+</Alert>
 
 <SupportOptions />

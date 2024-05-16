@@ -1,0 +1,85 @@
+import Image from "next/image";
+
+<Image
+  src="/images/blog/may-2024-update/hero.webp"
+  alt="Abstract illustration of Firezone traffic filters"
+  width={400}
+  height={400}
+  className="mx-auto shadow rounded"
+/>
+
+## In this update:
+
+- **New feature:** Traffic restrictions
+- Blog: [How DNS works in Firezone](/blog/how-dns-works-in-firezone)
+- Connectivity and reliability improvements
+
+Continue reading below for more details.
+
+### Traffic restrictions
+
+At Firezone our mission is to improve your organization's security. You've
+already been able to define Group-based access policies to restrict access to a
+particular host, but we've taken this a step further. You can now add port and
+protocol (ICMP, UDP, and TCP currently supported) restrictions on each Resource
+to define even more granular access controls.
+
+<Image
+  src="/images/blog/may-2024-update/traffic-restrictions.png"
+  alt="Firezone traffic restrictions"
+  width={600}
+  height={600}
+  className="mx-auto"
+/>
+
+Simply add the desired filters when creating or editing a Resource, and only
+that type of traffic will be allowed. This is useful for allowing access to some
+services running on a host but not all of them.
+
+#### How it works
+
+When you add traffic restrictions to a Resource, all Gateways that can serve
+that Resource will immediately receive the updated Resource configuration.
+
+Restrictions are enforced at the **Gateway** level. If a user tries to access a
+service on the host not allowed by the restriction, the Gateway will simply drop
+the traffic, preventing it from ever reaching the service in question.
+
+Traffic restrictions are supported on all Resource types, including DNS, IP, and
+CIDR-based Resources with **Gateway version 1.0.3** and higher, and can be
+enabled on the Team and Enterprise plans.
+
+### Blog: How DNS works in Firezone
+
+Firezone's approach to DNS works a bit differently than one might expect. One
+question we get a lot is, "why do my DNS Resources resolve to different IPs with
+Firezone enabled?". Great question! We've written an in-depth explanation of
+this in [this blog post](/blog/how-dns-works-in-firezone).
+
+<Image
+  src="/images/blog/how-dns-works-in-firezone/dns-based-traffic-routing.svg"
+  alt="How DNS works in Firezone"
+  width={1200}
+  height={1200}
+  className="mx-auto"
+/>
+
+So if you've ever wondered why your DNS Resources resolve to different IPs with
+Firezone enabled, or if you're just curious about how DNS works in Firezone, go
+read the post!
+
+### Connectivity and reliability improvements
+
+Last but not least, we've made several improvements to the way Firezone Clients
+stay connected to Gateways, even when switching WiFi networks or moving between
+cellular, WiFi, and ethernet connections.
+
+Connections were already quite stable before, but could take a few seconds to
+resume when switching networks. We've made several improvements to the way
+Clients handle network changes to improve reconnection times considerably, to
+the point where you shouldn't notice any interruption at all.
+
+We also added more Points of Presence (PoPs) in several regions to improve
+latency and reliability for users in those areas. See our updated
+[PoP list](/kb/architecture/tech-stack#regional-availability) for more details
+on where Firezone's Relay and control plane servers are available.

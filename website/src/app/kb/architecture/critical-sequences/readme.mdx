@@ -14,8 +14,8 @@ especially critical to the integrity of the entire system:
 - [Policy evaluation](#policy-evaluation): Deciding whether to allow or deny a
   connection request.
 - [DNS resolution](#dns-resolution): Resolving DNS-based Resources.
-- [High availability](#high-availability): How Firezone achieves high avability
-  through load balancing and automatic failover.
+- [High availability](#high-availability): How Firezone achieves high
+  availability through load balancing and automatic failover.
 
 These will be explained in more detail below.
 
@@ -168,6 +168,9 @@ Non-authoritative answer:
 Name: github.com
 Address: 100.96.0.1
 ```
+
+For a deeper dive into how (and why) DNS works this way in Firezone, see the
+[How DNS works in Firezone](/blog/how-dns-works-in-firezone) article.
 
 ### Why Firezone uses a mapped address for DNS Resources
 

@@ -1,27 +1,22 @@
-use super::{ControllerRequest, CtlrTx, Error};
 use anyhow::Result;
-use secrecy::{ExposeSecret, SecretString};
-use tauri::Manager;
+use tauri::api::notification::Notification;
 
-/// Open a URL in the user's default browser
-pub(crate) fn open_url(app: &tauri::AppHandle, url: &SecretString) -> Result<()> {
-    tauri::api::shell::open(&app.shell_scope(), url.expose_secret(), None)?;
+/// Since clickable notifications don't work on Linux yet, the update text
+/// must be different on different platforms
+pub(crate) fn show_update_notification(
+    _ctlr_tx: super::CtlrTx,
+    title: &str,
+    download_url: url::Url,
+) -> Result<()> {
+    show_notification(title, download_url.to_string().as_ref())?;
     Ok(())
 }
 
 /// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<(), Error> {
-    // TODO
-    Ok(())
-}
-
-/// Show a notification that signals `Controller` when clicked
-pub(crate) fn show_clickable_notification(
-    _title: &str,
-    _body: &str,
-    _tx: CtlrTx,
-    _req: ControllerRequest,
-) -> Result<(), Error> {
-    // TODO
+pub(crate) fn show_notification(title: &str, body: &str) -> Result<()> {
+    Notification::new(connlib_shared::BUNDLE_ID)
+        .title(title)
+        .body(body)
+        .show()?;
     Ok(())
 }

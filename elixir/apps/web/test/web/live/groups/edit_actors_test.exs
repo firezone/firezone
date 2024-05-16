@@ -113,7 +113,6 @@ defmodule Web.Live.Groups.EditActorsTest do
     end)
     |> with_table_row("actor", "#{admin_actor.name} (admin)", fn row ->
       for(identity <- admin_actor.identities) do
-        assert row["identities"] =~ identity.provider.name
         assert row["identities"] =~ identity.provider_identifier
       end
 
@@ -156,7 +155,6 @@ defmodule Web.Live.Groups.EditActorsTest do
       assert row["actor"] == "#{actor.name} (admin)"
 
       for identity <- actor.identities do
-        assert row["identities"] =~ identity.provider.name
         assert row["identities"] =~ identity.provider_identifier
       end
 

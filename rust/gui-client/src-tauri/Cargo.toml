@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:automatic-version
-version = "1.0.1"
+version = "1.0.5"
 description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
@@ -21,6 +21,7 @@ connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.1"
 firezone-headless-client = { path = "../../headless-client" }
+futures = { version = "0.3", default-features = false }
 git-version = "0.3.9"
 hex = "0.4.3"
 # Same crate Hickory uses
@@ -30,7 +31,7 @@ minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
-reqwest = { version = "0.12.2", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.12.4", default-features = false, features = ["stream", "rustls-tls"] }
 ring = "0.17"
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
@@ -38,32 +39,27 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
-tauri = { version = "1.6", features = [ "dialog", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.6", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.36.0", features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
-tracing-panic = "0.1.1"
+tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.7.0", features = ["v4"] }
-zip = { version = "0.6.6", features = ["deflate", "time"], default-features = false }
+zip = { version = "1.2.3", features = ["deflate", "time"], default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
-# Used for infinite `pending` on not-yet-implemented functions
-futures = "0.3.30"
-tokio-util = { version = "0.7.10", features = ["codec"] }
+nix = { version =  "0.28.0", features = ["user"] }
+tokio-util = { version = "0.7.11", features = ["codec"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-dirs = "5.0.1"
-# Used for infinite `pending` on not-implemented functions
-futures = "0.3.30"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-futures = { version = "0.3", default-features = false }
 tauri-winrt-notification = "0.2.0"
 windows-core = "0.56.0"
 windows-implement = "0.56.0"

@@ -76,6 +76,14 @@ defmodule Web.Live.Resources.NewTest do
     expected_inputs =
       (connection_inputs ++
          [
+           "resource[filters][icmp][enabled]",
+           "resource[filters][icmp][protocol]",
+           "resource[filters][tcp][enabled]",
+           "resource[filters][tcp][protocol]",
+           "resource[filters][tcp][ports]",
+           "resource[filters][udp][enabled]",
+           "resource[filters][udp][protocol]",
+           "resource[filters][udp][ports]",
            "resource[address]",
            "resource[address_description]",
            "resource[name]",
@@ -117,16 +125,14 @@ defmodule Web.Live.Resources.NewTest do
          [
            "resource[address]",
            "resource[address_description]",
-           "resource[filters][all][enabled]",
-           "resource[filters][all][protocol]",
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
            "resource[filters][tcp][enabled]",
-           "resource[filters][tcp][ports]",
            "resource[filters][tcp][protocol]",
+           "resource[filters][tcp][ports]",
            "resource[filters][udp][enabled]",
-           "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
+           "resource[filters][udp][ports]",
            "resource[name]",
            "resource[type]"
          ])
@@ -162,6 +168,14 @@ defmodule Web.Live.Resources.NewTest do
     expected_inputs =
       (connection_inputs ++
          [
+           "resource[filters][icmp][enabled]",
+           "resource[filters][icmp][protocol]",
+           "resource[filters][tcp][enabled]",
+           "resource[filters][tcp][protocol]",
+           "resource[filters][tcp][ports]",
+           "resource[filters][udp][enabled]",
+           "resource[filters][udp][protocol]",
+           "resource[filters][udp][ports]",
            "resource[address]",
            "resource[address_description]",
            "resource[name]",
@@ -188,8 +202,6 @@ defmodule Web.Live.Resources.NewTest do
     assert find_inputs(form) == [
              "resource[address]",
              "resource[address_description]",
-             "resource[filters][all][enabled]",
-             "resource[filters][all][protocol]",
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
              "resource[filters][tcp][enabled]",
@@ -224,7 +236,10 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(
+      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+    )
 
     lv
     |> form("form", resource: attrs)
@@ -261,7 +276,10 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(
+      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+    )
 
     assert lv
            |> form("form", resource: attrs)
@@ -298,7 +316,10 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(
+      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+    )
 
     assert lv
            |> form("form", resource: attrs)
@@ -330,6 +351,7 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
     |> render_change(resource: %{type: :dns})
 
     assert lv
@@ -354,8 +376,8 @@ defmodule Web.Live.Resources.NewTest do
       address_description: "http://foobar.com:3000/",
       filters: %{
         icmp: %{enabled: true},
-        tcp: %{ports: "80, 443"},
-        udp: %{ports: "4000 - 5000"}
+        tcp: %{ports: "80, 443", enabled: true},
+        udp: %{ports: "4000 - 5000", enabled: true}
       },
       connections: %{gateway_group.id => %{enabled: true}}
     }
@@ -367,7 +389,13 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(
+      resource: %{
+        type: :dns,
+        filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}
+      }
+    )
 
     lv
     |> form("form", resource: attrs)
@@ -390,8 +418,8 @@ defmodule Web.Live.Resources.NewTest do
       address_description: "http://foobar.com:3000/",
       filters: %{
         icmp: %{enabled: true},
-        tcp: %{ports: "80, 443"},
-        udp: %{ports: "4000 - 5000"}
+        tcp: %{ports: "80, 443", enabled: true},
+        udp: %{ports: "4000 - 5000", enabled: true}
       }
     }
 
@@ -402,7 +430,13 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
-    |> render_change(resource: %{type: :dns})
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
+    |> render_change(
+      resource: %{
+        type: :dns,
+        filters: %{tcp: %{enabled: true}, udp: %{enabled: true}, icmp: %{enabled: true}}
+      }
+    )
 
     lv
     |> form("form", resource: attrs)
@@ -413,7 +447,7 @@ defmodule Web.Live.Resources.NewTest do
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
   end
 
-  test "does not render traffic filter form", %{
+  test "shows disabled traffic filter form when traffic filters disabled", %{
     account: account,
     group: group,
     identity: identity,
@@ -421,7 +455,7 @@ defmodule Web.Live.Resources.NewTest do
   } do
     Domain.Config.feature_flag_override(:traffic_filters, false)
 
-    {:ok, lv, _html} =
+    {:ok, lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new?site_id=#{group}")
@@ -431,9 +465,19 @@ defmodule Web.Live.Resources.NewTest do
     assert find_inputs(form) == [
              "resource[address]",
              "resource[address_description]",
+             "resource[filters][icmp][enabled]",
+             "resource[filters][icmp][protocol]",
+             "resource[filters][tcp][enabled]",
+             "resource[filters][tcp][ports]",
+             "resource[filters][tcp][protocol]",
+             "resource[filters][udp][enabled]",
+             "resource[filters][udp][ports]",
+             "resource[filters][udp][protocol]",
              "resource[name]",
              "resource[type]"
            ]
+
+    assert html =~ "UPGRADE TO UNLOCK"
   end
 
   test "creates a resource on valid attrs when traffic filter form disabled", %{
@@ -455,6 +499,7 @@ defmodule Web.Live.Resources.NewTest do
 
     lv
     |> form("form")
+    # Generate onchange to trigger visible elements, otherwise the form won't be valid
     |> render_change(resource: %{type: :dns})
 
     lv
@@ -466,5 +511,85 @@ defmodule Web.Live.Resources.NewTest do
     assert connection.gateway_group_id == group.id
 
     assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}?site_id=#{group.id}")
+  end
+
+  test "prevents saving resource if traffic filters set when traffic filters disabled", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    attrs = %{
+      name: "foobar.com",
+      filters: %{
+        icmp: %{enabled: true},
+        tcp: %{ports: "8080, 4443", enabled: true},
+        udp: %{ports: "4000 - 5000", enabled: true}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    # ** (ArgumentError) could not find non-disabled input, select or textarea with name "resource[filters][tcp][ports]" within:
+    assert_raise ArgumentError, fn ->
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+    end
+
+    assert Repo.all(Domain.Resources.Resource) == []
+  end
+
+  test "maintains selection of site when multi-site is false", %{
+    account: account,
+    group: _group,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:multi_site_resources, false)
+    group2 = Fixtures.Gateways.create_group(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new")
+
+    lv
+    |> form("form")
+    |> render_change(%{"resource[connections][0][gateway_group_id]" => group2.id})
+
+    assert has_element?(
+             lv,
+             "select[name='resource[connections][0][gateway_group_id]'] option[value='#{group2.id}'][selected]"
+           )
+  end
+
+  test "maintains selection of sites when multi-site is true", %{
+    account: account,
+    group: group,
+    identity: identity,
+    conn: conn
+  } do
+    group2 = Fixtures.Gateways.create_group(account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new")
+
+    lv
+    |> form("form")
+    |> render_change(%{
+      "resource[connections][#{group.id}][enabled]" => false,
+      "resource[connections][#{group2.id}][enabled]" => true
+    })
+
+    refute has_element?(lv, "input[name='resource[connections][#{group.id}][enabled]'][checked]")
+    assert has_element?(lv, "input[name='resource[connections][#{group2.id}][enabled]'][checked]")
   end
 end

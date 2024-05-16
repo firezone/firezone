@@ -1,7 +1,7 @@
 [package]
 name = "firezone-headless-client"
 # mark:automatic-version
-version = "1.0.1"
+version = "1.0.5"
 edition = "2021"
 authors = ["Firezone, Inc."]
 
@@ -25,14 +25,21 @@ tracing = { workspace = true }
 url = { version = "2.3.1", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+dirs = "5.0.1"
 futures = "0.3.30"
 nix = { version =  "0.28.0", features = ["fs", "user"] }
 resolv-conf = "0.7.0"
 sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
-tokio-util = { version = "0.7.10", features = ["codec"] }
+tokio-util = { version = "0.7.11", features = ["codec"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dirs = "5.0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
+known-folders = "1.1.0"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+windows-service = "0.7.0"
 
 [lints]
 workspace = true

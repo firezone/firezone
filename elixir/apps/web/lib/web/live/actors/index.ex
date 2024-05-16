@@ -88,7 +88,9 @@ defmodule Web.Actors.Index do
               </:empty>
 
               <:item :let={group}>
-                <.group account={@account} group={group} />
+                <div class="flex flex-wrap gap-y-2 mr-2">
+                  <.group account={@account} group={group} />
+                </div>
               </:item>
 
               <:tail :let={count}>

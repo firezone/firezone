@@ -9,7 +9,7 @@ use crate::client::{
     Failure,
 };
 use anyhow::{bail, Context, Result};
-use connlib_client_shared::ResourceDescription;
+use connlib_client_shared::callbacks::ResourceDescription;
 use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -40,14 +40,6 @@ mod os;
 mod os;
 
 // This syntax is odd, but it helps `cargo-mutants` understand the platform-specific modules
-// The IPC implementation of TunnelWrapper is not built yet
-/*
-#[cfg(target_os = "linux")]
-#[path = "tunnel-wrapper/ipc.rs"]
-mod tunnel_wrapper_ipc;
-#[cfg(target_os = "linux")]
-use tunnel_wrapper_ipc as tunnel_wrapper;
-*/
 #[cfg(target_os = "windows")]
 #[path = "tunnel-wrapper/in_proc.rs"]
 mod tunnel_wrapper_in_proc;
@@ -73,22 +65,8 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
-impl Managed {
-    #[cfg(debug_assertions)]
-    /// In debug mode, if `--inject-faults` is passed, sleep for `millis` milliseconds
-    pub async fn fault_msleep(&self, millis: u64) {
-        if self.inject_faults {
-            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
-        }
-    }
-
-    #[cfg(not(debug_assertions))]
-    /// Does nothing in release mode
-    pub async fn fault_msleep(&self, _millis: u64) {}
-}
-
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("Deep-link module error: {0}")]
@@ -96,7 +74,9 @@ pub(crate) enum Error {
     #[error("Logging module error: {0}")]
     Logging(#[from] logging::Error),
 
-    // `client.rs` provides a more user-friendly message when showing the error dialog box
+    // `client.rs` provides a more user-friendly message when showing the error dialog box for certain variants
+    #[error("UserNotInFirezoneGroup")]
+    UserNotInFirezoneGroup,
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
     #[error(transparent)]
@@ -379,6 +359,10 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send ExportLogs request")?;
+    ctlr_tx
+        .send(ControllerRequest::ClearLogs)
+        .await
+        .context("Failed to send ClearLogs request")?;
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
@@ -412,22 +396,16 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
     let release = client::updates::check()
         .await
         .context("Error in client::updates::check")?;
-    let Some(download_url) = release.download_url() else {
-        tracing::warn!("No installer for this OS/arch online");
-        return Ok(());
-    };
+    let latest_version = release.version.clone();
 
     let our_version = client::updates::current_version()?;
 
-    if always_show_update_notification || (our_version < release.tag_name) {
-        tracing::info!(?our_version, ?release.tag_name, "There is a new release");
+    if always_show_update_notification || (our_version < latest_version) {
+        tracing::info!(?our_version, ?latest_version, "There is a new release");
         // We don't necessarily need to route through the Controller here, but if we
         // want a persistent "Click here to download the new MSI" button, this would allow that.
         ctlr_tx
-            .send(ControllerRequest::UpdateAvailable {
-                download_url: download_url.clone(),
-                version_to_download: release.tag_name,
-            })
+            .send(ControllerRequest::UpdateAvailable(release))
             .await
             .context("Error while sending UpdateAvailable to Controller")?;
         return Ok(());
@@ -435,7 +413,7 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 
     tracing::info!(
         ?our_version,
-        ?release.tag_name,
+        ?latest_version,
         "Our release is newer than, or the same as, the latest"
     );
     Ok(())
@@ -474,9 +452,13 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
     Ok(())
 }
 
+// Allow dead code because `UpdateNotificationClicked` doesn't work on Linux yet
+#[allow(dead_code)]
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
+    /// Only used for smoke tests
+    ClearLogs,
     Disconnected,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
@@ -489,10 +471,7 @@ pub(crate) enum ControllerRequest {
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
     TunnelReady,
-    UpdateAvailable {
-        download_url: Url,
-        version_to_download: semver::Version,
-    },
+    UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
 }
 
@@ -505,7 +484,8 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    logging_handles: client::logging::Handles,
+    /// Must be kept alive so the logger will keep running
+    _logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
@@ -528,7 +508,6 @@ impl Controller {
 
         let callback_handler = CallbackHandler {
             ctlr_tx: self.ctlr_tx.clone(),
-            _logger: self.logging_handles.logger.clone(),
             notify_controller: Arc::clone(&self.notify_controller),
             resources: Default::default(),
         };
@@ -582,7 +561,7 @@ impl Controller {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
-        tracing::info!("Got deep link");
+        tracing::info!("Received deep link over IPC");
         // Uses `std::fs`
         let token = self.auth.handle_response(auth_response)?;
         self.start_session(token)
@@ -601,6 +580,9 @@ impl Controller {
                     "Applied new settings. Log level will take effect at next app start."
                 );
             }
+            Req::ClearLogs => logging::clear_logs_inner()
+                .await
+                .context("Failed to clear logs")?,
             Req::Disconnected => {
                 tracing::info!("Disconnected by connlib");
                 self.sign_out().await?;
@@ -624,7 +606,7 @@ impl Controller {
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    os::open_url(&self.app, &url)?;
+                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
                     self.app
                         .get_window("welcome")
                         .context("Couldn't get handle to Welcome window")?
@@ -678,21 +660,13 @@ impl Controller {
                 self.tunnel_ready = true;
                 self.refresh_system_tray_menu()?;
             }
-            Req::UpdateAvailable {
-                download_url,
-                version_to_download,
-            } => {
-                let title = format!("Firezone {} available for download", version_to_download);
+            Req::UpdateAvailable(release) => {
+                let title = format!("Firezone {} available for download", release.version);
 
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
                 // `tauri::api::shell::open`
-                os::show_clickable_notification(
-                    &title,
-                    "Click here to download the new version.",
-                    self.ctlr_tx.clone(),
-                    Req::UpdateNotificationClicked(download_url),
-                )?;
+                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
@@ -781,7 +755,8 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let session_dir = crate::client::known_dirs::session().context("Couldn't find session dir")?;
+    let session_dir =
+        firezone_headless_client::known_dirs::session().context("Couldn't find session dir")?;
     let ran_before_path = session_dir.join("ran_before.txt");
     if !tokio::fs::try_exists(&ran_before_path).await? {
         let win = app
@@ -798,7 +773,7 @@ async fn run_controller(
         auth: client::auth::Auth::new().context("Failed to set up auth module")?,
         ctlr_tx,
         session: None,
-        logging_handles,
+        _logging_handles: logging_handles,
         notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
@@ -844,11 +819,11 @@ async fn run_controller(
                     }
                 }
             },
-            r = dns_listener.notified() => {
-                r?;
+            resolvers = dns_listener.notified() => {
+                let resolvers = resolvers?;
                 if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!("New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(client::resolvers::get().unwrap_or_default()).await?;
+                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                    session.connlib.set_dns(resolvers).await?;
                 }
             },
             req = rx.recv() => {

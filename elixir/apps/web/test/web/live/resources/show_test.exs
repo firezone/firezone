@@ -97,22 +97,6 @@ defmodule Web.Live.Resources.ShowTest do
               {:live_redirect, %{to: ~p"/#{account}/resources/#{resource}/edit", kind: :push}}}
   end
 
-  test "hides edit resource button when feature is disabled", %{
-    account: account,
-    resource: resource,
-    identity: identity,
-    conn: conn
-  } do
-    Domain.Config.feature_flag_override(:multi_site_resources, false)
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/resources/#{resource}")
-
-    refute has_element?(lv, "a", "Edit Resource")
-  end
-
   test "renders resource details", %{
     account: account,
     actor: actor,
@@ -136,8 +120,50 @@ defmodule Web.Live.Resources.ShowTest do
     assert table["created"] =~ actor.name
 
     for filter <- resource.filters do
-      assert String.downcase(table["traffic filtering rules"]) =~ Atom.to_string(filter.protocol)
+      assert String.downcase(table["traffic restriction"]) =~ Atom.to_string(filter.protocol)
     end
+  end
+
+  test "renders traffic filters on show page even when traffic filters disabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Domain.Config.feature_flag_override(:traffic_filters, false)
+
+    resource = Fixtures.Resources.create_resource(account: account, filters: [])
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["traffic restriction"] == "All traffic allowed"
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        filters: [%{protocol: :tcp, ports: []}]
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["traffic restriction"] == "TCP: All ports allowed"
   end
 
   test "renders policies table", %{
@@ -226,17 +252,17 @@ defmodule Web.Live.Resources.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["authorized at"]
-    assert row["expires at"]
+    assert row["authorized"]
+    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
-    assert row["gateway (ip)"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} (#{flow.gateway.last_seen_remote_ip})"
+    assert row["gateway"] ==
+             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
 
-    assert row["client, actor (ip)"] =~ flow.client.name
-    assert row["client, actor (ip)"] =~ "owned by #{flow.client.actor.name}"
-    assert row["client, actor (ip)"] =~ to_string(flow.client_remote_ip)
+    assert row["client, actor"] =~ flow.client.name
+    assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
+    assert row["client, actor"] =~ to_string(flow.client_remote_ip)
   end
 
   test "allows deleting resource", %{

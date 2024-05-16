@@ -46,44 +46,6 @@ variable "compute_provision_public_ipv6_address" {
 }
 
 ################################################################################
-## Container Registry
-################################################################################
-
-variable "container_registry" {
-  type        = string
-  nullable    = false
-  default     = "ghcr.io"
-  description = "Container registry URL to pull the image from."
-}
-
-################################################################################
-## Container Image
-################################################################################
-
-variable "image_repo" {
-  type     = string
-  nullable = false
-  default  = "firezone"
-
-  description = "Repo of a container image used to deploy the application."
-}
-
-variable "image" {
-  type     = string
-  nullable = false
-  default  = "gateway"
-
-  description = "Container image used to deploy the application."
-}
-
-variable "image_tag" {
-  type     = string
-  nullable = false
-
-  description = "Container image used to deploy the application."
-}
-
-################################################################################
 ## Observability
 ################################################################################
 
@@ -96,31 +58,50 @@ variable "observability_log_level" {
 }
 
 ################################################################################
-## Application
+## Regional Instance Group
 ################################################################################
 
-variable "application_name" {
+variable "name" {
   type     = string
   nullable = true
   default  = "gateway"
 
-  description = "Name of the application. Defaults to value of `var.image_name` with `_` replaced to `-`."
+  description = "Name of the application."
 }
 
-variable "application_version" {
-  type     = string
-  nullable = true
-  default  = null
-
-  description = "Version of the application. Defaults to value of `var.image_tag`."
-}
-
-variable "application_labels" {
+variable "labels" {
   type     = map(string)
   nullable = false
   default  = {}
 
   description = "Labels to add to all created by this module resources."
+}
+
+################################################################################
+## Firezone Gateway
+################################################################################
+
+variable "token" {
+  type        = string
+  description = "Portal token to use for authentication."
+}
+
+variable "api_url" {
+  type        = string
+  default     = "wss://api.firezone.dev"
+  description = "URL of the control plane endpoint."
+}
+
+variable "artifact_url" {
+  type        = string
+  default     = "https://storage.googleapis.com/firezone-prod-artifacts/firezone-gateway"
+  description = "URL from which Firezone install script will download the gateway binary"
+}
+
+variable "vsn" {
+  type        = string
+  default     = "latest"
+  description = "Version of the Firezone gateway that is downloaded from `artifact_url`."
 }
 
 variable "health_check" {
@@ -150,7 +131,7 @@ variable "health_check" {
     protocol = "TCP"
     port     = 8080
 
-    initial_delay_sec = 60
+    initial_delay_sec = 100
 
     check_interval_sec  = 15
     timeout_sec         = 10
@@ -163,31 +144,4 @@ variable "health_check" {
   }
 
   description = "Health check which will be used for auto healing policy."
-}
-
-variable "application_environment_variables" {
-  type = list(object({
-    name  = string
-    value = string
-  }))
-
-  nullable = false
-  default  = []
-
-  description = "List of environment variables to set for all application containers."
-}
-
-################################################################################
-## Firezone
-################################################################################
-
-variable "token" {
-  type        = string
-  description = "Portal token to use for authentication."
-}
-
-variable "api_url" {
-  type        = string
-  default     = "wss://api.firezone.dev"
-  description = "URL of the control plane endpoint."
 }

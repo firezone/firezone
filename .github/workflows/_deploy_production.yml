@@ -11,7 +11,7 @@ on:
 
 env:
   # mark:automatic-version
-  VERSION: "1.0.1"
+  VERSION: "1.0.5"
 
 concurrency:
   group: "production-deploy"
@@ -68,10 +68,57 @@ jobs:
               -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION} \
               $SOURCE_TAG
           done
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy Google Cloud Storage binaries to "latest" version
+        run: |
+          set -xe
+
+          IMAGES=(firezone-gateway)
+          ARCHITECTURES=(x86_64 aarch64 armv7)
+          MAJOR_VERSION="${VERSION%%.*}"
+          MAJOR_MINOR_VERSION="${VERSION%.*}"
+
+          for image in "${IMAGES[@]}"; do
+            for arch in "${ARCHITECTURES[@]}"; do
+              # Copy sha256sum.txt
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
+                gs://firezone-prod-artifacts/${image}/latest/${arch}.sha256sum.txt
+
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}.sha256sum.txt
+
+            gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt
+
+              # Copy binaries
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
+                gs://firezone-prod-artifacts/${image}/latest/${arch}
+
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}
+
+              gcloud storage cp \
+                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
+                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}
+            done
+          done
 
   deploy-production:
     needs: push
     runs-on: ubuntu-22.04
+    environment: gcp_production
     permissions:
       contents: write
     env:
@@ -90,7 +137,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
       - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.2.0
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.3.0
         id: apply-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
@@ -98,7 +145,7 @@ jobs:
           # https://app.terraform.io/app/firezone/workspaces/production/settings/general
           directory: "./"
       - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.2.0
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.0
         id: apply-run
         env:
           TF_VAR_image_tag:
@@ -108,7 +155,7 @@ jobs:
           configuration_version:
             ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
-        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.2.0
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.3.0
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
         id: apply
         with:

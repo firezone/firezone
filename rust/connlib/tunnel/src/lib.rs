@@ -118,7 +118,13 @@ where
                 self.device_read_buf.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout);
+                    let resources_updated = self.role_state.handle_timeout(timeout);
+
+                    if resources_updated {
+                        self.callbacks
+                            .on_update_resources(self.role_state.resources());
+                    }
+
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {

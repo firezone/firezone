@@ -5,8 +5,9 @@ use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
+    gateway::Filters, gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription,
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
-    Relay, RelayId, ResolvedResourceDescriptionDns, ResourceDescription, ResourceId,
+    Relay, RelayId, ResourceId,
 };
 use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
@@ -59,20 +60,15 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
-        let (resource_addresses, id) = match &resource {
-            ResourceDescription::Dns(r) => {
-                let Some(domain) = domain.clone() else {
-                    return Err(Error::ControlProtocolError);
-                };
-
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
+        match (&domain, &resource) {
+            (Some(domain), ResourceDescription::Dns(r)) => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
                     return Err(Error::InvalidResource);
                 }
-
-                (r.addresses.clone(), r.id)
             }
-            ResourceDescription::Cidr(ref cidr) => (vec![cidr.address], cidr.id),
-        };
+            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
+            _ => {}
+        }
 
         let answer = self.role_state.node.accept_connection(
             client_id,
@@ -89,7 +85,14 @@ where
             Instant::now(),
         );
 
-        self.new_peer(ips, client_id, id, expires_at, resource_addresses.clone());
+        self.new_peer(
+            ips,
+            client_id,
+            resource.id(),
+            resource.filters(),
+            expires_at,
+            resource.addresses(),
+        );
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {
@@ -98,7 +101,8 @@ where
             },
             domain_response: domain.map(|domain| DomainResponse {
                 domain,
-                address: resource_addresses
+                address: resource
+                    .addresses()
                     .into_iter()
                     .map(|ip| ip.network_address())
                     .collect(),
@@ -117,35 +121,45 @@ where
         expires_at: Option<DateTime<Utc>>,
         domain: Option<Dname>,
     ) -> Option<DomainResponse> {
-        let peer = self.role_state.peers.get_mut(&client)?;
-
-        let (addresses, resource_id) = match &resource {
-            ResourceDescription::Dns(r) => {
-                let domain = domain.clone()?;
-
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
+        match (&domain, &resource) {
+            (Some(domain), ResourceDescription::Dns(r)) => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
                     return None;
                 }
-
-                (r.addresses.clone(), r.id)
             }
-            ResourceDescription::Cidr(cidr) => (vec![cidr.address], cidr.id),
-        };
-
-        for address in &addresses {
-            peer.add_resource(*address, resource_id, expires_at);
+            (None, ResourceDescription::Dns(_)) => return None,
+            _ => {}
         }
 
-        tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+        let peer = self.role_state.peers.get_mut(&client)?;
+
+        peer.add_resource(
+            resource.addresses(),
+            resource.id(),
+            resource.filters(),
+            expires_at,
+        );
+
+        tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
         if let Some(domain) = domain {
             return Some(DomainResponse {
                 domain,
-                address: addresses.iter().map(|i| i.network_address()).collect(),
+                address: resource
+                    .addresses()
+                    .iter()
+                    .map(|i| i.network_address())
+                    .collect(),
             });
         }
 
         None
+    }
+
+    pub fn update_resource(&mut self, resource: ResourceDescription) {
+        for peer in self.role_state.peers.iter_mut() {
+            peer.update_resource(&resource);
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource, %client))]
@@ -179,14 +193,13 @@ where
         ips: Vec<IpNetwork>,
         client_id: ClientId,
         resource: ResourceId,
+        filters: Filters,
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) {
         let mut peer = ClientOnGateway::new(client_id, &ips);
 
-        for address in resource_addresses {
-            peer.add_resource(address, resource, expires_at);
-        }
+        peer.add_resource(resource_addresses, resource, filters, expires_at);
 
         self.role_state.peers.insert(peer, &ips);
     }

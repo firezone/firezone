@@ -343,10 +343,18 @@ defmodule Web.CoreComponents do
   """
   attr :rest, :global
   slot :inner_block, required: true
+  attr :inline, :boolean, default: false
 
   def error(assigns) do
     ~H"""
-    <p class="mt-3 flex gap-3 text-sm leading-6 text-rose-600 phx-no-feedback:hidden" {@rest}>
+    <p
+      class={[
+        "w-full flex gap-3 text-sm leading-6",
+        "text-rose-600 phx-no-feedback:hidden",
+        (@inline && "ml-3") || "mt-3"
+      ]}
+      {@rest}
+    >
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
       <%= render_slot(@inner_block) %>
     </p>
@@ -619,7 +627,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <span
       class={[
-        "text-xs mr-2 px-2.5 py-0.5 rounded whitespace-nowrap",
+        "text-xs px-2.5 py-0.5 rounded whitespace-nowrap",
         @colors[@type],
         @class
       ]}
@@ -836,19 +844,22 @@ defmodule Web.CoreComponents do
         class={~w[
           text-xs
           rounded-l
-          py-0.5 pl-2.5 pr-1.5
-          text-neutral-800
-          bg-neutral-200
+          py-0.5 px-1.5
+          text-neutral-900
+          bg-neutral-50
+          border-neutral-100
+          border
         ]}
       >
-        <%= @identity.provider.name %>
+        <.provider_icon adapter={@identity.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <span class={[
-        "text-xs",
-        "rounded-r",
-        "mr-2 py-0.5 pl-1.5 pr-2.5",
-        "text-neutral-800",
-        "bg-neutral-100"
+      <span class={~w[
+        flex items-center
+        text-xs
+        rounded-r
+        mr-2 py-0.5 pl-1.5 pr-2.5
+        text-neutral-900
+        bg-neutral-100
       ]}>
         <%= get_identity_email(@identity) %>
       </span>
@@ -882,34 +893,34 @@ defmodule Web.CoreComponents do
 
   def group(assigns) do
     ~H"""
-    <span class="inline-block whitespace-nowrap mr-2" data-group-id={@group.id}>
+    <span class="flex inline-flex" data-group-id={@group.id}>
       <.link
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
         data-provider-id={@group.provider_id}
         title={@group.provider.adapter}
-        class={[
-          "text-xs",
-          "rounded-l",
-          "py-0.5 pl-2.5 pr-1.5",
-          "text-neutral-800",
-          "bg-neutral-200",
-          "whitespace-nowrap"
+        class={~w[
+          text-xs
+          rounded-l
+          py-0.5 px-1.5
+          text-neutral-900
+          bg-neutral-50
+          border-neutral-100
+          border
+          whitespace-nowrap
         ]}
       >
-        <%= @group.provider.name %>
+        <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <.link
-        navigate={~p"/#{@account}/groups/#{@group}"}
-        class={[
-          "text-xs",
-          if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5"),
-          "py-0.5",
-          "text-neutral-800",
-          "bg-neutral-100",
-          "whitespace-nowrap"
-        ]}
-      >
+      <.link navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
+          flex items-center
+          text-xs
+          #{if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5")}
+          py-0.5
+          text-neutral-800
+          bg-neutral-100
+          whitespace-nowrap
+        ]}>
         <%= @group.name %>
       </.link>
     </span>
@@ -1095,6 +1106,18 @@ defmodule Web.CoreComponents do
   def provider_icon(%{adapter: :okta} = assigns) do
     ~H"""
     <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :email} = assigns) do
+    ~H"""
+    <.icon name="hero-envelope" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :userpass} = assigns) do
+    ~H"""
+    <.icon name="hero-key" {@rest} />
     """
   end
 

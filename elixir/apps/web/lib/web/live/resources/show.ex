@@ -19,7 +19,6 @@ defmodule Web.Resources.Show do
         assign(
           socket,
           page_title: "Resource #{resource.name}",
-          traffic_filters_enabled?: Accounts.traffic_filters_enabled?(socket.assigns.account),
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           resource: resource,
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
@@ -96,10 +95,7 @@ defmodule Web.Resources.Show do
         <span :if={not is_nil(@resource.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@resource.deleted_at)}>
-        <.edit_button
-          :if={Domain.Accounts.multi_site_resources_enabled?(@account)}
-          navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}
-        >
+        <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
           Edit Resource
         </.edit_button>
       </:action>
@@ -162,13 +158,13 @@ defmodule Web.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={@traffic_filters_enabled?}>
+          <.vertical_table_row>
             <:label>
-              Traffic Filtering Rules
+              Traffic restriction
             </:label>
             <:value>
               <div :if={@resource.filters == []} %>
-                No traffic filtering rules
+                All traffic allowed
               </div>
               <div :for={filter <- @resource.filters} :if={@resource.filters != []} %>
                 <.filter_description filter={filter} />
@@ -272,10 +268,10 @@ defmodule Web.Resources.Show do
           ordered_by={@order_by_table_id["flows"]}
           metadata={@flows_metadata}
         >
-          <:col :let={flow} label="AUTHORIZED AT">
+          <:col :let={flow} label="AUTHORIZED">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="EXPIRES AT">
+          <:col :let={flow} label="EXPIRES">
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="POLICY">
@@ -283,7 +279,7 @@ defmodule Web.Resources.Show do
               <.policy_name policy={flow.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="CLIENT, ACTOR (IP)">
+          <:col :let={flow} label="CLIENT, ACTOR" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
               <%= flow.client.name %>
             </.link>
@@ -291,13 +287,14 @@ defmodule Web.Resources.Show do
             <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
               <%= flow.client.actor.name %>
             </.link>
-            (<%= flow.client_remote_ip %>)
+            <%= flow.client_remote_ip %>
           </:col>
-          <:col :let={flow} label="GATEWAY (IP)">
+          <:col :let={flow} label="GATEWAY" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
-            (<%= flow.gateway_remote_ip %>)
+            <br />
+            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
