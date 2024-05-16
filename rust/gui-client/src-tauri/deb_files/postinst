@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Usage: dpkg will call this after installing our files
+# This must be idempotent
+
+set -euo pipefail
+
+SERVICE_NAME="firezone-client-ipc"
+
+# Creates the system group `firezone-client`
+sudo systemd-sysusers
+
+echo "Starting and enabling Firezone IPC service..."
+sudo systemctl daemon-reload
+sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl restart "$SERVICE_NAME"
