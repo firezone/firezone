@@ -86,7 +86,7 @@ impl Default for CmdIpc {
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
-    // TODO: For Headless Cleint, make sure the token is only readable by admin / our service user on Windows
+    // TODO: For Headless Client, make sure the token is only readable by admin / our service user on Windows
     Ok(())
 }
 
