@@ -326,7 +326,7 @@ mod tests {
 
         {
             // Start the program
-            let mut state = Auth::new_with_key(key).unwrap();
+            let mut state = Auth::new_with_key(key);
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
@@ -351,7 +351,7 @@ mod tests {
 
         // Recreate the state to simulate closing and re-opening the app
         {
-            let mut state = Auth::new_with_key(key).unwrap();
+            let mut state = Auth::new_with_key(key);
 
             // Make sure we automatically got the token and actor_name back
             assert!(state.token().unwrap().is_some());
@@ -372,7 +372,7 @@ mod tests {
     fn no_inflight_request() {
         // Start the program
         let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token").unwrap();
+            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token");
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
@@ -397,8 +397,7 @@ mod tests {
     fn states_dont_match() {
         // Start the program
         let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token")
-                .unwrap();
+            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token");
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
