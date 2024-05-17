@@ -86,12 +86,12 @@ impl Default for CmdIpc {
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
-    // TODO: Make sure the token is only readable by admin / our service user on Windows
+    // TODO: For Headless Cleint, make sure the token is only readable by admin / our service user on Windows
     Ok(())
 }
 
 pub(crate) fn default_token_path() -> std::path::PathBuf {
-    // TODO: System-wide default token path for Windows
+    // TODO: For Headless Client, system-wide default token path for Windows
     PathBuf::from("token.txt")
 }
 
