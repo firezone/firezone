@@ -57,7 +57,7 @@ impl DnsListener {
             tracing::trace!("Checking for DNS changes");
             let new = crate::client::resolvers::get().unwrap_or_default();
             if new != self.last_seen {
-                self.last_seen = new.clone();
+                self.last_seen.clone_from(&new);
                 return Ok(new);
             }
         }
