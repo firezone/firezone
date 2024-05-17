@@ -63,7 +63,9 @@ impl Client {
                             let msg = serde_json::from_slice(&msg?)?;
                             return Poll::Ready(Ok(IpcEvent::Connlib(msg)));
                         }
-                        Poll::Ready(None) => return Poll::Ready(Err(anyhow!("IPC service disconnected from us"))),
+                        Poll::Ready(None) => {
+                            return Poll::Ready(Err(anyhow!("IPC service disconnected from us")))
+                        }
                         Poll::Pending => {}
                     }
 
