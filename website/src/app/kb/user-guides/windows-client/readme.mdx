@@ -85,7 +85,38 @@ To export your logs as a zip archive, or clear your log directory:
 
 ## Troubleshooting
 
-TODO (reverting DNS, check if DNS is controlled)
+### Check if Firezone Split DNS is working
+
+In the Start Menu, search for "Windows Powershell". Open it and run this command:
+
+```pwsh
+Get-DnsClientNrptPolicy
+```
+
+Firezone Split DNS example:
+
+```
+Namespace                        : .
+QueryPolicy                      :
+SecureNameQueryFallback          :
+DirectAccessIPsecCARestriction   :
+DirectAccessProxyName            :
+DirectAccessDnsServers           :
+DirectAccessEnabled              :
+DirectAccessProxyType            : NoProxy
+DirectAccessQueryIPsecEncryption :
+DirectAccessQueryIPsecRequired   : False
+NameServers                      : {100.100.111.1, fd00:2021:1111:8000:100:100:111:0}
+DnsSecIPsecCARestriction         :
+DnsSecQueryIPsecEncryption       :
+DnsSecQueryIPsecRequired         : False
+DnsSecValidationRequired         : False
+NameEncoding                     : Utf8WithoutMapping
+```
+
+If Firezone's Split DNS is not active, the output will be empty.
+
+TODO (reverting DNS)
 
 ## Known issues
 
