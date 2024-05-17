@@ -9,7 +9,7 @@
 
 pub use platform::{ipc_service_logs, logs, runtime, session, settings};
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub mod platform {
     use connlib_shared::BUNDLE_ID;
     use std::path::PathBuf;
@@ -49,6 +49,29 @@ pub mod platform {
     /// See connlib docs for details
     pub fn settings() -> Option<PathBuf> {
         Some(dirs::config_local_dir()?.join(BUNDLE_ID).join("config"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub mod platform {
+    pub fn ipc_service_logs() -> Option<PathBuf> {
+        unimplemented!()
+    }
+
+    pub fn logs() -> Option<PathBuf> {
+        unimplemented!()
+    }
+
+    pub fn runtime() -> Option<PathBuf> {
+        unimplemented!()
+    }
+
+    pub fn session() -> Option<PathBuf> {
+        unimplemented!()
+    }
+
+    pub fn settings() -> Option<PathBuf> {
+        unimplemented!()
     }
 }
 

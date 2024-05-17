@@ -130,7 +130,7 @@ fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
             match ipc_service.as_mut().poll(cx) {
                 Poll::Ready(Ok(())) => {
                     return Poll::Ready(Err(anyhow::anyhow!(
-                        "Impossible, ipc_listencan't return Ok"
+                        "Impossible, ipc_listen can't return Ok"
                     )));
                 }
                 Poll::Ready(Err(error)) => {
