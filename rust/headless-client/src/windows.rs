@@ -149,8 +149,8 @@ fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
 fn windows_service_run(_arguments: Vec<OsString>) {
-    if let Err(_e) = fallible_windows_service_run() {
-        todo!();
+    if let Err(error) = fallible_windows_service_run() {
+        tracing::error!(?error, "fallible_windows_service_run returned an error");
     }
 }
 
@@ -214,28 +214,27 @@ fn fallible_windows_service_run() -> Result<()> {
     })?;
 
     let mut ipc_service = pin!(ipc_listen(CliIpcService::default()));
-    rt.block_on(async {
+    let result = rt.block_on(async {
         std::future::poll_fn(|cx| {
             match shutdown_rx.poll_recv(cx) {
                 Poll::Ready(Some(())) => {
                     tracing::info!("Got shutdown signal");
-                    return Poll::Ready(());
+                    return Poll::Ready(Ok(()));
                 }
                 Poll::Ready(None) => {
-                    tracing::warn!("shutdown channel unexpectedly dropped, shutting down");
-                    return Poll::Ready(());
+                    return Poll::Ready(Err(anyhow!(
+                        "shutdown channel unexpectedly dropped, shutting down"
+                    )))
                 }
                 Poll::Pending => {}
             }
 
             match ipc_service.as_mut().poll(cx) {
                 Poll::Ready(Ok(())) => {
-                    tracing::error!("Impossible, ipc_listen can't return Ok");
-                    return Poll::Ready(());
+                    return Poll::Ready(Err(anyhow!("Impossible, ipc_listen can't return Ok")))
                 }
                 Poll::Ready(Err(error)) => {
-                    tracing::error!(?error, "error from ipc_listen");
-                    return Poll::Ready(());
+                    return Poll::Ready(Err(error.context("ipc_listen failed")))
                 }
                 Poll::Pending => {}
             }
@@ -255,7 +254,7 @@ fn fallible_windows_service_run() -> Result<()> {
         wait_hint: Duration::default(),
         process_id: None,
     })?;
-    Ok(())
+    result
 }
 
 async fn ipc_listen(_cli: CliIpcService) -> Result<()> {
