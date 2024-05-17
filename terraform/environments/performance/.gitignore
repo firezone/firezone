@@ -1,0 +1,2 @@
+# This dir is simply an example; don't commit the lockfile
+/.terraform.lock.hcl
