@@ -85,14 +85,14 @@ impl Auth {
     /// Creates a new Auth struct using the "dev.firezone.client/token" keyring key. If the token is stored on disk, the struct is automatically signed in.
     ///
     /// Performs I/O.
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Self {
         Self::new_with_key("dev.firezone.client/token")
     }
 
     /// Creates a new Auth struct with a custom keyring key for testing.
     ///
     /// `new` also just wraps this.
-    fn new_with_key(keyring_key: &'static str) -> Result<Self> {
+    fn new_with_key(keyring_key: &'static str) -> Self {
         let token_store = TokenStorage::new(keyring_key);
         let mut this = Self {
             token_store,
@@ -111,7 +111,7 @@ impl Auth {
             Ok(None) => tracing::info!("No token on disk, starting in signed-out state."),
         }
 
-        Ok(this)
+        this
     }
 
     /// Returns the session iff we are signed in.
