@@ -63,7 +63,7 @@ impl Client {
                             let msg = serde_json::from_slice(&msg?)?;
                             return Poll::Ready(Ok(IpcEvent::Connlib(msg)));
                         }
-                        Poll::Ready(None) => {}
+                        Poll::Ready(None) => return Poll::Ready(Err(anyhow!("IPC service disconnected from us"))),
                         Poll::Pending => {}
                     }
 
@@ -85,7 +85,11 @@ impl Client {
                             callback_handler.on_set_interface_config(ipv4, ipv6, dns);
                         }
                     },
-                    Err(e) => return Err(e),
+                    Err(error) => {
+                        tracing::error!(?error, "Error while waiting for IPC tx/rx");
+                        // TODO: Catch that error when the task is joined
+                        Err(error)?
+                    }
                 }
             }
         });
