@@ -435,7 +435,7 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
                 tracing::info!("IPC client disconnected");
                 break;
             }
-            Err(e) => return Err(e),
+            Err(e) => Err(e)?,
         }
     }
     Ok(())
