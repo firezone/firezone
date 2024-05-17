@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 pnet_packet = { version = "0.34" }
-domain = "0.10"
+domain = { workspace = true }
 
 [lints]
 workspace = true

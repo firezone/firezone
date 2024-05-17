@@ -613,7 +613,7 @@ impl ClientState {
         self.dns_resources_internal_ips
             .insert(resource_description.clone(), addrs.clone());
 
-        send_dns_answer(self, Rtype::Aaaa, &resource_description, &addrs);
+        send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
         send_dns_answer(self, Rtype::A, &resource_description, &addrs);
 
         Ok(addrs.iter().copied().map(Into::into).collect())
@@ -1091,7 +1091,7 @@ impl ClientState {
     }
 }
 
-fn effective_dns_servers(
+pub(crate) fn effective_dns_servers(
     upstream_dns: Vec<DnsServer>,
     default_resolvers: Vec<IpAddr>,
 ) -> Vec<DnsServer> {
@@ -1128,7 +1128,7 @@ fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
     .then_some(srv)
 }
 
-fn sentinel_dns_mapping(
+pub(crate) fn sentinel_dns_mapping(
     dns: &[DnsServer],
     old_sentinels: Vec<IpNetwork>,
 ) -> BiMap<IpAddr, DnsServer> {

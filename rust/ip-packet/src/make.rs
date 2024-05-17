@@ -1,6 +1,9 @@
 //! Factory module for making all kinds of packets.
 
-use domain::base::{MessageBuilder, Name, Rtype};
+use domain::{
+    base::{name::Name, MessageBuilder, Rtype, Ttl},
+    rdata,
+};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -10,7 +13,10 @@ use pnet_packet::{
 };
 
 use crate::MutableIpPacket;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
 pub fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
     match (source, dst) {
@@ -157,16 +163,59 @@ pub fn dns_query(
     daddr: IpAddr,
     sport: u16,
     dport: u16,
+    id: u16,
     fqdn: String,
+    rtype: Rtype,
 ) -> MutableIpPacket<'static> {
     let qname: Name<Vec<u8>> = fqdn.parse().unwrap();
     let mut question_builder = MessageBuilder::new_vec().question();
-    match (saddr, daddr) {
-        (IpAddr::V4(_), IpAddr::V4(_)) => question_builder.push((qname, Rtype::A)).unwrap(),
-        (IpAddr::V6(_), IpAddr::V6(_)) => question_builder.push((qname, Rtype::AAAA)).unwrap(),
-        (_, _) => panic!("IPs must be of the same version"),
-    }
+    question_builder.header_mut().set_id(id);
+    question_builder.push((qname, rtype)).unwrap();
     let payload = question_builder.finish();
+    udp_packet(saddr, daddr, sport, dport, payload)
+}
+
+pub fn dns_answer(
+    saddr: IpAddr,
+    daddr: IpAddr,
+    sport: u16,
+    dport: u16,
+    id: u16,
+    fqdn: String,
+    answers: Vec<IpAddr>,
+    ttl: u32,
+    rtype: Rtype,
+) -> MutableIpPacket<'static> {
+    let qname: Name<Vec<u8>> = fqdn.parse().unwrap();
+    let mut question_builder = MessageBuilder::new_vec().question();
+    question_builder.header_mut().set_id(id);
+    question_builder.header_mut().set_qr(true);
+    question_builder.push((qname.clone(), rtype)).unwrap();
+    let mut answer_builder = question_builder.answer();
+    for addr in answers {
+        match rtype {
+            Rtype::A => {
+                answer_builder
+                    .push((
+                        qname.clone(),
+                        Ttl::from_secs(ttl),
+                        rdata::A::from_str(&addr.to_string()).unwrap(),
+                    ))
+                    .unwrap();
+            }
+            Rtype::AAAA => {
+                answer_builder
+                    .push((
+                        qname.clone(),
+                        Ttl::from_secs(ttl),
+                        rdata::Aaaa::from_str(&addr.to_string()).unwrap(),
+                    ))
+                    .unwrap();
+            }
+            _ => panic!("only support making A or AAAA answers"),
+        }
+    }
+    let payload = answer_builder.finish();
     udp_packet(saddr, daddr, sport, dport, payload)
 }
 
@@ -237,6 +286,7 @@ fn udp_header(
     udp_packet.set_source(sport);
     udp_packet.set_destination(dport);
     udp_packet.set_length(8 + payload.len() as u16);
+    udp_packet.set_payload(payload);
 
     match (saddr, daddr) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {

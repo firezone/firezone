@@ -1,4 +1,7 @@
-use crate::{ClientEvent, ClientState, GatewayState};
+use crate::{
+    client::{effective_dns_servers, sentinel_dns_mapping},
+    ClientEvent, ClientState, GatewayState,
+};
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
@@ -9,13 +12,17 @@ use connlib_shared::{
     proptest::{cidr_resource, dns_resource},
     StaticSecret,
 };
+use domain::base::Rtype;
 use ip_network_table::IpNetworkTable;
-use ip_packet::make::dns_query;
+use ip_packet::{
+    make::{dns_answer, dns_query},
+    IpPacket, Packet,
+};
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::{any, any_with},
-    collection,
+    collection, prop_oneof,
     sample::{self, select},
     strategy::{Just, Strategy},
     test_runner::Config,
@@ -72,11 +79,17 @@ struct ReferenceState {
 
     /// New events that we expect to be emitted.
     client_new_events: Vec<(Instant, ClientEvent)>,
+    client_new_packets: Vec<(Instant, Vec<u8>)>,
 
     proxy_ips_fqdn: HashMap<IpAddr, String>,
 
     interface_config: Option<Interface>,
     system_resolvers: Vec<IpAddr>,
+
+    // This doesn't test much since we use connlib's functions to calculate them
+    // It's however tested within unit-tests and we need to keep track of them
+    // to generate packets at expected ips
+    expected_sentinels: Vec<IpAddr>,
 }
 
 // 1. Dns packet returns 1:1 proxy-ip:dns-name
@@ -150,21 +163,17 @@ impl StateMachineTest for TunnelTest {
             }
             Transition::SendDnsQueryToResource {
                 qname,
-                dns_server_idx,
+                dns_server,
                 src_port,
+                id,
+                rtype,
             } => {
-                let servers: Vec<IpAddr> =
-                    state.client.dns_mapping().left_values().copied().collect();
-                debug_assert!(servers.len() > 0, "Can't send DNS queries without servers");
-                let index = dns_server_idx.index(servers.len());
-                let dns_server = servers[index];
-
                 let src = match dns_server {
                     IpAddr::V4(_) => ref_state.interface_config.as_ref().unwrap().ipv4.into(),
                     IpAddr::V6(_) => ref_state.interface_config.as_ref().unwrap().ipv6.into(),
                 };
 
-                let packet = dns_query(src, dns_server, src_port, 53, qname);
+                let packet = dns_query(src, dns_server, src_port, 53, id, qname, rtype);
                 state.client.encapsulate(packet, state.now);
             }
             Transition::UpdateInterface(interface) => {
@@ -178,6 +187,14 @@ impl StateMachineTest for TunnelTest {
         for (time, expected_event) in &ref_state.client_new_events {
             assert_eq!(time, &state.now);
             assert_eq!(expected_event, &state.client.poll_event().unwrap());
+        }
+
+        for (time, packet) in &ref_state.client_new_packets {
+            assert_eq!(time, &state.now);
+            assert_eq!(
+                IpPacket::new(packet).unwrap(),
+                state.client.poll_packets().unwrap()
+            );
         }
 
         // TODO: Drain `poll_transmit` and execute it.
@@ -343,37 +360,68 @@ impl ReferenceState {
     fn dns_query_to_dns_resource(&self) -> impl Strategy<Value = Transition> {
         (
             select(self.dns_client_resources.keys().cloned().collect_vec()),
-            any::<sample::Index>(),
+            select(self.expected_sentinels.clone()),
             any::<u16>(),
+            any::<u16>(),
+            prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)],
         )
-            .prop_flat_map(|(name, idx, src_port)| match name.chars().next().unwrap() {
-                '?' => any_with::<String>(r"([a-z]{1,10}\.)?".into())
-                    .prop_map(move |prefix| {
-                        let name = name.strip_prefix("?.").unwrap();
-                        Transition::SendDnsQueryToResource {
-                            qname: format!("{prefix}{name}"),
-                            src_port,
-                            dns_server_idx: idx,
-                        }
+            .prop_flat_map(|(name, dns_server, src_port, id, rtype)| {
+                match name.chars().next().unwrap() {
+                    '?' => any_with::<String>(r"([a-z]{1,10}\.)?".into())
+                        .prop_map(move |prefix| {
+                            let name = name.strip_prefix("?.").unwrap();
+                            Transition::SendDnsQueryToResource {
+                                qname: format!("{prefix}{name}"),
+                                src_port,
+                                dns_server,
+                                id,
+                                rtype,
+                            }
+                        })
+                        .boxed(),
+                    '*' => any_with::<String>(r"([a-z]{1,10}\.){0,5}".into())
+                        .prop_map(move |prefix| {
+                            let name = name.strip_prefix("*.").unwrap();
+                            Transition::SendDnsQueryToResource {
+                                qname: format!("{prefix}{name}"),
+                                src_port,
+                                dns_server,
+                                id,
+                                rtype,
+                            }
+                        })
+                        .boxed(),
+                    _ => Just(Transition::SendDnsQueryToResource {
+                        qname: name.clone(),
+                        src_port,
+                        dns_server,
+                        id,
+                        rtype,
                     })
                     .boxed(),
-                '*' => any_with::<String>(r"([a-z]{1,10}\.){0,5}".into())
-                    .prop_map(move |prefix| {
-                        let name = name.strip_prefix("*.").unwrap();
-                        Transition::SendDnsQueryToResource {
-                            qname: format!("{prefix}{name}"),
-                            src_port,
-                            dns_server_idx: idx,
-                        }
-                    })
-                    .boxed(),
-                _ => Just(Transition::SendDnsQueryToResource {
-                    qname: name.clone(),
-                    src_port,
-                    dns_server_idx: idx,
-                })
-                .boxed(),
+                }
             })
+    }
+
+    fn update_expected_sentinels(&mut self) {
+        self.expected_sentinels = sentinel_dns_mapping(
+            &effective_dns_servers(
+                self.interface_config
+                    .as_ref()
+                    .expect("must have set an interface config to calculate sentinels")
+                    .upstream_dns
+                    .clone(),
+                self.system_resolvers.clone(),
+            ),
+            self.expected_sentinels
+                .iter()
+                .copied()
+                .map_into()
+                .collect_vec(),
+        )
+        .left_values()
+        .copied()
+        .collect_vec();
     }
 }
 
@@ -466,10 +514,12 @@ impl ReferenceStateMachine for ReferenceState {
                 cidr_client_resources: IpNetworkTable::new(),
                 dns_client_resources: Default::default(),
                 client_new_events: Default::default(),
+                client_new_packets: Default::default(),
                 last_connection_intents: Default::default(),
                 proxy_ips_fqdn: Default::default(),
-                interface_config: None,
-                system_resolvers: vec![],
+                interface_config: Default::default(),
+                system_resolvers: Default::default(),
+                expected_sentinels: Default::default(),
             })
             .boxed()
     }
@@ -483,7 +533,7 @@ impl ReferenceStateMachine for ReferenceState {
         let add_dns_resource = dns_resource().prop_map(Transition::AddDnsResource);
         let update_interface = interface_config().prop_map(Transition::UpdateInterface);
         let update_system_resolvers = collection::vec(
-            any::<IpAddr>().prop_filter("cant use invalid resolvers", |ip| {
+            any::<IpAddr>().prop_filter("can't use invalid resolvers", |ip| {
                 !ip.is_unspecified() && !ip.is_loopback()
             }),
             1..=3,
@@ -507,7 +557,7 @@ impl ReferenceStateMachine for ReferenceState {
         };
 
         if state.dns_client_resources.len() > 0
-            && !state.system_resolvers.is_empty()
+            && state.expected_sentinels.len() > 0
             && state.interface_config.is_some()
         {
             strategies
@@ -523,6 +573,7 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
         state.client_new_events.clear();
+        state.client_new_packets.clear();
 
         match transition {
             Transition::AddCidrResource(r) => {
@@ -544,21 +595,68 @@ impl ReferenceStateMachine for ReferenceState {
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
                 state.on_icmp_packet_to(dst);
             }
-            Transition::SendDnsQueryToResource { qname, .. } => {
-                for ip in state.next_proxy_ip4() {
-                    state.proxy_ips_fqdn.insert(ip, qname.clone());
+            Transition::SendDnsQueryToResource {
+                qname,
+                dns_server,
+                src_port,
+                id,
+                rtype,
+            } => {
+                if !state.proxy_ips_fqdn.values().contains(qname) {
+                    for ip in state.next_proxy_ip4() {
+                        state.proxy_ips_fqdn.insert(ip, qname.clone());
+                    }
+
+                    for ip in state.next_proxy_ip6() {
+                        state.proxy_ips_fqdn.insert(ip, qname.clone());
+                    }
                 }
 
-                for ip in state.next_proxy_ip6() {
-                    state.proxy_ips_fqdn.insert(ip, qname.clone());
-                }
+                let dst = match dns_server {
+                    IpAddr::V4(_) => state.interface_config.as_ref().unwrap().ipv4.into(),
+                    IpAddr::V6(_) => state.interface_config.as_ref().unwrap().ipv6.into(),
+                };
+
+                let answers = match *rtype {
+                    Rtype::A => state
+                        .proxy_ips_fqdn
+                        .iter()
+                        .filter_map(|(ip, name)| (name == qname && ip.is_ipv4()).then_some(*ip))
+                        .collect_vec(),
+                    Rtype::AAAA => state
+                        .proxy_ips_fqdn
+                        .iter()
+                        .filter_map(|(ip, name)| (name == qname && ip.is_ipv6()).then_some(*ip))
+                        .collect_vec(),
+                    _ => panic!("we only support testing A and AAAA records"),
+                };
+
+                let dns_answer = dns_answer(
+                    *dns_server,
+                    dst,
+                    53,
+                    *src_port,
+                    *id,
+                    qname.clone(),
+                    answers,
+                    86400,
+                    *rtype,
+                );
+
+                state
+                    .client_new_packets
+                    .push((state.now, dns_answer.packet().to_vec()));
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateInterface(interface_config) => {
                 state.interface_config = Some(interface_config.clone());
+                state.update_expected_sentinels();
             }
             Transition::UpdateSystemResolver(system_resolvers) => {
                 state.system_resolvers = system_resolvers.clone();
+                if state.interface_config.is_some() {
+                    state.update_expected_sentinels();
+                }
             }
         };
 
@@ -566,21 +664,71 @@ impl ReferenceStateMachine for ReferenceState {
     }
 
     /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
+    ///
+    /// Note that you need to check that any transition is valid with the current state otherwise it might stop being valid when shrinking
     fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
         match transition {
             Transition::AddCidrResource(_) => true,
             Transition::AddDnsResource(_) => true,
-            Transition::SendDnsQueryToResource { .. } => true,
+            Transition::SendDnsQueryToResource {
+                qname, dns_server, ..
+            } => {
+                state.expected_sentinels.contains(dns_server)
+                    && state.interface_config.is_some()
+                    && (state
+                        .dns_client_resources
+                        .values()
+                        .map(|r| r.address.clone())
+                        .contains(qname)
+                        || state.dns_client_resources.values().any(|r| {
+                            match r.address.chars().next().unwrap() {
+                                '*' => {
+                                    let r = r.address.split_once('.').unwrap().1;
+                                    let mut name = qname.clone();
+                                    loop {
+                                        if r == name {
+                                            return true;
+                                        }
+                                        let Some((_, n)) = name.split_once('.') else {
+                                            return false;
+                                        };
+
+                                        name = n.to_string();
+                                    }
+                                }
+                                '?' => {
+                                    let r = r.address.split_once('.').unwrap().1;
+                                    let name = qname.clone();
+                                    if r == name {
+                                        return true;
+                                    }
+                                    let Some((_, name)) = name.split_once('.') else {
+                                        return false;
+                                    };
+                                    r == name
+                                }
+                                _ => false,
+                            }
+                        }))
+            }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToRandomIp { src, dst } => {
                 src.is_ipv4() == dst.is_ipv4() && src != dst
             }
             Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
+                if state.cidr_client_resources.len().0 == 0 {
+                    return false;
+                }
+
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
 
                 src != &dst
             }
             Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
+                if state.cidr_client_resources.len().1 == 0 {
+                    return false;
+                }
+
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
 
                 src != &dst
@@ -610,8 +758,10 @@ enum Transition {
     /// Send DNS query
     SendDnsQueryToResource {
         qname: String,
-        dns_server_idx: sample::Index,
+        dns_server: IpAddr,
         src_port: u16,
+        id: u16,
+        rtype: Rtype,
     },
     /// Update interface config
     UpdateInterface(Interface),

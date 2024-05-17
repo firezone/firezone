@@ -1,10 +1,10 @@
 use crate::client::DnsResource;
 use connlib_shared::messages::{client::ResourceDescriptionDns, DnsServer};
 use connlib_shared::Dname;
-use domain::base::RelativeDname;
+use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, Question, ToDname,
+    Message, MessageBuilder, Question, ToName,
 };
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
@@ -151,7 +151,7 @@ pub(crate) fn create_local_answer<'a>(
                 .map(domain::rdata::A::new)
                 .collect(),
         ),
-        Rtype::Aaaa => RecordData::Aaaa(
+        Rtype::AAAA => RecordData::Aaaa(
             ips.iter()
                 .copied()
                 .filter_map(get_v6)
@@ -244,7 +244,7 @@ fn build_dns_with_answer<N>(
     resource: &Option<RecordData<Dname>>,
 ) -> Option<Vec<u8>>
 where
-    N: ToDname + ?Sized,
+    N: ToName + ?Sized,
 {
     let msg_buf = Vec::with_capacity(message.as_slice().len() * 2);
     let msg_builder = MessageBuilder::from_target(msg_buf).expect(
@@ -254,13 +254,13 @@ where
     let Some(resource) = resource else {
         return Some(
             msg_builder
-                .start_answer(message, Rcode::NXDomain)
+                .start_answer(message, Rcode::NXDOMAIN)
                 .ok()?
                 .finish(),
         );
     };
 
-    let mut answer_builder = msg_builder.start_answer(message, Rcode::NoError).ok()?;
+    let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
     answer_builder.header_mut().set_ra(true);
 
     // W/O object-safety there's no other way to access the inner type
@@ -269,11 +269,11 @@ where
     match resource {
         RecordData::A(r) => r
             .iter()
-            .try_for_each(|r| answer_builder.push((qname, Class::In, DNS_TTL, r))),
+            .try_for_each(|r| answer_builder.push((qname, Class::IN, DNS_TTL, r))),
         RecordData::Aaaa(r) => r
             .iter()
-            .try_for_each(|r| answer_builder.push((qname, Class::In, DNS_TTL, r))),
-        RecordData::Ptr(r) => answer_builder.push((qname, Class::In, DNS_TTL, r)),
+            .try_for_each(|r| answer_builder.push((qname, Class::IN, DNS_TTL, r))),
+        RecordData::Ptr(r) => answer_builder.push((qname, Class::IN, DNS_TTL, r)),
     }
     .ok()?;
 
@@ -295,7 +295,7 @@ enum RecordData<T> {
 }
 
 pub fn is_subdomain(name: &Dname, resource: &str) -> bool {
-    let question_mark = RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
+    let question_mark = RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
     let Ok(resource) = Dname::vec_from_str(resource) else {
         return false;
     };
@@ -306,7 +306,7 @@ pub fn is_subdomain(name: &Dname, resource: &str) -> bool {
             .is_some_and(|r| r == name || name.parent().is_some_and(|n| r == n));
     }
 
-    if resource.starts_with(&RelativeDname::wildcard_vec()) {
+    if resource.starts_with(&RelativeName::wildcard_vec()) {
         let Some(resource) = resource.parent() else {
             return false;
         };
@@ -325,12 +325,11 @@ fn get_description(
     }
 
     if let Some(resource) = dns_resources.get(
-        &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+        &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
             .ok()?
             .chain(name)
             .ok()?
-            .to_dname::<Vec<_>>()
-            .ok()?
+            .to_name::<Vec<_>>()
             .to_string(),
     ) {
         return Some(resource.clone());
@@ -338,12 +337,11 @@ fn get_description(
 
     if let Some(parent) = name.parent() {
         if let Some(resource) = dns_resources.get(
-            &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+            &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
                 .ok()?
                 .chain(parent)
                 .ok()?
-                .to_dname::<Vec<_>>()
-                .ok()?
+                .to_name::<Vec<_>>()
                 .to_string(),
         ) {
             return Some(resource.clone());
@@ -353,11 +351,10 @@ fn get_description(
     name.iter_suffixes().find_map(|n| {
         dns_resources
             .get(
-                &RelativeDname::wildcard_vec()
+                &RelativeName::wildcard_vec()
                     .chain(n)
                     .ok()?
-                    .to_dname::<Vec<_>>()
-                    .ok()?
+                    .to_name::<Vec<_>>()
                     .to_string(),
             )
             .cloned()
@@ -372,12 +369,12 @@ fn get_description(
 /// upstream (or system default) resolver.
 /// If we are connected to the Resource, the Client should reply immediately with the IP address(es) of the Resource.
 /// If we are not connected yet, the Client should defer the response and begin connecting.
-fn resource_from_question<N: ToDname>(
+fn resource_from_question<N: ToName>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<Dname>, DnsQueryParams, DnsResource>> {
-    let name = ToDname::to_vec(question.qname());
+    let name = ToName::to_vec(question.qname());
     let qtype = question.qtype();
 
     #[allow(clippy::wildcard_enum_match_arm)]
@@ -399,7 +396,7 @@ fn resource_from_question<N: ToDname>(
                     .collect(),
             )))
         }
-        Rtype::Aaaa => {
+        Rtype::AAAA => {
             let Some(description) = get_description(&name, dns_resources) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
@@ -416,7 +413,7 @@ fn resource_from_question<N: ToDname>(
                     .collect(),
             )))
         }
-        Rtype::Ptr => {
+        Rtype::PTR => {
             let Some(ip) = reverse_dns_addr(&name.to_string()) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
