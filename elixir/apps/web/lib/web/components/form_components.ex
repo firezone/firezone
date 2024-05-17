@@ -591,7 +591,7 @@ defmodule Web.FormComponents do
     [text[size], spacing[size]]
   end
 
-  defp icon_size(size) do
+  def icon_size(size) do
     icon_size = %{
       "xs" => "w-3 h-3",
       "sm" => "w-3.5 h-3.5",

@@ -129,6 +129,14 @@ defmodule Web.Policies.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>
+              Constraints
+            </:label>
+            <:value>
+              <.constraints constraints={@policy.constraints} />
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>
               Description
             </:label>
             <:value>

@@ -2,38 +2,45 @@ defmodule Domain.Policies.Constraint.Changeset do
   use Domain, :changeset
   alias Domain.Policies.Constraint
 
-  def changeset(%Constraint{} = constraint, attrs) do
+  def changeset(%Constraint{} = constraint, attrs, _position) do
     constraint
     |> cast(attrs, [:property, :operator, :values])
+    |> put_default_value(:property, :remote_ip_location_region)
+    |> put_default_value(:operator, :is_in)
     |> validate_required([:property, :operator])
     |> validate_operator()
-    |> validate_values()
+    |> validate_length(:values, min: 1)
   end
+
+  def valid_operators_for_property(:remote_ip_location_region), do: [:is_in, :is_not_in]
+  def valid_operators_for_property(:remote_ip), do: [:is_in_cidr, :is_not_in_cidr]
+  def valid_operators_for_property(:provider_id), do: [:is_in, :is_not_in]
+  def valid_operators_for_property(:current_utc_datetime), do: [:is_in_day_of_week_time_ranges]
 
   defp validate_operator(changeset) do
     case fetch_field(changeset, :property) do
       {_data_or_changes, :remote_ip_location_region} ->
         changeset
         |> validate_required(:operator)
-        |> validate_inclusion(:operator, [:is_in, :is_not_in])
+        |> validate_inclusion(:operator, valid_operators_for_property(:remote_ip_location_region))
         |> validate_subset(:values, Domain.Geo.all_country_codes!())
 
       {_data_or_changes, :remote_ip} ->
         changeset
         |> validate_required(:operator)
-        |> validate_inclusion(:operator, [:is_in_cidr, :is_not_in_cidr])
+        |> validate_inclusion(:operator, valid_operators_for_property(:remote_ip))
         |> validate_list(:values, Domain.Types.CIDR)
 
       {_data_or_changes, :provider_id} ->
         changeset
         |> validate_required(:operator)
-        |> validate_inclusion(:operator, [:is_in, :is_not_in])
+        |> validate_inclusion(:operator, valid_operators_for_property(:provider_id))
         |> validate_list(:values, Ecto.UUID)
 
       {_data_or_changes, :current_utc_datetime} ->
         changeset
         |> validate_required(:operator)
-        |> validate_inclusion(:operator, [:is_in_day_of_week_time_ranges])
+        |> validate_inclusion(:operator, valid_operators_for_property(:current_utc_datetime))
         |> validate_list(:values, :string, fn changeset, field ->
           validate_change(changeset, field, fn field, value ->
             case Constraint.Evaluator.parse_day_of_week_time_ranges(value) do
@@ -46,37 +53,11 @@ defmodule Domain.Policies.Constraint.Changeset do
           end)
         end)
 
+      {_data_or_changes, nil} ->
+        changeset
+
       :error ->
         add_error(changeset, :property, "is not supported")
-    end
-  end
-
-  defp validate_values(changeset) do
-    case fetch_field(changeset, :operator) do
-      {_data_or_changes, :contains} ->
-        changeset
-        |> validate_required(:values)
-
-      {_data_or_changes, :does_not_contain} ->
-        changeset
-        |> validate_required(:values)
-
-      {_data_or_changes, :is_in} ->
-        changeset
-        |> validate_required(:values)
-
-      # |> validate_cidr(:values)
-
-      {_data_or_changes, :is_not_in} ->
-        changeset
-        |> validate_required(:values)
-
-      {_data_or_changes, :is_in_day_of_week_time_ranges} ->
-        changeset
-        |> validate_required(:values)
-
-      {_data_or_changes, _other} ->
-        changeset
     end
   end
 end

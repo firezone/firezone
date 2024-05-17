@@ -7,6 +7,34 @@ defmodule Domain.Repo.Changeset do
 
   # Helpers
 
+  def set_action(changesets, action) when is_list(changesets) do
+    Enum.map(changesets, &set_action(&1, action))
+  end
+
+  def set_action(%Ecto.Changeset{} = changeset, action) do
+    assocs =
+      Enum.flat_map(changeset.types, fn
+        {field, {:assoc, _params}} -> [field]
+        {field, {:embed, _params}} -> [field]
+        _ -> []
+      end)
+
+    changeset =
+      Enum.reduce(changeset.changes, changeset, fn {key, value}, changeset ->
+        if key in assocs do
+          %{changeset | changes: Map.put(changeset.changes, key, set_action(value, action))}
+        else
+          changeset
+        end
+      end)
+
+    %{changeset | action: action}
+  end
+
+  def set_action(other, _action) do
+    other
+  end
+
   def has_errors?(%Ecto.Changeset{} = changeset, field) do
     Keyword.has_key?(changeset.errors, field)
   end

@@ -178,8 +178,8 @@ defmodule Domain.Policies.Constraint.Evaluator do
 
   def parse_time_range(time_range) do
     with [start_time, end_time] <- String.split(time_range, "-", parts: 2),
-         {:ok, start_time} <- Time.from_iso8601(start_time),
-         {:ok, end_time} <- Time.from_iso8601(end_time),
+         {:ok, start_time} <- parse_time(start_time),
+         {:ok, end_time} <- parse_time(end_time),
          true <- Time.compare(start_time, end_time) != :gt do
       {:ok, {start_time, end_time}}
     else
@@ -190,4 +190,25 @@ defmodule Domain.Policies.Constraint.Evaluator do
         {:error, "invalid time range: #{time_range}"}
     end
   end
+
+  defp parse_time(time) do
+    [time | _tail] = String.split(time, ".", parts: 2)
+
+    case String.split(time, ":", parts: 3) do
+      [hours] ->
+        Time.from_iso8601(pad2(hours) <> ":00:00")
+
+      [hours, minutes] ->
+        Time.from_iso8601(pad2(hours) <> ":" <> pad2(minutes) <> ":00")
+
+      [hours, minutes, seconds] ->
+        Time.from_iso8601(pad2(hours) <> ":" <> pad2(minutes) <> ":" <> pad2(seconds))
+
+      _ ->
+        {:error, "invalid time: #{time}"}
+    end
+  end
+
+  defp pad2(str_int) when byte_size(str_int) == 1, do: "0#{str_int}"
+  defp pad2(str_int), do: str_int
 end

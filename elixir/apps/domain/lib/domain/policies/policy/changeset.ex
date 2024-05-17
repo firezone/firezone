@@ -11,7 +11,11 @@ defmodule Domain.Policies.Policy.Changeset do
     %Policy{}
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
-    |> cast_embed(:constraints, with: &Domain.Policies.Constraint.Changeset.changeset/2)
+    |> cast_embed(:constraints,
+      with: &Domain.Policies.Constraint.Changeset.changeset/3,
+      sort_param: :constraints_order,
+      drop_param: :constraints_delete
+    )
     |> changeset()
     |> put_change(:account_id, subject.account.id)
     |> put_change(:created_by, :identity)
@@ -22,7 +26,11 @@ defmodule Domain.Policies.Policy.Changeset do
     policy
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
-    |> cast_embed(:constraints, with: &Domain.Policies.Constraint.Changeset.changeset/2)
+    |> cast_embed(:constraints,
+      with: &Domain.Policies.Constraint.Changeset.changeset/3,
+      sort_param: :constraints_order,
+      drop_param: :constraints_delete
+    )
     |> changeset()
   end
 

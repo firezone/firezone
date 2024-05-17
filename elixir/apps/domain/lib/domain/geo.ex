@@ -74,7 +74,7 @@ defmodule Domain.Geo do
     "CL" => %{common_name: "Chile", coordinates: {-30.0, -71.0}},
     "TL" => %{common_name: "Timor-Leste", coordinates: {-8.83333333, 125.91666666}},
     "AU" => %{common_name: "Australia", coordinates: {-27.0, 133.0}},
-    "KP" => %{common_name: " North Korea", coordinates: {40.0, 127.0}},
+    "KP" => %{common_name: "North Korea", coordinates: {40.0, 127.0}},
     "WF" => %{common_name: "Wallis and Futuna", coordinates: {-13.3, -176.2}},
     "MY" => %{common_name: "Malaysia", coordinates: {2.5, 112.5}},
     "MV" => %{common_name: "Maldives", coordinates: {3.25, 73.0}},
@@ -300,6 +300,15 @@ defmodule Domain.Geo do
   end
 
   def all_country_options! do
-    Enum.map(@counties, fn {code, %{common_name: common_name}} -> {common_name, code} end)
+    @counties
+    |> Enum.map(fn {code, %{common_name: common_name}} -> {common_name, code} end)
+    |> Enum.sort_by(fn {common_name, _} -> common_name end)
+  end
+
+  def country_common_name!(country_code) do
+    case Map.fetch(@counties, country_code) do
+      {:ok, %{common_name: common_name}} -> common_name
+      :error -> country_code
+    end
   end
 end
