@@ -85,24 +85,33 @@ impl Auth {
     /// Creates a new Auth struct using the "dev.firezone.client/token" keyring key. If the token is stored on disk, the struct is automatically signed in.
     ///
     /// Performs I/O.
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Self {
         Self::new_with_key("dev.firezone.client/token")
     }
 
     /// Creates a new Auth struct with a custom keyring key for testing.
-    fn new_with_key(keyring_key: &'static str) -> Result<Self> {
+    ///
+    /// `new` also just wraps this.
+    fn new_with_key(keyring_key: &'static str) -> Self {
         let token_store = TokenStorage::new(keyring_key);
         let mut this = Self {
             token_store,
             state: State::SignedOut,
         };
 
-        if let Some(SessionAndToken { session, token: _ }) = this.get_token_from_disk()? {
-            this.state = State::SignedIn(session);
-            tracing::debug!("Reloaded token");
+        match this.get_token_from_disk() {
+            Err(error) => tracing::error!(
+                ?error,
+                "Failed to load token from disk. Will start in signed-out state"
+            ),
+            Ok(Some(SessionAndToken { session, token: _ })) => {
+                this.state = State::SignedIn(session);
+                tracing::info!("Reloaded token from disk, starting in signed-in state.");
+            }
+            Ok(None) => tracing::info!("No token on disk, starting in signed-out state."),
         }
 
-        Ok(this)
+        this
     }
 
     /// Returns the session iff we are signed in.
@@ -117,7 +126,9 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<()> {
-        self.token_store.delete()?;
+        if let Err(error) = self.token_store.delete() {
+            tracing::warn!(?error, "Couldn't delete token while signing out");
+        }
         if let Err(error) = std::fs::remove_file(actor_name_path()?) {
             // Ignore NotFound, since the file is gone anyway
             if error.kind() != std::io::ErrorKind::NotFound {
@@ -315,7 +326,7 @@ mod tests {
 
         {
             // Start the program
-            let mut state = Auth::new_with_key(key).unwrap();
+            let mut state = Auth::new_with_key(key);
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
@@ -340,7 +351,7 @@ mod tests {
 
         // Recreate the state to simulate closing and re-opening the app
         {
-            let mut state = Auth::new_with_key(key).unwrap();
+            let mut state = Auth::new_with_key(key);
 
             // Make sure we automatically got the token and actor_name back
             assert!(state.token().unwrap().is_some());
@@ -361,7 +372,7 @@ mod tests {
     fn no_inflight_request() {
         // Start the program
         let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token").unwrap();
+            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token");
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
@@ -386,8 +397,7 @@ mod tests {
     fn states_dont_match() {
         // Start the program
         let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token")
-                .unwrap();
+            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token");
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
