@@ -23,7 +23,7 @@ export default function KbSidebar() {
     >
       <SearchForm />
       <div className="mt-5 bg-white">
-        <ul className="space-y-2 font-medium">
+        <ul className="space-y-1 font-medium">
           <li>
             <Item topLevel href="/kb">
               Overview
