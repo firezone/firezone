@@ -355,11 +355,19 @@ impl ReferenceStateMachine for ReferenceState {
                 src.is_ipv4() == dst.is_ipv4() && src != dst
             }
             Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
+                if state.client_resources.len().0 == 0 {
+                    return false;
+                }
+
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
 
                 src != &dst
             }
             Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
+                if state.client_resources.len().1 == 0 {
+                    return false;
+                }
+
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
 
                 src != &dst
