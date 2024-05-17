@@ -90,6 +90,8 @@ impl Auth {
     }
 
     /// Creates a new Auth struct with a custom keyring key for testing.
+    ///
+    /// `new` also just wraps this.
     fn new_with_key(keyring_key: &'static str) -> Result<Self> {
         let token_store = TokenStorage::new(keyring_key);
         let mut this = Self {
@@ -97,9 +99,16 @@ impl Auth {
             state: State::SignedOut,
         };
 
-        if let Some(SessionAndToken { session, token: _ }) = this.get_token_from_disk()? {
-            this.state = State::SignedIn(session);
-            tracing::debug!("Reloaded token");
+        match this.get_token_from_disk() {
+            Err(error) => tracing::error!(
+                ?error,
+                "Failed to load token from disk. Will start in signed-out state"
+            ),
+            Ok(Some(SessionAndToken { session, token: _ })) => {
+                this.state = State::SignedIn(session);
+                tracing::info!("Reloaded token from disk, starting in signed-in state.");
+            }
+            Ok(None) => tracing::info!("No token on disk, starting in signed-out state."),
         }
 
         Ok(this)
@@ -117,7 +126,9 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<()> {
-        self.token_store.delete()?;
+        if let Err(error) = self.token_store.delete() {
+            tracing::warn!(?error, "Couldn't delete token while signing out");
+        }
         if let Err(error) = std::fs::remove_file(actor_name_path()?) {
             // Ignore NotFound, since the file is gone anyway
             if error.kind() != std::io::ErrorKind::NotFound {
