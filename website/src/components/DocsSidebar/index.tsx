@@ -23,7 +23,7 @@ export default function DocsSidebar() {
     >
       <SearchForm />
       <div className="mt-5 h-full bg-white pr-3">
-        <ul className="space-y-2 font-medium">
+        <ul className="space-y-1 font-medium">
           <li>
             <Item href="/docs" label="Overview" />
           </li>
