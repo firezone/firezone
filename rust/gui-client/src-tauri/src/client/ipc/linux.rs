@@ -51,8 +51,7 @@ impl Client {
 
         // TODO: Make sure this joins / drops somewhere
         let recv_task = tokio_handle.spawn(async move {
-            while let Some(msg) = rx.next().await {
-                let msg = msg?;
+            while let Some(msg) = rx.next().await.transpose()? {
                 let msg: IpcServerMsg = serde_json::from_slice(&msg)?;
                 match msg {
                     IpcServerMsg::Ok => {}
