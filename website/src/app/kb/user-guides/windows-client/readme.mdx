@@ -44,18 +44,23 @@ To copy-paste the address of a Resource you have access to:
 1. Right-click on the Firezone tray icon to open the menu.
 1. Open a Resource's submenu and click on its address to copy it.
 
-### Quitting
-
-1. Right-click on the Firezone tray icon to open the menu.
-1. Click `Disconnect and Quit` or `Quit`.
-
-The tunnel is now stopped. If you were signed in, the tunnel will restart
-next time you open Firezone.
+Then you can paste the address into your browser's URL bar and press Enter.
 
 ### Signing out
 
 1. Right-click on the Firezone tray icon to open the menu.
 1. Click `Sign out`.
+
+when you're signed out, Resources will be inaccessible and your system will use its
+normal DNS and Internet behavior.
+
+### Quitting
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Click `Disconnect and Quit` or `Quit`.
+
+The tunnel is now stopped. If you were signed in, the tunnel will restart automatically
+next time you open Firezone.
 
 The tunnel is now stopped until you sign in again.
 
@@ -63,7 +68,7 @@ The tunnel is now stopped until you sign in again.
 
 The Windows Client will automatically check for updates on launch and prompt you
 to upgrade when a new version is available. Simply download the latest `.msi`
-installer package above, quit the GUI, and install it over the existing version.
+installer package above, quit the GUI, and install the new MSI over the existing version.
 
 ## Diagnostic logs
 
@@ -79,13 +84,13 @@ To export your logs as a zip archive, or clear your log directory:
 ## Uninstalling
 
 1. Quit Firezone.
-1. Open the Start Menu and search for `Remove programs`.
+1. Open the Start Menu. Search for `Add or remove programs` and open it.
 1. In the `Add or remove programs` dialog, search for `Firezone`.
 1. Click on Firezone and click `Uninstall`.
 
 ## Troubleshooting
 
-### Check if Firezone Split DNS is working
+### Check if Firezone is controlling DNS
 
 In the Start Menu, search for "Windows Powershell". Open it and run this command:
 
@@ -116,7 +121,19 @@ NameEncoding                     : Utf8WithoutMapping
 
 If Firezone's Split DNS is not active, the output will be empty.
 
-TODO (reverting DNS)
+### Revert Firezone DNS control
+
+If Firezone crashes and does not revert control of the system's DNS, you
+can revert it manually with this command:
+
+```pwsh
+Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remove-DnsClientNrptRule -Name $_.Name -Force }
+```
+
+1. Right-click on the Start Menu
+1. Click "Terminal (Admin)" to open a Powershell terminal with admin privileges
+1. When UAC asks "Do you want to allow this app to make changes to your device?" click `Yes`
+1. Enter the above command and [Check if Firezone is controlling DNS](#check-if-firezone-is-controlling-dns)
 
 ## Known issues
 
