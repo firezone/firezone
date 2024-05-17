@@ -155,7 +155,7 @@ impl Tun {
 
         let handle = self.handle.clone();
         let current_routes = self.routes.clone();
-        self.routes = new_routes.clone();
+        self.routes.clone_from(&new_routes);
 
         let set_routes_worker = async move {
             let index = handle

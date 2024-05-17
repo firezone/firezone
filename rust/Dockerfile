@@ -2,7 +2,7 @@ ARG ALPINE_VERSION=3.19
 ARG CARGO_CHEF_VERSION="0.1.62"
 
 # This image is used to prepare Cargo Chef which is used to cache dependencies
-FROM rust:1.77-alpine${ALPINE_VERSION} as chef
+FROM rust:1.78-alpine${ALPINE_VERSION} as chef
 
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
