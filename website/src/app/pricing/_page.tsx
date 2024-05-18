@@ -65,7 +65,7 @@ export default function _Page() {
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
+                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:border-2 hover:font-bold font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-0 hover:scale-105 transition transform"
                 >
                   Sign up
                 </button>
@@ -142,7 +142,7 @@ export default function _Page() {
               <Link href="https://billing.firezone.dev/p/login/5kA9DHeZ8cSI2mQcMM">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-accent-450 hover:bg-accent-700"
+                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:border-2 hover:font-bold font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-0 hover:scale-105 transition transform"
                 >
                   Subscribe
                 </button>
@@ -195,7 +195,7 @@ export default function _Page() {
               <h3 className="text-2xl tracking-tight font-semibold text-primary-450">
                 Enterprise
               </h3>
-              <span className="font-semibold uppercase text-xs rounded bg-primary-450 text-white px-1 py-0.5">
+              <span className="font-semibold uppercase text-xs rounded bg-neutral-50 text-neutral-800 px-1 py-0.5">
                 30-day trial
               </span>
             </div>
@@ -209,7 +209,7 @@ export default function _Page() {
               <Link href="/contact/sales">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-bold tracking-tight transition transform duration-0 hover:scale-105 rounded bg-primary-450 hover:bg-primary-600"
+                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-semibold hover:font-bold tracking-tight transition transform duration-0 hover:scale-105 rounded bg-primary-450 shadow-lg shadow-primary-700"
                 >
                   Request a demo
                 </button>
@@ -468,7 +468,7 @@ export default function _Page() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="w-64 text-white font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450"
+                className="w-64 text-white tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold hover:font-bold"
               >
                 Request a demo
               </button>
