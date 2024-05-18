@@ -14,6 +14,14 @@ import {
   HiHome,
   HiRocketLaunch,
 } from "react-icons/hi2";
+import {
+  AppleIcon,
+  WindowsIcon,
+  LinuxIcon,
+  AndroidIcon,
+  ChromeIcon,
+  DockerIcon,
+} from "@/components/Icons";
 
 import { SlideIn, RotatingWords, Strike } from "@/components/Animations";
 
@@ -470,12 +478,56 @@ export default function Page() {
           </h2>
         </div>
 
-        <div className="mx-auto px-4 max-w-screen-md grid sm:grid-cols-2">
+        <div className="mx-auto px-4 mt-8 md:mt-16 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
           <div className="p-4">
-            <p className="text-md md:text-xl tracking-tight">
-              Clients are available for every platform, require no
-              configuration, and stay connected even when switching WiFi
-              networks.
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+                <AppleIcon size={12} href="/kb/user-guides/macos-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    macOS
+                  </span>
+                </AppleIcon>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+                <WindowsIcon size={12} href="/kb/user-guides/windows-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    Windows
+                  </span>
+                </WindowsIcon>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+                <LinuxIcon size={12} href="/kb/user-guides/linux-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    Linux
+                  </span>
+                </LinuxIcon>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+                <AndroidIcon size={12} href="/kb/user-guides/android-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    Android
+                  </span>
+                </AndroidIcon>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+                <ChromeIcon size={12} href="/kb/user-guides/android-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    ChromeOS
+                  </span>
+                </ChromeIcon>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+                <AppleIcon size={12} href="/kb/user-guides/macos-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    iOS
+                  </span>
+                </AppleIcon>
+              </div>
+            </div>
+            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
+              Clients are available for every major platform, require no
+              configuration, and stay connected seamlessly even when switching
+              WiFi networks.
             </p>
             <p className="mt-4">
               <ActionLink
@@ -487,9 +539,42 @@ export default function Page() {
             </p>
           </div>
           <div className="p-4">
-            <p className="text-md md:text-xl tracking-tight">
+            <div className="flex flex-col justify-between space-y-4 items-center">
+              <Image
+                width={300}
+                height={200}
+                alt="Gateway"
+                src="/images/docker.svg"
+              />
+              <Image
+                width={300}
+                height={200}
+                alt="Gateway"
+                src="/images/terraform.svg"
+              />
+              <Image
+                width={300}
+                height={200}
+                alt="Gateway"
+                src="/images/kubernetes.svg"
+              />
+              <Image
+                width={300}
+                height={200}
+                alt="Gateway"
+                src="/images/pulumi.svg"
+              />
+            </div>
+            <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
+              <code>
+                <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
+                <strong>firezone-gateway</strong>
+              </code>
+            </pre>
+            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
               Gateways are lightweight Linux binaries you deploy anywhere you
-              need access. Just configure a token, and you're done.
+              need access. Just configure a token with your preferred
+              orchestration tool and you're done.
             </p>
             <p className="mt-4">
               <ActionLink
