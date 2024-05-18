@@ -15,7 +15,7 @@ export default function BattleCard() {
               <th className="px-3 sm:px-6 py-3"></th>
               <th className="text-center px-3 sm:px-6 py-3">Twingate</th>
               <th className="text-center px-3 sm:px-6 py-3">Tailscale</th>
-              <th className="text-center px-3 sm:px-6 py-3">
+              <th className="text-center px-3 sm:px-6 py-3 bg-primary-200">
                 <span className="flex justify-center items-center">
                   <Image
                     src="/images/logo-main.svg"
@@ -33,11 +33,11 @@ export default function BattleCard() {
             <tr className="border-b bg-neutral-50">
               <td className="px-3 sm:px-6 py-5 font-medium">Open source</td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6" />
+                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">Partial</td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b">
@@ -45,23 +45,23 @@ export default function BattleCard() {
                 Built on WireGuard®
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6" />
+                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b bg-neutral-50">
               <td className="px-3 sm:px-6 py-5 font-medium">Load balancing</td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">Partial</td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b">
@@ -69,13 +69,13 @@ export default function BattleCard() {
                 Automatic failover
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b bg-neutral-50">
@@ -83,13 +83,13 @@ export default function BattleCard() {
                 NAT hole-punching
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b">
@@ -97,13 +97,13 @@ export default function BattleCard() {
                 Resource-level access policies
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b bg-neutral-50">
@@ -111,13 +111,13 @@ export default function BattleCard() {
                 Google directory sync
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6" />
+                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b">
@@ -125,13 +125,13 @@ export default function BattleCard() {
                 Entra directory sync
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b bg-neutral-50">
@@ -139,13 +139,13 @@ export default function BattleCard() {
                 Okta directory sync
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b">
@@ -153,23 +153,23 @@ export default function BattleCard() {
                 DNS-based routing
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">Partial</td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b bg-neutral-50">
               <td className="px-3 sm:px-6 py-5 font-medium">Mesh networking</td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6" />
+                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
             <tr className="border-b">
@@ -177,13 +177,13 @@ export default function BattleCard() {
                 Annual invoicing
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
               <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
-              <td className="text-center px-3 sm:px-6 py-5">
-                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6" />
+              <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
               </td>
             </tr>
           </tbody>
