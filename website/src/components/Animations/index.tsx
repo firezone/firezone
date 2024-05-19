@@ -18,16 +18,16 @@ export function SlideIn({
   className?: string;
 }) {
   const amount = fromOffScreen ? 500 : 25;
-  const initialX =
+  const startX =
     direction === "left" ? amount : direction === "right" ? -amount : 0;
-  const initialY =
+  const startY =
     direction === "top" ? amount : direction === "bottom" ? -amount : 0;
   return (
     <motion.div
       initial={{
         opacity: 0,
-        x: initialX,
-        y: initialY,
+        x: startX,
+        y: startY,
       }}
       whileInView={{
         opacity: 1,
