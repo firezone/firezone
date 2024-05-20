@@ -25,6 +25,9 @@ import {
 
 import { SlideIn, RotatingWords, Strike } from "@/components/Animations";
 import SpeedChart from "@/components/Animations/SpeedChart";
+import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
+import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
+import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -122,33 +125,49 @@ export default function Page() {
           </p>
         </div>
 
+        <div className="flex justify-center items-center px-4 md:px-0 mx-auto mt-8 md:mt-16 max-w-screen-lg">
+          <UpgradeDiagram />
+        </div>
+
         <div className="flex items-stretch mx-auto sm:px-4 md:px-8 mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
           <SlideIn
             direction="left"
-            delay={0.25}
-            className="flex items-end p-4 border border-primary-450 rounded shadow justify-center"
-          >
-            <p className="text-sm md:text-lg lg:text-xl tracking-tight">
-              Control access to VPCs, subnets, hosts, and even DNS-based
-              services.
-            </p>
-          </SlideIn>
-          <SlideIn
-            direction="left"
             delay={0.5}
-            className="flex items-end p-4 border border-primary-450 rounded shadow justify-center"
+            duration={1}
+            className="flex flex-col p-4"
           >
-            <p className="text-sm md:text-lg lg:text-xl tracking-tight">
-              Group-based policies automatically sync with your identity
-              provider, so access is revoked as soon as employees leave.
+            <h4 className="mb-2 md:mb-4 text-md md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
+              Flexible
+            </h4>
+            <p className="text-sm md:text-lg lg:text-xl tracking-tight md:text-justify">
+              Control access to VPCs, subnets, hosts by IP or DNS, and even
+              public SaaS apps.
             </p>
           </SlideIn>
           <SlideIn
             direction="left"
             delay={0.75}
-            className="flex items-end p-4 border border-primary-450 rounded shadow justify-center"
+            duration={1}
+            className="flex flex-col p-4 justify-center"
           >
-            <p className="text-sm md:text-lg lg:text-xl tracking-tight">
+            <h4 className="mb-2 md:mb-4 text-md md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
+              Secure
+            </h4>
+            <p className="text-sm md:text-lg lg:text-xl tracking-tight md:text-justify">
+              Users and groups automatically sync with your identity provider,
+              so access is revoked as soon as employees leave.
+            </p>
+          </SlideIn>
+          <SlideIn
+            direction="left"
+            delay={1}
+            duration={1}
+            className="flex flex-col p-4 justify-center"
+          >
+            <h4 className="mb-2 md:mb-4 text-md md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
+              Granular
+            </h4>
+            <p className="text-sm md:text-lg lg:text-xl tracking-tight md:text-justify">
               Restrict access even further with port-level rules that allow
               access to some services but not others, even on the same host.
             </p>
@@ -165,45 +184,7 @@ export default function Page() {
         </div>
       </section>
 
-      {/* Feature section 2: Add 2FA to WireGuard. */}
-      <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
-            Add{" "}
-            <span className="mx-0.5 sm:mx-1 text-primary-450">two-factor</span>
-            auth to WireGuard.
-          </h2>
-        </div>
-
-        <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
-            Looking for 2FA for WireGuard? Look no further. Firezone integrates
-            with any OIDC-compatible identity provider to consistently enforce
-            multi-factor authentication across your workforce.
-          </p>
-        </div>
-
-        <div className="flex justify-center mt-8 md:mt-16">
-          <Image
-            width={1024}
-            height={800}
-            alt="Auth diagram"
-            src="/images/auth.png"
-            className="mx-auto px-4 md:px-0"
-          />
-        </div>
-
-        <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-            href="/kb/authenticate"
-          >
-            Connect your identity provider
-          </ActionLink>
-        </div>
-      </section>
-
-      {/* Feature section 3: Achieve compliance in minutes, not weeks. */}
+      {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-8 md:py-16">
         <div className="sm:mx-auto px-4 mb-2 md:mb-4">
           <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
@@ -225,14 +206,8 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="flex justify-center mt-8 md:mt-16">
-          <Image
-            width={1024}
-            height={800}
-            alt="Firezone diagram"
-            src="/images/compliance.png"
-            className="mx-auto px-4 md:px-0"
-          />
+        <div className="flex justify-center items-center px-4 md:px-0 mx-auto mt-8 md:mt-16 max-w-screen-lg">
+          <ComplianceDiagram />
         </div>
 
         <div className="flex justify-center mt-8 md:mt-16">
@@ -241,6 +216,46 @@ export default function Page() {
             href="/kb/architecture"
           >
             Read about Firezone's architecture
+          </ActionLink>
+        </div>
+      </section>
+
+      {/* Feature section 3: Add 2FA to WireGuard. */}
+      <section className="bg-neutral-50 py-8 md:py-16">
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
+          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
+            Add{" "}
+            <span className="mx-0.5 sm:mx-1 text-primary-450">two-factor</span>
+            auth to WireGuard.
+          </h2>
+        </div>
+
+        <div className="mx-auto px-4 max-w-screen-md">
+          <p className="text-md md:text-xl sm:text-center tracking-tight">
+            Looking for 2FA for WireGuard? Look no further. Firezone integrates
+            with any OIDC-compatible identity provider to consistently enforce
+            multi-factor authentication across your workforce.
+          </p>
+        </div>
+
+        <div className="flex justify-center mt-8 md:mt-16">
+          <SlideIn direction="top" delay={0.35} duration={1}>
+            <Image
+              width={1024}
+              height={800}
+              alt="Auth diagram"
+              src="/images/auth.png"
+              className="mx-auto px-4 md:px-0"
+            />
+          </SlideIn>
+        </div>
+
+        <div className="flex justify-center mt-8 md:mt-16">
+          <ActionLink
+            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            href="/kb/authenticate"
+          >
+            Connect your identity provider
           </ActionLink>
         </div>
       </section>
@@ -294,14 +309,8 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="flex justify-center mt-8">
-          <Image
-            width={800}
-            height={600}
-            alt="Firezone diagram"
-            src="/images/simplified-architecture.png"
-            className="mx-auto px-4 md:px-0"
-          />
+        <div className="flex justify-center items-center px-4 md:px-0 mx-auto mt-8 md:mt-16 max-w-screen-lg">
+          <SimpleArchitecture />
         </div>
 
         <div className="flex justify-center mt-8">
