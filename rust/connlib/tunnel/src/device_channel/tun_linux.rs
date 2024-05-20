@@ -281,6 +281,7 @@ async fn set_iface_config(
         Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config),
         Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await,
     } {
+        tracing::error!("Failed to control DNS: {error}");
         panic!("Failed to control DNS: {error}");
     }
 
