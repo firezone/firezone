@@ -265,7 +265,7 @@ impl StateMachineTest for TunnelTest {
             portal,
             logger: tracing_subscriber::fmt()
                 .with_test_writer()
-                .with_env_filter("debug,str0m=trace")
+                .with_env_filter("debug")
                 .finish()
                 .set_default(),
             buffer: Box::new([0u8; 10_000]),
@@ -312,7 +312,21 @@ impl StateMachineTest for TunnelTest {
             }
         };
 
-        // 2. Advance all states as far as possible.
+        // 2. Advance all states as far as possible
+        state.advance(ref_state);
+
+        // Advance time to work around https://github.com/algesten/str0m/issues/514.
+        state.now += Duration::from_millis(50);
+        state.advance(ref_state);
+        state.now += Duration::from_millis(50);
+        state.advance(ref_state);
+        state.now += Duration::from_millis(50);
+        state.advance(ref_state);
+        state.now += Duration::from_millis(50);
+        state.advance(ref_state);
+        state.now += Duration::from_millis(50);
+        state.advance(ref_state);
+        state.now += Duration::from_millis(50);
         state.advance(ref_state);
 
         // 3. Assert expected state
@@ -524,6 +538,10 @@ impl TunnelTest {
                         .state
                         .handle_client_input(payload, ClientSocket::new(src), self.now)
                 });
+
+                // if _maybe_relay.is_some() {
+                //     unimplemented!()
+                // }
 
                 // TODO: Handle relaying
             }
