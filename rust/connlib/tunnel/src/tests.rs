@@ -312,60 +312,8 @@ impl StateMachineTest for TunnelTest {
             }
         };
 
-        // 2. Drain all resulting transmits / events
-        loop {
-            if let Some(transmit) = state.client.state.poll_transmit() {
-                let sending_socket = state.client.sending_socket_for(transmit.dst);
-
-                state.dispatch_transmit(transmit, sending_socket);
-                continue;
-            }
-            if let Some(event) = state.client.state.poll_event() {
-                state.on_client_event(state.client.id, event, &ref_state.client_cidr_resources);
-                continue;
-            }
-            if let Some(transmit) = state.gateway.state.poll_transmit() {
-                let sending_socket = state.gateway.sending_socket_for(transmit.dst);
-
-                state.dispatch_transmit(transmit, sending_socket);
-                continue;
-            }
-            if let Some(event) = state.gateway.state.poll_event() {
-                state.on_gateway_event(state.gateway.id, event);
-                continue;
-            }
-            if let Some(message) = state.relay.state.next_command() {
-                match message {
-                    firezone_relay::Command::SendMessage { payload, recipient } => {
-                        let dst = recipient.into_socket();
-                        let src = state
-                            .relay
-                            .sending_socket_for(dst, 3478)
-                            .expect("relay to never emit packets without a matching socket");
-
-                        if let ControlFlow::Break(_) = state.try_handle_client(dst, src, &payload) {
-                            continue;
-                        }
-
-                        if let ControlFlow::Break(_) = state.try_handle_gateway(dst, src, &payload)
-                        {
-                            continue;
-                        }
-
-                        panic!("Unhandled packet: {src} -> {dst}")
-                    }
-                    firezone_relay::Command::CreateAllocation { .. } => {}
-                    firezone_relay::Command::FreeAllocation { .. } => {}
-                }
-                continue;
-            }
-
-            if state.handle_timeout(state.now, state.utc_now) {
-                continue;
-            }
-
-            break;
-        }
+        // 2. Advance all states as far as possible.
+        state.advance(ref_state);
 
         // 3. Assert expected state
         // assert_eq!(state.client_emitted_events, ref_state.client_events);
@@ -456,6 +404,61 @@ impl ReferenceState {
 }
 
 impl TunnelTest {
+    fn advance(&mut self, ref_state: &ReferenceState) {
+        loop {
+            if let Some(transmit) = self.client.state.poll_transmit() {
+                let sending_socket = self.client.sending_socket_for(transmit.dst);
+
+                self.dispatch_transmit(transmit, sending_socket);
+                continue;
+            }
+            if let Some(event) = self.client.state.poll_event() {
+                self.on_client_event(self.client.id, event, &ref_state.client_cidr_resources);
+                continue;
+            }
+            if let Some(transmit) = self.gateway.state.poll_transmit() {
+                let sending_socket = self.gateway.sending_socket_for(transmit.dst);
+
+                self.dispatch_transmit(transmit, sending_socket);
+                continue;
+            }
+            if let Some(event) = self.gateway.state.poll_event() {
+                self.on_gateway_event(self.gateway.id, event);
+                continue;
+            }
+            if let Some(message) = self.relay.state.next_command() {
+                match message {
+                    firezone_relay::Command::SendMessage { payload, recipient } => {
+                        let dst = recipient.into_socket();
+                        let src = self
+                            .relay
+                            .sending_socket_for(dst, 3478)
+                            .expect("relay to never emit packets without a matching socket");
+
+                        if let ControlFlow::Break(_) = self.try_handle_client(dst, src, &payload) {
+                            continue;
+                        }
+
+                        if let ControlFlow::Break(_) = self.try_handle_gateway(dst, src, &payload) {
+                            continue;
+                        }
+
+                        panic!("Unhandled packet: {src} -> {dst}")
+                    }
+                    firezone_relay::Command::CreateAllocation { .. } => {}
+                    firezone_relay::Command::FreeAllocation { .. } => {}
+                }
+                continue;
+            }
+
+            if self.handle_timeout(self.now, self.utc_now) {
+                continue;
+            }
+
+            break;
+        }
+    }
+
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
     ///
     /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
