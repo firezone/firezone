@@ -154,6 +154,7 @@ where
         }
         Err(e) => match e.try_into_panic() {
             Ok(panic) => {
+                tracing::error!("connlib panicked");
                 if let Some(msg) = panic.downcast_ref::<&str>() {
                     callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;

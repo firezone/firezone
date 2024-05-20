@@ -235,14 +235,15 @@ struct CallbackHandlerIpc {
 }
 
 impl Callbacks for CallbackHandlerIpc {
-    fn on_disconnect(&self, _error: &connlib_client_shared::Error) {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+        tracing::error!(?error, "Got `on_disconnect` from connlib");
         self.cb_tx
             .try_send(IpcServerMsg::OnDisconnect)
             .expect("should be able to send OnDisconnect");
     }
 
     fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
-        tracing::info!("TunnelReady");
+        tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
             .try_send(IpcServerMsg::TunnelReady)
             .expect("Should be able to send TunnelReady");
