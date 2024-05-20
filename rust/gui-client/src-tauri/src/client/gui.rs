@@ -4,7 +4,9 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link, logging, network_changes,
+    self, about, deep_link,
+    ipc::{self, CallbackHandler},
+    logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
@@ -16,7 +18,6 @@ use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
-use tunnel_wrapper::CallbackHandler;
 use url::Url;
 
 use ControllerRequest as Req;
@@ -38,21 +39,6 @@ mod os;
 #[path = "gui/os_windows.rs"]
 #[allow(clippy::unnecessary_wraps)]
 mod os;
-
-// This syntax is odd, but it helps `cargo-mutants` understand the platform-specific modules
-#[cfg(target_os = "windows")]
-#[path = "tunnel-wrapper/in_proc.rs"]
-mod tunnel_wrapper_in_proc;
-
-#[cfg(target_os = "linux")]
-#[path = "tunnel-wrapper/ipc.rs"]
-mod tunnel_wrapper_ipc;
-
-#[cfg(target_os = "windows")]
-use tunnel_wrapper_in_proc as tunnel_wrapper;
-
-#[cfg(target_os = "linux")]
-use tunnel_wrapper_ipc as tunnel_wrapper;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
@@ -495,7 +481,7 @@ struct Controller {
 /// Everything related to a signed-in user session
 struct Session {
     callback_handler: CallbackHandler,
-    connlib: tunnel_wrapper::TunnelWrapper,
+    connlib: ipc::Client,
 }
 
 impl Controller {
@@ -518,7 +504,7 @@ impl Controller {
             "Calling connlib Session::connect"
         );
 
-        let mut connlib = tunnel_wrapper::connect(
+        let mut connlib = ipc::Client::connect(
             api_url.as_str(),
             token,
             callback_handler.clone(),
