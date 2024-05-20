@@ -519,10 +519,11 @@ impl TunnelTest {
 
         if self.relay.wants(dst) {
             if dst.port() == 3478 {
-                let _maybe_relay =
+                let _maybe_relay = self.relay_span.in_scope(|| {
                     self.relay
                         .state
-                        .handle_client_input(payload, ClientSocket::new(src), self.now);
+                        .handle_client_input(payload, ClientSocket::new(src), self.now)
+                });
 
                 // TODO: Handle relaying
             }
