@@ -495,8 +495,6 @@ impl StateMachineTest for TunnelTest {
         state.advance(ref_state);
 
         // 3. Assert expected state
-        // assert_eq!(state.client_emitted_events, ref_state.client_events);
-        // assert_eq!(state.gateway_emitted_events, ref_state.gateway_events); TODO
         assert_eq!(
             state.gateway_received_icmp_packets,
             ref_state.gateway_received_icmp_packets
