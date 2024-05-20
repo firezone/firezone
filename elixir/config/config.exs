@@ -40,8 +40,8 @@ config :domain, Domain.Gateways,
 config :domain, Domain.Telemetry, metrics_reporter: nil
 
 config :domain, Domain.Analytics,
-  mixpanel_token: "b0ab1d66424a27555ed45a27a4fd0cd2",
-  hubspot_account_id: "23723443"
+  mixpanel_token: nil,
+  hubspot_account_id: nil
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
