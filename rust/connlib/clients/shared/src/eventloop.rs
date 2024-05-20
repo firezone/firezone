@@ -147,6 +147,9 @@ where
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
                 }
             }
+            firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
+                self.tunnel.callbacks.on_update_resources(resources)
+            }
         }
     }
 
