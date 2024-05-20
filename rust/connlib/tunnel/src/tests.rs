@@ -326,7 +326,7 @@ impl StateMachineTest for TunnelTest {
                 continue;
             }
 
-            if state.handle_timeout(state.now) {
+            if state.handle_timeout(state.now, state.utc_now) {
                 continue;
             }
 
@@ -425,21 +425,21 @@ impl TunnelTest {
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
     ///
     /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
-    fn handle_timeout(&mut self, now: Instant) -> bool {
+    fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) -> bool {
         let mut any_advanced = false;
 
         if self.client.state.poll_timeout().is_some_and(|t| t <= now) {
             any_advanced = true;
 
             self.client_span
-                .in_scope(|| self.client.state.handle_timeout(now))
+                .in_scope(|| self.client.state.handle_timeout(now));
         };
 
         if self.gateway.state.poll_timeout().is_some_and(|t| t <= now) {
             any_advanced = true;
 
             self.gateway_span
-                .in_scope(|| self.gateway.state.handle_timeout(now))
+                .in_scope(|| self.gateway.state.handle_timeout(now, utc_now))
         };
 
         if self.relay.state.poll_timeout().is_some_and(|t| t <= now) {
@@ -823,7 +823,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "viable network path must exist",
-                |(client, gateway, relay, _)| {
+                |(client, gateway, relay, _, _)| {
                     if client.ip4_socket.is_some()
                         && relay.ip_stack.as_v4().is_none()
                         && gateway.ip4_socket.is_none()
