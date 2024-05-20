@@ -119,7 +119,9 @@ pub async fn connect(
 // TODO: DRY
 impl connlib_client_shared::Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::debug!("on_disconnect {error:?}");
+        // The connlib error type cannot be serialized, but `on_disconnect` is
+        // always an error, so at least log it as such on the GUI side.
+        tracing::error!("on_disconnect {error:?}");
         self.ctlr_tx
             .try_send(ControllerRequest::Disconnected)
             .expect("controller channel failed");
