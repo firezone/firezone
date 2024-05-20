@@ -41,7 +41,7 @@ config :domain, Domain.Telemetry, metrics_reporter: nil
 
 config :domain, Domain.Analytics,
   mixpanel_token: nil,
-  hubspot_account_id: nil
+  hubspot_workspace_id: nil
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",

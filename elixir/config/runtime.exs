@@ -55,7 +55,7 @@ if config_env() == :prod do
 
   config :domain, Domain.Analytics,
     mixpanel_token: compile_config!(:mixpanel_token),
-    hubspot_account_id: compile_config!(:hubspot_account_id)
+    hubspot_workspace_id: compile_config!(:hubspot_workspace_id)
 
   config :domain, :enabled_features,
     idp_sync: compile_config!(:feature_idp_sync_enabled),
