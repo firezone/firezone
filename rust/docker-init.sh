@@ -1,5 +1,9 @@
 #!/bin/sh
 
+if [ -f "${FIREZONE_TOKEN}" ]; then
+    export FIREZONE_TOKEN=$(cat "${FIREZONE_TOKEN}")
+fi
+
 if [ "${FIREZONE_ENABLE_MASQUERADE}" = "1" ]; then
     IFACE="tun-firezone"
     # Enable masquerading for ethernet and wireless interfaces
