@@ -527,7 +527,7 @@ defmodule Web.FormComponents do
     """
   end
 
-  defp button_style do
+  def button_style do
     [
       "flex items-center justify-center",
       "rounded",
@@ -535,7 +535,7 @@ defmodule Web.FormComponents do
     ]
   end
 
-  defp button_style("warning") do
+  def button_style("warning") do
     button_style() ++
       [
         "text-primary-500",
@@ -544,7 +544,7 @@ defmodule Web.FormComponents do
       ]
   end
 
-  defp button_style("danger") do
+  def button_style("danger") do
     button_style() ++
       [
         "text-red-600",
@@ -553,7 +553,7 @@ defmodule Web.FormComponents do
       ]
   end
 
-  defp button_style("info") do
+  def button_style("info") do
     button_style() ++
       [
         "text-neutral-900",
@@ -562,7 +562,7 @@ defmodule Web.FormComponents do
       ]
   end
 
-  defp button_style(_style) do
+  def button_style(_style) do
     button_style() ++
       [
         "text-white",
@@ -571,7 +571,7 @@ defmodule Web.FormComponents do
       ]
   end
 
-  defp button_size(size) do
+  def button_size(size) do
     text = %{
       "xs" => "text-xs",
       "sm" => "text-sm",

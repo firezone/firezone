@@ -14,6 +14,43 @@ Hooks.Tabs = {
   },
 };
 
+Hooks.Analytics = {
+  mounted() {
+    this.handleEvent("identify", ({ id, account_id, name, email }) => {
+      console.log("Identify", id, account_id, name, email);
+      var mixpanel = window.mixpanel || [];
+      if (mixpanel) {
+        mixpanel.identify(id);
+        mixpanel.people.set({ $email: email, $name: name });
+        mixpanel.people.set({ account_id: account_id });
+        mixpanel.set_group("account", account_id);
+      }
+
+      var _hsq = window._hsq = window._hsq || [];
+      if (_hsq) {
+        _hsq.push(["identify", { id: id }]);
+      }
+    });
+
+    this.handleEvent("track_event", ({ name, properties }) => {
+      console.log("Track Event", name, properties);
+
+      var mixpanel = window.mixpanel || [];
+      if (mixpanel) {
+        mixpanel.track(name, properties);
+      }
+
+      var _hsq = window._hsq = window._hsq || [];
+      if (_hsq) {
+        _hsq.push(["trackCustomBehavioralEvent", {
+          name: name,
+          properties: properties
+        }]);
+      }
+    });
+  }
+}
+
 Hooks.Refocus = {
   mounted() {
     this.el.addEventListener("click", (ev) => {
