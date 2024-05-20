@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
-use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
 use connlib_shared::messages::{
@@ -12,11 +11,10 @@ use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::ip::IpNextHeaderProtocols;
-use ip_packet::{IpPacket, MutableIpPacket, Protocol};
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
-use crate::client::IpProvider;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
@@ -110,8 +108,6 @@ impl AllowRules {
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
     pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
-
-    pub translations: BiMap<IpAddr, IpAddr>,
 }
 
 impl GatewayOnClient {
@@ -135,31 +131,7 @@ impl GatewayOnClient {
             allowed_ips.insert(*ip, resource.clone());
         }
 
-        GatewayOnClient {
-            id,
-            allowed_ips,
-            translations: Default::default(),
-        }
-    }
-
-    #[tracing::instrument(name = "translation", level = "debug", skip_all, fields(gateway = %self.id))]
-    pub fn get_or_assign_translation(
-        &mut self,
-        real_ip: &IpAddr,
-        ip_provider: &mut IpProvider,
-    ) -> Option<IpAddr> {
-        if let Some(proxy_ip) = self.translations.get_by_right(real_ip) {
-            tracing::debug!("Existing translation: {real_ip} -> {proxy_ip}");
-
-            return Some(*proxy_ip);
-        }
-
-        let proxy_ip = ip_provider.get_proxy_ip_for(real_ip)?;
-
-        tracing::debug!("New translation: {real_ip} -> {proxy_ip}");
-
-        self.translations.insert(proxy_ip, *real_ip);
-        Some(proxy_ip)
+        GatewayOnClient { id, allowed_ips }
     }
 }
 
@@ -512,16 +484,13 @@ impl ClientOnGateway {
 
 impl GatewayOnClient {
     /// Transform a packet that arrived via the network for the TUN device.
-    pub(crate) fn transform_network_to_tun<'a>(
-        &mut self,
-        mut pkt: MutableIpPacket<'a>,
+    pub(crate) fn ensure_allowed<'a>(
+        &self,
+        pkt: MutableIpPacket<'a>,
     ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
-        let addr = pkt.source();
-        let src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
-
-        if self.allowed_ips.longest_match(src).is_none() {
+        if self.allowed_ips.longest_match(pkt.source()).is_none() {
             return Err(connlib_shared::Error::UnallowedPacket {
-                src,
+                src: pkt.source(),
 
                 allowed_ips: self
                     .allowed_ips
@@ -531,23 +500,7 @@ impl GatewayOnClient {
             });
         }
 
-        pkt.set_src(src);
-        pkt.update_checksum();
-
         Ok(pkt)
-    }
-
-    /// Transform a packet that arrvied on the TUN device for the network.
-    pub(crate) fn transform_tun_to_network<'a>(
-        &mut self,
-        mut packet: MutableIpPacket<'a>,
-    ) -> MutableIpPacket<'a> {
-        if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
-            packet.set_dst(*translated_ip);
-            packet.update_checksum();
-        }
-
-        packet
     }
 
     pub fn id(&self) -> GatewayId {

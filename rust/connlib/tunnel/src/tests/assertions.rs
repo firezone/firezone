@@ -72,6 +72,7 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
                     &ref_state.global_dns_records,
                     domain,
                 );
+
                 assert_proxy_ip_mapping_is_stable(
                     client_sent_request,
                     gateway_received_request,
