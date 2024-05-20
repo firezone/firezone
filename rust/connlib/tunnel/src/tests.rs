@@ -779,14 +779,14 @@ fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
         .prop_map(|(src, dst)| Transition::SendICMPPacketToRandomIp { src, dst })
 }
 
-fn icmp_to_ipv4_cidr_resource() -> impl Strategy<Value = Transition> {
-    (any::<Ipv4Addr>(), any::<sample::Index>())
-        .prop_map(|(src, r_idx)| Transition::SendICMPPacketToIp4Resource { src, r_idx })
+fn icmp_to_ipv4_cidr_resource(src: Ipv4Addr) -> impl Strategy<Value = Transition> {
+    any::<sample::Index>()
+        .prop_map(move |r_idx| Transition::SendICMPPacketToIp4Resource { src, r_idx })
 }
 
-fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
-    (any::<Ipv6Addr>(), any::<sample::Index>())
-        .prop_map(|(src, r_idx)| Transition::SendICMPPacketToIp6Resource { src, r_idx })
+fn icmp_to_ipv6_cidr_resource(src: Ipv6Addr) -> impl Strategy<Value = Transition> {
+    any::<sample::Index>()
+        .prop_map(move |r_idx| Transition::SendICMPPacketToIp6Resource { src, r_idx })
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
@@ -943,8 +943,8 @@ impl ReferenceStateMachine for ReferenceState {
             1 => add_cidr_resource,
             1 => tick,
             1 => icmp_to_random_ip(),
-            weight_ip4 => icmp_to_ipv4_cidr_resource(),
-            weight_ip6 => icmp_to_ipv6_cidr_resource()
+            weight_ip4 => icmp_to_ipv4_cidr_resource(state.client.tunnel_ip4),
+            weight_ip6 => icmp_to_ipv6_cidr_resource(state.client.tunnel_ip6)
         ]
         .boxed()
     }
@@ -970,6 +970,8 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
         };
+
+        state.now += Duration::from_millis(300); // Equivalent hack to advance str0m time.
 
         state
     }
