@@ -31,7 +31,7 @@ pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
 use rand_core::OsRng;
 
-pub type Name = domain::base::Name<Vec<u8>>;
+pub type DomainName = domain::base::Name<Vec<u8>>;
 
 /// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
 ///

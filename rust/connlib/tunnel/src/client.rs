@@ -9,7 +9,7 @@ use connlib_shared::messages::{
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
     IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{callbacks, Callbacks, Name, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -44,11 +44,14 @@ const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
     pub id: ResourceId,
-    pub address: Name,
+    pub address: DomainName,
 }
 
 impl DnsResource {
-    pub fn from_description(description: &ResourceDescriptionDns, address: Name) -> DnsResource {
+    pub fn from_description(
+        description: &ResourceDescriptionDns,
+        address: DomainName,
+    ) -> DnsResource {
         DnsResource {
             id: description.id,
             address,
@@ -297,7 +300,7 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AwaitingConnectionDetails {
-    pub domain: Option<Name>,
+    pub domain: Option<DomainName>,
     gateways: HashSet<GatewayId>,
     pub last_intent_sent_at: Instant,
 }
@@ -715,7 +718,7 @@ impl ClientState {
     fn on_connection_intent_to_resource(
         &mut self,
         resource: ResourceId,
-        domain: Option<Name>,
+        domain: Option<DomainName>,
         now: Instant,
     ) {
         debug_assert!(self.resource_ids.contains_key(&resource));
@@ -771,7 +774,7 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    fn is_connected_to(&self, resource: ResourceId, domain: &Option<Name>) -> bool {
+    fn is_connected_to(&self, resource: ResourceId, domain: &Option<DomainName>) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
             return false;
         };
@@ -783,7 +786,7 @@ impl ClientState {
     fn get_resource_ip(
         &self,
         resource: &ResourceDescription,
-        domain: &Option<Name>,
+        domain: &Option<DomainName>,
     ) -> Vec<IpNetwork> {
         match resource {
             ResourceDescription::Dns(dns_resource) => {

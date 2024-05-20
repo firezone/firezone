@@ -8,7 +8,7 @@ use boringtun::x25519::PublicKey;
 use connlib_shared::messages::RelaysPresence;
 use connlib_shared::{
     messages::{GatewayResponse, ResourceAccepted},
-    Name,
+    DomainName,
 };
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
@@ -278,7 +278,7 @@ impl Eventloop {
     }
 }
 
-async fn resolve(domain: Option<Name>) -> Vec<IpNetwork> {
+async fn resolve(domain: Option<DomainName>) -> Vec<IpNetwork> {
     let Some(domain) = domain.clone() else {
         return vec![];
     };

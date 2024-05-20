@@ -4,7 +4,7 @@ use connlib_shared::{
         gateway::ResourceDescription, ClientId, ClientPayload, GatewayResponse, Interface, Peer,
         Relay, RelaysPresence, ResourceId,
     },
-    Name,
+    DomainName,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,7 @@ pub struct AllowAccess {
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
-    pub payload: Option<Name>,
+    pub payload: Option<DomainName>,
     #[serde(rename = "ref")]
     pub reference: String,
 }
