@@ -2934,7 +2934,7 @@ dependencies = [
  "httpdate",
  "itoa 1.0.11",
  "pin-project-lite",
- "socket2 0.5.7",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3415,7 +3415,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4843,9 +4843,8 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#88f48b0179f358cea0b76fc550e629007bfc957d"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#1b913cb20bbb91982bbaf2b9564a8cfec32d00d5"
 dependencies = [
- "bytes",
  "libc",
  "once_cell",
  "socket2 0.5.7",
