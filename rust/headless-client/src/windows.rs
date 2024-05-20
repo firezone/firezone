@@ -249,7 +249,7 @@ fn fallible_windows_service_run() -> Result<()> {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Stopped,
         controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(0),
+        exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
         checkpoint: 0,
         wait_hint: Duration::default(),
         process_id: None,
