@@ -188,11 +188,9 @@ export default function Page() {
       <section className="bg-white py-8 md:py-16">
         <div className="sm:mx-auto px-4 mb-2 md:mb-4">
           <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
-            Achieve compliance in{" "}
-            <span className="ml-0.5 sm:ml-1 -mr-0.5 text-primary-450">
-              minutes
-            </span>
-            , not weeks.
+            Achieve compliance{" "}
+            <span className="mx-0.5 sm:mx-1 text-primary-450">without </span>
+            the headache.
           </h2>
         </div>
 
