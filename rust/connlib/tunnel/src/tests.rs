@@ -57,10 +57,6 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    client_span: Span,
-    gateway_span: Span,
-    relay_span: Span,
-
     client_received_packets: VecDeque<IpPacket<'static>>,
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
 
@@ -69,7 +65,7 @@ struct TunnelTest {
     buffer: Box<[u8; 10_000]>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct SimNode<ID, S> {
     id: ID,
     state: S,
@@ -79,6 +75,8 @@ struct SimNode<ID, S> {
 
     tunnel_ip4: Ipv4Addr,
     tunnel_ip6: Ipv6Addr,
+
+    span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +85,8 @@ struct SimRelay<S> {
     state: S,
 
     ip_stack: firezone_relay::IpStack,
+
+    span: Span,
 }
 
 /// Stub implementation of the portal.
@@ -119,8 +119,12 @@ impl SimPortal {
     }
 }
 
-impl<ID, S> SimNode<ID, S> {
-    fn map_state<T>(self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
+impl<ID, S> SimNode<ID, S>
+where
+    ID: Copy,
+    S: Copy,
+{
+    fn map_state<T>(&self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
         SimNode {
             id: self.id,
             state: f(self.state),
@@ -128,9 +132,12 @@ impl<ID, S> SimNode<ID, S> {
             ip6_socket: self.ip6_socket,
             tunnel_ip4: self.tunnel_ip4,
             tunnel_ip6: self.tunnel_ip6,
+            span: self.span.clone(),
         }
     }
+}
 
+impl<ID, S> SimNode<ID, S> {
     fn wants(&self, dst: SocketAddr) -> bool {
         self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
             || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
@@ -243,6 +250,7 @@ impl StateMachineTest for TunnelTest {
             ),
             ip_stack: ref_state.relay.ip_stack,
             id: ref_state.relay.id,
+            span: error_span!("relay"),
         };
         client.state.update_relays(
             HashSet::default(),
@@ -275,9 +283,6 @@ impl StateMachineTest for TunnelTest {
             buffer: Box::new([0u8; 10_000]),
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
-            client_span: error_span!("client"),
-            gateway_span: error_span!("gateway"),
-            relay_span: error_span!("relay"),
             relay,
         }
     }
@@ -291,7 +296,7 @@ impl StateMachineTest for TunnelTest {
         // 1. Apply the transition
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client_span.in_scope(|| {
+                state.client.span.in_scope(|| {
                     state
                         .client
                         .state
@@ -486,21 +491,24 @@ impl TunnelTest {
         if self.client.state.poll_timeout().is_some_and(|t| t <= now) {
             any_advanced = true;
 
-            self.client_span
+            self.client
+                .span
                 .in_scope(|| self.client.state.handle_timeout(now));
         };
 
         if self.gateway.state.poll_timeout().is_some_and(|t| t <= now) {
             any_advanced = true;
 
-            self.gateway_span
+            self.gateway
+                .span
                 .in_scope(|| self.gateway.state.handle_timeout(now, utc_now))
         };
 
         if self.relay.state.poll_timeout().is_some_and(|t| t <= now) {
             any_advanced = true;
 
-            self.relay_span
+            self.relay
+                .span
                 .in_scope(|| self.relay.state.handle_timeout(now))
         };
 
@@ -512,7 +520,7 @@ impl TunnelTest {
         src: impl Into<IpAddr>,
         dst: impl Into<IpAddr>,
     ) {
-        let Some(transmit) = self.client_span.in_scope(|| {
+        let Some(transmit) = self.client.span.in_scope(|| {
             self.client.state.encapsulate(
                 ip_packet::make::icmp_request_packet(src.into(), dst.into()),
                 self.now,
@@ -537,7 +545,7 @@ impl TunnelTest {
 
         if self.relay.wants(dst) {
             if dst.port() == 3478 {
-                let _maybe_relay = self.relay_span.in_scope(|| {
+                let _maybe_relay = self.relay.span.in_scope(|| {
                     self.relay
                         .state
                         .handle_client_input(payload, ClientSocket::new(src), self.now)
@@ -575,7 +583,7 @@ impl TunnelTest {
         payload: &[u8],
     ) -> ControlFlow<()> {
         if self.client.wants(dst) {
-            if let Some(packet) = self.client_span.in_scope(|| {
+            if let Some(packet) = self.client.span.in_scope(|| {
                 self.client
                     .state
                     .decapsulate(dst, src, payload, self.now, self.buffer.as_mut())
@@ -596,7 +604,7 @@ impl TunnelTest {
         payload: &[u8],
     ) -> ControlFlow<()> {
         if self.gateway.wants(dst) {
-            if let Some(packet) = self.gateway_span.in_scope(|| {
+            if let Some(packet) = self.gateway.span.in_scope(|| {
                 self.gateway
                     .state
                     .decapsulate(dst, src, payload, self.now, self.buffer.as_mut())
@@ -623,13 +631,14 @@ impl TunnelTest {
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
     ) {
         match event {
-            ClientEvent::NewIceCandidate { candidate, .. } => self.client_span.in_scope(|| {
+            ClientEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
                 self.gateway
                     .state
                     .add_ice_candidate(src, candidate, self.now)
             }),
             ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
-                .gateway_span
+                .gateway
+                .span
                 .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
             ClientEvent::ConnectionIntent {
                 resource,
@@ -644,7 +653,8 @@ impl TunnelTest {
                 // TODO: All of the below should be somehow encapsulated in `SimPortal`.
 
                 let request = self
-                    .client_span
+                    .client
+                    .span
                     .in_scope(|| {
                         self.client.state.create_or_reuse_connection(
                             resource,
@@ -664,7 +674,8 @@ impl TunnelTest {
                 match request {
                     Request::NewConnection(new_connection) => {
                         let connection_accepted = self
-                            .gateway_span
+                            .gateway
+                            .span
                             .in_scope(|| {
                                 self.gateway.state.accept(
                                     self.client.id,
@@ -700,7 +711,8 @@ impl TunnelTest {
                             })
                             .unwrap();
 
-                        self.client_span
+                        self.client
+                            .span
                             .in_scope(|| {
                                 self.client.state.accept_answer(
                                     snownet::Answer {
@@ -718,7 +730,7 @@ impl TunnelTest {
                             .unwrap();
                     }
                     Request::ReuseConnection(reuse_connection) => {
-                        if let Some(domain_response) = self.gateway_span.in_scope(|| {
+                        if let Some(domain_response) = self.gateway.span.in_scope(|| {
                             self.gateway.state.allow_access(
                                 resource,
                                 self.client.id,
@@ -726,7 +738,8 @@ impl TunnelTest {
                                 reuse_connection.payload,
                             )
                         }) {
-                            self.client_span
+                            self.client
+                                .span
                                 .in_scope(|| {
                                     self.client
                                         .state
@@ -745,13 +758,14 @@ impl TunnelTest {
 
     fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
         match event {
-            GatewayEvent::NewIceCandidate { candidate, .. } => self.client_span.in_scope(|| {
+            GatewayEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
                 self.client
                     .state
                     .add_ice_candidate(src, candidate, self.now)
             }),
             GatewayEvent::InvalidIceCandidate { candidate, .. } => self
-                .client_span
+                .client
+                .span
                 .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
         }
     }
@@ -825,6 +839,7 @@ fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
 
 fn sim_node_prototype<ID>(
     id: impl Strategy<Value = ID>,
+    span: Span,
 ) -> impl Strategy<Value = SimNode<ID, [u8; 32]>>
 where
     ID: fmt::Debug,
@@ -837,10 +852,11 @@ where
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         tunnel_ip4(),
         tunnel_ip6(),
+        Just(span),
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
+            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6, span)| {
                 let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
                 let ip6_socket = ip_stack
                     .as_v6()
@@ -853,6 +869,7 @@ where
                     ip6_socket,
                     tunnel_ip4,
                     tunnel_ip6,
+                    span,
                 })
             },
         )
@@ -868,6 +885,7 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             id: RelayId::from_u128(id),
             state: seed,
             ip_stack,
+            span: error_span!("relay"),
         })
 }
 
@@ -882,8 +900,8 @@ impl ReferenceStateMachine for ReferenceState {
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
         (
-            sim_node_prototype(client_id()),
-            sim_node_prototype(gateway_id()),
+            sim_node_prototype(client_id(), error_span!("client")),
+            sim_node_prototype(gateway_id(), error_span!("gateway")),
             sim_relay_prototype(),
             Just(Instant::now()),
             Just(Utc::now()),
