@@ -60,9 +60,9 @@ Set some environment variables to configure it:
 
 ```bash
 export FIREZONE_NAME="Development API test client"
-export FIREZONE_ID="some unique identifier like a UUID"
+export FIREZONE_ID=$(uuidgen)
 export FIREZONE_TOKEN=<TOKEN>
-export DNS_CONTROL="systemd-resolved" # or "etc-resolv-conf"
+export FIREZONE_DNS_CONTROL="systemd-resolved" # or "etc-resolv-conf"
 export LOG_DIR="./"
 sudo -E ./firezone-client-headless-linux_1.0.0_x86_64
 ```
@@ -98,11 +98,7 @@ command:
 systemctl status systemd-resolved
 ```
 
-#### NetworkManager
-
-In most cases, if you're using NetworkManager your system is likely already
-using `systemd-resolved`, and you should set `FIREZONE_DNS_CONTROL` to
-`systemd-resolved`. You'll need to ensure that `/etc/resolv.conf` is a symlink
+You'll need to ensure that `/etc/resolv.conf` is a symlink
 to `/run/systemd/resolve/stub-resolv.conf`:
 
 ```bash
@@ -110,8 +106,15 @@ to `/run/systemd/resolve/stub-resolv.conf`:
 stat /etc/resolv.conf
 
 # If it's not, create the symlink
-sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf.new
+sudo mv /etc/resolve.conf.new /etc/resolv.conf
 ```
+
+#### NetworkManager
+
+In most cases, if you're using NetworkManager your system is likely already
+using `systemd-resolved`, and you should set `FIREZONE_DNS_CONTROL` to
+`systemd-resolved`.
 
 When NetworkManager detects that symlink exists, it will automatically use
 `systemd-resolved` for DNS resolution and no other configuration is necessary.
