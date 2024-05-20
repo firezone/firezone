@@ -210,3 +210,58 @@ export function AndroidIcon({
     </Link>
   );
 }
+
+export function ChromeIcon({
+  size,
+  children,
+  href,
+}: {
+  size: number;
+  children?: React.ReactNode;
+  href: Route<string>;
+}) {
+  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  return (
+    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className={c}
+        viewBox="0 0 336 337"
+        xmlSpace="preserve"
+      >
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M42.4 62.3C119.6 -27.6 262.9 -9.89999 316.4 95.2H187.8C164.6 95.2 149.6 94.7 133.4 103.2C114.3 113.2 100 131.8 94.9 153.7L42.4 62.3ZM113.2 170.6C113.2 201.1 137.9 225.8 168.4 225.9C198.9 225.9 223.6 201.1 223.6 170.6C223.6 140.1 198.9 115.4 168.4 115.3C137.9 115.4 113.2 140.1 113.2 170.6ZM189.8 242.9C158.8 252.1 122.5 241.9 102.7 207.6C87.5 181.4 47.5 111.6 29.3 79.9C-34.5 177.7 20.5 310.9 136.3 333.6L189.8 242.9ZM219.7 115.3C245.5 139.3 251.1 178.2 233.7 208.3C220.5 231 178.5 302 158.1 336.3C277.4 343.7 364.4 226.7 325.1 115.2L219.7 115.3Z"
+        />
+      </svg>
+      {children}
+    </Link>
+  );
+}
+
+export function DockerIcon({
+  size,
+  children,
+  href,
+}: {
+  size: number;
+  children?: React.ReactNode;
+  href: Route<string>;
+}) {
+  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  return (
+    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className={c}
+        viewBox="0 0 756.26 596.9"
+        xmlSpace="preserve"
+      >
+        <path d="M743.96,245.25c-18.54-12.48-67.26-17.81-102.68-8.27-1.91-35.28-20.1-65.01-53.38-90.95l-12.32-8.27-8.21,12.4c-16.14,24.5-22.94,57.14-20.53,86.81,1.9,18.28,8.26,38.83,20.53,53.74-46.1,26.74-88.59,20.67-276.77,20.67H.06c-.85,42.49,5.98,124.23,57.96,190.77,5.74,7.35,12.04,14.46,18.87,21.31,42.26,42.32,106.11,73.35,201.59,73.44,145.66.13,270.46-78.6,346.37-268.97,24.98.41,90.92,4.48,123.19-57.88.79-1.05,8.21-16.54,8.21-16.54l-12.3-8.27ZM189.67,206.39h-81.7v81.7h81.7v-81.7ZM295.22,206.39h-81.7v81.7h81.7v-81.7ZM400.77,206.39h-81.7v81.7h81.7v-81.7ZM506.32,206.39h-81.7v81.7h81.7v-81.7ZM84.12,206.39H2.42v81.7h81.7v-81.7ZM189.67,103.2h-81.7v81.7h81.7v-81.7ZM295.22,103.2h-81.7v81.7h81.7v-81.7ZM400.77,103.2h-81.7v81.7h81.7v-81.7ZM400.77,0h-81.7v81.7h81.7V0Z" />
+      </svg>
+
+      {children}
+    </Link>
+  );
+}

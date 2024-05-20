@@ -756,7 +756,7 @@ async fn run_controller(
     let mut controller = Controller {
         advanced_settings,
         app,
-        auth: client::auth::Auth::new().context("Failed to set up auth module")?,
+        auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
         _logging_handles: logging_handles,

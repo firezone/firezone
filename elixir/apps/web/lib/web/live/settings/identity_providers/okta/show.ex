@@ -81,6 +81,14 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
           Reconnect
         </.button>
       </:action>
+      <:help>
+        Directory sync is enabled for this provider. Users and groups will be synced every 10
+        minutes on average, but could take longer for very large organizations.
+        <.website_link href="/kb/authenticate/directory-sync">
+          Read more
+        </.website_link>
+        about directory sync.
+      </:help>
       <:content>
         <.header>
           <:title>Details</:title>

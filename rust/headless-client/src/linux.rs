@@ -236,7 +236,8 @@ struct CallbackHandlerIpc {
 }
 
 impl Callbacks for CallbackHandlerIpc {
-    fn on_disconnect(&self, _error: &connlib_client_shared::Error) {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+        tracing::error!(?error, "Got `on_disconnect` from connlib");
         self.cb_tx
             .try_send(IpcServerMsg::OnDisconnect)
             .expect("should be able to send OnDisconnect");
@@ -248,7 +249,7 @@ impl Callbacks for CallbackHandlerIpc {
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     ) -> Option<i32> {
-        tracing::info!("OnSetInterfaceConfig");
+        tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
             .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");

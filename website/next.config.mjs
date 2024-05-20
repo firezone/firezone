@@ -52,6 +52,9 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
     remotePatterns: [
       {
+        hostname: "api.star-history.com",
+      },
+      {
         hostname: "github.com",
       },
       {

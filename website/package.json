@@ -26,6 +26,7 @@
     "fast-xml-parser": "^4.3.5",
     "flowbite": "^2.3.0",
     "flowbite-react": "^0.9.0",
+    "framer-motion": "^11.2.4",
     "highlight.js": "^11.9.0",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.50.0",

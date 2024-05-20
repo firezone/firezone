@@ -35,7 +35,10 @@ pub(crate) struct CallbackHandler {
 // Callbacks must all be non-blocking
 impl connlib_client_shared::Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::debug!("on_disconnect {error:?}");
+        // The errors don't implement `Serialize`, so we don't get a machine-readable
+        // error here, but we should consider it an error anyway. `on_disconnect`
+        // is always an error
+        tracing::error!("on_disconnect {error:?}");
         self.ctlr_tx
             .try_send(ControllerRequest::Disconnected)
             .expect("controller channel failed");
