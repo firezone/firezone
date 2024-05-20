@@ -32,7 +32,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use tracing::{error_span, subscriber::DefaultGuard, Span};
-use tracing_subscriber::util::SubscriberInitExt as _;
+use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 proptest_state_machine::prop_state_machine! {
     #![proptest_config(Config {
@@ -432,7 +432,7 @@ impl StateMachineTest for TunnelTest {
             portal,
             logger: tracing_subscriber::fmt()
                 .with_test_writer()
-                .with_env_filter("debug")
+                .with_env_filter(EnvFilter::from_default_env())
                 .finish()
                 .set_default(),
             buffer: Box::new([0u8; 10_000]),
