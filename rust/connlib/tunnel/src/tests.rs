@@ -506,21 +506,32 @@ impl StateMachineTest for TunnelTest {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
     fn on_icmp_packet(&mut self, src: impl Into<IpAddr>, dst: impl Into<IpAddr>) {
         let src = src.into();
         let dst = dst.into();
 
+        tracing::Span::current().record("dst", tracing::field::display(dst));
+
         // We select which resource to send to based on the _longest match_ of the IP network.
         // We may have resources with overlapping IP ranges so it is important that we do this the same way as connlib.
         let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
+            tracing::debug!("No resource corresponds to IP");
+
             return;
         };
         let resource = resource.id;
 
+        tracing::Span::current().record("resource", tracing::field::display(resource));
+
         if !self.connected_resources.contains(&resource) {
+            tracing::debug!("Not connected to resource, expecting to trigger connection intent");
+
             self.connected_resources.insert(resource);
             return;
         }
+
+        tracing::debug!("Connected to resource, expecting packet to be routed to gateway");
 
         self.gateway_received_icmp_packets
             .push_back((self.now, src, dst))

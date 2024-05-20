@@ -1014,10 +1014,12 @@ impl ClientState {
 
             match &resource_description {
                 ResourceDescription::Dns(dns) => {
-                    self.dns_resources.insert(dns.address.clone(), dns.clone());
+                    let existing = self.dns_resources.insert(dns.address.clone(), dns.clone());
+                    debug_assert!(existing.is_none(), "to not replace existing resource");
                 }
                 ResourceDescription::Cidr(cidr) => {
-                    self.cidr_resources.insert(cidr.address, cidr.clone());
+                    let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+                    debug_assert!(existing.is_none(), "to not replace existing resource");
                 }
             }
 
