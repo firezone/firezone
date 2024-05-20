@@ -979,7 +979,19 @@ impl ReferenceStateMachine for ReferenceState {
     /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
     fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
         match transition {
-            Transition::AddCidrResource(_) => true,
+            Transition::AddCidrResource(r) => {
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                if r.address.is_ipv6() && state.gateway.ip6_socket.is_none() {
+                    return false;
+                }
+
+                if r.address.is_ipv4() && state.gateway.ip4_socket.is_none() {
+                    return false;
+                }
+
+                true
+            }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToRandomIp { src, dst } => {
                 src.is_ipv4() == dst.is_ipv4() && src != dst
