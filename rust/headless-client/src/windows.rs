@@ -406,14 +406,13 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
                         public_key.to_bytes(),
                     )?;
 
-                    // TODO: Configurable max partition time?
                     connlib = Some(connlib_client_shared::Session::connect(
                         login,
                         Sockets::new(),
                         private_key,
                         None,
                         callback_handler.clone(),
-                        None,
+                        Some(std::time::Duration::from_secs(60 * 60 * 24 * 30)),
                         tokio::runtime::Handle::try_current()?,
                     ));
                 }

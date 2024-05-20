@@ -304,7 +304,9 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
                     private_key,
                     None,
                     callback_handler.clone(),
-                    cli.max_partition_time.map(|t| t.into()),
+                    cli.max_partition_time
+                        .map(|t| t.into())
+                        .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
                     tokio::runtime::Handle::try_current()?,
                 ));
             }
