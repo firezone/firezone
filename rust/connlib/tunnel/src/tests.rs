@@ -8,7 +8,7 @@ use connlib_shared::{
     proptest::cidr_resource,
     StaticSecret,
 };
-use firezone_relay::ClientSocket;
+use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -24,6 +24,7 @@ use rand::{rngs::StdRng, SeedableRng};
 use secrecy::ExposeSecret;
 use snownet::{RelaySocket, Transmit};
 use std::{
+    borrow::Cow,
     collections::{HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -63,6 +64,8 @@ struct TunnelTest {
     #[allow(dead_code)]
     logger: DefaultGuard,
     buffer: Box<[u8; 10_000]>,
+
+    buffered_transmits: VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
 }
 
 #[derive(Clone, Debug)]
@@ -79,14 +82,28 @@ struct SimNode<ID, S> {
     span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct SimRelay<S> {
     id: RelayId,
     state: S,
 
     ip_stack: firezone_relay::IpStack,
+    allocations: HashSet<(AddressFamily, AllocationPort)>,
+    buffer: Vec<u8>,
 
     span: Span,
+}
+
+impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SimRelay")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .field("ip_stack", &self.ip_stack)
+            .field("allocations", &self.allocations)
+            .field("span", &self.span)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Stub implementation of the portal.
@@ -149,17 +166,24 @@ impl<ID, S> SimNode<ID, S> {
             SocketAddr::V6(_) => self.ip6_socket?.into(),
         })
     }
+
+    fn tunnel_ip(&self, dst: IpAddr) -> IpAddr {
+        match dst {
+            IpAddr::V4(_) => IpAddr::from(self.tunnel_ip4),
+            IpAddr::V6(_) => IpAddr::from(self.tunnel_ip6),
+        }
+    }
 }
 
 impl SimRelay<firezone_relay::Server<StdRng>> {
     fn wants(&self, dst: SocketAddr) -> bool {
-        self.ip_stack
-            .as_v4()
-            .is_some_and(|s| IpAddr::V4(*s) == dst.ip())
-            || self
-                .ip_stack
-                .as_v6()
-                .is_some_and(|s| IpAddr::V6(*s) == dst.ip())
+        let is_direct = self.matching_listen_socket(dst).is_some_and(|s| s == dst);
+        let is_allocation = self.allocations.contains(&match dst {
+            SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
+            SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
+        });
+
+        is_direct || is_allocation
     }
 
     fn sending_socket_for(&self, dst: SocketAddr, port: u16) -> Option<SocketAddr> {
@@ -192,6 +216,135 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
             password,
             "firezone".to_owned(),
         )
+    }
+
+    fn matching_listen_socket(&self, other: SocketAddr) -> Option<SocketAddr> {
+        match other {
+            SocketAddr::V4(_) => Some(SocketAddr::new((*self.ip_stack.as_v4()?).into(), 3478)),
+            SocketAddr::V6(_) => Some(SocketAddr::new((*self.ip_stack.as_v6()?).into(), 3478)),
+        }
+    }
+
+    fn ip4(&self) -> Option<IpAddr> {
+        self.ip_stack.as_v4().copied().map(|i| i.into())
+    }
+
+    fn ip6(&self) -> Option<IpAddr> {
+        self.ip_stack.as_v6().copied().map(|i| i.into())
+    }
+
+    fn handle_packet(
+        &mut self,
+        payload: &[u8],
+        sender: SocketAddr,
+        dst: SocketAddr,
+        now: Instant,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
+        if self.matching_listen_socket(dst).is_some_and(|s| s == dst) {
+            self.handle_client_input(payload, ClientSocket::new(sender), now, buffered_transmits);
+            return;
+        }
+
+        self.handle_peer_traffic(
+            payload,
+            PeerSocket::new(sender),
+            AllocationPort::new(dst.port()),
+            buffered_transmits,
+        )
+    }
+
+    fn handle_client_input(
+        &mut self,
+        payload: &[u8],
+        client: ClientSocket,
+        now: Instant,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
+        if let Some((port, peer)) = self
+            .span
+            .in_scope(|| self.state.handle_client_input(payload, client, now))
+        {
+            let payload = &payload[4..];
+
+            // The `dst` of the relayed packet is what TURN calls a "peer".
+            let dst = peer.into_socket();
+
+            // The `src_ip` is the relay's IP
+            let src_ip = match dst {
+                SocketAddr::V4(_) => {
+                    assert!(
+                        self.allocations.contains(&(AddressFamily::V4, port)),
+                        "IPv4 allocation to be present if we want to send to an IPv4 socket"
+                    );
+
+                    self.ip4().expect("listen on IPv4 if we have an allocation")
+                }
+                SocketAddr::V6(_) => {
+                    assert!(
+                        self.allocations.contains(&(AddressFamily::V6, port)),
+                        "IPv6 allocation to be present if we want to send to an IPv6 socket"
+                    );
+
+                    self.ip6().expect("listen on IPv6 if we have an allocation")
+                }
+            };
+
+            // The `src` of the relayed packet is the relay itself _from_ the allocated port.
+            let src = SocketAddr::new(src_ip, port.value());
+
+            // Check if we need to relay to ourselves (from one allocation to another)
+            if self.wants(dst) {
+                // When relaying to ourselves, we become our own peer.
+                let peer_socket = PeerSocket::new(src);
+                // The allocation that the data is arriving on is the `dst`'s port.
+                let allocation_port = AllocationPort::new(dst.port());
+
+                self.handle_peer_traffic(payload, peer_socket, allocation_port, buffered_transmits);
+                return;
+            }
+
+            buffered_transmits.push_back((
+                Transmit {
+                    src: Some(src),
+                    dst,
+                    payload: Cow::Owned(payload.to_vec()),
+                },
+                Some(src),
+            ));
+        }
+    }
+
+    fn handle_peer_traffic(
+        &mut self,
+        payload: &[u8],
+        peer: PeerSocket,
+        port: AllocationPort,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
+        if let Some((client, channel)) = self
+            .span
+            .in_scope(|| self.state.handle_peer_traffic(payload, peer, port))
+        {
+            let full_length = firezone_relay::ChannelData::encode_header_to_slice(
+                channel,
+                payload.len() as u16,
+                &mut self.buffer[..4],
+            );
+            self.buffer[4..full_length].copy_from_slice(payload);
+
+            let receiving_socket = client.into_socket();
+            let sending_socket = self.matching_listen_socket(receiving_socket).unwrap();
+
+            buffered_transmits.push_back((
+                Transmit {
+                    src: Some(sending_socket),
+                    dst: receiving_socket,
+                    payload: Cow::Owned(self.buffer[..full_length].to_vec()),
+                },
+                Some(sending_socket),
+            ));
+        }
     }
 
     fn make_credentials(&self, username: &str) -> (String, String) {
@@ -251,6 +404,8 @@ impl StateMachineTest for TunnelTest {
             ip_stack: ref_state.relay.ip_stack,
             id: ref_state.relay.id,
             span: error_span!("relay"),
+            allocations: ref_state.relay.allocations.clone(),
+            buffer: ref_state.relay.buffer.clone(),
         };
         client.state.update_relays(
             HashSet::default(),
@@ -284,6 +439,7 @@ impl StateMachineTest for TunnelTest {
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
             relay,
+            buffered_transmits: Default::default(),
         }
     }
 
@@ -303,18 +459,18 @@ impl StateMachineTest for TunnelTest {
                         .add_resources(&[ResourceDescription::Cidr(r)]);
                 });
             }
-            Transition::SendICMPPacketToRandomIp { src, dst } => {
-                state.send_icmp_packet_client_to_gateway(src, dst);
+            Transition::SendICMPPacketToRandomIp { dst } => {
+                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip(dst), dst);
             }
-            Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
+            Transition::SendICMPPacketToIp4Resource { r_idx } => {
                 let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
 
-                state.send_icmp_packet_client_to_gateway(src, dst);
+                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip4, dst);
             }
-            Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
+            Transition::SendICMPPacketToIp6Resource { r_idx } => {
                 let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
 
-                state.send_icmp_packet_client_to_gateway(src, dst);
+                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip6, dst);
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
@@ -429,10 +585,16 @@ impl ReferenceState {
 impl TunnelTest {
     fn advance(&mut self, ref_state: &ReferenceState) {
         loop {
+            if let Some((transmit, sending_socket)) = self.buffered_transmits.pop_front() {
+                self.dispatch_transmit(transmit, sending_socket);
+                continue;
+            }
+
             if let Some(transmit) = self.client.state.poll_transmit() {
                 let sending_socket = self.client.sending_socket_for(transmit.dst);
 
-                self.dispatch_transmit(transmit, sending_socket);
+                self.buffered_transmits
+                    .push_back((transmit, sending_socket));
                 continue;
             }
             if let Some(event) = self.client.state.poll_event() {
@@ -442,7 +604,8 @@ impl TunnelTest {
             if let Some(transmit) = self.gateway.state.poll_transmit() {
                 let sending_socket = self.gateway.sending_socket_for(transmit.dst);
 
-                self.dispatch_transmit(transmit, sending_socket);
+                self.buffered_transmits
+                    .push_back((transmit, sending_socket));
                 continue;
             }
             if let Some(event) = self.gateway.state.poll_event() {
@@ -468,8 +631,13 @@ impl TunnelTest {
 
                         panic!("Unhandled packet: {src} -> {dst}")
                     }
-                    firezone_relay::Command::CreateAllocation { .. } => {}
-                    firezone_relay::Command::FreeAllocation { .. } => {}
+
+                    firezone_relay::Command::CreateAllocation { port, family } => {
+                        self.relay.allocations.insert((family, port));
+                    }
+                    firezone_relay::Command::FreeAllocation { port, family } => {
+                        self.relay.allocations.remove(&(family, port));
+                    }
                 }
                 continue;
             }
@@ -531,7 +699,8 @@ impl TunnelTest {
         let transmit = transmit.into_owned();
         let sending_socket = self.client.sending_socket_for(transmit.dst);
 
-        self.dispatch_transmit(transmit, sending_socket);
+        self.buffered_transmits
+            .push_back((transmit, sending_socket));
     }
 
     fn dispatch_transmit(&mut self, transmit: Transmit, sending_socket: Option<SocketAddr>) {
@@ -544,19 +713,8 @@ impl TunnelTest {
         };
 
         if self.relay.wants(dst) {
-            if dst.port() == 3478 {
-                let _maybe_relay = self.relay.span.in_scope(|| {
-                    self.relay
-                        .state
-                        .handle_client_input(payload, ClientSocket::new(src), self.now)
-                });
-
-                // if _maybe_relay.is_some() {
-                //     unimplemented!()
-                // }
-
-                // TODO: Handle relaying
-            }
+            self.relay
+                .handle_packet(payload, src, dst, self.now, &mut self.buffered_transmits);
 
             return;
         }
@@ -795,18 +953,15 @@ fn map_client_resource_to_gateway_resource(
 /// By chance, it could be that we pick a resource IP here.
 /// That is okay as our reference state machine checks separately whether we are pinging a resource here.
 fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
-    (any::<IpAddr>(), any::<IpAddr>())
-        .prop_map(|(src, dst)| Transition::SendICMPPacketToRandomIp { src, dst })
+    any::<IpAddr>().prop_map(|dst| Transition::SendICMPPacketToRandomIp { dst })
 }
 
-fn icmp_to_ipv4_cidr_resource(src: Ipv4Addr) -> impl Strategy<Value = Transition> {
-    any::<sample::Index>()
-        .prop_map(move |r_idx| Transition::SendICMPPacketToIp4Resource { src, r_idx })
+fn icmp_to_ipv4_cidr_resource() -> impl Strategy<Value = Transition> {
+    any::<sample::Index>().prop_map(move |r_idx| Transition::SendICMPPacketToIp4Resource { r_idx })
 }
 
-fn icmp_to_ipv6_cidr_resource(src: Ipv6Addr) -> impl Strategy<Value = Transition> {
-    any::<sample::Index>()
-        .prop_map(move |r_idx| Transition::SendICMPPacketToIp6Resource { src, r_idx })
+fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
+    any::<sample::Index>().prop_map(move |r_idx| Transition::SendICMPPacketToIp6Resource { r_idx })
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
@@ -847,7 +1002,7 @@ where
     (
         id,
         any::<[u8; 32]>(),
-        firezone_relay::proptest::ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
+        firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         tunnel_ip4(),
@@ -878,7 +1033,7 @@ where
 fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
     (
         any::<u64>(),
-        firezone_relay::proptest::ip_stack(),
+        firezone_relay::proptest::dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         any::<u128>(),
     )
         .prop_map(|(seed, ip_stack, id)| SimRelay {
@@ -886,6 +1041,8 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             state: seed,
             ip_stack,
             span: error_span!("relay"),
+            allocations: HashSet::new(),
+            buffer: vec![0u8; (1 << 16) - 1],
         })
 }
 
@@ -961,8 +1118,8 @@ impl ReferenceStateMachine for ReferenceState {
             1 => add_cidr_resource,
             1 => tick,
             1 => icmp_to_random_ip(),
-            weight_ip4 => icmp_to_ipv4_cidr_resource(state.client.tunnel_ip4),
-            weight_ip6 => icmp_to_ipv6_cidr_resource(state.client.tunnel_ip6)
+            weight_ip4 => icmp_to_ipv4_cidr_resource(),
+            weight_ip6 => icmp_to_ipv6_cidr_resource()
         ]
         .boxed()
     }
@@ -975,16 +1132,16 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::AddCidrResource(r) => {
                 state.client_cidr_resources.insert(r.address, r.clone());
             }
-            Transition::SendICMPPacketToRandomIp { src, dst } => {
-                state.on_icmp_packet(*src, *dst);
+            Transition::SendICMPPacketToRandomIp { dst } => {
+                state.on_icmp_packet(state.client.tunnel_ip(*dst), *dst);
             }
-            Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
+            Transition::SendICMPPacketToIp4Resource { r_idx } => {
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(*src, dst);
+                state.on_icmp_packet(state.client.tunnel_ip4, dst);
             }
-            Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
+            Transition::SendICMPPacketToIp6Resource { r_idx } => {
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(*src, dst);
+                state.on_icmp_packet(state.client.tunnel_ip6, dst);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
         };
@@ -1011,26 +1168,27 @@ impl ReferenceStateMachine for ReferenceState {
                 true
             }
             Transition::Tick { .. } => true,
-            Transition::SendICMPPacketToRandomIp { src, dst } => {
-                src.is_ipv4() == dst.is_ipv4() && src != dst
-            }
-            Transition::SendICMPPacketToIp4Resource { src, r_idx } => {
+            Transition::SendICMPPacketToRandomIp { dst } => match dst {
+                IpAddr::V4(dst) => dst != &state.client.tunnel_ip4,
+                IpAddr::V6(dst) => dst != &state.client.tunnel_ip6,
+            },
+            Transition::SendICMPPacketToIp4Resource { r_idx } => {
                 if state.client_cidr_resources.len().0 == 0 {
                     return false;
                 }
 
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
 
-                src != &dst
+                state.client.tunnel_ip4 != dst
             }
-            Transition::SendICMPPacketToIp6Resource { src, r_idx } => {
+            Transition::SendICMPPacketToIp6Resource { r_idx } => {
                 if state.client_cidr_resources.len().1 == 0 {
                     return false;
                 }
 
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
 
-                src != &dst
+                state.client.tunnel_ip6 != dst
             }
         }
     }
@@ -1042,11 +1200,11 @@ enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
     /// Send a ICMP packet to random IP.
-    SendICMPPacketToRandomIp { src: IpAddr, dst: IpAddr },
+    SendICMPPacketToRandomIp { dst: IpAddr },
     /// Send a ICMP packet to an IPv4 resource.
-    SendICMPPacketToIp4Resource { src: Ipv4Addr, r_idx: sample::Index },
+    SendICMPPacketToIp4Resource { r_idx: sample::Index },
     /// Send a ICMP packet to an IPv6 resource.
-    SendICMPPacketToIp6Resource { src: Ipv6Addr, r_idx: sample::Index },
+    SendICMPPacketToIp6Resource { r_idx: sample::Index },
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
 }

@@ -68,7 +68,16 @@ pub fn nonce() -> impl Strategy<Value = Uuid> {
     any::<u128>().prop_map(Uuid::from_u128)
 }
 
-pub fn ip_stack() -> impl Strategy<Value = IpStack> {
+pub fn any_ip_stack() -> impl Strategy<Value = IpStack> {
+    (dual_ip_stack(), any::<u8>()).prop_map(|(ip_stack, mode)| match mode % 3 {
+        0 => IpStack::Ip4(*ip_stack.as_v4().unwrap()),
+        1 => IpStack::Ip6(*ip_stack.as_v6().unwrap()),
+        2 => ip_stack,
+        _ => unreachable!(),
+    })
+}
+
+pub fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
     (
         any::<Ipv4Addr>().prop_filter("must be normal ip", |ip| {
             !ip.is_broadcast()
@@ -80,12 +89,6 @@ pub fn ip_stack() -> impl Strategy<Value = IpStack> {
         any::<Ipv6Addr>().prop_filter("must be normal ip", |ip| {
             !ip.is_unspecified() && !ip.is_multicast()
         }),
-        any::<u8>(),
     )
-        .prop_map(|(ip4, ip6, mode)| match mode % 3 {
-            0 => IpStack::Ip4(ip4),
-            1 => IpStack::Ip6(ip6),
-            2 => IpStack::Dual { ip4, ip6 },
-            _ => unreachable!(),
-        })
+        .prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
 }
