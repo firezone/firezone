@@ -1618,12 +1618,13 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.9.3"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e853e3f6d4c6e52a4d73a94c1810c66ad71958fbe24934a7119b447f425aed76"
+checksum = "5cd50aea158e9a57c9c9075ca7a3dfa4c08d9a468b405832383876f9df85379b"
 dependencies = [
  "bytes",
  "octseq",
+ "pin-project-lite",
  "rand 0.8.5",
  "serde",
  "time",
@@ -4116,9 +4117,9 @@ dependencies = [
 
 [[package]]
 name = "octseq"
-version = "0.3.2"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d92b38a4aabbacf619b8083841713216e7668178422decfe06bbc70643024c5d"
+checksum = "2ed2eaec452d98ccc1c615dd843fd039d9445f2fb4da114ee7e6af5fcb68be98"
 dependencies = [
  "bytes",
  "serde",

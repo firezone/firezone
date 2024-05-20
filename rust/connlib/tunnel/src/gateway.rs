@@ -9,7 +9,7 @@ use connlib_shared::messages::{
     Answer, ClientId, ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer,
     Relay, RelayId, ResourceId,
 };
-use connlib_shared::{Callbacks, Dname, Error, Result, StaticSecret};
+use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_network::IpNetwork;
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -56,7 +56,7 @@ where
         client: PublicKey,
         ips: Vec<IpNetwork>,
         relays: Vec<Relay>,
-        domain: Option<Dname>,
+        domain: Option<DomainName>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> Result<ConnectionAccepted> {
@@ -119,7 +119,7 @@ where
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
-        domain: Option<Dname>,
+        domain: Option<DomainName>,
     ) -> Option<DomainResponse> {
         match (&domain, &resource) {
             (Some(domain), ResourceDescription::Dns(r)) => {
