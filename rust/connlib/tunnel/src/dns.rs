@@ -1,10 +1,10 @@
 use crate::client::DnsResource;
 use connlib_shared::messages::{client::ResourceDescriptionDns, DnsServer};
-use connlib_shared::Dname;
-use domain::base::RelativeDname;
+use connlib_shared::DomainName;
+use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, Question, ToDname,
+    Message, MessageBuilder, Question, ToName,
 };
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
@@ -151,7 +151,7 @@ pub(crate) fn create_local_answer<'a>(
                 .map(domain::rdata::A::new)
                 .collect(),
         ),
-        Rtype::Aaaa => RecordData::Aaaa(
+        Rtype::AAAA => RecordData::Aaaa(
             ips.iter()
                 .copied()
                 .filter_map(get_v6)
@@ -241,10 +241,10 @@ fn build_response(
 fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
-    resource: &Option<RecordData<Dname>>,
+    resource: &Option<RecordData<DomainName>>,
 ) -> Option<Vec<u8>>
 where
-    N: ToDname + ?Sized,
+    N: ToName + ?Sized,
 {
     let msg_buf = Vec::with_capacity(message.as_slice().len() * 2);
     let msg_builder = MessageBuilder::from_target(msg_buf).expect(
@@ -254,13 +254,13 @@ where
     let Some(resource) = resource else {
         return Some(
             msg_builder
-                .start_answer(message, Rcode::NXDomain)
+                .start_answer(message, Rcode::NXDOMAIN)
                 .ok()?
                 .finish(),
         );
     };
 
-    let mut answer_builder = msg_builder.start_answer(message, Rcode::NoError).ok()?;
+    let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
     answer_builder.header_mut().set_ra(true);
 
     // W/O object-safety there's no other way to access the inner type
@@ -269,11 +269,11 @@ where
     match resource {
         RecordData::A(r) => r
             .iter()
-            .try_for_each(|r| answer_builder.push((qname, Class::In, DNS_TTL, r))),
+            .try_for_each(|r| answer_builder.push((qname, Class::IN, DNS_TTL, r))),
         RecordData::Aaaa(r) => r
             .iter()
-            .try_for_each(|r| answer_builder.push((qname, Class::In, DNS_TTL, r))),
-        RecordData::Ptr(r) => answer_builder.push((qname, Class::In, DNS_TTL, r)),
+            .try_for_each(|r| answer_builder.push((qname, Class::IN, DNS_TTL, r))),
+        RecordData::Ptr(r) => answer_builder.push((qname, Class::IN, DNS_TTL, r)),
     }
     .ok()?;
 
@@ -294,9 +294,9 @@ enum RecordData<T> {
     Ptr(domain::rdata::Ptr<T>),
 }
 
-pub fn is_subdomain(name: &Dname, resource: &str) -> bool {
-    let question_mark = RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
-    let Ok(resource) = Dname::vec_from_str(resource) else {
+pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
+    let question_mark = RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
+    let Ok(resource) = DomainName::vec_from_str(resource) else {
         return false;
     };
 
@@ -306,7 +306,7 @@ pub fn is_subdomain(name: &Dname, resource: &str) -> bool {
             .is_some_and(|r| r == name || name.parent().is_some_and(|n| r == n));
     }
 
-    if resource.starts_with(&RelativeDname::wildcard_vec()) {
+    if resource.starts_with(&RelativeName::wildcard_vec()) {
         let Some(resource) = resource.parent() else {
             return false;
         };
@@ -317,7 +317,7 @@ pub fn is_subdomain(name: &Dname, resource: &str) -> bool {
 }
 
 fn get_description(
-    name: &Dname,
+    name: &DomainName,
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
 ) -> Option<ResourceDescriptionDns> {
     if let Some(resource) = dns_resources.get(&name.to_string()) {
@@ -325,11 +325,9 @@ fn get_description(
     }
 
     if let Some(resource) = dns_resources.get(
-        &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+        &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
             .ok()?
             .chain(name)
-            .ok()?
-            .to_dname::<Vec<_>>()
             .ok()?
             .to_string(),
     ) {
@@ -338,11 +336,9 @@ fn get_description(
 
     if let Some(parent) = name.parent() {
         if let Some(resource) = dns_resources.get(
-            &RelativeDname::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
+            &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
                 .ok()?
                 .chain(parent)
-                .ok()?
-                .to_dname::<Vec<_>>()
                 .ok()?
                 .to_string(),
         ) {
@@ -352,14 +348,7 @@ fn get_description(
 
     name.iter_suffixes().find_map(|n| {
         dns_resources
-            .get(
-                &RelativeDname::wildcard_vec()
-                    .chain(n)
-                    .ok()?
-                    .to_dname::<Vec<_>>()
-                    .ok()?
-                    .to_string(),
-            )
+            .get(&RelativeName::wildcard_vec().chain(n).ok()?.to_string())
             .cloned()
     })
 }
@@ -372,12 +361,12 @@ fn get_description(
 /// upstream (or system default) resolver.
 /// If we are connected to the Resource, the Client should reply immediately with the IP address(es) of the Resource.
 /// If we are not connected yet, the Client should defer the response and begin connecting.
-fn resource_from_question<N: ToDname>(
+fn resource_from_question<N: ToName>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     question: &Question<N>,
-) -> Option<ResolveStrategy<RecordData<Dname>, DnsQueryParams, DnsResource>> {
-    let name = ToDname::to_vec(question.qname());
+) -> Option<ResolveStrategy<RecordData<DomainName>, DnsQueryParams, DnsResource>> {
+    let name = ToName::to_vec(question.qname());
     let qtype = question.qtype();
 
     #[allow(clippy::wildcard_enum_match_arm)]
@@ -399,7 +388,7 @@ fn resource_from_question<N: ToDname>(
                     .collect(),
             )))
         }
-        Rtype::Aaaa => {
+        Rtype::AAAA => {
             let Some(description) = get_description(&name, dns_resources) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
@@ -416,7 +405,7 @@ fn resource_from_question<N: ToDname>(
                     .collect(),
             )))
         }
-        Rtype::Ptr => {
+        Rtype::PTR => {
             let Some(ip) = reverse_dns_addr(&name.to_string()) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
@@ -494,7 +483,7 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
 
 #[cfg(test)]
 mod test {
-    use connlib_shared::{messages::client::ResourceDescriptionDns, Dname};
+    use connlib_shared::{messages::client::ResourceDescriptionDns, DomainName};
 
     use crate::dns::is_subdomain;
 
@@ -611,7 +600,7 @@ mod test {
 
         assert_eq!(
             get_description(
-                &Dname::vec_from_str("a.foo.com").unwrap(),
+                &DomainName::vec_from_str("a.foo.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
@@ -620,7 +609,7 @@ mod test {
 
         assert_eq!(
             get_description(
-                &Dname::vec_from_str("foo.com").unwrap(),
+                &DomainName::vec_from_str("foo.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
@@ -629,7 +618,7 @@ mod test {
 
         assert_eq!(
             get_description(
-                &Dname::vec_from_str("a.b.foo.com").unwrap(),
+                &DomainName::vec_from_str("a.b.foo.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
@@ -637,7 +626,7 @@ mod test {
         );
 
         assert!(get_description(
-            &Dname::vec_from_str("oo.com").unwrap(),
+            &DomainName::vec_from_str("oo.com").unwrap(),
             &dns_resources_fixture,
         )
         .is_none(),);
@@ -649,7 +638,7 @@ mod test {
 
         assert_eq!(
             get_description(
-                &Dname::vec_from_str("a.bar.com").unwrap(),
+                &DomainName::vec_from_str("a.bar.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
@@ -658,7 +647,7 @@ mod test {
 
         assert_eq!(
             get_description(
-                &Dname::vec_from_str("bar.com").unwrap(),
+                &DomainName::vec_from_str("bar.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
@@ -666,7 +655,7 @@ mod test {
         );
 
         assert!(get_description(
-            &Dname::vec_from_str("a.b.bar.com").unwrap(),
+            &DomainName::vec_from_str("a.b.bar.com").unwrap(),
             &dns_resources_fixture,
         )
         .is_none(),);
@@ -678,7 +667,7 @@ mod test {
 
         assert_eq!(
             get_description(
-                &Dname::vec_from_str("baz.com").unwrap(),
+                &DomainName::vec_from_str("baz.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
@@ -686,13 +675,13 @@ mod test {
         );
 
         assert!(get_description(
-            &Dname::vec_from_str("a.baz.com").unwrap(),
+            &DomainName::vec_from_str("a.baz.com").unwrap(),
             &dns_resources_fixture,
         )
         .is_none());
 
         assert!(get_description(
-            &Dname::vec_from_str("a.b.baz.com").unwrap(),
+            &DomainName::vec_from_str("a.b.baz.com").unwrap(),
             &dns_resources_fixture,
         )
         .is_none(),);
@@ -701,22 +690,22 @@ mod test {
     #[test]
     fn exact_subdomain_match() {
         assert!(is_subdomain(
-            &Dname::vec_from_str("foo.com").unwrap(),
+            &DomainName::vec_from_str("foo.com").unwrap(),
             "foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("a.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.foo.com").unwrap(),
             "foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("a.b.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
             "foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("foo.com").unwrap(),
+            &DomainName::vec_from_str("foo.com").unwrap(),
             "a.foo.com"
         ));
     }
@@ -724,47 +713,47 @@ mod test {
     #[test]
     fn wildcard_subdomain_match() {
         assert!(is_subdomain(
-            &Dname::vec_from_str("foo.com").unwrap(),
+            &DomainName::vec_from_str("foo.com").unwrap(),
             "*.foo.com"
         ));
 
         assert!(is_subdomain(
-            &Dname::vec_from_str("a.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.foo.com").unwrap(),
             "*.foo.com"
         ));
 
         assert!(is_subdomain(
-            &Dname::vec_from_str("a.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.foo.com").unwrap(),
             "*.a.foo.com"
         ));
 
         assert!(is_subdomain(
-            &Dname::vec_from_str("b.a.foo.com").unwrap(),
+            &DomainName::vec_from_str("b.a.foo.com").unwrap(),
             "*.a.foo.com"
         ));
 
         assert!(is_subdomain(
-            &Dname::vec_from_str("a.b.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
             "*.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("afoo.com").unwrap(),
+            &DomainName::vec_from_str("afoo.com").unwrap(),
             "*.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("b.afoo.com").unwrap(),
+            &DomainName::vec_from_str("b.afoo.com").unwrap(),
             "*.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("bar.com").unwrap(),
+            &DomainName::vec_from_str("bar.com").unwrap(),
             "*.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("foo.com").unwrap(),
+            &DomainName::vec_from_str("foo.com").unwrap(),
             "*.a.foo.com"
         ));
     }
@@ -772,32 +761,32 @@ mod test {
     #[test]
     fn question_mark_subdomain_match() {
         assert!(is_subdomain(
-            &Dname::vec_from_str("foo.com").unwrap(),
+            &DomainName::vec_from_str("foo.com").unwrap(),
             "?.foo.com"
         ));
 
         assert!(is_subdomain(
-            &Dname::vec_from_str("a.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.foo.com").unwrap(),
             "?.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("a.b.foo.com").unwrap(),
+            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
             "?.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("bar.com").unwrap(),
+            &DomainName::vec_from_str("bar.com").unwrap(),
             "?.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("foo.com").unwrap(),
+            &DomainName::vec_from_str("foo.com").unwrap(),
             "?.a.foo.com"
         ));
 
         assert!(!is_subdomain(
-            &Dname::vec_from_str("afoo.com").unwrap(),
+            &DomainName::vec_from_str("afoo.com").unwrap(),
             "?.foo.com"
         ));
     }
