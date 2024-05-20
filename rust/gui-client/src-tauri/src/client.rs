@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Args, Parser};
 use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
@@ -10,6 +10,7 @@ mod debug_commands;
 mod deep_link;
 mod elevation;
 mod gui;
+mod ipc;
 mod logging;
 mod network_changes;
 mod resolvers;
@@ -17,9 +18,6 @@ mod settings;
 mod updates;
 mod uptime;
 mod welcome;
-
-#[cfg(target_os = "windows")]
-mod wintun_install;
 
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
@@ -66,14 +64,10 @@ pub(crate) fn run() -> Result<()> {
 
     match cli.command {
         None => {
-            match elevation::check() {
-                // We're already elevated, just run the GUI
+            match elevation::is_normal_user() {
+                // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
-                Ok(false) => {
-                    // We're not elevated, ask Powershell to re-launch us, then exit. On Linux this is completely different.
-                    elevation::elevate()?;
-                    Ok(())
-                }
+                Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
                     show_error_dialog(&error)?;
                     Err(error.into())
@@ -92,8 +86,7 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
-            // Check for elevation. This also ensures wintun.dll is installed.
-            if !elevation::check()? {
+            if !elevation::is_normal_user()? {
                 anyhow::bail!("`smoke-test` failed its elevation check");
             }
 

@@ -8,7 +8,7 @@ mod imp {
     use std::net::IpAddr;
 
     pub fn get() -> Result<Vec<IpAddr>> {
-        firezone_headless_client::imp::get_system_default_resolvers_systemd_resolved()
+        firezone_headless_client::platform::get_system_default_resolvers_systemd_resolved()
     }
 }
 
@@ -28,6 +28,6 @@ mod imp {
     use std::net::IpAddr;
 
     pub fn get() -> Result<Vec<IpAddr>> {
-        firezone_headless_client::imp::system_resolvers()
+        firezone_headless_client::platform::system_resolvers()
     }
 }

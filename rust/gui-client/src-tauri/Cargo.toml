@@ -32,7 +32,6 @@ native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
 reqwest = { version = "0.12.4", default-features = false, features = ["stream", "rustls-tls"] }
-ring = "0.17"
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
@@ -44,6 +43,7 @@ tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.36.0", features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
+tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-panic = "0.1.2"
@@ -55,7 +55,6 @@ zip = { version = "1.2.3", features = ["deflate", "time"], default-features = fa
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 nix = { version =  "0.28.0", features = ["user"] }
-tokio-util = { version = "0.7.11", features = ["codec"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
@@ -74,15 +73,11 @@ features = [
   "Win32_Foundation",
   # For listening for network change events
   "Win32_Networking_NetworkListManager",
-  # For deep_link module
-  "Win32_Security",
   # COM is needed to listen for network change events
   "Win32_System_Com",
   # Needed to listen for system DNS changes
   "Win32_System_Registry",
   "Win32_System_Threading",
-  # For deep_link module
-  "Win32_System_SystemServices",
 ]
 
 [features]

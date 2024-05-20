@@ -5,9 +5,8 @@ use super::FZ_SCHEME;
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 use secrecy::Secret;
-use std::{ffi::c_void, io, path::Path};
+use std::{io, path::Path};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
-use windows::Win32::Security as WinSec;
 
 /// A server for a named pipe, so we can receive deep links from other instances
 /// of the client launched by web browsers
@@ -32,40 +31,8 @@ impl Server {
         let mut server_options = named_pipe::ServerOptions::new();
         server_options.first_pipe_instance(true);
 
-        // This will allow non-admin clients to connect to us even if we're running as admin
-        let mut sd = WinSec::SECURITY_DESCRIPTOR::default();
-        let psd = WinSec::PSECURITY_DESCRIPTOR(&mut sd as *mut _ as *mut c_void);
-        // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
-        // or lifetime problems because we only pass pointers to our local vars to
-        // Win32, and Win32 shouldn't save them anywhere.
-        unsafe {
-            // ChatGPT pointed me to these functions, it's better than the official MS docs
-            WinSec::InitializeSecurityDescriptor(
-                psd,
-                windows::Win32::System::SystemServices::SECURITY_DESCRIPTOR_REVISION,
-            )
-            .context("InitializeSecurityDescriptor failed")?;
-            WinSec::SetSecurityDescriptorDacl(psd, true, None, false)
-                .context("SetSecurityDescriptorDacl failed")?;
-        }
-
-        let mut sa = WinSec::SECURITY_ATTRIBUTES {
-            // TODO: Try `size_of_val` here instead
-            nLength: std::mem::size_of::<WinSec::SECURITY_ATTRIBUTES>()
-                .try_into()
-                .unwrap(),
-            lpSecurityDescriptor: psd.0,
-            bInheritHandle: false.into(),
-        };
-
-        // TODO: On the IPC branch I found that this will cause prefix issues
-        // with other named pipes. Change it.
-        let path = named_pipe_path(BUNDLE_ID);
-        let sa_ptr = &mut sa as *mut _ as *mut c_void;
-        // SAFETY: Unsafe needed to call Win32 API. There shouldn't be any threading
-        // or lifetime problems because we only pass pointers to our local vars to
-        // Win32, and Win32 shouldn't save them anywhere.
-        let server = unsafe { server_options.create_with_security_attributes_raw(path, sa_ptr) }
+        let server = server_options
+            .create(pipe_path())
             .map_err(|_| super::Error::CantListen)?;
 
         tracing::debug!("server is bound");
@@ -101,15 +68,18 @@ impl Server {
 
 /// Open a deep link by sending it to the already-running instance of the app
 pub async fn open(url: &url::Url) -> Result<()> {
-    let path = named_pipe_path(BUNDLE_ID);
     let mut client = named_pipe::ClientOptions::new()
-        .open(path)
+        .open(pipe_path())
         .context("Couldn't connect to named pipe server")?;
     client
         .write_all(url.as_str().as_bytes())
         .await
         .context("Couldn't write bytes to named pipe server")?;
     Ok(())
+}
+
+fn pipe_path() -> String {
+    firezone_headless_client::platform::named_pipe_path(&format!("{BUNDLE_ID}.deep_link"))
 }
 
 /// Registers the current exe as the handler for our deep link scheme.
@@ -146,24 +116,4 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
 
     Ok(())
-}
-
-/// Returns a valid name for a Windows named pipe
-///
-/// # Arguments
-///
-/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
-fn named_pipe_path(id: &str) -> String {
-    format!(r"\\.\pipe\{}", id)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn named_pipe_path() {
-        assert_eq!(
-            super::named_pipe_path("dev.firezone.client"),
-            r"\\.\pipe\dev.firezone.client"
-        );
-    }
 }

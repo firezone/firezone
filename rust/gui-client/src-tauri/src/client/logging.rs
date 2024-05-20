@@ -49,7 +49,7 @@ pub(crate) enum Error {
 
 /// Set up logs after the process has started
 pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
-    let log_path = app_log_path()?.src;
+    let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
@@ -71,17 +71,6 @@ pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
         _logger: logger,
         _reloader: reloader,
     })
-}
-
-/// Sets up logging for stderr only, with INFO level by default
-pub(crate) fn debug_command_setup() -> Result<(), Error> {
-    let filter = EnvFilter::builder()
-        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
-        .from_env_lossy();
-    let layer = fmt::layer().with_filter(filter);
-    let subscriber = Registry::default().with(layer);
-    set_global_default(subscriber)?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -221,34 +210,16 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
     Ok(file_count)
 }
 
-#[cfg(target_os = "linux")]
 fn log_paths() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            // TODO: This is magic, it must match the systemd file
-            src: PathBuf::from("/var/log").join(connlib_shared::BUNDLE_ID),
+            src: firezone_headless_client::known_dirs::ipc_service_logs()
+                .context("Can't compute IPC service logs dir")?,
             dst: PathBuf::from("connlib"),
         },
-        app_log_path()?,
+        LogPath {
+            src: known_dirs::logs().context("Can't compute app log dir")?,
+            dst: PathBuf::from("app"),
+        },
     ])
-}
-
-/// Windows doesn't have separate connlib logs until #3712 merges
-#[cfg(not(target_os = "linux"))]
-fn log_paths() -> Result<Vec<LogPath>> {
-    Ok(vec![app_log_path()?])
-}
-
-/// Log dir for just the GUI app
-///
-/// e.g. `$HOME/.cache/dev.firezone.client/data/logs`
-/// or `%LOCALAPPDATA%/dev.firezone.client/data/logs`
-///
-/// On Windows this also happens to contain the connlib logs,
-/// until #3712 merges
-fn app_log_path() -> Result<LogPath> {
-    Ok(LogPath {
-        src: known_dirs::logs().context("Can't compute app log dir")?,
-        dst: PathBuf::from("app"),
-    })
 }
