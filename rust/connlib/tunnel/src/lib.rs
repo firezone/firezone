@@ -6,6 +6,7 @@
 use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
+    callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
     Callbacks, Result,
 };
@@ -118,13 +119,7 @@ where
                 self.device_read_buf.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
-                    let resources_updated = self.role_state.handle_timeout(timeout);
-
-                    if resources_updated {
-                        self.callbacks
-                            .on_update_resources(self.role_state.resources());
-                    }
-
+                    self.role_state.handle_timeout(timeout);
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
@@ -261,6 +256,10 @@ pub enum ClientEvent {
     },
     RefreshResources {
         connections: Vec<ReuseConnection>,
+    },
+    /// The list of resources has changed and UI clients may have to be updated.
+    ResourcesChanged {
+        resources: Vec<callbacks::ResourceDescription>,
     },
 }
 
