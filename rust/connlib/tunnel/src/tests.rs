@@ -2,7 +2,7 @@ use crate::{ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
-        client::{ResourceDescription, ResourceDescriptionCidr},
+        client::{ResourceDescription, ResourceDescriptionCidr, SiteId},
         gateway, ClientId, GatewayId, RelayId, ResourceId,
     },
     proptest::cidr_resource,
@@ -55,6 +55,7 @@ struct TunnelTest {
     client: SimNode<ClientId, ClientState>,
     gateway: SimNode<GatewayId, GatewayState>,
     relay: SimRelay<firezone_relay::Server<StdRng>>,
+    portal: SimPortal,
 
     client_span: Span,
     gateway_span: Span,
@@ -86,6 +87,30 @@ struct SimRelay<S> {
     state: S,
 
     ip_stack: firezone_relay::IpStack,
+}
+
+/// Stub implementation of the portal.
+///
+/// Currently, we only simulate a connection between a single client and a single gateway on a single site.
+#[derive(Debug, Clone)]
+struct SimPortal {
+    _client: ClientId,
+    gateway: GatewayId,
+    _relay: RelayId,
+    site: SiteId,
+}
+
+impl SimPortal {
+    /// Picks, which gateway and site we should connect to for the given resource.
+    fn handle_connection_intent(
+        &self,
+        _resource: ResourceId,
+        _connected_gateway_ids: HashSet<GatewayId>,
+    ) -> (GatewayId, SiteId) {
+        // TODO: Should we somehow vary how many gateways we connect to?
+
+        (self.gateway, self.site)
+    }
 }
 
 impl<ID, S> SimNode<ID, S> {
@@ -181,6 +206,7 @@ struct ReferenceState {
     client: SimNode<ClientId, [u8; 32]>,
     gateway: SimNode<GatewayId, [u8; 32]>,
     relay: SimRelay<u64>,
+    site: SiteId,
 
     /// Which resources the clients is aware of.
     client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
@@ -224,11 +250,19 @@ impl StateMachineTest for TunnelTest {
             ref_state.now,
         );
 
+        let portal = SimPortal {
+            _client: client.id,
+            gateway: gateway.id,
+            _relay: relay.id,
+            site: ref_state.site,
+        };
+
         Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
             client,
             gateway,
+            portal,
             logger: tracing_subscriber::fmt()
                 .with_test_writer()
                 .with_env_filter("debug,str0m=trace")
@@ -571,16 +605,23 @@ impl TunnelTest {
             ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
                 .gateway_span
                 .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
-            ClientEvent::ConnectionIntent { resource, .. } => {
-                // TODO: Should we somehow vary how many gateways we connect to?
+            ClientEvent::ConnectionIntent {
+                resource,
+                connected_gateway_ids,
+            } => {
+                let (gateway, site) = self
+                    .portal
+                    .handle_connection_intent(resource, connected_gateway_ids);
+
+                // TODO: All of the below should be somehow encapsulated in `SimPortal`.
 
                 let request = self
                     .client_span
                     .in_scope(|| {
                         self.client.state.create_or_reuse_connection(
                             resource,
-                            self.gateway.id,
-                            todo!(),
+                            gateway,
+                            site,
                             HashSet::default(),
                             HashSet::default(),
                         )
@@ -734,6 +775,10 @@ fn gateway_id() -> impl Strategy<Value = GatewayId> {
     (any::<u128>()).prop_map(GatewayId::from_u128)
 }
 
+fn site_id() -> impl Strategy<Value = SiteId> {
+    (any::<u128>()).prop_map(SiteId::from_u128)
+}
+
 /// Generates an IPv4 address for the tunnel interface.
 ///
 /// We use the CG-NAT range for IPv4.
@@ -814,16 +859,17 @@ impl ReferenceStateMachine for ReferenceState {
             sim_node_prototype(client_id()),
             sim_node_prototype(gateway_id()),
             sim_relay_prototype(),
+            site_id(),
             Just(Instant::now()),
             Just(Utc::now()),
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _)| c.state != g.state,
+                |(c, g, _, _, _, _)| c.state != g.state,
             )
             .prop_filter(
                 "viable network path must exist",
-                |(client, gateway, relay, _, _)| {
+                |(client, gateway, relay, __, _, _)| {
                     if client.ip4_socket.is_some()
                         && relay.ip_stack.as_v4().is_none()
                         && gateway.ip4_socket.is_none()
@@ -841,7 +887,7 @@ impl ReferenceStateMachine for ReferenceState {
                     true
                 },
             )
-            .prop_map(|(client, gateway, relay, now, utc_now)| Self {
+            .prop_map(|(client, gateway, relay, site, now, utc_now)| Self {
                 now,
                 utc_now,
                 client,
@@ -850,6 +896,7 @@ impl ReferenceStateMachine for ReferenceState {
                 client_cidr_resources: IpNetworkTable::new(),
                 connected_resources: Default::default(),
                 gateway_received_icmp_packets: Default::default(),
+                site,
             })
             .boxed()
     }
