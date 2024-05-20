@@ -218,6 +218,28 @@ Global:
 Link 2 (enp0s6): 10.0.2.3 fec0::3
 ```
 
+### Check if Firezone is controlling DNS with `/etc/resolv.conf`
+
+Firezone Split DNS:
+
+```
+# BEGIN Firezone DNS configuration
+# If you modify this file, delete the above magic header line so that Firezone will
+# obey your new default DNS config.
+# If you see this text and Firezone is not running, then the last run of Firezone crashed.
+# The original `resolv.conf` is backed up at /etc/resolv.conf.before-firezone
+nameserver 100.100.111.1
+search .
+options edns0
+options trust-ad
+```
+
+Normal system DNS:
+
+```
+nameserver 192.168.1.1
+```
+
 ### Check if Firezone is being used
 
 Check if `curl` reports a remote IP in Firezone's range when you connect to a resource:
