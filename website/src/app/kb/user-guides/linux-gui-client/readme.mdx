@@ -145,7 +145,7 @@ automatically revert DNS to the system defaults when you quit the Firezone GUI, 
 destroys the `tun-firezone` virtual network interface.
 
 If the network interface stays up and DNS does not revert, you can try restarting
-the IPC service:
+the tunnel service. Quit the Firezone GUI, then run:
 
 ```bash
 sudo systemctl restart firezone-client-ipc
