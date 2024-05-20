@@ -461,6 +461,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         .await
         .map_err(|_| Error::ResolvectlFailed)?;
     if !status.success() {
+        tracing::error!("`resolvectl dns` failed");
         return Err(Error::ResolvectlFailed);
     }
 
@@ -472,6 +473,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         .await
         .map_err(|_| Error::ResolvectlFailed)?;
     if !status.success() {
+        tracing::error!("`resolvectl domain` failed");
         return Err(Error::ResolvectlFailed);
     }
 
