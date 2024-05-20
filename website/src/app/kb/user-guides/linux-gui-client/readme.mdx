@@ -31,6 +31,7 @@ Run these commands:
 
 ```bash
 # Install the package
+# The leading `./` is needed so `apt-get` can tell this is a local file
 sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb
 
 # Add yourself to the `firezone-client` group so you can use the tunnel service
@@ -44,18 +45,18 @@ reboot
 
 ### Signing in
 
-1. Start the GUI from your desktop environment's application
-menu or by running `firezone-client-gui` from an interactive shell.
-1. At the Welcome screen, click "Sign in". This will open the Firezone sign-in page in your default web browser.
+1. Start the GUI by running `firezone-client-gui` from your desktop environment's application
+menu or from an interactive shell.
+1. At the Welcome screen, click `Sign in`. This will open the Firezone sign-in page in your default web browser.
 1. Sign in using your account slug and identity provider
-1. On the first run, check "Always allow" to allow your web browser to sign in to Firezone, then click "Open"
+1. On the first run, check `Always allow` to allow your web browser to sign in to Firezone, then click `Open` or `Open link`
 1. Unlock your desktop's keyring, or create one if needed.
 Most desktops, including GNOME, encrypt the keyring with your login password, so your Firezone
 token is encrypted at rest.
-1. When you see the "Firezone connected" notification, the tunnel is ready.
+1. When you see the `Firezone connected` notification, the tunnel is ready.
 
-The Welcome screen only appears for your first sign-in. After that,
-you can use the tray menu to sign in.
+The Welcome screen only appears during your first sign-in. After that,
+you can click on the Firezone icon in the system tray to open the tray menu and sign in.
 
 ### Accessing a Resource
 
@@ -74,7 +75,7 @@ so it will sign in automatically next time you open the GUI.
 ### Signing out
 
 1. Click on the Firezone tray icon to open the menu.
-1. Click "Sign out".
+1. Click `Sign out`.
 
 The tunnel is now stopped until you sign in again.
 
@@ -92,8 +93,8 @@ transmitted anywhere. If you encounter a bug, sending us a zip archive of your l
 To export your logs as a zip archive, or clear your log directory:
 
 1. Click on the Firezone tray icon to open the menu.
-1. Click "Settings".
-1. Click "Diagnostic Logs".
+1. Click `Settings`.
+1. Click `Diagnostic Logs`.
 
 ## Uninstalling
 
