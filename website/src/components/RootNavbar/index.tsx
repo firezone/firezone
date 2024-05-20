@@ -192,8 +192,8 @@ export default function RootNavbar() {
                 />
               </span>
             </Link>
-            <RequestDemoButton />
             <SignUpButton />
+            <RequestDemoButton />
           </div>
         </div>
       </nav>
