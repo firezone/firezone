@@ -808,17 +808,19 @@ where
     (
         id,
         any::<[u8; 32]>(),
-        any::<Option<SocketAddrV4>>(),
-        any::<Option<SocketAddrV6>>(),
+        firezone_relay::proptest::ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
+        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
+        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         tunnel_ip4(),
         tunnel_ip6(),
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(id, key, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)| {
-                if ip4_socket.is_none() && ip6_socket.is_none() {
-                    return None;
-                };
+            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
+                let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
+                let ip6_socket = ip_stack
+                    .as_v6()
+                    .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
 
                 Some(SimNode {
                     id,

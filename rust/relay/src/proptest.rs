@@ -69,12 +69,23 @@ pub fn nonce() -> impl Strategy<Value = Uuid> {
 }
 
 pub fn ip_stack() -> impl Strategy<Value = IpStack> {
-    (any::<Ipv4Addr>(), any::<Ipv6Addr>(), any::<u8>()).prop_map(|(ip4, ip6, mode)| {
-        match mode % 3 {
+    (
+        any::<Ipv4Addr>().prop_filter("must be normal ip", |ip| {
+            !ip.is_broadcast()
+                && !ip.is_unspecified()
+                && !ip.is_documentation()
+                && !ip.is_link_local()
+                && !ip.is_multicast()
+        }),
+        any::<Ipv6Addr>().prop_filter("must be normal ip", |ip| {
+            !ip.is_unspecified() && !ip.is_multicast()
+        }),
+        any::<u8>(),
+    )
+        .prop_map(|(ip4, ip6, mode)| match mode % 3 {
             0 => IpStack::Ip4(ip4),
             1 => IpStack::Ip6(ip6),
             2 => IpStack::Dual { ip4, ip6 },
             _ => unreachable!(),
-        }
-    })
+        })
 }
