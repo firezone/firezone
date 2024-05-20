@@ -198,15 +198,15 @@ fix the bug.
 resolvectl dns
 ```
 
-Firezone Split DNS example:
+Firezone Split DNS:
 
 ```
 Global:
 Link 2 (enp0s6): 10.0.2.3 fec0::3
-Link 3 (tun-firezone: 100.100.111.1) fd00:2021:1111:8000:100:100:111:0
+Link 3 (tun-firezone): 100.100.111.1 fd00:2021:1111:8000:100:100:111:0
 ```
 
-Normal DNS example:
+Normal system DNS:
 
 ```
 Global:
@@ -224,12 +224,18 @@ Check if `curl` reports a remote IP in Firezone's range when you connect to a re
 
 Firezone resources use the ranges `100.96.0.0/11` and `fd00:2021:1111:8000::/107`.
 
-### Check if Firezone failed to revert DNS control
+### Revert `/etc/resolv.conf` DNS control
 
 The `systemd-resolved` method reverts by itself when Firezone closes.
 However, the `etc-resolv-conf` method can fail to revert if Firezone crashes.
 
-TODO
+Starting and stopping Firezone gracefully will cause it to try reverting `/etc/resolv.conf`.
+
+You can manually revert with:
+
+```bash
+sudo mv /etc/resolv.conf.before-firezone /etc/resolv.conf
+```
 
 ## Known issues
 

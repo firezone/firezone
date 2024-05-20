@@ -102,7 +102,53 @@ To export your logs as a zip archive, or clear your log directory:
 
 ## Troubleshooting
 
-TODO (reverting DNS, check if DNS is controlled)
+### Check if `systemd-resolved` is enabled
+
+```bash
+systemctl status systemd-resolved
+stat /etc/resolv.conf
+```
+
+`systemctl` should show that `systemd-resolved` is `enabled` and `active (running)`.
+
+`stat` should show that `resolv.conf` is a symlink to `stub-resolv.conf`: `File: /etc/resolv.conf -> ../run/systemd/resolve/stub-resolv.conf`
+
+If `systemd-resolved` is not running, or the symlink is not set up, Firezone may
+not be able to start, or may not be able to access DNS resources.
+
+### Check if Firezone is controlling DNS
+
+```bash
+resolvectl dns
+```
+
+Firezone Split DNS:
+
+```
+Global:
+Link 2 (enp0s6): 10.0.2.3 fec0::3
+Link 3 (tun-firezone): 100.100.111.1 fd00:2021:1111:8000:100:100:111:0
+```
+
+Normal system DNS:
+
+```
+Global:
+Link 2 (enp0s6): 10.0.2.3 fec0::3
+```
+
+### Revert Firezone DNS control
+
+The Firezone GUI Client for Linux uses `systemd-resolved` to control DNS, which will
+automatically revert DNS to the system defaults when you quit the Firezone GUI, which
+destroys the `tun-firezone` virtual network interface.
+
+If the network interface stays up and DNS does not revert, you can try restarting
+the IPC service:
+
+```bash
+sudo systemctl restart firezone-client-ipc
+```
 
 ## Known issues
 
@@ -112,6 +158,5 @@ disable DNS-over-HTTPS if you're experiencing issues connecting to DNS Resources
 within your browser.
 - After clearing diagnostic logs, no more logs are written until the GUI and tunnel service each restart. [#4764](https://github.com/firezone/firezone/issues/4764)
 - The GUI Client does not run on Ubuntu 24.04 yet [#4883](https://github.com/firezone/firezone/issues/4883)
-- If Firezone is signed in, then closed and re-opened, and you cancel unlocking your keyring, Firezone won't start. [#5016](https://github.com/firezone/firezone/issues/5016)
 
 <SupportOptions />
