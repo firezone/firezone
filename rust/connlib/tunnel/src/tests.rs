@@ -69,6 +69,281 @@ struct TunnelTest {
     buffered_transmits: VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
 }
 
+/// The reference state machine of the tunnel.
+///
+/// This is the "expected" part of our test.
+#[derive(Clone, Debug)]
+struct ReferenceState {
+    now: Instant,
+    utc_now: DateTime<Utc>,
+    client: SimNode<ClientId, [u8; 32]>,
+    gateway: SimNode<GatewayId, [u8; 32]>,
+    relay: SimRelay<u64>,
+
+    /// Which resources the clients is aware of.
+    client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// The IP ranges we are connected to.
+    connected_resources: IpNetworkTable<()>,
+
+    gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
+}
+
+impl StateMachineTest for TunnelTest {
+    type SystemUnderTest = Self;
+    type Reference = ReferenceState;
+
+    // Initialize the system under test from our reference state.
+    fn init_test(
+        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
+    ) -> Self::SystemUnderTest {
+        let mut client = ref_state
+            .client
+            .map_state(|key| ClientState::new(StaticSecret::from(key)));
+        let mut gateway = ref_state
+            .gateway
+            .map_state(|key| GatewayState::new(StaticSecret::from(key)));
+        let relay = SimRelay {
+            state: firezone_relay::Server::new(
+                ref_state.relay.ip_stack,
+                rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
+                49152,
+                65535,
+            ),
+            ip_stack: ref_state.relay.ip_stack,
+            id: ref_state.relay.id,
+            span: error_span!("relay"),
+            allocations: ref_state.relay.allocations.clone(),
+            buffer: ref_state.relay.buffer.clone(),
+        };
+        client.state.update_relays(
+            HashSet::default(),
+            HashSet::from([relay.explode("client")]),
+            ref_state.now,
+        );
+        gateway.state.update_relays(
+            HashSet::default(),
+            HashSet::from([relay.explode("gateway")]),
+            ref_state.now,
+        );
+
+        let portal = SimPortal {
+            _client: client.id,
+            gateway: gateway.id,
+            _relay: relay.id,
+        };
+
+        Self {
+            now: ref_state.now,
+            utc_now: ref_state.utc_now,
+            client,
+            gateway,
+            portal,
+            logger: tracing_subscriber::fmt()
+                .with_test_writer()
+                .with_env_filter(EnvFilter::from_default_env())
+                .finish()
+                .set_default(),
+            buffer: Box::new([0u8; 10_000]),
+            client_received_packets: Default::default(),
+            gateway_received_icmp_packets: Default::default(),
+            relay,
+            buffered_transmits: Default::default(),
+        }
+    }
+
+    // Apply a generated state transition to our system under test and assert against the reference state machine.
+    fn apply(
+        mut state: Self::SystemUnderTest,
+        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
+        transition: <Self::Reference as ReferenceStateMachine>::Transition,
+    ) -> Self::SystemUnderTest {
+        // 1. Apply the transition
+        match transition {
+            Transition::AddCidrResource(r) => {
+                state.client.span.in_scope(|| {
+                    state
+                        .client
+                        .state
+                        .add_resources(&[ResourceDescription::Cidr(r)]);
+                });
+            }
+            Transition::SendICMPPacketToRandomIp { dst } => {
+                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip(dst), dst);
+            }
+            Transition::SendICMPPacketToIp4Resource { r_idx } => {
+                let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
+
+                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip4, dst);
+            }
+            Transition::SendICMPPacketToIp6Resource { r_idx } => {
+                let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
+
+                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip6, dst);
+            }
+            Transition::Tick { millis } => {
+                state.now += Duration::from_millis(millis);
+            }
+        };
+
+        // 2. Advance all states as far as possible
+        state.advance(ref_state);
+
+        // 3. Assert expected state
+        assert_eq!(
+            state.gateway_received_icmp_packets,
+            ref_state.gateway_received_icmp_packets
+        );
+
+        state
+    }
+}
+
+/// Implementation of our reference state machine.
+///
+/// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
+/// Care has to be taken that we don't implement things in a buggy way here.
+/// After all, if your test has bugs, it won't catch any in the actual implementation.
+impl ReferenceStateMachine for ReferenceState {
+    type State = Self;
+    type Transition = Transition;
+
+    fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
+        (
+            sim_node_prototype(client_id(), error_span!("client")),
+            sim_node_prototype(gateway_id(), error_span!("gateway")),
+            sim_relay_prototype(),
+            Just(Instant::now()),
+            Just(Utc::now()),
+        )
+            .prop_filter(
+                "client and gateway priv key must be different",
+                |(c, g, _, _, _)| c.state != g.state,
+            )
+            .prop_filter(
+                "viable network path must exist",
+                |(client, gateway, relay, __, _)| {
+                    if client.ip4_socket.is_some()
+                        && relay.ip_stack.as_v4().is_none()
+                        && gateway.ip4_socket.is_none()
+                    {
+                        return false;
+                    }
+
+                    if client.ip6_socket.is_some()
+                        && relay.ip_stack.as_v6().is_none()
+                        && gateway.ip6_socket.is_none()
+                    {
+                        return false;
+                    }
+
+                    true
+                },
+            )
+            .prop_map(|(client, gateway, relay, now, utc_now)| Self {
+                now,
+                utc_now,
+                client,
+                gateway,
+                relay,
+                client_cidr_resources: IpNetworkTable::new(),
+                connected_resources: Default::default(),
+                gateway_received_icmp_packets: Default::default(),
+            })
+            .boxed()
+    }
+
+    /// Defines the [`Strategy`] on how we can [transition](Transition) from the current [`ReferenceState`].
+    ///
+    /// This is invoked by proptest repeatedly to explore further state transitions.
+    /// Here, we should only generate [`Transition`]s that make sense for the current state.
+    fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
+        let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
+        let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
+
+        let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
+
+        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 3 };
+        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 3 };
+
+        // Note: We use weighted strategies here to conditionally only include the ICMP strategies if we have a resource.
+        prop_oneof![
+            1 => add_cidr_resource,
+            1 => tick,
+            1 => icmp_to_random_ip(),
+            weight_ip4 => icmp_to_ipv4_cidr_resource(),
+            weight_ip6 => icmp_to_ipv6_cidr_resource()
+        ]
+        .boxed()
+    }
+
+    /// Apply the transition to our reference state.
+    ///
+    /// Here is where we implement the "expected" logic.
+    fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+        match transition {
+            Transition::AddCidrResource(r) => {
+                state.client_cidr_resources.insert(r.address, r.clone());
+            }
+            Transition::SendICMPPacketToRandomIp { dst } => {
+                state.on_icmp_packet(state.client.tunnel_ip(*dst), *dst);
+            }
+            Transition::SendICMPPacketToIp4Resource { r_idx } => {
+                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
+                state.on_icmp_packet(state.client.tunnel_ip4, dst);
+            }
+            Transition::SendICMPPacketToIp6Resource { r_idx } => {
+                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
+                state.on_icmp_packet(state.client.tunnel_ip6, dst);
+            }
+            Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
+        };
+
+        state
+    }
+
+    /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
+    fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
+        match transition {
+            Transition::AddCidrResource(r) => {
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                if r.address.is_ipv6() && state.gateway.ip6_socket.is_none() {
+                    return false;
+                }
+
+                if r.address.is_ipv4() && state.gateway.ip4_socket.is_none() {
+                    return false;
+                }
+
+                true
+            }
+            Transition::Tick { .. } => true,
+            Transition::SendICMPPacketToRandomIp { dst } => match dst {
+                IpAddr::V4(dst) => dst != &state.client.tunnel_ip4,
+                IpAddr::V6(dst) => dst != &state.client.tunnel_ip6,
+            },
+            Transition::SendICMPPacketToIp4Resource { r_idx } => {
+                if state.client_cidr_resources.len().0 == 0 {
+                    return false;
+                }
+
+                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
+
+                state.client.tunnel_ip4 != dst
+            }
+            Transition::SendICMPPacketToIp6Resource { r_idx } => {
+                if state.client_cidr_resources.len().1 == 0 {
+                    return false;
+                }
+
+                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
+
+                state.client.tunnel_ip6 != dst
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct SimNode<ID, S> {
     id: ID,
@@ -360,135 +635,6 @@ impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
             .field("allocations", &self.allocations)
             .field("span", &self.span)
             .finish_non_exhaustive()
-    }
-}
-
-/// The reference state machine of the tunnel.
-///
-/// This is the "expected" part of our test.
-#[derive(Clone, Debug)]
-struct ReferenceState {
-    now: Instant,
-    utc_now: DateTime<Utc>,
-    client: SimNode<ClientId, [u8; 32]>,
-    gateway: SimNode<GatewayId, [u8; 32]>,
-    relay: SimRelay<u64>,
-
-    /// Which resources the clients is aware of.
-    client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    /// The IP ranges we are connected to.
-    connected_resources: IpNetworkTable<()>,
-
-    gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
-}
-
-impl StateMachineTest for TunnelTest {
-    type SystemUnderTest = Self;
-    type Reference = ReferenceState;
-
-    // Initialize the system under test from our reference state.
-    fn init_test(
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) -> Self::SystemUnderTest {
-        let mut client = ref_state
-            .client
-            .map_state(|key| ClientState::new(StaticSecret::from(key)));
-        let mut gateway = ref_state
-            .gateway
-            .map_state(|key| GatewayState::new(StaticSecret::from(key)));
-        let relay = SimRelay {
-            state: firezone_relay::Server::new(
-                ref_state.relay.ip_stack,
-                rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
-                49152,
-                65535,
-            ),
-            ip_stack: ref_state.relay.ip_stack,
-            id: ref_state.relay.id,
-            span: error_span!("relay"),
-            allocations: ref_state.relay.allocations.clone(),
-            buffer: ref_state.relay.buffer.clone(),
-        };
-        client.state.update_relays(
-            HashSet::default(),
-            HashSet::from([relay.explode("client")]),
-            ref_state.now,
-        );
-        gateway.state.update_relays(
-            HashSet::default(),
-            HashSet::from([relay.explode("gateway")]),
-            ref_state.now,
-        );
-
-        let portal = SimPortal {
-            _client: client.id,
-            gateway: gateway.id,
-            _relay: relay.id,
-        };
-
-        Self {
-            now: ref_state.now,
-            utc_now: ref_state.utc_now,
-            client,
-            gateway,
-            portal,
-            logger: tracing_subscriber::fmt()
-                .with_test_writer()
-                .with_env_filter(EnvFilter::from_default_env())
-                .finish()
-                .set_default(),
-            buffer: Box::new([0u8; 10_000]),
-            client_received_packets: Default::default(),
-            gateway_received_icmp_packets: Default::default(),
-            relay,
-            buffered_transmits: Default::default(),
-        }
-    }
-
-    // Apply a generated state transition to our system under test and assert against the reference state machine.
-    fn apply(
-        mut state: Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-        transition: <Self::Reference as ReferenceStateMachine>::Transition,
-    ) -> Self::SystemUnderTest {
-        // 1. Apply the transition
-        match transition {
-            Transition::AddCidrResource(r) => {
-                state.client.span.in_scope(|| {
-                    state
-                        .client
-                        .state
-                        .add_resources(&[ResourceDescription::Cidr(r)]);
-                });
-            }
-            Transition::SendICMPPacketToRandomIp { dst } => {
-                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip(dst), dst);
-            }
-            Transition::SendICMPPacketToIp4Resource { r_idx } => {
-                let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
-
-                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip4, dst);
-            }
-            Transition::SendICMPPacketToIp6Resource { r_idx } => {
-                let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
-
-                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip6, dst);
-            }
-            Transition::Tick { millis } => {
-                state.now += Duration::from_millis(millis);
-            }
-        };
-
-        // 2. Advance all states as far as possible
-        state.advance(ref_state);
-
-        // 3. Assert expected state
-        assert_eq!(
-            state.gateway_received_icmp_packets,
-            ref_state.gateway_received_icmp_packets
-        );
-
-        state
     }
 }
 
@@ -1038,152 +1184,6 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             allocations: HashSet::new(),
             buffer: vec![0u8; (1 << 16) - 1],
         })
-}
-
-/// Implementation of our reference state machine.
-///
-/// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
-/// Care has to be taken that we don't implement things in a buggy way here.
-/// After all, if your test has bugs, it won't catch any in the actual implementation.
-impl ReferenceStateMachine for ReferenceState {
-    type State = Self;
-    type Transition = Transition;
-
-    fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
-        (
-            sim_node_prototype(client_id(), error_span!("client")),
-            sim_node_prototype(gateway_id(), error_span!("gateway")),
-            sim_relay_prototype(),
-            Just(Instant::now()),
-            Just(Utc::now()),
-        )
-            .prop_filter(
-                "client and gateway priv key must be different",
-                |(c, g, _, _, _)| c.state != g.state,
-            )
-            .prop_filter(
-                "viable network path must exist",
-                |(client, gateway, relay, __, _)| {
-                    if client.ip4_socket.is_some()
-                        && relay.ip_stack.as_v4().is_none()
-                        && gateway.ip4_socket.is_none()
-                    {
-                        return false;
-                    }
-
-                    if client.ip6_socket.is_some()
-                        && relay.ip_stack.as_v6().is_none()
-                        && gateway.ip6_socket.is_none()
-                    {
-                        return false;
-                    }
-
-                    true
-                },
-            )
-            .prop_map(|(client, gateway, relay, now, utc_now)| Self {
-                now,
-                utc_now,
-                client,
-                gateway,
-                relay,
-                client_cidr_resources: IpNetworkTable::new(),
-                connected_resources: Default::default(),
-                gateway_received_icmp_packets: Default::default(),
-            })
-            .boxed()
-    }
-
-    /// Defines the [`Strategy`] on how we can [transition](Transition) from the current [`ReferenceState`].
-    ///
-    /// This is invoked by proptest repeatedly to explore further state transitions.
-    /// Here, we should only generate [`Transition`]s that make sense for the current state.
-    fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
-        let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
-
-        let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
-
-        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 3 };
-        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 3 };
-
-        // Note: We use weighted strategies here to conditionally only include the ICMP strategies if we have a resource.
-        prop_oneof![
-            1 => add_cidr_resource,
-            1 => tick,
-            1 => icmp_to_random_ip(),
-            weight_ip4 => icmp_to_ipv4_cidr_resource(),
-            weight_ip6 => icmp_to_ipv6_cidr_resource()
-        ]
-        .boxed()
-    }
-
-    /// Apply the transition to our reference state.
-    ///
-    /// Here is where we implement the "expected" logic.
-    fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
-        match transition {
-            Transition::AddCidrResource(r) => {
-                state.client_cidr_resources.insert(r.address, r.clone());
-            }
-            Transition::SendICMPPacketToRandomIp { dst } => {
-                state.on_icmp_packet(state.client.tunnel_ip(*dst), *dst);
-            }
-            Transition::SendICMPPacketToIp4Resource { r_idx } => {
-                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(state.client.tunnel_ip4, dst);
-            }
-            Transition::SendICMPPacketToIp6Resource { r_idx } => {
-                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(state.client.tunnel_ip6, dst);
-            }
-            Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
-        };
-
-        state
-    }
-
-    /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
-    fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
-        match transition {
-            Transition::AddCidrResource(r) => {
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-
-                if r.address.is_ipv6() && state.gateway.ip6_socket.is_none() {
-                    return false;
-                }
-
-                if r.address.is_ipv4() && state.gateway.ip4_socket.is_none() {
-                    return false;
-                }
-
-                true
-            }
-            Transition::Tick { .. } => true,
-            Transition::SendICMPPacketToRandomIp { dst } => match dst {
-                IpAddr::V4(dst) => dst != &state.client.tunnel_ip4,
-                IpAddr::V6(dst) => dst != &state.client.tunnel_ip6,
-            },
-            Transition::SendICMPPacketToIp4Resource { r_idx } => {
-                if state.client_cidr_resources.len().0 == 0 {
-                    return false;
-                }
-
-                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-
-                state.client.tunnel_ip4 != dst
-            }
-            Transition::SendICMPPacketToIp6Resource { r_idx } => {
-                if state.client_cidr_resources.len().1 == 0 {
-                    return false;
-                }
-
-                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-
-                state.client.tunnel_ip6 != dst
-            }
-        }
-    }
 }
 
 /// The possible transitions of the state machine.
