@@ -879,12 +879,15 @@ impl<ID, S> SimNode<ID, S> {
 impl SimRelay<firezone_relay::Server<StdRng>> {
     fn wants(&self, dst: SocketAddr) -> bool {
         let is_direct = self.matching_listen_socket(dst).is_some_and(|s| s == dst);
-        let is_allocation = self.allocations.contains(&match dst {
+        let is_allocation_port = self.allocations.contains(&match dst {
             SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
             SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
         });
+        let is_allocation_ip = self
+            .matching_listen_socket(dst)
+            .is_some_and(|s| s.ip() == dst.ip());
 
-        is_direct || is_allocation
+        is_direct || (is_allocation_port && is_allocation_ip)
     }
 
     fn sending_socket_for(&self, dst: SocketAddr, port: u16) -> Option<SocketAddr> {
