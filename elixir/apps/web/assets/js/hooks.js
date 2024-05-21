@@ -20,14 +20,13 @@ Hooks.Analytics = {
       var mixpanel = window.mixpanel || null;
       if (mixpanel) {
         mixpanel.identify(id);
-        mixpanel.people.set({ $email: email, $name: name });
-        mixpanel.people.set({ account_id: account_id });
+        mixpanel.people.set({ $name: name, $email: email, account_id: account_id });
         mixpanel.set_group("account", account_id);
       }
 
       var _hsq = window._hsq || null;
       if (_hsq) {
-        _hsq.push(["identify", { id: id }]);
+        _hsq.push(["identify", { id: id, email: email }]);
       }
     });
 
