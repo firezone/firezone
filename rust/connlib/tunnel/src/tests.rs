@@ -574,7 +574,7 @@ impl TunnelTest {
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
     ) {
         match event {
-            ClientEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
+            ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
                 self.gateway
                     .state
                     .add_ice_candidate(src, candidate, self.now)
