@@ -13,11 +13,13 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
 use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
+use futures::Future;
 use secrecy::SecretString;
 use std::{
     future,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::{Path, PathBuf},
+    pin::pin,
     task::Poll,
 };
 use tokio::sync::mpsc;
@@ -294,14 +296,51 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::parse();
     match cli.command {
-        CmdIpc::DebugIpcService => platform::run_debug_ipc_service(cli.common),
+        CmdIpc::DebugIpcService => run_debug_ipc_service(cli.common),
         CmdIpc::IpcService => platform::run_ipc_service(cli.common),
     }
 }
 
-// Allow dead code because Windows doesn't have an obvious SIGHUP equivalent
-#[allow(dead_code)]
+pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
+    debug_command_setup()?;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let mut ipc_service = pin!(platform::ipc_listen(cli));
+        let mut signals = platform::Signals::new()?;
+
+        std::future::poll_fn(|cx| {
+            match signals.poll(cx) {
+                Poll::Ready(SignalKind::Hangup) => {
+                    tracing::info!("Caught Hangup signal");
+                    return Poll::Ready(Ok(()));
+                }
+                Poll::Ready(SignalKind::Interrupt) => {
+                    tracing::info!("Caught Interrupt signal");
+                    return Poll::Ready(Ok(()));
+                }
+                Poll::Pending => {}
+            }
+
+            match ipc_service.as_mut().poll(cx) {
+                Poll::Ready(Ok(())) => {
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "Impossible, ipc_listen can't return Ok"
+                    )));
+                }
+                Poll::Ready(Err(error)) => {
+                    return Poll::Ready(Err(error).context("ipc_listen failed"));
+                }
+                Poll::Pending => {}
+            }
+
+            Poll::Pending
+        })
+        .await
+    })
+}
+
 enum SignalKind {
+    /// Not caught on Windows
     Hangup,
     Interrupt,
 }

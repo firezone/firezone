@@ -82,45 +82,6 @@ pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
-pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
-    crate::debug_command_setup()?;
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        let mut ipc_service = pin!(ipc_listen(cli));
-        let mut signals = Signals::new()?;
-
-        std::future::poll_fn(|cx| {
-            match signals.poll(cx) {
-                Poll::Ready(SignalKind::Hangup) => {
-                    return Poll::Ready(Err(anyhow::anyhow!(
-                        "Impossible, we don't catch Hangup on Windows"
-                    )));
-                }
-                Poll::Ready(SignalKind::Interrupt) => {
-                    tracing::info!("Caught Interrupt signal");
-                    return Poll::Ready(Ok(()));
-                }
-                Poll::Pending => {}
-            }
-
-            match ipc_service.as_mut().poll(cx) {
-                Poll::Ready(Ok(())) => {
-                    return Poll::Ready(Err(anyhow::anyhow!(
-                        "Impossible, ipc_listen can't return Ok"
-                    )));
-                }
-                Poll::Ready(Err(error)) => {
-                    return Poll::Ready(Err(error).context("ipc_listen failed"));
-                }
-                Poll::Pending => {}
-            }
-
-            Poll::Pending
-        })
-        .await
-    })
-}
-
 // Generates `ffi_service_run` from `service_run`
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
@@ -233,7 +194,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     result
 }
 
-async fn ipc_listen(_cli: CliIpcService) -> Result<()> {
+pub(crate) async fn ipc_listen(_cli: CliCommon) -> Result<()> {
     setup_before_connlib()?;
     loop {
         // This is redundant on the first loop. After that it clears the rules
