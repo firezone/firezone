@@ -225,14 +225,13 @@ defmodule Web.SignIn do
 
   def openid_connect_button(assigns) do
     ~H"""
-    <.button
-      navigate={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
-      class="w-full space-x-1"
-      style="info"
+    <a
+      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
+      href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
     >
       <.provider_icon adapter={@provider.adapter} class="w-5 h-5 mr-2" /> Sign in with
       <strong><%= @provider.name %></strong>
-    </.button>
+    </a>
     """
   end
 

@@ -53,6 +53,10 @@ if config_env() == :prod do
     client_logs_enabled: compile_config!(:instrumentation_client_logs_enabled),
     client_logs_bucket: compile_config!(:instrumentation_client_logs_bucket)
 
+  config :domain, Domain.Analytics,
+    mixpanel_token: compile_config!(:mixpanel_token),
+    hubspot_workspace_id: compile_config!(:hubspot_workspace_id)
+
   config :domain, :enabled_features,
     idp_sync: compile_config!(:feature_idp_sync_enabled),
     sign_up: compile_config!(:feature_sign_up_enabled),

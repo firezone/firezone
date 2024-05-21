@@ -64,11 +64,10 @@ config :phoenix_live_reload, :dirs, [
 
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
-    "img-src 'self' data: https://www.gravatar.com",
+    "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
+    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com",
     "style-src 'self' 'unsafe-inline'",
-    "frame-src 'self' https://js.stripe.com",
-    "script-src 'self' 'unsafe-inline' https://js.stripe.com https://cdn.tailwindcss.com/"
+    "script-src 'self' 'unsafe-inline' http://cdn.mxpnl.com http://*.hs-analytics.net"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`

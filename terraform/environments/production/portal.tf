@@ -313,6 +313,16 @@ locals {
       name  = "INSTRUMENTATION_CLIENT_LOGS_BUCKET"
       value = google_storage_bucket.client-logs.name
     },
+    # Analytics
+    {
+      name = "MIXPANEL_TOKEN"
+      # Note: this token is public
+      value = "b0ab1d66424a27555ed45a27a4fd0cd2"
+    },
+    {
+      name  = "HUBSPOT_WORKSPACE_ID"
+      value = "23723443"
+    },
     # Emails
     {
       name  = "OUTBOUND_EMAIL_ADAPTER"
@@ -485,7 +495,7 @@ module "web" {
     {
       name  = "BACKGROUND_JOBS_ENABLED"
       value = "false"
-    },
+    }
   ], local.shared_application_environment_variables)
 
   application_labels = {

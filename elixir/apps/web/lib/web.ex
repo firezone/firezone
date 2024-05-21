@@ -156,6 +156,7 @@ defmodule Web do
       import Web.FormComponents
       import Web.TableComponents
       import Web.PageComponents
+      import Web.AnalyticsComponents
       import Web.Gettext
     end
   end

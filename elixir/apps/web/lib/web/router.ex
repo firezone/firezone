@@ -2,16 +2,12 @@ defmodule Web.Router do
   use Web, :router
   import Web.Auth
 
-  pipeline :browser do
-    plug :accepts, ["html"]
+  pipeline :public do
+    plug :accepts, ["html", "xml"]
     plug :fetch_session
     plug :protect_from_forgery
     plug :fetch_live_flash
-    plug :put_root_layout, {Web.Layouts, :root}
-  end
-
-  pipeline :public do
-    plug :accepts, ["html", "xml"]
+    plug :put_root_layout, html: {Web.Layouts, :root}
   end
 
   pipeline :account do
@@ -19,12 +15,12 @@ defmodule Web.Router do
     plug :fetch_subject
   end
 
-  pipeline :home do
-    plug :accepts, ["html", "xml"]
+  pipeline :control_plane do
+    plug :accepts, ["html"]
     plug :fetch_session
     plug :protect_from_forgery
     plug :fetch_live_flash
-    plug :put_root_layout, {Web.Layouts, :root}
+    plug :put_root_layout, html: {Web.Layouts, :root}
   end
 
   pipeline :ensure_authenticated_admin do
@@ -39,7 +35,7 @@ defmodule Web.Router do
   end
 
   scope "/", Web do
-    pipe_through :home
+    pipe_through :public
 
     get "/", HomeController, :home
     post "/", HomeController, :redirect_to_sign_in
@@ -65,13 +61,13 @@ defmodule Web.Router do
   end
 
   scope "/sign_up", Web do
-    pipe_through :browser
+    pipe_through :public
 
     live "/", SignUp
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :account, :redirect_if_user_is_authenticated]
+    pipe_through [:public, :account, :redirect_if_user_is_authenticated]
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [
@@ -87,7 +83,7 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :account]
+    pipe_through [:control_plane, :account]
 
     get "/sign_in/client_redirect", SignInController, :client_redirect
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
@@ -107,13 +103,13 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :account]
+    pipe_through [:control_plane, :account]
 
     get "/sign_out", AuthController, :sign_out
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:browser, :account, :ensure_authenticated_admin]
+    pipe_through [:control_plane, :account, :ensure_authenticated_admin]
 
     live_session :ensure_authenticated,
       on_mount: [
