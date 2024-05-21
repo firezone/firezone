@@ -688,6 +688,9 @@ impl TunnelTest {
             ClientEvent::RefreshResources { .. } => {
                 tracing::warn!("Unimplemented");
             }
+            ClientEvent::ResourcesChanged { .. } => {
+                tracing::warn!("Unimplemented");
+            }
         }
     }
 

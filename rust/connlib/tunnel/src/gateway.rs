@@ -217,7 +217,7 @@ impl GatewayState {
         ips: Vec<IpNetwork>,
         stun_servers: HashSet<SocketAddr>,
         turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
-        domain: Option<Dname>,
+        domain: Option<DomainName>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
@@ -268,7 +268,7 @@ impl GatewayState {
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
-        domain: Option<Dname>,
+        domain: Option<DomainName>,
     ) -> Option<DomainResponse> {
         match (&domain, &resource) {
             (Some(domain), ResourceDescription::Dns(r)) => {
