@@ -344,384 +344,6 @@ impl ReferenceStateMachine for ReferenceState {
     }
 }
 
-#[derive(Clone, Debug)]
-struct SimNode<ID, S> {
-    id: ID,
-    state: S,
-
-    ip4_socket: Option<SocketAddrV4>,
-    ip6_socket: Option<SocketAddrV6>,
-
-    tunnel_ip4: Ipv4Addr,
-    tunnel_ip6: Ipv6Addr,
-
-    span: Span,
-}
-
-#[derive(Clone)]
-struct SimRelay<S> {
-    id: RelayId,
-    state: S,
-
-    ip_stack: firezone_relay::IpStack,
-    allocations: HashSet<(AddressFamily, AllocationPort)>,
-    buffer: Vec<u8>,
-
-    span: Span,
-}
-
-/// Stub implementation of the portal.
-///
-/// Currently, we only simulate a connection between a single client and a single gateway on a single site.
-#[derive(Debug, Clone)]
-struct SimPortal {
-    _client: ClientId,
-    gateway: GatewayId,
-    _relay: RelayId,
-}
-
-impl SimPortal {
-    /// Picks, which gateway and site we should connect to for the given resource.
-    fn handle_connection_intent(
-        &self,
-        resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    ) -> (GatewayId, SiteId) {
-        // TODO: Should we somehow vary how many gateways we connect to?
-        // TODO: Should we somehow pick, which site to use?
-
-        let site = client_cidr_resources
-            .iter()
-            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id))
-            .expect("resource to have at least 1 site");
-
-        (self.gateway, site)
-    }
-}
-
-impl<ID, S> SimNode<ID, S>
-where
-    ID: Copy,
-    S: Copy,
-{
-    fn map_state<T>(&self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
-        SimNode {
-            id: self.id,
-            state: f(self.state),
-            ip4_socket: self.ip4_socket,
-            ip6_socket: self.ip6_socket,
-            tunnel_ip4: self.tunnel_ip4,
-            tunnel_ip6: self.tunnel_ip6,
-            span: self.span.clone(),
-        }
-    }
-}
-
-impl<ID, S> SimNode<ID, S> {
-    fn wants(&self, dst: SocketAddr) -> bool {
-        self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
-            || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
-    }
-
-    fn sending_socket_for(&self, dst: SocketAddr) -> Option<SocketAddr> {
-        Some(match dst {
-            SocketAddr::V4(_) => self.ip4_socket?.into(),
-            SocketAddr::V6(_) => self.ip6_socket?.into(),
-        })
-    }
-
-    fn tunnel_ip(&self, dst: IpAddr) -> IpAddr {
-        match dst {
-            IpAddr::V4(_) => IpAddr::from(self.tunnel_ip4),
-            IpAddr::V6(_) => IpAddr::from(self.tunnel_ip6),
-        }
-    }
-}
-
-impl SimRelay<firezone_relay::Server<StdRng>> {
-    fn wants(&self, dst: SocketAddr) -> bool {
-        let is_direct = self.matching_listen_socket(dst).is_some_and(|s| s == dst);
-        let is_allocation = self.allocations.contains(&match dst {
-            SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
-            SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
-        });
-
-        is_direct || is_allocation
-    }
-
-    fn sending_socket_for(&self, dst: SocketAddr, port: u16) -> Option<SocketAddr> {
-        Some(match dst {
-            SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(*self.ip_stack.as_v4()?, port)),
-            SocketAddr::V6(_) => {
-                SocketAddr::V6(SocketAddrV6::new(*self.ip_stack.as_v6()?, port, 0, 0))
-            }
-        })
-    }
-
-    fn explode(&self, username: &str) -> (RelayId, RelaySocket, String, String, String) {
-        let relay_socket = match self.ip_stack {
-            firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
-            firezone_relay::IpStack::Ip6(ip6) => {
-                RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
-            }
-            firezone_relay::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
-                v4: SocketAddrV4::new(ip4, 3478),
-                v6: SocketAddrV6::new(ip6, 3478, 0, 0),
-            },
-        };
-
-        let (username, password) = self.make_credentials(username);
-
-        (
-            self.id,
-            relay_socket,
-            username,
-            password,
-            "firezone".to_owned(),
-        )
-    }
-
-    fn matching_listen_socket(&self, other: SocketAddr) -> Option<SocketAddr> {
-        match other {
-            SocketAddr::V4(_) => Some(SocketAddr::new((*self.ip_stack.as_v4()?).into(), 3478)),
-            SocketAddr::V6(_) => Some(SocketAddr::new((*self.ip_stack.as_v6()?).into(), 3478)),
-        }
-    }
-
-    fn ip4(&self) -> Option<IpAddr> {
-        self.ip_stack.as_v4().copied().map(|i| i.into())
-    }
-
-    fn ip6(&self) -> Option<IpAddr> {
-        self.ip_stack.as_v6().copied().map(|i| i.into())
-    }
-
-    fn handle_packet(
-        &mut self,
-        payload: &[u8],
-        sender: SocketAddr,
-        dst: SocketAddr,
-        now: Instant,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-    ) {
-        if self.matching_listen_socket(dst).is_some_and(|s| s == dst) {
-            self.handle_client_input(payload, ClientSocket::new(sender), now, buffered_transmits);
-            return;
-        }
-
-        self.handle_peer_traffic(
-            payload,
-            PeerSocket::new(sender),
-            AllocationPort::new(dst.port()),
-            buffered_transmits,
-        )
-    }
-
-    fn handle_client_input(
-        &mut self,
-        payload: &[u8],
-        client: ClientSocket,
-        now: Instant,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-    ) {
-        if let Some((port, peer)) = self
-            .span
-            .in_scope(|| self.state.handle_client_input(payload, client, now))
-        {
-            let payload = &payload[4..];
-
-            // The `dst` of the relayed packet is what TURN calls a "peer".
-            let dst = peer.into_socket();
-
-            // The `src_ip` is the relay's IP
-            let src_ip = match dst {
-                SocketAddr::V4(_) => {
-                    assert!(
-                        self.allocations.contains(&(AddressFamily::V4, port)),
-                        "IPv4 allocation to be present if we want to send to an IPv4 socket"
-                    );
-
-                    self.ip4().expect("listen on IPv4 if we have an allocation")
-                }
-                SocketAddr::V6(_) => {
-                    assert!(
-                        self.allocations.contains(&(AddressFamily::V6, port)),
-                        "IPv6 allocation to be present if we want to send to an IPv6 socket"
-                    );
-
-                    self.ip6().expect("listen on IPv6 if we have an allocation")
-                }
-            };
-
-            // The `src` of the relayed packet is the relay itself _from_ the allocated port.
-            let src = SocketAddr::new(src_ip, port.value());
-
-            // Check if we need to relay to ourselves (from one allocation to another)
-            if self.wants(dst) {
-                // When relaying to ourselves, we become our own peer.
-                let peer_socket = PeerSocket::new(src);
-                // The allocation that the data is arriving on is the `dst`'s port.
-                let allocation_port = AllocationPort::new(dst.port());
-
-                self.handle_peer_traffic(payload, peer_socket, allocation_port, buffered_transmits);
-                return;
-            }
-
-            buffered_transmits.push_back((
-                Transmit {
-                    src: Some(src),
-                    dst,
-                    payload: Cow::Owned(payload.to_vec()),
-                },
-                Some(src),
-            ));
-        }
-    }
-
-    fn handle_peer_traffic(
-        &mut self,
-        payload: &[u8],
-        peer: PeerSocket,
-        port: AllocationPort,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-    ) {
-        if let Some((client, channel)) = self
-            .span
-            .in_scope(|| self.state.handle_peer_traffic(payload, peer, port))
-        {
-            let full_length = firezone_relay::ChannelData::encode_header_to_slice(
-                channel,
-                payload.len() as u16,
-                &mut self.buffer[..4],
-            );
-            self.buffer[4..full_length].copy_from_slice(payload);
-
-            let receiving_socket = client.into_socket();
-            let sending_socket = self.matching_listen_socket(receiving_socket).unwrap();
-
-            buffered_transmits.push_back((
-                Transmit {
-                    src: Some(sending_socket),
-                    dst: receiving_socket,
-                    payload: Cow::Owned(self.buffer[..full_length].to_vec()),
-                },
-                Some(sending_socket),
-            ));
-        }
-    }
-
-    fn make_credentials(&self, username: &str) -> (String, String) {
-        let expiry = SystemTime::now() + Duration::from_secs(60);
-
-        let secs = expiry
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("expiry must be later than UNIX_EPOCH")
-            .as_secs();
-
-        let password =
-            firezone_relay::auth::generate_password(self.state.auth_secret(), expiry, username);
-
-        (format!("{secs}:{username}"), password)
-    }
-}
-
-impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SimRelay")
-            .field("id", &self.id)
-            .field("state", &self.state)
-            .field("ip_stack", &self.ip_stack)
-            .field("allocations", &self.allocations)
-            .field("span", &self.span)
-            .finish_non_exhaustive()
-    }
-}
-
-/// Several helper functions to make the reference state more readable.
-impl ReferenceState {
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet(&mut self, src: impl Into<IpAddr>, dst: impl Into<IpAddr>) {
-        let src = src.into();
-        let dst = dst.into();
-
-        tracing::Span::current().record("dst", tracing::field::display(dst));
-
-        // First, check if we are connected to this IP range.
-        // This is rather odd and waiting to be fixed in https://github.com/firezone/firezone/issues/5054.
-        if self.connected_resources.longest_match(dst).is_some() {
-            tracing::debug!("Connected to resource, expecting packet to be routed to gateway");
-
-            self.gateway_received_icmp_packets
-                .push_back((self.now, src, dst));
-            return;
-        }
-
-        // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
-            tracing::debug!("No resource corresponds to IP");
-            return;
-        };
-
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_resources.insert(resource.address, ());
-    }
-
-    /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
-    fn sample_ipv4_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv4Addr {
-        let num_ip4_resources = self.client_cidr_resources.len().0;
-        debug_assert!(num_ip4_resources > 0, "cannot sample without any resources");
-        let r_idx = idx.index(num_ip4_resources);
-        let (network, _) = self
-            .client_cidr_resources
-            .iter_ipv4()
-            .nth(r_idx)
-            .expect("index to be in range");
-
-        let num_hosts = network.hosts().len();
-
-        if num_hosts == 0 {
-            debug_assert!(network.netmask() == 31 || network.netmask() == 32); // /31 and /32 don't have any hosts
-
-            return network.network_address();
-        }
-
-        let addr_idx = idx.index(num_hosts);
-
-        network.hosts().nth(addr_idx).expect("index to be in range")
-    }
-
-    /// Samples an [`Ipv6Addr`] from _any_ of our IPv6 CIDR resources.
-    fn sample_ipv6_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv6Addr {
-        let num_ip6_resources = self.client_cidr_resources.len().1;
-        debug_assert!(num_ip6_resources > 0, "cannot sample without any resources");
-        let r_idx = idx.index(num_ip6_resources);
-        let (network, _) = self
-            .client_cidr_resources
-            .iter_ipv6()
-            .nth(r_idx)
-            .expect("index to be in range");
-
-        let num_hosts = network.subnets_with_prefix(128).len();
-
-        let network = if num_hosts == 0 {
-            debug_assert!(network.netmask() == 127 || network.netmask() == 128); // /127 and /128 don't have any hosts
-
-            network
-        } else {
-            let addr_idx = idx.index(num_hosts);
-
-            network
-                .subnets_with_prefix(128)
-                .nth(addr_idx)
-                .expect("index to be in range")
-        };
-
-        network.network_address()
-    }
-}
-
 impl TunnelTest {
     fn advance(&mut self, ref_state: &ReferenceState) {
         loop {
@@ -1066,6 +688,384 @@ impl TunnelTest {
                 .span
                 .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
         }
+    }
+}
+
+/// Several helper functions to make the reference state more readable.
+impl ReferenceState {
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    fn on_icmp_packet(&mut self, src: impl Into<IpAddr>, dst: impl Into<IpAddr>) {
+        let src = src.into();
+        let dst = dst.into();
+
+        tracing::Span::current().record("dst", tracing::field::display(dst));
+
+        // First, check if we are connected to this IP range.
+        // This is rather odd and waiting to be fixed in https://github.com/firezone/firezone/issues/5054.
+        if self.connected_resources.longest_match(dst).is_some() {
+            tracing::debug!("Connected to resource, expecting packet to be routed to gateway");
+
+            self.gateway_received_icmp_packets
+                .push_back((self.now, src, dst));
+            return;
+        }
+
+        // Second, if we are not yet connected, check if we have a resource for this IP.
+        let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
+            tracing::debug!("No resource corresponds to IP");
+            return;
+        };
+
+        // If we have a resource, the first packet will initiate a connection to the gateway.
+        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
+        self.connected_resources.insert(resource.address, ());
+    }
+
+    /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
+    fn sample_ipv4_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv4Addr {
+        let num_ip4_resources = self.client_cidr_resources.len().0;
+        debug_assert!(num_ip4_resources > 0, "cannot sample without any resources");
+        let r_idx = idx.index(num_ip4_resources);
+        let (network, _) = self
+            .client_cidr_resources
+            .iter_ipv4()
+            .nth(r_idx)
+            .expect("index to be in range");
+
+        let num_hosts = network.hosts().len();
+
+        if num_hosts == 0 {
+            debug_assert!(network.netmask() == 31 || network.netmask() == 32); // /31 and /32 don't have any hosts
+
+            return network.network_address();
+        }
+
+        let addr_idx = idx.index(num_hosts);
+
+        network.hosts().nth(addr_idx).expect("index to be in range")
+    }
+
+    /// Samples an [`Ipv6Addr`] from _any_ of our IPv6 CIDR resources.
+    fn sample_ipv6_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv6Addr {
+        let num_ip6_resources = self.client_cidr_resources.len().1;
+        debug_assert!(num_ip6_resources > 0, "cannot sample without any resources");
+        let r_idx = idx.index(num_ip6_resources);
+        let (network, _) = self
+            .client_cidr_resources
+            .iter_ipv6()
+            .nth(r_idx)
+            .expect("index to be in range");
+
+        let num_hosts = network.subnets_with_prefix(128).len();
+
+        let network = if num_hosts == 0 {
+            debug_assert!(network.netmask() == 127 || network.netmask() == 128); // /127 and /128 don't have any hosts
+
+            network
+        } else {
+            let addr_idx = idx.index(num_hosts);
+
+            network
+                .subnets_with_prefix(128)
+                .nth(addr_idx)
+                .expect("index to be in range")
+        };
+
+        network.network_address()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SimNode<ID, S> {
+    id: ID,
+    state: S,
+
+    ip4_socket: Option<SocketAddrV4>,
+    ip6_socket: Option<SocketAddrV6>,
+
+    tunnel_ip4: Ipv4Addr,
+    tunnel_ip6: Ipv6Addr,
+
+    span: Span,
+}
+
+#[derive(Clone)]
+struct SimRelay<S> {
+    id: RelayId,
+    state: S,
+
+    ip_stack: firezone_relay::IpStack,
+    allocations: HashSet<(AddressFamily, AllocationPort)>,
+    buffer: Vec<u8>,
+
+    span: Span,
+}
+
+/// Stub implementation of the portal.
+///
+/// Currently, we only simulate a connection between a single client and a single gateway on a single site.
+#[derive(Debug, Clone)]
+struct SimPortal {
+    _client: ClientId,
+    gateway: GatewayId,
+    _relay: RelayId,
+}
+
+impl SimPortal {
+    /// Picks, which gateway and site we should connect to for the given resource.
+    fn handle_connection_intent(
+        &self,
+        resource: ResourceId,
+        _connected_gateway_ids: HashSet<GatewayId>,
+        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
+    ) -> (GatewayId, SiteId) {
+        // TODO: Should we somehow vary how many gateways we connect to?
+        // TODO: Should we somehow pick, which site to use?
+
+        let site = client_cidr_resources
+            .iter()
+            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id))
+            .expect("resource to have at least 1 site");
+
+        (self.gateway, site)
+    }
+}
+
+impl<ID, S> SimNode<ID, S>
+where
+    ID: Copy,
+    S: Copy,
+{
+    fn map_state<T>(&self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
+        SimNode {
+            id: self.id,
+            state: f(self.state),
+            ip4_socket: self.ip4_socket,
+            ip6_socket: self.ip6_socket,
+            tunnel_ip4: self.tunnel_ip4,
+            tunnel_ip6: self.tunnel_ip6,
+            span: self.span.clone(),
+        }
+    }
+}
+
+impl<ID, S> SimNode<ID, S> {
+    fn wants(&self, dst: SocketAddr) -> bool {
+        self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
+            || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
+    }
+
+    fn sending_socket_for(&self, dst: SocketAddr) -> Option<SocketAddr> {
+        Some(match dst {
+            SocketAddr::V4(_) => self.ip4_socket?.into(),
+            SocketAddr::V6(_) => self.ip6_socket?.into(),
+        })
+    }
+
+    fn tunnel_ip(&self, dst: IpAddr) -> IpAddr {
+        match dst {
+            IpAddr::V4(_) => IpAddr::from(self.tunnel_ip4),
+            IpAddr::V6(_) => IpAddr::from(self.tunnel_ip6),
+        }
+    }
+}
+
+impl SimRelay<firezone_relay::Server<StdRng>> {
+    fn wants(&self, dst: SocketAddr) -> bool {
+        let is_direct = self.matching_listen_socket(dst).is_some_and(|s| s == dst);
+        let is_allocation = self.allocations.contains(&match dst {
+            SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
+            SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
+        });
+
+        is_direct || is_allocation
+    }
+
+    fn sending_socket_for(&self, dst: SocketAddr, port: u16) -> Option<SocketAddr> {
+        Some(match dst {
+            SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(*self.ip_stack.as_v4()?, port)),
+            SocketAddr::V6(_) => {
+                SocketAddr::V6(SocketAddrV6::new(*self.ip_stack.as_v6()?, port, 0, 0))
+            }
+        })
+    }
+
+    fn explode(&self, username: &str) -> (RelayId, RelaySocket, String, String, String) {
+        let relay_socket = match self.ip_stack {
+            firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
+            firezone_relay::IpStack::Ip6(ip6) => {
+                RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
+            }
+            firezone_relay::IpStack::Dual { ip4, ip6 } => RelaySocket::Dual {
+                v4: SocketAddrV4::new(ip4, 3478),
+                v6: SocketAddrV6::new(ip6, 3478, 0, 0),
+            },
+        };
+
+        let (username, password) = self.make_credentials(username);
+
+        (
+            self.id,
+            relay_socket,
+            username,
+            password,
+            "firezone".to_owned(),
+        )
+    }
+
+    fn matching_listen_socket(&self, other: SocketAddr) -> Option<SocketAddr> {
+        match other {
+            SocketAddr::V4(_) => Some(SocketAddr::new((*self.ip_stack.as_v4()?).into(), 3478)),
+            SocketAddr::V6(_) => Some(SocketAddr::new((*self.ip_stack.as_v6()?).into(), 3478)),
+        }
+    }
+
+    fn ip4(&self) -> Option<IpAddr> {
+        self.ip_stack.as_v4().copied().map(|i| i.into())
+    }
+
+    fn ip6(&self) -> Option<IpAddr> {
+        self.ip_stack.as_v6().copied().map(|i| i.into())
+    }
+
+    fn handle_packet(
+        &mut self,
+        payload: &[u8],
+        sender: SocketAddr,
+        dst: SocketAddr,
+        now: Instant,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
+        if self.matching_listen_socket(dst).is_some_and(|s| s == dst) {
+            self.handle_client_input(payload, ClientSocket::new(sender), now, buffered_transmits);
+            return;
+        }
+
+        self.handle_peer_traffic(
+            payload,
+            PeerSocket::new(sender),
+            AllocationPort::new(dst.port()),
+            buffered_transmits,
+        )
+    }
+
+    fn handle_client_input(
+        &mut self,
+        payload: &[u8],
+        client: ClientSocket,
+        now: Instant,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
+        if let Some((port, peer)) = self
+            .span
+            .in_scope(|| self.state.handle_client_input(payload, client, now))
+        {
+            let payload = &payload[4..];
+
+            // The `dst` of the relayed packet is what TURN calls a "peer".
+            let dst = peer.into_socket();
+
+            // The `src_ip` is the relay's IP
+            let src_ip = match dst {
+                SocketAddr::V4(_) => {
+                    assert!(
+                        self.allocations.contains(&(AddressFamily::V4, port)),
+                        "IPv4 allocation to be present if we want to send to an IPv4 socket"
+                    );
+
+                    self.ip4().expect("listen on IPv4 if we have an allocation")
+                }
+                SocketAddr::V6(_) => {
+                    assert!(
+                        self.allocations.contains(&(AddressFamily::V6, port)),
+                        "IPv6 allocation to be present if we want to send to an IPv6 socket"
+                    );
+
+                    self.ip6().expect("listen on IPv6 if we have an allocation")
+                }
+            };
+
+            // The `src` of the relayed packet is the relay itself _from_ the allocated port.
+            let src = SocketAddr::new(src_ip, port.value());
+
+            // Check if we need to relay to ourselves (from one allocation to another)
+            if self.wants(dst) {
+                // When relaying to ourselves, we become our own peer.
+                let peer_socket = PeerSocket::new(src);
+                // The allocation that the data is arriving on is the `dst`'s port.
+                let allocation_port = AllocationPort::new(dst.port());
+
+                self.handle_peer_traffic(payload, peer_socket, allocation_port, buffered_transmits);
+                return;
+            }
+
+            buffered_transmits.push_back((
+                Transmit {
+                    src: Some(src),
+                    dst,
+                    payload: Cow::Owned(payload.to_vec()),
+                },
+                Some(src),
+            ));
+        }
+    }
+
+    fn handle_peer_traffic(
+        &mut self,
+        payload: &[u8],
+        peer: PeerSocket,
+        port: AllocationPort,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
+        if let Some((client, channel)) = self
+            .span
+            .in_scope(|| self.state.handle_peer_traffic(payload, peer, port))
+        {
+            let full_length = firezone_relay::ChannelData::encode_header_to_slice(
+                channel,
+                payload.len() as u16,
+                &mut self.buffer[..4],
+            );
+            self.buffer[4..full_length].copy_from_slice(payload);
+
+            let receiving_socket = client.into_socket();
+            let sending_socket = self.matching_listen_socket(receiving_socket).unwrap();
+
+            buffered_transmits.push_back((
+                Transmit {
+                    src: Some(sending_socket),
+                    dst: receiving_socket,
+                    payload: Cow::Owned(self.buffer[..full_length].to_vec()),
+                },
+                Some(sending_socket),
+            ));
+        }
+    }
+
+    fn make_credentials(&self, username: &str) -> (String, String) {
+        let expiry = SystemTime::now() + Duration::from_secs(60);
+
+        let secs = expiry
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("expiry must be later than UNIX_EPOCH")
+            .as_secs();
+
+        let password =
+            firezone_relay::auth::generate_password(self.state.auth_secret(), expiry, username);
+
+        (format!("{secs}:{username}"), password)
+    }
+}
+
+impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SimRelay")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .field("ip_stack", &self.ip_stack)
+            .field("allocations", &self.allocations)
+            .field("span", &self.span)
+            .finish_non_exhaustive()
     }
 }
 
