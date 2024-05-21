@@ -202,6 +202,9 @@ pub(crate) struct IpcStream(pub named_pipe::NamedPipeServer);
 
 impl IpcServer {
     /// Platform-specific setup
+    ///
+    /// This is async on Linux
+    #[allow(clippy::unused_async)]
     pub(crate) async fn new() -> Result<Self> {
         setup_before_connlib()?;
         Ok(Self {})
