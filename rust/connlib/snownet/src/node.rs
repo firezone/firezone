@@ -472,23 +472,27 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        for binding in self.bindings.values_mut() {
-            if let Some(transmit) = binding.poll_transmit() {
-                self.stats.stun_bytes_to_relays += transmit.payload.len();
+        let binding_transmits = &mut self
+            .bindings
+            .values_mut()
+            .flat_map(StunBinding::poll_transmit);
+        let allocation_transmits = &mut self
+            .allocations
+            .values_mut()
+            .flat_map(Allocation::poll_transmit);
 
-                return Some(transmit);
-            }
+        if let Some(transmit) = binding_transmits.chain(allocation_transmits).next() {
+            self.stats.stun_bytes_to_relays += transmit.payload.len();
+            tracing::trace!(?transmit);
+
+            return Some(transmit);
         }
 
-        for allocation in self.allocations.values_mut() {
-            if let Some(transmit) = allocation.poll_transmit() {
-                self.stats.stun_bytes_to_relays += transmit.payload.len();
+        let transmit = self.buffered_transmits.pop_front()?;
 
-                return Some(transmit);
-            }
-        }
+        tracing::trace!(?transmit);
 
-        self.buffered_transmits.pop_front()
+        Some(transmit)
     }
 
     pub fn update_relays(
@@ -1232,7 +1236,7 @@ pub enum Event<TId> {
     ConnectionFailed(TId),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///
@@ -1245,6 +1249,16 @@ pub struct Transmit<'a> {
     pub dst: SocketAddr,
     /// The data that should be sent.
     pub payload: Cow<'a, [u8]>,
+}
+
+impl<'a> fmt::Debug for Transmit<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Transmit")
+            .field("src", &self.src)
+            .field("dst", &self.dst)
+            .field("len", &self.payload.len())
+            .finish()
+    }
 }
 
 impl<'a> Transmit<'a> {
