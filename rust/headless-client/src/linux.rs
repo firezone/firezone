@@ -66,7 +66,7 @@ pub fn default_token_path() -> PathBuf {
 /// Only called from the GUI Client's build of the IPC service
 ///
 /// On Linux this is the same as running with `ipc-service`
-pub fn run_only_ipc_service() -> Result<()> {
+pub(crate) fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::parse();
     // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
@@ -210,6 +210,7 @@ async fn ipc_listen(cli: Cli) -> Result<()> {
     sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
 
     loop {
+        connlib_shared::deactivate_dns_control()?;
         tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = listener.accept().await?;
         let cred = stream.peer_cred()?;
@@ -242,10 +243,15 @@ impl Callbacks for CallbackHandlerIpc {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+    ) -> Option<i32> {
         tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
-            .try_send(IpcServerMsg::TunnelReady)
+            .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");
         None
     }
@@ -259,7 +265,6 @@ impl Callbacks for CallbackHandlerIpc {
 }
 
 async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
-    connlib_shared::deactivate_dns_control()?;
     let (rx, tx) = stream.into_split();
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
@@ -300,7 +305,9 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
                     private_key,
                     None,
                     callback_handler.clone(),
-                    cli.max_partition_time.map(|t| t.into()),
+                    cli.max_partition_time
+                        .map(|t| t.into())
+                        .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
                     tokio::runtime::Handle::try_current()?,
                 ));
             }
@@ -316,6 +323,14 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
 
     send_task.abort();
 
+    Ok(())
+}
+
+/// Platform-specific setup needed for connlib
+///
+/// On Linux this does nothing
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn setup_before_connlib() -> Result<()> {
     Ok(())
 }
 

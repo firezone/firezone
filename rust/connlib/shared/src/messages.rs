@@ -13,7 +13,7 @@ mod key;
 
 pub use key::{Key, SecretKey};
 
-use crate::Dname;
+use crate::DomainName;
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 pub struct GatewayId(Uuid);
@@ -157,7 +157,7 @@ pub struct RequestConnection {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
-    pub domain: Option<Dname>,
+    pub domain: Option<DomainName>,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -171,7 +171,7 @@ pub struct ReuseConnection {
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
     /// Payload that the gateway will receive
-    pub payload: Option<Dname>,
+    pub payload: Option<DomainName>,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -185,7 +185,7 @@ impl Eq for RequestConnection {}
 
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
-    pub domain: Dname,
+    pub domain: DomainName,
     pub address: Vec<IpAddr>,
 }
 

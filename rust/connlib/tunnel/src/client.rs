@@ -9,7 +9,7 @@ use connlib_shared::messages::{
     Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
     IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{callbacks, Callbacks, Dname, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -44,11 +44,14 @@ const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
     pub id: ResourceId,
-    pub address: Dname,
+    pub address: DomainName,
 }
 
 impl DnsResource {
-    pub fn from_description(description: &ResourceDescriptionDns, address: Dname) -> DnsResource {
+    pub fn from_description(
+        description: &ResourceDescriptionDns,
+        address: DomainName,
+    ) -> DnsResource {
         DnsResource {
             id: description.id,
             address,
@@ -297,7 +300,7 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AwaitingConnectionDetails {
-    pub domain: Option<Dname>,
+    pub domain: Option<DomainName>,
     gateways: HashSet<GatewayId>,
     pub last_intent_sent_at: Instant,
 }
@@ -612,7 +615,7 @@ impl ClientState {
         self.dns_resources_internal_ips
             .insert(resource_description.clone(), addrs.clone());
 
-        send_dns_answer(self, Rtype::Aaaa, &resource_description, &addrs);
+        send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
         send_dns_answer(self, Rtype::A, &resource_description, &addrs);
 
         Ok(addrs.iter().copied().map(Into::into).collect())
@@ -715,7 +718,7 @@ impl ClientState {
     fn on_connection_intent_to_resource(
         &mut self,
         resource: ResourceId,
-        domain: Option<Dname>,
+        domain: Option<DomainName>,
         now: Instant,
     ) {
         debug_assert!(self.resource_ids.contains_key(&resource));
@@ -771,7 +774,7 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    fn is_connected_to(&self, resource: ResourceId, domain: &Option<Dname>) -> bool {
+    fn is_connected_to(&self, resource: ResourceId, domain: &Option<DomainName>) -> bool {
         let Some(resource) = self.resource_ids.get(&resource) else {
             return false;
         };
@@ -783,7 +786,7 @@ impl ClientState {
     fn get_resource_ip(
         &self,
         resource: &ResourceDescription,
-        domain: &Option<Dname>,
+        domain: &Option<DomainName>,
     ) -> Vec<IpNetwork> {
         match resource {
             ResourceDescription::Dns(dns_resource) => {
@@ -856,9 +859,7 @@ impl ClientState {
         earliest(self.next_dns_refresh, self.node.poll_timeout())
     }
 
-    /// Returns whether resources statuses have updated
-    pub fn handle_timeout(&mut self, now: Instant) -> bool {
-        let mut resources_updated = false;
+    pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
 
         match self.next_dns_refresh {
@@ -896,7 +897,10 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    resources_updated = true;
+                    self.buffered_events
+                        .push_back(ClientEvent::ResourcesChanged {
+                            resources: self.resources(),
+                        });
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -918,12 +922,13 @@ impl ClientState {
                     }),
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
-                    resources_updated = true;
+                    self.buffered_events
+                        .push_back(ClientEvent::ResourcesChanged {
+                            resources: self.resources(),
+                        });
                 }
             }
         }
-
-        resources_updated
     }
 
     fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: Status) {

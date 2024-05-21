@@ -1626,12 +1626,13 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.9.3"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e853e3f6d4c6e52a4d73a94c1810c66ad71958fbe24934a7119b447f425aed76"
+checksum = "5cd50aea158e9a57c9c9075ca7a3dfa4c08d9a468b405832383876f9df85379b"
 dependencies = [
  "bytes",
  "octseq",
+ "pin-project-lite",
  "rand 0.8.5",
  "serde",
  "time",
@@ -1951,7 +1952,6 @@ dependencies = [
  "output_vt100",
  "rand 0.8.5",
  "reqwest",
- "ring",
  "sadness-generator",
  "secrecy",
  "semver",
@@ -1997,15 +1997,18 @@ dependencies = [
  "known-folders",
  "nix 0.28.0",
  "resolv-conf",
+ "ring",
  "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
  "url",
+ "windows 0.56.0",
  "windows-service",
 ]
 
@@ -3402,9 +3405,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.154"
+version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae743338b92ff9146ce83992f766a31066a91a8c84a45e0e9f21e7cf6de6d346"
+checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
 
 [[package]]
 name = "libloading"
@@ -4179,9 +4182,9 @@ dependencies = [
 
 [[package]]
 name = "octseq"
-version = "0.3.2"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d92b38a4aabbacf619b8083841713216e7668178422decfe06bbc70643024c5d"
+checksum = "2ed2eaec452d98ccc1c615dd843fd039d9445f2fb4da114ee7e6af5fcb68be98"
 dependencies = [
  "bytes",
  "serde",
