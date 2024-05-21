@@ -1,17 +1,12 @@
 //! Implementation, Linux-specific
 
-use super::{CliCommon, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{CliCommon, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
-use connlib_client_shared::{file_logger, Callbacks, Sockets};
-use connlib_shared::{
-    callbacks, keypair,
-    linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
-    LoginUrl,
-};
+use connlib_client_shared::file_logger;
+use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
 use firezone_cli_utils::setup_global_subscriber;
-use futures::{SinkExt, StreamExt};
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::IpAddr,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     str::FromStr,
@@ -20,10 +15,7 @@ use std::{
 use tokio::{
     net::{UnixListener, UnixStream},
     signal::unix::SignalKind as TokioSignalKind,
-    sync::mpsc,
 };
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-use url::Url;
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
@@ -179,7 +171,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async { ipc_listen(cli).await })
+    rt.block_on(async { crate::ipc_listen(cli).await })
 }
 
 pub fn firezone_group() -> Result<nix::unistd::Group> {
@@ -189,55 +181,40 @@ pub fn firezone_group() -> Result<nix::unistd::Group> {
     Ok(group)
 }
 
-pub(crate) struct IpcServer {}
+pub(crate) struct IpcServer {
+    listener: UnixListener,
+}
+
+/// Opaque wrapper around platform-specific IPC stream
+pub(crate) struct IpcStream(pub UnixStream);
 
 impl IpcServer {
     /// Platform-specific setup
-    pub(crate) async fn new() -> Result<()> {
-        wintun_install::ensure_dll()?;
-        Ok(())
+    pub(crate) async fn new() -> Result<Self> {
+        // Remove the socket if a previous run left it there
+        let sock_path = sock_path();
+        tokio::fs::remove_file(&sock_path).await.ok();
+        let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
+        let perms = std::fs::Permissions::from_mode(0o660);
+        std::fs::set_permissions(sock_path, perms)?;
+        tracing::info!("Listening for GUI to connect over IPC...");
+        sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
+        Ok(Self { listener })
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
-        let server = create_pipe_server()?;
-        tracing::info!("Listening for GUI to connect over IPC...");
-        server
-            .connect()
-            .await
-            .context("Couldn't accept IPC connection from GUI")?;
-        Ok(server)
-    }
-}
-
-pub(crate) struct IpcStream(named_pipe::NamedPipeServer);
-
-pub(crate) async fn ipc_listen(cli: CliCommon) -> Result<()> {
-    // Remove the socket if a previous run left it there
-    let sock_path = sock_path();
-    tokio::fs::remove_file(&sock_path).await.ok();
-    let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
-    let perms = std::fs::Permissions::from_mode(0o660);
-    std::fs::set_permissions(sock_path, perms)?;
-    sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
-
-    loop {
-        connlib_shared::deactivate_dns_control()?;
-        tracing::info!("Listening for GUI to connect over IPC...");
-        let (stream, _) = listener.accept().await?;
+        let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;
+        // I'm not sure if we can enforce group membership here - Docker
+        // might just be enforcing it with filesystem permissions.
+        // Checking the secondary groups of another user looks complicated.
         tracing::info!(
             uid = cred.uid(),
             gid = cred.gid(),
             pid = cred.pid(),
             "Got an IPC connection"
         );
-
-        // I'm not sure if we can enforce group membership here - Docker
-        // might just be enforcing it with filesystem permissions.
-        // Checking the secondary groups of another user looks complicated.
-        if let Err(error) = handle_ipc_client(&cli, stream).await {
-            tracing::error!(?error, "Error while handling IPC client");
-        }
+        Ok(IpcStream(stream))
     }
 }
 

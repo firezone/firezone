@@ -197,6 +197,9 @@ pub(crate) struct IpcServer {
     // On Linux this has some fields
 }
 
+/// Opaque wrapper around platform-specific IPC stream
+pub(crate) struct IpcStream(pub named_pipe::NamedPipeServer);
+
 impl IpcServer {
     /// Platform-specific setup
     pub(crate) async fn new() -> Result<Self> {
@@ -214,9 +217,6 @@ impl IpcServer {
         Ok(IpcStream(server))
     }
 }
-
-/// Opaque wrapper around platform-specific IPC stream
-pub(crate) struct IpcStream(pub named_pipe::NamedPipeServer);
 
 fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
     let mut server_options = named_pipe::ServerOptions::new();
