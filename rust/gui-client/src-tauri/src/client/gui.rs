@@ -500,10 +500,7 @@ impl Controller {
         };
 
         let api_url = self.advanced_settings.api_url.clone();
-        tracing::info!(
-            api_url = api_url.to_string(),
-            "Starting connlib..."
-        );
+        tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
         let mut connlib = ipc::Client::connect(
             api_url.as_str(),
