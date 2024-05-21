@@ -13,7 +13,7 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
 use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
-use futures::Future;
+use futures::{Future, SinkExt, StreamExt};
 use secrecy::SecretString;
 use std::{
     future,
@@ -23,8 +23,10 @@ use std::{
     task::Poll,
 };
 use tokio::sync::mpsc;
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
+use url::Url;
 
 use platform::default_token_path;
 
@@ -305,7 +307,7 @@ pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut ipc_service = pin!(platform::ipc_listen(cli));
+        let mut ipc_service = pin!(ipc_listen(cli));
         let mut signals = platform::Signals::new()?;
 
         std::future::poll_fn(|cx| {
@@ -337,6 +339,113 @@ pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
         })
         .await
     })
+}
+
+#[derive(Clone)]
+struct CallbackHandlerIpc {
+    cb_tx: mpsc::Sender<IpcServerMsg>,
+}
+
+impl Callbacks for CallbackHandlerIpc {
+    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+        tracing::error!(?error, "Got `on_disconnect` from connlib");
+        self.cb_tx
+            .try_send(IpcServerMsg::OnDisconnect)
+            .expect("should be able to send OnDisconnect");
+    }
+
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+    ) -> Option<i32> {
+        tracing::info!("TunnelReady (on_set_interface_config)");
+        self.cb_tx
+            .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .expect("Should be able to send TunnelReady");
+        None
+    }
+
+    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
+        tracing::debug!(len = resources.len(), "New resource list");
+        self.cb_tx
+            .try_send(IpcServerMsg::OnUpdateResources(resources))
+            .expect("Should be able to send OnUpdateResources");
+    }
+}
+
+async fn ipc_listen(cli: CliCommon) -> Result<()> {
+    let mut server = platform::IpcServer::new().await?;
+    loop {
+        connlib_shared::deactivate_dns_control()?;
+        let stream = server.next_client().await?;
+        if let Err(error) = handle_ipc_client(&cli, stream).await {
+            tracing::error!(?error, "Error while handling IPC client");
+        }
+    }
+}
+
+async fn handle_ipc_client(cli: &CliCommon, stream: platform::IpcStream) -> Result<()> {
+    let (rx, tx) = tokio::io::split(stream.0);
+    let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
+    let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+    let (cb_tx, mut cb_rx) = mpsc::channel(100);
+
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = cb_rx.recv().await {
+            tx.send(serde_json::to_string(&msg)?.into()).await?;
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+
+    let mut connlib = None;
+    let callback_handler = CallbackHandlerIpc { cb_tx };
+    while let Some(msg) = rx.next().await {
+        let msg = msg?;
+        let msg: IpcClientMsg = serde_json::from_slice(&msg)?;
+
+        match msg {
+            IpcClientMsg::Connect { api_url, token } => {
+                let token = secrecy::SecretString::from(token);
+                assert!(connlib.is_none());
+                let device_id = connlib_shared::device_id::get()
+                    .context("Failed to read / create device ID")?;
+                let (private_key, public_key) = keypair();
+
+                let login = LoginUrl::client(
+                    Url::parse(&api_url)?,
+                    &token,
+                    device_id.id,
+                    None,
+                    public_key.to_bytes(),
+                )?;
+
+                connlib = Some(connlib_client_shared::Session::connect(
+                    login,
+                    Sockets::new(),
+                    private_key,
+                    None,
+                    callback_handler.clone(),
+                    cli.max_partition_time
+                        .map(|t| t.into())
+                        .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
+                    tokio::runtime::Handle::try_current()?,
+                ));
+            }
+            IpcClientMsg::Disconnect => {
+                if let Some(connlib) = connlib.take() {
+                    connlib.disconnect();
+                }
+            }
+            IpcClientMsg::Reconnect => connlib.as_mut().context("No connlib session")?.reconnect(),
+            IpcClientMsg::SetDns(v) => connlib.as_mut().context("No connlib session")?.set_dns(v),
+        }
+    }
+
+    send_task.abort();
+
+    Ok(())
 }
 
 #[allow(dead_code)]

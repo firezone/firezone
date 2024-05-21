@@ -4,16 +4,15 @@
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 
-use crate::{CliCommon, CliIpcService, IpcClientMsg, IpcServerMsg, SignalKind};
+use crate::{CliCommon, CliIpcService, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets};
+use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
-use futures::{SinkExt, Stream};
 use std::{
     ffi::{c_void, OsString},
-    future::{poll_fn, Future},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    future::Future,
+    net::IpAddr,
     path::{Path, PathBuf},
     pin::pin,
     str::FromStr,
@@ -21,10 +20,8 @@ use std::{
     time::Duration,
 };
 use tokio::{net::windows::named_pipe, sync::mpsc};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
-use url::Url;
 use windows::Win32::Security as WinSec;
 use windows_service::{
     service::{
@@ -150,7 +147,9 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(ipc_listen(CliIpcService::parse_from(arguments).common));
+    let mut ipc_service = pin!(super::ipc_listen(
+        CliIpcService::parse_from(arguments).common
+    ));
     let result = rt.block_on(async {
         std::future::poll_fn(|cx| {
             match shutdown_rx.poll_recv(cx) {
@@ -194,23 +193,30 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     result
 }
 
-pub(crate) async fn ipc_listen(cli: CliCommon) -> Result<()> {
-    setup_before_connlib()?;
-    loop {
-        // This is redundant on the first loop. After that it clears the rules
-        // between GUI instances.
-        connlib_shared::deactivate_dns_control()?;
+pub(crate) struct IpcServer {
+    // On Linux this has some fields
+}
+
+impl IpcServer {
+    /// Platform-specific setup
+    pub(crate) async fn new() -> Result<Self> {
+        setup_before_connlib()?;
+        Ok(Self {})
+    }
+
+    pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
         let server = create_pipe_server()?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
-        if let Err(error) = handle_ipc_client(&cli, server).await {
-            tracing::error!(?error, "Error while handling IPC client");
-        }
+        Ok(IpcStream(server))
     }
 }
+
+/// Opaque wrapper around platform-specific IPC stream
+pub(crate) struct IpcStream(pub named_pipe::NamedPipeServer);
 
 fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
     let mut server_options = named_pipe::ServerOptions::new();
@@ -252,132 +258,6 @@ pub fn pipe_path() -> String {
     named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
 }
 
-enum IpcEvent {
-    /// A message that the client sent us
-    Client(IpcClientMsg),
-    /// A message that connlib wants to send
-    Connlib(IpcServerMsg),
-    /// The IPC client disconnected
-    IpcDisconnect,
-}
-
-#[derive(Clone)]
-struct CallbackHandlerIpc {
-    cb_tx: mpsc::Sender<IpcServerMsg>,
-}
-
-impl Callbacks for CallbackHandlerIpc {
-    fn on_disconnect(&self, _error: &connlib_client_shared::Error) {
-        self.cb_tx
-            .try_send(IpcServerMsg::OnDisconnect)
-            .expect("should be able to send OnDisconnect");
-    }
-
-    fn on_set_interface_config(
-        &self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-    ) -> Option<i32> {
-        tracing::info!("TunnelReady");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
-            .expect("Should be able to send TunnelReady");
-        None
-    }
-
-    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
-        tracing::info!(len = resources.len(), "New resource list");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnUpdateResources(resources))
-            .expect("Should be able to send OnUpdateResources");
-    }
-}
-
-async fn handle_ipc_client(cli: &CliCommon, server: named_pipe::NamedPipeServer) -> Result<()> {
-    let framed = Framed::new(server, LengthDelimitedCodec::new());
-    let mut framed = pin!(framed);
-    let (cb_tx, mut cb_rx) = mpsc::channel(100);
-
-    let mut connlib = None;
-    let callback_handler = CallbackHandlerIpc { cb_tx };
-    loop {
-        let ev = poll_fn(|cx| {
-            match cb_rx.poll_recv(cx) {
-                Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Connlib(msg))),
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow!(
-                        "Impossible - MPSC channel from connlib closed"
-                    )))
-                }
-                Poll::Pending => {}
-            }
-
-            match framed.as_mut().poll_next(cx) {
-                Poll::Ready(Some(msg)) => {
-                    let msg = serde_json::from_slice(&msg?)?;
-                    return Poll::Ready(Ok(IpcEvent::Client(msg)));
-                }
-                Poll::Ready(None) => return Poll::Ready(Ok(IpcEvent::IpcDisconnect)),
-                Poll::Pending => {}
-            }
-
-            Poll::Pending
-        })
-        .await;
-
-        match ev {
-            Ok(IpcEvent::Client(msg)) => match msg {
-                IpcClientMsg::Connect { api_url, token } => {
-                    let token = secrecy::SecretString::from(token);
-                    assert!(connlib.is_none());
-                    let device_id = connlib_shared::device_id::get()
-                        .context("Failed to read / create device ID")?;
-                    let (private_key, public_key) = keypair();
-
-                    let login = LoginUrl::client(
-                        Url::parse(&api_url)?,
-                        &token,
-                        device_id.id,
-                        None,
-                        public_key.to_bytes(),
-                    )?;
-
-                    connlib = Some(connlib_client_shared::Session::connect(
-                        login,
-                        Sockets::new(),
-                        private_key,
-                        None,
-                        callback_handler.clone(),
-                        cli.max_partition_time
-                            .map(|t| t.into())
-                            .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
-                        tokio::runtime::Handle::try_current()?,
-                    ));
-                }
-                IpcClientMsg::Disconnect => {
-                    if let Some(connlib) = connlib.take() {
-                        connlib.disconnect();
-                    }
-                }
-                IpcClientMsg::Reconnect => {
-                    connlib.as_mut().context("No connlib session")?.reconnect()
-                }
-                IpcClientMsg::SetDns(v) => {
-                    connlib.as_mut().context("No connlib session")?.set_dns(v)
-                }
-            },
-            Ok(IpcEvent::Connlib(msg)) => framed.send(serde_json::to_string(&msg)?.into()).await?,
-            Ok(IpcEvent::IpcDisconnect) => {
-                tracing::info!("IPC client disconnected");
-                break;
-            }
-            Err(e) => Err(e)?,
-        }
-    }
-    Ok(())
-}
-
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
@@ -403,10 +283,6 @@ pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
 
-/// Platform-specific setup needed for connlib
-///
-/// On Windows this installs wintun.dll
-#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn setup_before_connlib() -> Result<()> {
     wintun_install::ensure_dll()?;
     Ok(())
