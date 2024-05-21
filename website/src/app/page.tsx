@@ -369,7 +369,7 @@ export default function Page() {
                 </ChromeIcon>
               </div>
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <AppleIcon size={12} href="/kb/user-guides/macos-client">
+                <AppleIcon size={12} href="/kb/user-guides/ios-client">
                   <span className="inline-block pt-4 w-full text-center">
                     iOS
                   </span>
