@@ -183,6 +183,62 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(
         %{
           provider: %{
+            adapter: :jumpcloud,
+            adapter_state: %{"refresh_token" => nil, "expires_at" => expires_at},
+            disabled_at: nil
+          }
+        } = assigns
+      ) do
+    assigns =
+      assign_new(assigns, :expires_at, fn ->
+        {:ok, dt, _} = DateTime.from_iso8601(expires_at)
+        dt
+      end)
+
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        No refresh token provided by IdP and access token expires on
+        <.datetime datetime={@expires_at} /> UTC
+      </span>
+    </div>
+    """
+  end
+
+  def status(
+        %{
+          provider: %{
+            adapter: :jumpcloud,
+            disabled_at: disabled_at,
+            adapter_state: %{"status" => "pending_access_token"}
+          }
+        } = assigns
+      )
+      when not is_nil(disabled_at) do
+    ~H"""
+    <div class="flex items-center">
+      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <span class="ml-3">
+        Provisioning
+        <span :if={@provider.adapter_state["status"]}>
+          <.button
+            size="xs"
+            navigate={
+              ~p"/#{@provider.account_id}/settings/identity_providers/okta/#{@provider}/redirect"
+            }
+          >
+            Connect IdP
+          </.button>
+        </span>
+      </span>
+    </div>
+    """
+  end
+
+  def status(
+        %{
+          provider: %{
             adapter: :openid_connect,
             disabled_at: disabled_at,
             adapter_state: %{"status" => "pending_access_token"}
@@ -237,6 +293,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def adapter_name(:google_workspace), do: "Google Workspace"
   def adapter_name(:microsoft_entra), do: "Microsoft Entra"
   def adapter_name(:okta), do: "Okta"
+  def adapter_name(:jumpcloud), do: "JumpCloud"
   def adapter_name(:openid_connect), do: "OpenID Connect"
 
   def view_provider(account, %{adapter: adapter} = provider)
@@ -254,6 +311,9 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   def view_provider(account, %{adapter: :okta} = provider),
     do: ~p"/#{account}/settings/identity_providers/okta/#{provider}"
+
+  def view_provider(account, %{adapter: :jumpcloud} = provider),
+    do: ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}"
 
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""

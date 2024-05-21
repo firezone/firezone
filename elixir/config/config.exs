@@ -243,6 +243,11 @@ config :tailwind,
     cd: Path.expand("../apps/web/assets", __DIR__)
   ]
 
+config :workos, WorkOS.Client,
+  api_key: System.get_env("WORKOS_API_KEY"),
+  client_id: System.get_env("WORKOS_CLIENT_ID"),
+  baseurl: "https://api.workos.com"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"
