@@ -22,6 +22,7 @@ use url::Url;
 
 use ControllerRequest as Req;
 
+mod ran_before;
 mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
@@ -553,6 +554,7 @@ impl Controller {
         self.start_session(token)
             .await
             .context("Couldn't start connlib session")?;
+        ran_before::set().await?;
         Ok(())
     }
 
@@ -741,16 +743,11 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let session_dir =
-        firezone_headless_client::known_dirs::session().context("Couldn't find session dir")?;
-    let ran_before_path = session_dir.join("ran_before.txt");
-    if !tokio::fs::try_exists(&ran_before_path).await? {
+    if !ran_before::get().await? {
         let win = app
             .get_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
         win.show()?;
-        tokio::fs::create_dir_all(&session_dir).await?;
-        tokio::fs::write(&ran_before_path, &[]).await?;
     }
 
     let mut controller = Controller {
