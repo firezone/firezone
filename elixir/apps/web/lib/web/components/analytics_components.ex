@@ -44,7 +44,6 @@ defmodule Web.AnalyticsComponents do
     </script>
     <script :if={not is_nil(@token)} type="text/javascript">
       mixpanel.init("<%= @token %>", {track_pageview: "url-with-path-and-query-string"});
-      mixpanel.set_config({debug: true});
     </script>
     """
   end
