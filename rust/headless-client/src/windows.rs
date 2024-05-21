@@ -4,7 +4,7 @@
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 
-use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
+use crate::{CliIpcService, CmdIpc, IpcClientMsg, IpcServerMsg, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets};
@@ -60,26 +60,6 @@ impl Signals {
             return Poll::Ready(SignalKind::Interrupt);
         }
         Poll::Pending
-    }
-}
-
-#[derive(clap::Parser, Default)]
-#[command(author, version, about, long_about = None)]
-struct CliIpcService {
-    #[command(subcommand)]
-    command: CmdIpc,
-}
-
-#[derive(clap::Subcommand)]
-enum CmdIpc {
-    #[command(hide = true)]
-    DebugIpcService,
-    IpcService,
-}
-
-impl Default for CmdIpc {
-    fn default() -> Self {
-        Self::IpcService
     }
 }
 
@@ -148,14 +128,14 @@ fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
 // Generates `ffi_service_run` from `service_run`
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
-fn windows_service_run(_arguments: Vec<OsString>) {
-    if let Err(error) = fallible_windows_service_run() {
+fn windows_service_run(arguments: Vec<OsString>) {
+    if let Err(error) = fallible_windows_service_run(arguments) {
         tracing::error!(?error, "fallible_windows_service_run returned an error");
     }
 }
 
 // Most of the Windows-specific service stuff should go here
-fn fallible_windows_service_run() -> Result<()> {
+fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     let log_path =
         crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
@@ -213,7 +193,7 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(ipc_listen(CliIpcService::default()));
+    let mut ipc_service = pin!(ipc_listen(CliIpcService::parse_from(arguments)));
     let result = rt.block_on(async {
         std::future::poll_fn(|cx| {
             match shutdown_rx.poll_recv(cx) {

@@ -17,7 +17,7 @@ use secrecy::SecretString;
 use std::{
     future,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    path::PathBuf,
+    path::{Path, PathBuf},
     task::Poll,
 };
 use tokio::sync::mpsc;
@@ -64,6 +64,36 @@ struct Cli {
     #[command(subcommand)]
     _command: Option<Cmd>,
 
+    #[command(flatten)]
+    common: CliCommon,
+}
+
+#[derive(clap::Parser)]
+#[command(author, version, about, long_about = None)]
+struct CliIpcService {
+    #[command(subcommand)]
+    command: CmdIpc,
+
+    #[command(flatten)]
+    common: CliCommon,
+}
+
+#[derive(clap::Subcommand)]
+enum CmdIpc {
+    #[command(hide = true)]
+    DebugIpcService,
+    IpcService,
+}
+
+impl Default for CmdIpc {
+    fn default() -> Self {
+        Self::IpcService
+    }
+}
+
+/// CLI args common to both the IPC service and the headless Client
+#[derive(clap::Args)]
+struct CliCommon {
     #[arg(
         short = 'u',
         long,
@@ -87,6 +117,8 @@ struct Cli {
     token: Option<String>,
 
     /// A filesystem path where the token can be found
+    ///
+    /// Clap doesn't seem to allow `PathBuf` as an arg.
 
     // Apparently passing secrets through stdin is the most secure method, but
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
@@ -140,7 +172,7 @@ pub enum IpcServerMsg {
 }
 
 pub fn run_only_headless_client() -> Result<()> {
-    let mut cli = Cli::parse();
+    let mut cli = Cli::parse().common;
 
     // Modifying the environment of a running process is unsafe. If any other
     // thread is reading or writing the environment, something bad can happen.
@@ -170,7 +202,7 @@ pub fn run_only_headless_client() -> Result<()> {
         .enable_all()
         .build()?;
 
-    let token = get_token(token_env_var, &cli)?.with_context(|| {
+    let token = get_token(token_env_var, &PathBuf::from(&cli.token_path))?.with_context(|| {
         format!(
             "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
             cli.token_path
@@ -297,19 +329,22 @@ impl Callbacks for CallbackHandler {
 /// - `Ok(None)` if there is no token to be found
 /// - `Ok(Some(_))` if we found the token
 /// - `Err(_)` if we found the token on disk but failed to read it
-fn get_token(token_env_var: Option<SecretString>, cli: &Cli) -> Result<Option<SecretString>> {
+fn get_token(
+    token_env_var: Option<SecretString>,
+    token_path: &Path,
+) -> Result<Option<SecretString>> {
     // This is very simple but I don't want to write it twice
     if let Some(token) = token_env_var {
         return Ok(Some(token));
     }
-    read_token_file(cli)
+    read_token_file(token_path)
 }
 
 /// Try to retrieve the token from disk
 ///
 /// Sync because we do blocking file I/O
-fn read_token_file(cli: &Cli) -> Result<Option<SecretString>> {
-    let path = PathBuf::from(&cli.token_path);
+fn read_token_file(token_path: &Path) -> Result<Option<SecretString>> {
+    let path = PathBuf::from(token_path);
 
     if let Ok(token) = std::env::var(TOKEN_ENV_KEY) {
         std::env::remove_var(TOKEN_ENV_KEY);
