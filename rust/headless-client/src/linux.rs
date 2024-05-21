@@ -1,6 +1,9 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{
+    CliCommon, CliIpcService, CmdIpc, IpcClientMsg, IpcServerMsg, SignalKind, FIREZONE_GROUP,
+    TOKEN_ENV_KEY,
+};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Sockets};
@@ -10,11 +13,12 @@ use connlib_shared::{
     LoginUrl,
 };
 use firezone_cli_utils::setup_global_subscriber;
-use futures::{SinkExt, StreamExt};
+use futures::{Future, SinkExt, StreamExt};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
+    pin::pin,
     str::FromStr,
     task::{Context, Poll},
 };
@@ -67,18 +71,49 @@ pub fn default_token_path() -> PathBuf {
 ///
 /// On Linux this is the same as running with `ipc-service`
 pub(crate) fn run_only_ipc_service() -> Result<()> {
-    let cli = Cli::parse();
-    // systemd supplies this but maybe we should hard-code a better default
-    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
-    setup_global_subscriber(layer);
-    tracing::info!(git_version = crate::GIT_VERSION);
-
-    if !nix::unistd::getuid().is_root() {
-        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+    let cli = CliIpcService::parse();
+    match cli.command {
+        CmdIpc::DebugIpcService => run_debug_ipc_service(cli.common),
+        CmdIpc::IpcService => run_ipc_service(cli.common),
     }
+}
+
+fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
+    crate::debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
-    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
-    run_ipc_service(cli, rt, shutdown_rx)
+    rt.block_on(async {
+        let mut ipc_service = pin!(ipc_listen(cli));
+        let mut signals = Signals::new()?;
+
+        std::future::poll_fn(|cx| {
+            match signals.poll(cx) {
+                Poll::Ready(SignalKind::Hangup) => {
+                    tracing::info!("Caught Hangup signal");
+                    return Poll::Ready(Ok(()));
+                }
+                Poll::Ready(SignalKind::Interrupt) => {
+                    tracing::info!("Caught Interrupt signal");
+                    return Poll::Ready(Ok(()));
+                }
+                Poll::Pending => {}
+            }
+
+            match ipc_service.as_mut().poll(cx) {
+                Poll::Ready(Ok(())) => {
+                    return Poll::Ready(Err(anyhow::anyhow!(
+                        "Impossible, ipc_listen can't return Ok"
+                    )));
+                }
+                Poll::Ready(Err(error)) => {
+                    return Poll::Ready(Err(error).context("ipc_listen failed"));
+                }
+                Poll::Pending => {}
+            }
+
+            Poll::Pending
+        })
+        .await
+    })
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
@@ -184,12 +219,17 @@ pub fn sock_path() -> PathBuf {
         .join("ipc.sock")
 }
 
-pub(crate) fn run_ipc_service(
-    cli: Cli,
-    rt: tokio::runtime::Runtime,
-    _shutdown_rx: mpsc::Receiver<()>,
-) -> Result<()> {
+fn run_ipc_service(cli: CliCommon) -> Result<()> {
     tracing::info!("run_ipc_service");
+    // systemd supplies this but maybe we should hard-code a better default
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    setup_global_subscriber(layer);
+    tracing::info!(git_version = crate::GIT_VERSION);
+
+    if !nix::unistd::getuid().is_root() {
+        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+    }
+    let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async { ipc_listen(cli).await })
 }
 
@@ -200,7 +240,7 @@ pub fn firezone_group() -> Result<nix::unistd::Group> {
     Ok(group)
 }
 
-async fn ipc_listen(cli: Cli) -> Result<()> {
+async fn ipc_listen(cli: CliCommon) -> Result<()> {
     // Remove the socket if a previous run left it there
     let sock_path = sock_path();
     tokio::fs::remove_file(&sock_path).await.ok();
@@ -264,7 +304,7 @@ impl Callbacks for CallbackHandlerIpc {
     }
 }
 
-async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
+async fn handle_ipc_client(cli: &CliCommon, stream: UnixStream) -> Result<()> {
     let (rx, tx) = stream.into_split();
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());

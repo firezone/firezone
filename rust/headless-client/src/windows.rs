@@ -90,9 +90,10 @@ pub(crate) fn run_only_ipc_service() -> Result<()> {
 fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
     crate::debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
-    let mut ipc_service = pin!(ipc_listen(cli));
-    let mut signals = Signals::new()?;
     rt.block_on(async {
+        let mut ipc_service = pin!(ipc_listen(cli));
+        let mut signals = Signals::new()?;
+
         std::future::poll_fn(|cx| {
             match signals.poll(cx) {
                 Poll::Ready(SignalKind::Hangup) => {
