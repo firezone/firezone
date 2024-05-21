@@ -4,7 +4,7 @@
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 
-use crate::{CliIpcService, CmdIpc, IpcClientMsg, IpcServerMsg, SignalKind};
+use crate::{CliCommon, CliIpcService, IpcClientMsg, IpcServerMsg, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets};
@@ -150,7 +150,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(ipc_listen(CliIpcService::parse_from(arguments)));
+    let mut ipc_service = pin!(ipc_listen(CliIpcService::parse_from(arguments).common));
     let result = rt.block_on(async {
         std::future::poll_fn(|cx| {
             match shutdown_rx.poll_recv(cx) {
@@ -194,7 +194,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     result
 }
 
-pub(crate) async fn ipc_listen(_cli: CliCommon) -> Result<()> {
+pub(crate) async fn ipc_listen(cli: CliCommon) -> Result<()> {
     setup_before_connlib()?;
     loop {
         // This is redundant on the first loop. After that it clears the rules
@@ -206,7 +206,7 @@ pub(crate) async fn ipc_listen(_cli: CliCommon) -> Result<()> {
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
-        if let Err(error) = handle_ipc_client(server).await {
+        if let Err(error) = handle_ipc_client(&cli, server).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
     }
@@ -294,7 +294,7 @@ impl Callbacks for CallbackHandlerIpc {
     }
 }
 
-async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
+async fn handle_ipc_client(cli: &CliCommon, server: named_pipe::NamedPipeServer) -> Result<()> {
     let framed = Framed::new(server, LengthDelimitedCodec::new());
     let mut framed = pin!(framed);
     let (cb_tx, mut cb_rx) = mpsc::channel(100);
@@ -349,7 +349,9 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
                         private_key,
                         None,
                         callback_handler.clone(),
-                        Some(std::time::Duration::from_secs(60 * 60 * 24 * 30)),
+                        cli.max_partition_time
+                            .map(|t| t.into())
+                            .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
                         tokio::runtime::Handle::try_current()?,
                     ));
                 }

@@ -339,9 +339,13 @@ pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
     })
 }
 
+#[allow(dead_code)]
 enum SignalKind {
+    /// SIGHUP
+    ///
     /// Not caught on Windows
     Hangup,
+    /// SIGINT
     Interrupt,
 }
 
