@@ -1104,8 +1104,8 @@ impl ReferenceStateMachine for ReferenceState {
 
         let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
 
-        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 1 };
-        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 1 };
+        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 3 };
+        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 3 };
 
         // Note: We use weighted strategies here to conditionally only include the ICMP strategies if we have a resource.
         prop_oneof![
