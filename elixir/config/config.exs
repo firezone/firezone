@@ -39,6 +39,10 @@ config :domain, Domain.Gateways,
 
 config :domain, Domain.Telemetry, metrics_reporter: nil
 
+config :domain, Domain.Analytics,
+  mixpanel_token: nil,
+  hubspot_workspace_id: nil
+
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
   finch_transport_opts: []
@@ -133,11 +137,10 @@ config :web,
 
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
-    "default-src 'self' 'nonce-${nonce}'",
-    "frame-src 'self' https://js.stripe.com",
-    "script-src 'self' https://js.stripe.com",
-    "img-src 'self' data: https://www.gravatar.com",
-    "style-src 'self' 'unsafe-inline'"
+    "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
+    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://cdn.mxpnl.com https://*.hs-analytics.net"
   ]
 
 config :web, api_url_override: "ws://localhost:13001/"
