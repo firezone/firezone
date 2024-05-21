@@ -4,8 +4,8 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
-    LoginUrl, LoginUrlError, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6,
+    DnsControlMethod, Error, LoginUrl, LoginUrlError, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -384,6 +384,7 @@ fn connect(
         callback_handler,
         Some(MAX_PARTITION_TIME),
         runtime.handle().clone(),
+        DnsControlMethod::NoControl,
     );
 
     Ok(SessionWrapper {

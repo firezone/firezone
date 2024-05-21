@@ -163,6 +163,7 @@ where
             // We can just sort in here because sentinel ips are created in order
             dns_mapping.left_values().copied().sorted().collect(),
             &callbacks,
+            self.dns_control_method,
         )?;
 
         self.io

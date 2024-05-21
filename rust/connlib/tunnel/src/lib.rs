@@ -58,6 +58,8 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     device_read_buf: Box<[u8; MAX_UDP_SIZE]>,
+
+    dns_control_method: connlib_shared::DnsControlMethod,
 }
 
 impl<CB> ClientTunnel<CB>
@@ -68,6 +70,7 @@ where
         private_key: StaticSecret,
         sockets: Sockets,
         callbacks: CB,
+        dns_control_method: connlib_shared::DnsControlMethod,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(sockets)?,
@@ -77,6 +80,7 @@ where
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            dns_control_method,
         })
     }
 
@@ -173,6 +177,7 @@ where
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            dns_control_method: connlib_shared::DnsControlMethod::NoControl,
         })
     }
 

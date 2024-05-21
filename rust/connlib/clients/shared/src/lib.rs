@@ -1,7 +1,8 @@
 //! Main connlib library for clients.
 pub use connlib_shared::messages::client::ResourceDescription;
 pub use connlib_shared::{
-    callbacks, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
+    callbacks, keypair, Callbacks, Cidrv4, Cidrv6, DnsControlMethod, Error, LoginUrl,
+    LoginUrlError, StaticSecret,
 };
 pub use firezone_tunnel::Sockets;
 pub use tracing_appender::non_blocking::WorkerGuard;
@@ -44,6 +45,7 @@ impl Session {
         callbacks: CB,
         max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
+        dns_control_method: connlib_shared::DnsControlMethod,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -55,6 +57,7 @@ impl Session {
             callbacks.clone(),
             max_partition_time,
             rx,
+            dns_control_method,
         ));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
@@ -114,11 +117,12 @@ async fn connect<CB>(
     callbacks: CB,
     max_partition_time: Option<Duration>,
     rx: UnboundedReceiver<Command>,
+    dns_control_method: connlib_shared::DnsControlMethod,
 ) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone())?;
+    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone(), dns_control_method)?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),

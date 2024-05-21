@@ -31,9 +31,12 @@ where
     pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
         // Note: the dns fallback strategy is irrelevant for gateways
         let callbacks = self.callbacks.clone();
-        self.io
-            .device_mut()
-            .set_config(config, vec![], &callbacks)?;
+        self.io.device_mut().set_config(
+            config,
+            vec![],
+            &callbacks,
+            connlib_shared::DnsControlMethod::NoControl,
+        )?;
         self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
             &callbacks,

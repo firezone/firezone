@@ -1,23 +1,10 @@
-//! Linux-specific things like DNS control methods
+//! Linux-specific things
+
+use super::DnsControlMethod;
 
 const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
 
 pub mod etc_resolv_conf;
-
-#[derive(Clone, Debug)]
-pub enum DnsControlMethod {
-    /// Back up `/etc/resolv.conf` and replace it with our own
-    ///
-    /// Only suitable for the Alpine CI containers and maybe something like an
-    /// embedded system
-    EtcResolvConf,
-    /// Cooperate with NetworkManager (TODO)
-    NetworkManager,
-    /// Cooperate with `systemd-resolved`
-    ///
-    /// Suitable for most Ubuntu systems, probably
-    Systemd,
-}
 
 /// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
 pub fn get_dns_control_from_env() -> Option<DnsControlMethod> {

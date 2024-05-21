@@ -70,8 +70,14 @@ impl Device {
         config: &Interface,
         dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks,
+        dns_control_method: connlib_shared::DnsControlMethod,
     ) -> Result<(), ConnlibError> {
-        self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
+        self.tun = Some(Tun::new(
+            config,
+            dns_config.clone(),
+            callbacks,
+            dns_control_method,
+        )?);
 
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 

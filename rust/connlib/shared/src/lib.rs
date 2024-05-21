@@ -51,6 +51,25 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
+#[derive(Clone, Copy, Debug)]
+pub enum DnsControlMethod {
+    /// Don't control DNS at all. Suitable for Gateways, Clients that only need CIDR Resources, or running without root
+    NoControl,
+    /// The only DNS control method for Windows
+    Windows,
+    /// Back up `/etc/resolv.conf` and replace it with our own
+    ///
+    /// Only suitable for the Alpine CI containers and maybe something like an
+    /// embedded system
+    EtcResolvConf,
+    /// Cooperate with NetworkManager (TODO)
+    NetworkManager,
+    /// Cooperate with `systemd-resolved`
+    ///
+    /// Suitable for most Ubuntu systems, probably
+    Systemd,
+}
+
 /// Deactivates DNS control on Windows
 #[cfg(target_os = "windows")]
 pub fn deactivate_dns_control() -> anyhow::Result<()> {

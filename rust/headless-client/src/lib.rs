@@ -213,6 +213,7 @@ pub fn run_only_headless_client() -> Result<()> {
         callback_handler,
         max_partition_time,
         rt.handle().clone(),
+        connlib_shared::DnsControlMethod::NoControl,
     );
     // TODO: this should be added dynamically
     session.set_dns(platform::system_resolvers().unwrap_or_default());

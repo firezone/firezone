@@ -6,8 +6,8 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Sockets};
 use connlib_shared::{
     callbacks, keypair,
-    linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
-    LoginUrl,
+    linux::{etc_resolv_conf, get_dns_control_from_env},
+    DnsControlMethod, LoginUrl,
 };
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{SinkExt, StreamExt};
@@ -118,6 +118,8 @@ pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
         Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
         Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
+        Some(DnsControlMethod::NoControl) => Ok(Vec::default()),
+        Some(DnsControlMethod::Windows) => panic!("Windows DNS control cannot be used on Linux"),
     }
 }
 
@@ -309,6 +311,7 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
                         .map(|t| t.into())
                         .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
                     tokio::runtime::Handle::try_current()?,
+                    connlib_shared::DnsControlMethod::NoControl,
                 ));
             }
             IpcClientMsg::Disconnect => {

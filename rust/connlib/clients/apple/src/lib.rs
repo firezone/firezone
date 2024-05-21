@@ -2,8 +2,8 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
-    LoginUrl, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6,
+    DnsControlMethod, Error, LoginUrl, Session, Sockets,
 };
 use secrecy::SecretString;
 use std::{
@@ -201,6 +201,7 @@ impl WrappedSession {
             },
             Some(MAX_PARTITION_TIME),
             runtime.handle().clone(),
+            DnsControlMethod::NoControl,
         );
 
         Ok(Self {
