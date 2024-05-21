@@ -36,7 +36,7 @@ that can be easily shared.
 To export logs from the Gateway Docker container, use the `docker logs` command
 and redirect the output to a file:
 
-```
+```bash
 docker logs firezone-gateway > firezone-gateway.log
 ```
 
@@ -50,7 +50,7 @@ for a full list of log drivers and options available.
 To export logs from the Gateway systemd service, use the `journalctl` command
 and redirect the output to a file:
 
-```
+```bash
 journalctl -u firezone-gateway > firezone-gateway.log
 ```
 

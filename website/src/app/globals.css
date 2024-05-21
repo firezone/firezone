@@ -19,7 +19,7 @@
     text-decoration: underline !important;
   }
 
-  :is(pre, code) {
-    @apply overflow-x-auto;
+  *:is(code) {
+    @apply overflow-x-auto rounded text-sm;
   }
 }
