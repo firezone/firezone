@@ -502,7 +502,7 @@ impl Controller {
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(
             api_url = api_url.to_string(),
-            "Calling connlib Session::connect"
+            "Starting connlib..."
         );
 
         let mut connlib = ipc::Client::connect(
@@ -523,6 +523,7 @@ impl Controller {
         });
         self.refresh_system_tray_menu()?;
 
+        ran_before::set().await?;
         Ok(())
     }
 
@@ -554,7 +555,6 @@ impl Controller {
         self.start_session(token)
             .await
             .context("Couldn't start connlib session")?;
-        ran_before::set().await?;
         Ok(())
     }
 
