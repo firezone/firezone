@@ -481,20 +481,6 @@ impl StateMachineTest for TunnelTest {
         // 2. Advance all states as far as possible
         state.advance(ref_state);
 
-        // Advance time to work around https://github.com/algesten/str0m/issues/514.
-        state.now += Duration::from_millis(50);
-        state.advance(ref_state);
-        state.now += Duration::from_millis(50);
-        state.advance(ref_state);
-        state.now += Duration::from_millis(50);
-        state.advance(ref_state);
-        state.now += Duration::from_millis(50);
-        state.advance(ref_state);
-        state.now += Duration::from_millis(50);
-        state.advance(ref_state);
-        state.now += Duration::from_millis(50);
-        state.advance(ref_state);
-
         // 3. Assert expected state
         assert_eq!(
             state.gateway_received_icmp_packets,
@@ -1152,8 +1138,6 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
         };
-
-        state.now += Duration::from_millis(300); // Equivalent hack to advance str0m time.
 
         state
     }

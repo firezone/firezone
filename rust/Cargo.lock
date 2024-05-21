@@ -5374,9 +5374,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
+checksum = "b6220f78bb44c15f326b0596113305f6101097a18755d53727a575c97e09fb24"
 dependencies = [
  "bytes",
  "crc",
@@ -5632,18 +5632,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha-1"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "digest",
- "sha1-asm",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5652,6 +5640,7 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+ "sha1-asm",
 ]
 
 [[package]]
@@ -5873,8 +5862,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.5.0"
-source = "git+https://github.com/firezone/str0m?branch=main#44b616945145033ade739f30cdce004728011619"
+version = "0.5.1"
+source = "git+https://github.com/firezone/str0m?branch=main#07c4fb0449db1fdde4b3421a61b666312ec81106"
 dependencies = [
  "combine",
  "crc",
@@ -5883,7 +5872,7 @@ dependencies = [
  "once_cell",
  "sctp-proto",
  "serde",
- "sha-1",
+ "sha1",
  "thiserror",
  "tracing",
 ]

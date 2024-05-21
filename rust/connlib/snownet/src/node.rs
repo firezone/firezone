@@ -835,6 +835,7 @@ where
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
         agent.set_max_candidate_pairs(300);
+        agent.set_timing_advance(Duration::ZERO);
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -940,6 +941,8 @@ where
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
         });
+        agent.set_timing_advance(Duration::ZERO);
+
         let answer = Answer {
             credentials: Credentials {
                 username: agent.local_credentials().ufrag.clone(),
