@@ -70,6 +70,8 @@ jobs:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+          # Linux needs this to specify DNS control
+          FIREZONE_DNS_CONTROL: systemd-resolved
           RUST_BACKTRACE: full
         name: "cargo test"
         shell: bash
