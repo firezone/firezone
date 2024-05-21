@@ -1,6 +1,5 @@
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
-import CodeBlock from "@/components/CodeBlock";
 
 # Install Firezone with Docker
 
@@ -46,10 +45,9 @@ After prerequisites are satisfied, you're ready to install the Firezone Server.
 
 The easiest way to deploy Firezone with Docker is the automatic install script:
 
-<CodeBlock
-  language="bash"
-  codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/legacy/scripts/install.sh)"
-/>
+```bash
+bash <(curl -fsSL https://github.com/firezone/firezone/raw/legacy/scripts/install.sh)
+```
 
 This will ask you a few questions regarding initial configuration, then proceed
 to download a sample docker-compose.yml file, configure it with your responses,
