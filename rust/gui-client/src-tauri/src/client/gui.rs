@@ -267,7 +267,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                         Ok(Ok(_)) => 0,
                     };
 
-                    cleanup();
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
                 });
@@ -308,13 +307,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         }
     });
     Ok(())
-}
-
-/// Best-effort cleanup of things like DNS control before graceful exit
-fn cleanup() {
-    // Do this redundant deactivation because `Tun` will not automatically Drop before
-    // the process exits
-    connlib_shared::deactivate_dns_control().ok();
 }
 
 /// Runs a smoke test and then asks Controller to exit gracefully
