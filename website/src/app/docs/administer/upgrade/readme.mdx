@@ -20,7 +20,7 @@ Follow the steps below to upgrade Firezone:
 
 1. Change to your Firezone installation directory, by default `$HOME/.firezone`:
 
-```
+```bash
 cd $HOME/.firezone
 ```
 
@@ -30,13 +30,13 @@ cd $HOME/.firezone
    key for the `firezone` service.
 1. Update service images:
 
-```
+```bash
 docker compose pull
 ```
 
 1. Re-up the services (**warning: this will restart updated services**):
 
-```
+```bash
 docker compose up -d
 ```
 

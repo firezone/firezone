@@ -37,7 +37,7 @@ using the default Docker compose template.
 1. Stop Firezone (warning: this **will** disconnect any users connected to the
    VPN):
 
-```
+```bash
 docker compose -f $HOME/.firezone/docker-compose.yml down
 ```
 
@@ -45,7 +45,7 @@ docker compose -f $HOME/.firezone/docker-compose.yml down
    `/etc/docker/daemon.json` (for example, for IPv6 support), be sure to include
    that in the backup as well.
 
-```
+```bash
 tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz $HOME/.firezone /var/lib/docker/volumes/firezone_postgres-data
 ```
 
@@ -56,13 +56,13 @@ A backup file named `firezone-back-TIMESTAMP.tgz` will then be stored in
 
 1. Copy the files back to their original location:
 
-```
+```bash
 tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 ```
 
 2. Optionally, enable Docker to boot on startup:
 
-```
+```bash
 systemctl enable docker
 ```
 
@@ -74,13 +74,13 @@ systemctl enable docker
 1. Stop Firezone (warning: this **will** disconnect any users connected to the
    VPN):
 
-```
+```bash
 firezone-ctl stop
 ```
 
 2. Copy relevant files and folders:
 
-```
+```bash
 tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz /var/opt/firezone /opt/firezone /usr/bin/firezone-ctl /etc/systemd/system/firezone-runsvdir-start.service /etc/firezone
 ```
 
@@ -91,13 +91,13 @@ A backup file named `firezone-back-TIMESTAMP.tgz` will then be stored in
 
 1. Copy the files back to their original location:
 
-```
+```bash
 tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 ```
 
 2. Reconfigure Firezone to ensure configuration is applied to the host system:
 
-```
+```bash
 firezone-ctl reconfigure
 ```
 

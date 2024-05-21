@@ -29,7 +29,7 @@ Firezone automatically generates these for on both Docker and Omnibus-based
 deployments. If you'd like to use your own cert and key, however, you can
 generate them with `openssl`:
 
-```
+```bash
 openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout saml.key -out saml.crt
 ```
 

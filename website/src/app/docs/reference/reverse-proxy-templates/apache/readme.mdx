@@ -18,7 +18,7 @@ This configuration needs to be placed in
 
 and activated with `a2ensite <server-name>`
 
-```
+```text
 LoadModule rewrite_module /usr/lib/apache2/modules/mod_rewrite.so
 LoadModule proxy_module /usr/lib/apache2/modules/mod_proxy.so
 LoadModule proxy_http_module /usr/lib/apache2/modules/mod_proxy_http.so
@@ -39,7 +39,7 @@ LoadModule proxy_wstunnel_module /usr/lib/apache2/modules/mod_proxy_wstunnel.so
 This configuration builds on the one above and uses Firezone's auto-generated
 self-signed certificates.
 
-```
+```text
 LoadModule rewrite_module /usr/lib/apache2/modules/mod_rewrite.so
 LoadModule proxy_module /usr/lib/apache2/modules/mod_proxy.so
 LoadModule proxy_http_module /usr/lib/apache2/modules/mod_proxy_http.so

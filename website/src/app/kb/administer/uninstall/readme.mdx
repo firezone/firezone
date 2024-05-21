@@ -18,25 +18,25 @@ on how it was installed:
 
 1. Stop the container:
 
-   ```
+   ```bash
    docker stop firezone-gateway
    ```
 
 1. Remove the container and its volumes:
 
-   ```
+   ```bash
    docker rm --volumes firezone-gateway
    ```
 
 1. Remove the image:
 
-   ```
+   ```bash
    docker rmi ghcr.io/firezone/gateway:1
    ```
 
 1. Remove the cache directory:
 
-   ```
+   ```bash
    sudo rm -rf /var/lib/firezone
    ```
 
@@ -45,19 +45,19 @@ on how it was installed:
 
 1. Stop the service:
 
-   ```
+   ```bash
    sudo systemctl stop firezone-gateway
    ```
 
 1. Disable the service:
 
-   ```
+   ```bash
    sudo systemctl disable firezone-gateway
    ```
 
 1. Remove all relevant files:
 
-   ```
+   ```bash
    sudo rm -rf /etc/systemd/system/firezone-gateway.service \
         /usr/local/bin/firezone-gateway \
         /usr/local/bin/firezone-gateway-init \
@@ -71,7 +71,7 @@ on how it was installed:
 
 If you want to remove the Gateway's data from the admin portal as well, navigate
 to the Site where the Gateway was running, click `(see all)` next to the
-`Online Gateways` header, and then delete the offline Gateway corresponding to the
-Gateway you just uninstalled.
+`Online Gateways` header, and then delete the offline Gateway corresponding to
+the Gateway you just uninstalled.
 
 <SupportOptions />
