@@ -3,7 +3,7 @@
 use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, Sockets};
+use connlib_client_shared::{file_logger, Callbacks};
 use connlib_shared::{
     callbacks, keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
@@ -299,17 +299,20 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
                     public_key.to_bytes(),
                 )?;
 
-                connlib = Some(connlib_client_shared::Session::connect(
-                    login,
-                    Sockets::new(),
-                    private_key,
-                    None,
-                    callback_handler.clone(),
-                    cli.max_partition_time
-                        .map(|t| t.into())
-                        .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
-                    tokio::runtime::Handle::try_current()?,
-                ));
+                connlib = Some(
+                    connlib_client_shared::SessionBuilder::new(
+                        login,
+                        private_key,
+                        callback_handler.clone(),
+                        tokio::runtime::Handle::try_current()?,
+                    )
+                    .max_partition_time(
+                        cli.max_partition_time
+                            .map(|t| t.into())
+                            .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
+                    )
+                    .build(),
+                );
             }
             IpcClientMsg::Disconnect => {
                 if let Some(connlib) = connlib.take() {

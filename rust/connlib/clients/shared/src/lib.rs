@@ -32,6 +32,55 @@ pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
+// Tried `derive_builder` for this but couldn't make it do what we need
+pub struct SessionBuilder<CB> {
+    url: LoginUrl,
+    private_key: StaticSecret,
+    callbacks: CB,
+    handle: tokio::runtime::Handle,
+
+    sockets: Option<Sockets>,
+    os_version_override: Option<String>,
+    max_partition_time: Option<Duration>,
+}
+
+impl<CB: Callbacks + 'static> SessionBuilder<CB> {
+    pub fn new(
+        url: LoginUrl,
+        private_key: StaticSecret,
+        callbacks: CB,
+        handle: tokio::runtime::Handle,
+    ) -> Self {
+        Self {
+            url,
+            private_key,
+            callbacks,
+            handle,
+
+            sockets: None,
+            os_version_override: None,
+            max_partition_time: None,
+        }
+    }
+
+    pub fn build(self) -> Session {
+        Session::connect(
+            self.url,
+            self.sockets.unwrap_or_else(|| Sockets::new()),
+            self.private_key,
+            self.os_version_override,
+            self.callbacks,
+            self.max_partition_time,
+            self.handle,
+        )
+    }
+
+    pub fn max_partition_time(mut self, x: Option<Duration>) -> Self {
+        self.max_partition_time = x;
+        self
+    }
+}
+
 impl Session {
     /// Creates a new [`Session`].
     ///
