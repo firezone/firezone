@@ -31,7 +31,7 @@ use std::{
     ops::ControlFlow,
     time::{Duration, Instant, SystemTime},
 };
-use tracing::{error_span, subscriber::DefaultGuard, Span};
+use tracing::{debug_span, error_span, subscriber::DefaultGuard, Span};
 use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 proptest_state_machine::prop_state_machine! {
@@ -111,12 +111,20 @@ impl StateMachineTest for TunnelTest {
     fn init_test(
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) -> Self::SystemUnderTest {
-        let mut client = ref_state
-            .client
-            .map_state(|key| ClientState::new(StaticSecret::from(key)));
-        let mut gateway = ref_state
-            .gateway
-            .map_state(|key| GatewayState::new(StaticSecret::from(key)));
+        let logger = tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_env_filter(EnvFilter::from_default_env())
+            .finish()
+            .set_default();
+
+        let mut client = ref_state.client.map_state(
+            |key| ClientState::new(StaticSecret::from(key)),
+            debug_span!("client"),
+        );
+        let mut gateway = ref_state.gateway.map_state(
+            |key| GatewayState::new(StaticSecret::from(key)),
+            debug_span!("gateway"),
+        );
         let relay = SimRelay {
             state: firezone_relay::Server::new(
                 ref_state.relay.ip_stack,
@@ -153,11 +161,7 @@ impl StateMachineTest for TunnelTest {
             client,
             gateway,
             portal,
-            logger: tracing_subscriber::fmt()
-                .with_test_writer()
-                .with_env_filter(EnvFilter::from_default_env())
-                .finish()
-                .set_default(),
+            logger,
             buffer: Box::new([0u8; 10_000]),
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
@@ -224,8 +228,8 @@ impl ReferenceStateMachine for ReferenceState {
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
         (
-            sim_node_prototype(client_id(), error_span!("client")),
-            sim_node_prototype(gateway_id(), error_span!("gateway")),
+            sim_node_prototype(client_id()),
+            sim_node_prototype(gateway_id()),
             sim_relay_prototype(),
             Just(Instant::now()),
             Just(Utc::now()),
@@ -834,7 +838,7 @@ where
     ID: Copy,
     S: Copy,
 {
-    fn map_state<T>(&self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
+    fn map_state<T>(&self, f: impl FnOnce(S) -> T, span: Span) -> SimNode<ID, T> {
         SimNode {
             id: self.id,
             state: f(self.state),
@@ -842,7 +846,7 @@ where
             ip6_socket: self.ip6_socket,
             tunnel_ip4: self.tunnel_ip4,
             tunnel_ip6: self.tunnel_ip6,
-            span: self.span.clone(),
+            span,
         }
     }
 }
@@ -1152,7 +1156,6 @@ fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
 
 fn sim_node_prototype<ID>(
     id: impl Strategy<Value = ID>,
-    span: Span,
 ) -> impl Strategy<Value = SimNode<ID, [u8; 32]>>
 where
     ID: fmt::Debug,
@@ -1165,11 +1168,10 @@ where
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         tunnel_ip4(),
         tunnel_ip6(),
-        Just(span),
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6, span)| {
+            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
                 let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
                 let ip6_socket = ip_stack
                     .as_v6()
@@ -1182,7 +1184,7 @@ where
                     ip6_socket,
                     tunnel_ip4,
                     tunnel_ip6,
-                    span,
+                    span: tracing::Span::none(),
                 })
             },
         )
@@ -1198,7 +1200,7 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             id: RelayId::from_u128(id),
             state: seed,
             ip_stack,
-            span: error_span!("relay"),
+            span: debug_span!("relay"),
             allocations: HashSet::new(),
             buffer: vec![0u8; (1 << 16) - 1],
         })
