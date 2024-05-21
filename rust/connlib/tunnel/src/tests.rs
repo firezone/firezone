@@ -39,6 +39,7 @@ proptest_state_machine::prop_state_machine! {
         // Enable verbose mode to make the state machine test print the
         // transitions for each case.
         verbose: 1,
+        cases: 1000,
         .. Config::default()
     })]
 
