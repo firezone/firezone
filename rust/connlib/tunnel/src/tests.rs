@@ -64,9 +64,6 @@ struct TunnelTest {
 
     #[allow(dead_code)]
     logger: DefaultGuard,
-    buffer: Box<[u8; 10_000]>,
-
-    buffered_transmits: VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
 }
 
 /// The reference state machine of the tunnel.
@@ -162,14 +159,13 @@ impl StateMachineTest for TunnelTest {
             gateway,
             portal,
             logger,
-            buffer: Box::new([0u8; 10_000]),
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
             relay,
-            buffered_transmits: Default::default(),
         };
 
-        this.advance(ref_state); // Perform initial setup before we apply the first transition.
+        let mut buffered_transmits = VecDeque::new();
+        this.advance(ref_state, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
 
         this
     }
@@ -180,6 +176,8 @@ impl StateMachineTest for TunnelTest {
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
+        let mut buffered_transmits = VecDeque::new();
+
         // 1. Apply the transition
         match transition {
             Transition::AddCidrResource(r) => {
@@ -191,17 +189,21 @@ impl StateMachineTest for TunnelTest {
                 });
             }
             Transition::SendICMPPacketToRandomIp { dst } => {
-                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip(dst), dst);
+                buffered_transmits.extend(
+                    state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip(dst), dst),
+                );
             }
             Transition::SendICMPPacketToIp4Resource { r_idx } => {
                 let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
 
-                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip4, dst);
+                buffered_transmits
+                    .extend(state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip4, dst));
             }
             Transition::SendICMPPacketToIp6Resource { r_idx } => {
                 let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
 
-                state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip6, dst);
+                buffered_transmits
+                    .extend(state.send_icmp_packet_client_to_gateway(state.client.tunnel_ip6, dst))
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
@@ -209,13 +211,14 @@ impl StateMachineTest for TunnelTest {
         };
 
         // 2. Advance all states as far as possible
-        state.advance(ref_state);
+        state.advance(ref_state, &mut buffered_transmits);
 
         // 3. Assert expected state
         assert_eq!(
             state.gateway_received_icmp_packets,
             ref_state.gateway_received_icmp_packets
         );
+        assert!(buffered_transmits.is_empty());
 
         state
     }
@@ -368,18 +371,21 @@ impl ReferenceStateMachine for ReferenceState {
 }
 
 impl TunnelTest {
-    fn advance(&mut self, ref_state: &ReferenceState) {
+    fn advance(
+        &mut self,
+        ref_state: &ReferenceState,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
         loop {
-            if let Some((transmit, sending_socket)) = self.buffered_transmits.pop_front() {
-                self.dispatch_transmit(transmit, sending_socket);
+            if let Some((transmit, sending_socket)) = buffered_transmits.pop_front() {
+                self.dispatch_transmit(transmit, sending_socket, buffered_transmits);
                 continue;
             }
 
             if let Some(transmit) = self.client.state.poll_transmit() {
                 let sending_socket = self.client.sending_socket_for(transmit.dst);
 
-                self.buffered_transmits
-                    .push_back((transmit, sending_socket));
+                buffered_transmits.push_back((transmit, sending_socket));
                 continue;
             }
             if let Some(event) = self.client.state.poll_event() {
@@ -389,8 +395,7 @@ impl TunnelTest {
             if let Some(transmit) = self.gateway.state.poll_transmit() {
                 let sending_socket = self.gateway.sending_socket_for(transmit.dst);
 
-                self.buffered_transmits
-                    .push_back((transmit, sending_socket));
+                buffered_transmits.push_back((transmit, sending_socket));
                 continue;
             }
             if let Some(event) = self.gateway.state.poll_event() {
@@ -472,23 +477,31 @@ impl TunnelTest {
         &mut self,
         src: impl Into<IpAddr>,
         dst: impl Into<IpAddr>,
-    ) {
-        let Some(transmit) = self.client.span.in_scope(|| {
+    ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
+        let transmit = self.client.span.in_scope(|| {
             self.client.state.encapsulate(
                 ip_packet::make::icmp_request_packet(src.into(), dst.into()),
                 self.now,
             )
-        }) else {
-            return;
-        };
+        })?;
         let transmit = transmit.into_owned();
         let sending_socket = self.client.sending_socket_for(transmit.dst);
 
-        self.buffered_transmits
-            .push_back((transmit, sending_socket));
+        Some((transmit, sending_socket))
     }
 
-    fn dispatch_transmit(&mut self, transmit: Transmit, sending_socket: Option<SocketAddr>) {
+    /// Dispatches a [`Transmit`] to the correct component.
+    ///
+    /// This function is basically the "network layer" of our tests.
+    /// It takes a [`Transmit`] and checks, which component accepts it, i.e. has configured the correct IP address.
+    /// Our tests don't have a concept of a network topology.
+    /// This means, components can have IP addresses in completely different subnets, yet this function will still "route" them correctly.
+    fn dispatch_transmit(
+        &mut self,
+        transmit: Transmit,
+        sending_socket: Option<SocketAddr>,
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) {
         let dst = transmit.dst;
         let payload = &transmit.payload;
 
@@ -499,7 +512,7 @@ impl TunnelTest {
 
         if self.relay.wants(dst) {
             self.relay
-                .handle_packet(payload, src, dst, self.now, &mut self.buffered_transmits);
+                .handle_packet(payload, src, dst, self.now, buffered_transmits);
 
             return;
         }
@@ -525,11 +538,13 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
     ) -> ControlFlow<()> {
+        let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
+
         if self.client.wants(dst) {
             if let Some(packet) = self.client.span.in_scope(|| {
                 self.client
                     .state
-                    .decapsulate(dst, src, payload, self.now, self.buffer.as_mut())
+                    .decapsulate(dst, src, payload, self.now, &mut buffer)
             }) {
                 self.client_received_packets.push_back(packet.to_owned());
             };
@@ -546,11 +561,13 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
     ) -> ControlFlow<()> {
+        let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
+
         if self.gateway.wants(dst) {
             if let Some(packet) = self.gateway.span.in_scope(|| {
                 self.gateway
                     .state
-                    .decapsulate(dst, src, payload, self.now, self.buffer.as_mut())
+                    .decapsulate(dst, src, payload, self.now, &mut buffer)
             }) {
                 // TODO: Assert that it is an ICMP packet.
 
