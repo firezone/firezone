@@ -155,7 +155,7 @@ impl StateMachineTest for TunnelTest {
             _relay: relay.id,
         };
 
-        Self {
+        let mut this = Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
             client,
@@ -167,7 +167,11 @@ impl StateMachineTest for TunnelTest {
             gateway_received_icmp_packets: Default::default(),
             relay,
             buffered_transmits: Default::default(),
-        }
+        };
+
+        this.advance(ref_state); // Perform initial setup before we apply the first transition.
+
+        this
     }
 
     // Apply a generated state transition to our system under test and assert against the reference state machine.
