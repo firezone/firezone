@@ -743,16 +743,9 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    if !ran_before::get().await? {
-        let win = app
-            .get_window("welcome")
-            .context("Couldn't get handle to Welcome window")?;
-        win.show()?;
-    }
-
     let mut controller = Controller {
         advanced_settings,
-        app,
+        app: app.clone(),
         auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
@@ -773,6 +766,13 @@ async fn run_controller(
             .context("Failed to restart session during app start")?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
+    }
+
+    if !ran_before::get().await? {
+        let win = app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?;
+        win.show()?;
     }
 
     let mut have_internet =
