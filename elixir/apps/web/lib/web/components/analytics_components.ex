@@ -32,7 +32,9 @@ defmodule Web.AnalyticsComponents do
     </script>
     <script :if={not is_nil(@hubspot_workspace_id)} type="text/javascript">
       var _hsq = window._hsq = window._hsq || [];
-      _hsq.push(["setPath", window.location.pathname + window.location.search]);
+      _hsq.push(['setContentType', 'standard-page']);
+      _hsq.push(['setPath', window.location.pathname]);
+      _hsq.push(['trackPageView']);
     </script>
     """
   end
