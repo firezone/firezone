@@ -88,6 +88,21 @@ struct ReferenceState {
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
 }
 
+/// The possible transitions of the state machine.
+#[derive(Clone, Debug)]
+enum Transition {
+    /// Add a new CIDR resource to the client.
+    AddCidrResource(ResourceDescriptionCidr),
+    /// Send a ICMP packet to random IP.
+    SendICMPPacketToRandomIp { dst: IpAddr },
+    /// Send a ICMP packet to an IPv4 resource.
+    SendICMPPacketToIp4Resource { r_idx: sample::Index },
+    /// Send a ICMP packet to an IPv6 resource.
+    SendICMPPacketToIp6Resource { r_idx: sample::Index },
+    /// Advance time by this many milliseconds.
+    Tick { millis: u64 },
+}
+
 impl StateMachineTest for TunnelTest {
     type SystemUnderTest = Self;
     type Reference = ReferenceState;
@@ -811,26 +826,6 @@ struct SimPortal {
     _relay: RelayId,
 }
 
-impl SimPortal {
-    /// Picks, which gateway and site we should connect to for the given resource.
-    fn handle_connection_intent(
-        &self,
-        resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    ) -> (GatewayId, SiteId) {
-        // TODO: Should we somehow vary how many gateways we connect to?
-        // TODO: Should we somehow pick, which site to use?
-
-        let site = client_cidr_resources
-            .iter()
-            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id))
-            .expect("resource to have at least 1 site");
-
-        (self.gateway, site)
-    }
-}
-
 impl<ID, S> SimNode<ID, S>
 where
     ID: Copy,
@@ -1057,6 +1052,26 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
     }
 }
 
+impl SimPortal {
+    /// Picks, which gateway and site we should connect to for the given resource.
+    fn handle_connection_intent(
+        &self,
+        resource: ResourceId,
+        _connected_gateway_ids: HashSet<GatewayId>,
+        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
+    ) -> (GatewayId, SiteId) {
+        // TODO: Should we somehow vary how many gateways we connect to?
+        // TODO: Should we somehow pick, which site to use?
+
+        let site = client_cidr_resources
+            .iter()
+            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id))
+            .expect("resource to have at least 1 site");
+
+        (self.gateway, site)
+    }
+}
+
 impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SimRelay")
@@ -1184,19 +1199,4 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             allocations: HashSet::new(),
             buffer: vec![0u8; (1 << 16) - 1],
         })
-}
-
-/// The possible transitions of the state machine.
-#[derive(Clone, Debug)]
-enum Transition {
-    /// Add a new CIDR resource to the client.
-    AddCidrResource(ResourceDescriptionCidr),
-    /// Send a ICMP packet to random IP.
-    SendICMPPacketToRandomIp { dst: IpAddr },
-    /// Send a ICMP packet to an IPv4 resource.
-    SendICMPPacketToIp4Resource { r_idx: sample::Index },
-    /// Send a ICMP packet to an IPv6 resource.
-    SendICMPPacketToIp6Resource { r_idx: sample::Index },
-    /// Advance time by this many milliseconds.
-    Tick { millis: u64 },
 }
