@@ -296,6 +296,12 @@ locals {
       name  = "INSTRUMENTATION_CLIENT_LOGS_BUCKET"
       value = google_storage_bucket.client-logs.name
     },
+    # Analytics
+    {
+      name = "MIXPANEL_TOKEN"
+      # Note: this token is public
+      value = "313bdddc66b911f4afeb2c3242a78113"
+    },
     # Emails
     {
       name  = "OUTBOUND_EMAIL_ADAPTER"
