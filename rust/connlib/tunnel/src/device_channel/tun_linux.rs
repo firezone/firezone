@@ -46,7 +46,7 @@ const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/
 pub struct Tun {
     handle: Handle,
     connection: tokio::task::JoinHandle<()>,
-    dns_control_method: Option<DnsControlMethod>,
+    dns_control_method: DnsControlMethod,
     fd: AsyncFd<RawFd>,
 
     worker: Option<BoxFuture<'static, Result<()>>>,
@@ -68,7 +68,7 @@ impl Drop for Tun {
         unsafe { close(self.fd.as_raw_fd()) };
         self.connection.abort();
         tracing::debug!("Reverting DNS control...");
-        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+        if let DnsControlMethod::EtcResolvConf = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
             etc_resolv_conf::revert().ok();
         }
@@ -111,7 +111,7 @@ impl Tun {
         // TODO: Tech debt: <https://github.com/firezone/firezone/issues/3636>
         // TODO: Gateways shouldn't set up DNS, right? Only clients?
         // TODO: Move this configuration up to the client
-        let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
+        let dns_control_method = connlib_shared::linux::get_dns_control_from_env()?;
         tracing::info!(?dns_control_method);
 
         create_tun_device()?;
@@ -208,7 +208,7 @@ async fn set_iface_config(
     config: InterfaceConfig,
     dns_config: Vec<IpAddr>,
     handle: Handle,
-    dns_control_method: Option<DnsControlMethod>,
+    dns_control_method: DnsControlMethod,
 ) -> Result<()> {
     let index = handle
         .link()
@@ -274,12 +274,11 @@ async fn set_iface_config(
     res_v4.or(res_v6)?;
 
     if let Err(error) = match dns_control_method {
-        None => Ok(()),
-        Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config)
+        DnsControlMethod::EtcResolvConf => etc_resolv_conf::configure(&dns_config)
             .await
             .map_err(Error::ResolvConf),
-        Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config),
-        Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await,
+        DnsControlMethod::NetworkManager => configure_network_manager(&dns_config),
+        DnsControlMethod::Systemd => configure_systemd_resolved(&dns_config).await,
     } {
         tracing::error!("Failed to control DNS: {error}");
         panic!("Failed to control DNS: {error}");

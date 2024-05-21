@@ -20,11 +20,11 @@ pub enum DnsControlMethod {
 }
 
 /// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
-pub fn get_dns_control_from_env() -> Option<DnsControlMethod> {
+pub fn get_dns_control_from_env() -> crate::Result<DnsControlMethod> {
     match std::env::var(FIREZONE_DNS_CONTROL).as_deref() {
-        Ok("etc-resolv-conf") => Some(DnsControlMethod::EtcResolvConf),
-        Ok("network-manager") => Some(DnsControlMethod::NetworkManager),
-        Ok("systemd-resolved") => Some(DnsControlMethod::Systemd),
-        _ => None,
+        Ok("etc-resolv-conf") => Ok(DnsControlMethod::EtcResolvConf),
+        Ok("network-manager") => Ok(DnsControlMethod::NetworkManager),
+        Ok("systemd-resolved") => Ok(DnsControlMethod::Systemd),
+        _ => Err(crate::Error::NoDnsControlMethod),
     }
 }

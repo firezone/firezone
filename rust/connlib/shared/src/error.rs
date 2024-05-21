@@ -81,9 +81,11 @@ pub enum ConnlibError {
     #[error("Detected non-allowed packet in channel from {0}")]
     UnallowedPacket(IpAddr),
 
-    // Error variants for `systemd-resolved` DNS control
+    // Error variants for DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
     ResolvectlFailed,
+    #[error("FIREZONE_DNS_CONTROL is mandatory on Linux")]
+    NoDnsControlMethod,
 
     #[error("connection to the portal failed: {0}")]
     PortalConnectionFailed(phoenix_channel::Error),

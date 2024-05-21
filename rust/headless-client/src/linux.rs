@@ -74,7 +74,7 @@ pub(crate) fn run_only_ipc_service() -> Result<()> {
     tracing::info!(git_version = crate::GIT_VERSION);
 
     if !nix::unistd::getuid().is_root() {
-        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+        bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
     let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
@@ -113,11 +113,10 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
 }
 
 pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    match get_dns_control_from_env() {
-        None => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
-        Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
+    match get_dns_control_from_env()? {
+        DnsControlMethod::EtcResolvConf => get_system_default_resolvers_resolv_conf(),
+        DnsControlMethod::NetworkManager => get_system_default_resolvers_network_manager(),
+        DnsControlMethod::Systemd => get_system_default_resolvers_systemd_resolved(),
     }
 }
 

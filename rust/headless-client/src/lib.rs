@@ -215,7 +215,7 @@ pub fn run_only_headless_client() -> Result<()> {
         rt.handle().clone(),
     );
     // TODO: this should be added dynamically
-    session.set_dns(platform::system_resolvers().unwrap_or_default());
+    session.set_dns(platform::system_resolvers()?);
 
     let mut signals = platform::Signals::new()?;
 
