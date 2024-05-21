@@ -76,8 +76,8 @@ struct TunnelTest {
 struct ReferenceState {
     now: Instant,
     utc_now: DateTime<Utc>,
-    client: SimNode<ClientId, [u8; 32]>,
-    gateway: SimNode<GatewayId, [u8; 32]>,
+    client: SimNode<ClientId, PrivateKey>,
+    gateway: SimNode<GatewayId, PrivateKey>,
     relay: SimRelay<u64>,
 
     /// Which resources the clients is aware of.
@@ -118,11 +118,11 @@ impl StateMachineTest for TunnelTest {
             .set_default();
 
         let mut client = ref_state.client.map_state(
-            |key| ClientState::new(StaticSecret::from(key)),
+            |key| ClientState::new(StaticSecret::from(key.0)),
             debug_span!("client"),
         );
         let mut gateway = ref_state.gateway.map_state(
-            |key| GatewayState::new(StaticSecret::from(key)),
+            |key| GatewayState::new(StaticSecret::from(key.0)),
             debug_span!("gateway"),
         );
         let relay = SimRelay {
@@ -797,7 +797,7 @@ impl ReferenceState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct SimNode<ID, S> {
     id: ID,
     state: S,
@@ -1079,15 +1079,26 @@ impl SimPortal {
     }
 }
 
+impl<ID: fmt::Debug, S: fmt::Debug> fmt::Debug for SimNode<ID, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SimNode")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .field("ip4_socket", &self.ip4_socket)
+            .field("ip6_socket", &self.ip6_socket)
+            .field("tunnel_ip4", &self.tunnel_ip4)
+            .field("tunnel_ip6", &self.tunnel_ip6)
+            .finish()
+    }
+}
+
 impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SimRelay")
             .field("id", &self.id)
-            .field("state", &self.state)
             .field("ip_stack", &self.ip_stack)
             .field("allocations", &self.allocations)
-            .field("span", &self.span)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 
@@ -1108,6 +1119,17 @@ fn map_client_resource_to_gateway_resource(
             filters: Vec::new(),
         },
     )
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct PrivateKey([u8; 32]);
+
+impl fmt::Debug for PrivateKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("PrivateKey")
+            .field(&hex::encode(self.0))
+            .finish()
+    }
 }
 
 /// Generates a [`Transition`] that sends an ICMP packet to a random IP.
@@ -1156,7 +1178,7 @@ fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
 
 fn sim_node_prototype<ID>(
     id: impl Strategy<Value = ID>,
-) -> impl Strategy<Value = SimNode<ID, [u8; 32]>>
+) -> impl Strategy<Value = SimNode<ID, PrivateKey>>
 where
     ID: fmt::Debug,
 {
@@ -1179,7 +1201,7 @@ where
 
                 Some(SimNode {
                     id,
-                    state: key,
+                    state: PrivateKey(key),
                     ip4_socket,
                     ip6_socket,
                     tunnel_ip4,
