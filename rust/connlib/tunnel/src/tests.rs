@@ -95,18 +95,6 @@ struct SimRelay<S> {
     span: Span,
 }
 
-impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SimRelay")
-            .field("id", &self.id)
-            .field("state", &self.state)
-            .field("ip_stack", &self.ip_stack)
-            .field("allocations", &self.allocations)
-            .field("span", &self.span)
-            .finish_non_exhaustive()
-    }
-}
-
 /// Stub implementation of the portal.
 ///
 /// Currently, we only simulate a connection between a single client and a single gateway on a single site.
@@ -360,6 +348,18 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
             firezone_relay::auth::generate_password(self.state.auth_secret(), expiry, username);
 
         (format!("{secs}:{username}"), password)
+    }
+}
+
+impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SimRelay")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .field("ip_stack", &self.ip_stack)
+            .field("allocations", &self.allocations)
+            .field("span", &self.span)
+            .finish_non_exhaustive()
     }
 }
 
