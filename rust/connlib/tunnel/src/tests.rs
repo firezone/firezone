@@ -62,6 +62,12 @@ struct TunnelTest {
     client_received_packets: VecDeque<IpPacket<'static>>,
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
 
+    /// When a client roams, it cannot immediately detect which interface went away.
+    /// It cannot tell the gateway until it discovers that.
+    /// Hence, the gateway may still be sending packets to these old interfaces.
+    /// We keep track of those here so we can make an exception for these packets and not panic due to them being unhandled.
+    previous_client_sockets: HashSet<SocketAddr>,
+
     #[allow(dead_code)]
     logger: DefaultGuard,
 }
@@ -98,6 +104,11 @@ enum Transition {
     SendICMPPacketToIp6Resource { r_idx: sample::Index },
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
+    /// Roam the client to a new network interface.
+    RoamClient {
+        new_ip4_socket: Option<SocketAddrV4>,
+        new_ip6_socket: Option<SocketAddrV6>,
+    },
 }
 
 impl StateMachineTest for TunnelTest {
@@ -159,9 +170,10 @@ impl StateMachineTest for TunnelTest {
             gateway,
             portal,
             logger,
+            relay,
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
-            relay,
+            previous_client_sockets: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -212,6 +224,22 @@ impl StateMachineTest for TunnelTest {
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
+            }
+            Transition::RoamClient {
+                new_ip4_socket,
+                new_ip6_socket,
+            } => {
+                state
+                    .previous_client_sockets
+                    .extend(state.client.ip4_socket.map(SocketAddr::from));
+                state
+                    .previous_client_sockets
+                    .extend(state.client.ip6_socket.map(SocketAddr::from));
+
+                state.client.ip4_socket = new_ip4_socket;
+                state.client.ip6_socket = new_ip6_socket;
+
+                state.client.state.reconnect(state.now);
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
@@ -268,6 +296,12 @@ impl ReferenceStateMachine for ReferenceState {
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
+        let roam_client = sim_node_sockets().prop_map(|(new_ip4_socket, new_ip6_socket)| {
+            Transition::RoamClient {
+                new_ip4_socket,
+                new_ip6_socket,
+            }
+        });
 
         let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
 
@@ -278,6 +312,7 @@ impl ReferenceStateMachine for ReferenceState {
         prop_oneof![
             1 => add_cidr_resource,
             1 => tick,
+            1 => roam_client,
             1 => icmp_to_random_ip(),
             weight_ip4 => icmp_to_ipv4_cidr_resource(),
             weight_ip6 => icmp_to_ipv6_cidr_resource()
@@ -305,6 +340,13 @@ impl ReferenceStateMachine for ReferenceState {
                 state.on_icmp_packet(state.client.tunnel_ip6, dst);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
+            Transition::RoamClient {
+                new_ip4_socket,
+                new_ip6_socket,
+            } => {
+                state.client.ip4_socket = *new_ip4_socket;
+                state.client.ip6_socket = *new_ip6_socket;
+            }
         };
 
         state
@@ -348,6 +390,13 @@ impl ReferenceStateMachine for ReferenceState {
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
 
                 state.client.tunnel_ip6 != dst
+            }
+            Transition::RoamClient {
+                new_ip4_socket,
+                new_ip6_socket,
+            } => {
+                state.gateway.ip4_socket != *new_ip4_socket
+                    && state.gateway.ip6_socket != *new_ip6_socket
             }
         }
     }
@@ -519,7 +568,14 @@ impl TunnelTest {
             return;
         }
 
-        panic!("Unhandled packet: {src} -> {dst}")
+        if self.previous_client_sockets.contains(&dst) {
+            tracing::info!(
+                "Allowing transmit to client to be unhandled because it was for a previous socket: {transmit:?}"
+            );
+            return;
+        }
+
+        panic!("Unhandled packet: {transmit:?}")
     }
 
     fn try_handle_client(
@@ -1199,20 +1255,13 @@ where
     (
         id,
         any::<[u8; 32]>(),
-        firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
-        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
-        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
+        sim_node_sockets(),
         tunnel_ip4(),
         tunnel_ip6(),
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
-                let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
-                let ip6_socket = ip_stack
-                    .as_v6()
-                    .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
-
+            |(id, key, (ip4_socket, ip6_socket), tunnel_ip4, tunnel_ip6)| {
                 Some(SimNode {
                     id,
                     state: PrivateKey(key),
@@ -1224,6 +1273,23 @@ where
                 })
             },
         )
+}
+
+// We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
+fn sim_node_sockets() -> impl Strategy<Value = (Option<SocketAddrV4>, Option<SocketAddrV6>)> {
+    (
+        firezone_relay::proptest::any_ip_stack(),
+        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
+        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
+    )
+        .prop_map(|(ip_stack, v4_port, v6_port)| {
+            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
+            let ip6_socket = ip_stack
+                .as_v6()
+                .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
+
+            (ip4_socket, ip6_socket)
+        })
 }
 
 fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {

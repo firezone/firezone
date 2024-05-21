@@ -157,6 +157,8 @@ where
                 remove_local_candidate(id, agent, &candidate, &mut self.pending_events)
             }
         }
+
+        debug_assert!(self.host_candidates.is_empty());
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -660,7 +662,9 @@ where
                 };
 
                 if allocation.handle_input(from, local, packet, now) {
-                    // Successfully handled the packet
+                    // Successfully handled the packet; ensure all new events are being handled.
+                    self.bindings_and_allocations_drain_events();
+
                     return ControlFlow::Break(());
                 }
 
