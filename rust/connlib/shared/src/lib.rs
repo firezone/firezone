@@ -57,7 +57,7 @@ pub fn deactivate_dns_control() -> anyhow::Result<()> {
     windows::dns::deactivate()
 }
 
-/// Deactivates DNS control on Windows
+/// Deactivates DNS control on other platforms (does nothing)
 #[cfg(not(target_os = "windows"))]
 #[allow(clippy::unnecessary_wraps)]
 pub fn deactivate_dns_control() -> anyhow::Result<()> {
