@@ -1,11 +1,7 @@
 //! Implementation, Linux-specific
 
-use super::{
-    CliCommon, CliIpcService, CmdIpc, IpcClientMsg, IpcServerMsg, SignalKind, FIREZONE_GROUP,
-    TOKEN_ENV_KEY,
-};
+use super::{CliCommon, IpcClientMsg, IpcServerMsg, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
-use clap::Parser;
 use connlib_client_shared::{file_logger, Callbacks, Sockets};
 use connlib_shared::{
     callbacks, keypair,
@@ -67,18 +63,7 @@ pub fn default_token_path() -> PathBuf {
         .join("token")
 }
 
-/// Only called from the GUI Client's build of the IPC service
-///
-/// On Linux this is the same as running with `ipc-service`
-pub(crate) fn run_only_ipc_service() -> Result<()> {
-    let cli = CliIpcService::parse();
-    match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(cli.common),
-        CmdIpc::IpcService => run_ipc_service(cli.common),
-    }
-}
-
-fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
+pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
     crate::debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -219,7 +204,10 @@ pub fn sock_path() -> PathBuf {
         .join("ipc.sock")
 }
 
-fn run_ipc_service(cli: CliCommon) -> Result<()> {
+/// Cross-platform entry point for systemd / Windows services
+///
+/// Linux uses the CLI args from here, Windows does not
+pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     tracing::info!("run_ipc_service");
     // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();

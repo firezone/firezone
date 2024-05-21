@@ -280,6 +280,7 @@ pub fn run_only_headless_client() -> Result<()> {
     result
 }
 
+/// Only called from the GUI Client's build of the IPC service
 pub fn run_only_ipc_service() -> Result<()> {
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
@@ -291,7 +292,11 @@ pub fn run_only_ipc_service() -> Result<()> {
         std::env::remove_var(TOKEN_ENV_KEY);
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
-    platform::run_only_ipc_service()
+    let cli = CliIpcService::parse();
+    match cli.command {
+        CmdIpc::DebugIpcService => platform::run_debug_ipc_service(cli.common),
+        CmdIpc::IpcService => platform::run_ipc_service(cli.common),
+    }
 }
 
 // Allow dead code because Windows doesn't have an obvious SIGHUP equivalent

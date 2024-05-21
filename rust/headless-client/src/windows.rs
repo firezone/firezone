@@ -75,19 +75,14 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
     PathBuf::from("token.txt")
 }
 
-/// Only called from the GUI Client's build of the IPC service
+/// Cross-platform entry point for systemd / Windows services
 ///
-/// On Windows, this is wrapped specially so that Windows' service controller
-/// can launch it.
-pub(crate) fn run_only_ipc_service() -> Result<()> {
-    let cli = CliIpcService::parse();
-    match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(cli),
-        CmdIpc::IpcService => windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?"),
-    }
+/// Linux uses the CLI args from here, Windows does not
+pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
+    windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
-fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
+pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
     crate::debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
