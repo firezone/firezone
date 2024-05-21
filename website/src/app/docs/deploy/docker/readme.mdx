@@ -65,19 +65,19 @@ installation process, follow the steps below to install manually.
 1. Download the docker compose template to a local working directory: **For
    Linux**:
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/docker-compose.prod.yml -o docker-compose.yml
 ```
 
 **For macOS, Windows (non-production only)**:
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/docker-compose.desktop.yml -o docker-compose.yml
 ```
 
 1. Generate required secrets:
 
-```
+```bash
 docker run --rm firezone/firezone bin/gen-env > .env
 ```
 
@@ -85,13 +85,13 @@ docker run --rm firezone/firezone bin/gen-env > .env
    Optionally modify other secrets as needed.
 3. Migrate the database:
 
-```
+```bash
 docker compose run --rm firezone bin/migrate
 ```
 
 4. Create the first admin:
 
-```
+```bash
 docker compose run --rm firezone bin/create-or-reset-admin
 ```
 
