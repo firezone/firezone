@@ -22,6 +22,7 @@ use url::Url;
 
 use ControllerRequest as Req;
 
+mod ran_before;
 mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
@@ -499,10 +500,7 @@ impl Controller {
         };
 
         let api_url = self.advanced_settings.api_url.clone();
-        tracing::info!(
-            api_url = api_url.to_string(),
-            "Calling connlib Session::connect"
-        );
+        tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
         let mut connlib = ipc::Client::connect(
             api_url.as_str(),
@@ -522,6 +520,7 @@ impl Controller {
         });
         self.refresh_system_tray_menu()?;
 
+        ran_before::set().await?;
         Ok(())
     }
 
@@ -741,21 +740,9 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let session_dir =
-        firezone_headless_client::known_dirs::session().context("Couldn't find session dir")?;
-    let ran_before_path = session_dir.join("ran_before.txt");
-    if !tokio::fs::try_exists(&ran_before_path).await? {
-        let win = app
-            .get_window("welcome")
-            .context("Couldn't get handle to Welcome window")?;
-        win.show()?;
-        tokio::fs::create_dir_all(&session_dir).await?;
-        tokio::fs::write(&ran_before_path, &[]).await?;
-    }
-
     let mut controller = Controller {
         advanced_settings,
-        app,
+        app: app.clone(),
         auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
@@ -776,6 +763,13 @@ async fn run_controller(
             .context("Failed to restart session during app start")?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
+    }
+
+    if !ran_before::get().await? {
+        let win = app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?;
+        win.show()?;
     }
 
     let mut have_internet =
