@@ -394,7 +394,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), Instant::now())
+            .encapsulate(peer.id(), packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
