@@ -26,7 +26,7 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque},
-    fmt,
+    fmt, iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
     time::{Duration, Instant, SystemTime},
@@ -170,7 +170,12 @@ impl StateMachineTest for TunnelTest {
         this
     }
 
-    // Apply a generated state transition to our system under test and assert against the reference state machine.
+    /// Apply a generated state transition to our system under test and assert against the reference state machine.
+    ///
+    /// This is equivalent to "arrange - act - assert" of a regular test:
+    /// 1. We start out in a certain state (arrange)
+    /// 2. We apply a [`Transition`] (act)
+    /// 3. We assert against the reference state (assert)
     fn apply(
         mut state: Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
@@ -178,7 +183,7 @@ impl StateMachineTest for TunnelTest {
     ) -> Self::SystemUnderTest {
         let mut buffered_transmits = VecDeque::new();
 
-        // 1. Apply the transition
+        // Act: Apply the transition
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client.span.in_scope(|| {
@@ -209,16 +214,14 @@ impl StateMachineTest for TunnelTest {
                 state.now += Duration::from_millis(millis);
             }
         };
-
-        // 2. Advance all states as far as possible
         state.advance(ref_state, &mut buffered_transmits);
 
-        // 3. Assert expected state
+        // Assert: Check that our actual state is equivalent to our expectation (the reference state).
         assert_eq!(
             state.gateway_received_icmp_packets,
             ref_state.gateway_received_icmp_packets
         );
-        assert!(buffered_transmits.is_empty());
+        assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         state
     }
@@ -371,6 +374,13 @@ impl ReferenceStateMachine for ReferenceState {
 }
 
 impl TunnelTest {
+    /// Exhaustively advances all state machines (client, gateway & relay).
+    ///
+    /// For our tests to work properly, each [`Transition`] needs to advance the state as much as possible.
+    /// For example, upon the first packet to a resource, we need to trigger the connection intent and fully establish a connection.
+    /// Dispatching a [`Transmit`] (read: packet) to a component can trigger more packets, i.e. receiving a STUN request may trigger a STUN response.
+    ///
+    /// Consequently, this function needs to loop until no component can make progress at which point we consider the [`Transition`] complete.
     fn advance(
         &mut self,
         ref_state: &ReferenceState,
@@ -1246,7 +1256,7 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             id: RelayId::from_u128(id),
             state: seed,
             ip_stack,
-            span: debug_span!("relay"),
+            span: tracing::Span::none(),
             allocations: HashSet::new(),
             buffer: vec![0u8; (1 << 16) - 1],
         })
