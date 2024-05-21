@@ -26,7 +26,7 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque},
-    fmt, iter,
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
     time::{Duration, Instant, SystemTime},
