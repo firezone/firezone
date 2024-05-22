@@ -327,7 +327,7 @@ defmodule Web.SignUp do
       registration = Ecto.Changeset.apply_changes(changeset)
 
       case register_account(registration) do
-        {:ok, %{account: account, provider: provider, identity: identity}} ->
+        {:ok, %{account: account, provider: provider, identity: identity, actor: actor}} ->
           {:ok, account} = Domain.Billing.provision_account(account)
 
           {:ok, _} =
@@ -339,7 +339,30 @@ defmodule Web.SignUp do
             )
             |> Web.Mailer.deliver()
 
-          socket = assign(socket, account: account, provider: provider, identity: identity)
+          socket =
+            assign(socket,
+              account: account,
+              provider: provider,
+              identity: identity
+            )
+
+          socket =
+            push_event(socket, "identify", %{
+              id: actor.id,
+              account_id: account.id,
+              name: actor.name,
+              email: identity.provider_identifier
+            })
+
+          socket =
+            push_event(socket, "track_event", %{
+              name: "Sign Up",
+              properties: %{
+                account_id: account.id,
+                identity_id: identity.id
+              }
+            })
+
           {:noreply, socket}
 
         {:error, :account, err_changeset, _effects_so_far} ->

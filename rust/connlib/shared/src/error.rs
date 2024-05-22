@@ -76,8 +76,6 @@ pub enum ConnlibError {
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
 
-    #[error(transparent)]
-    Snownet(#[from] snownet::Error),
     #[error("source: {src}; allowed_ips: {allowed_ips:?}")]
     UnallowedPacket {
         src: IpAddr,
