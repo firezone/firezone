@@ -415,7 +415,6 @@ impl ClientState {
 
         let Some(resource) = self.get_resource_by_destination(dest) else {
             tracing::trace!("Unknown resource");
-
             return None;
         };
 
