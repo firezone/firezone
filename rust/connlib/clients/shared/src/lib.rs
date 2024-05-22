@@ -33,45 +33,29 @@ pub struct Session {
 }
 
 // Tried `derive_builder` for this but couldn't make it do what we need
-pub struct SessionBuilder<CB> {
-    url: LoginUrl,
-    private_key: StaticSecret,
-    callbacks: CB,
-    handle: tokio::runtime::Handle,
-
+#[derive(Default)]
+pub struct SessionBuilder {
     sockets: Option<Sockets>,
     os_version_override: Option<String>,
     max_partition_time: Option<Duration>,
 }
 
-impl<CB: Callbacks + 'static> SessionBuilder<CB> {
-    pub fn new(
+impl SessionBuilder {
+    pub fn build<CB: Callbacks + 'static>(
+        self,
         url: LoginUrl,
         private_key: StaticSecret,
         callbacks: CB,
         handle: tokio::runtime::Handle,
-    ) -> Self {
-        Self {
-            url,
-            private_key,
-            callbacks,
-            handle,
-
-            sockets: None,
-            os_version_override: None,
-            max_partition_time: None,
-        }
-    }
-
-    pub fn build(self) -> Session {
+    ) -> Session {
         Session::connect(
-            self.url,
+            url,
             self.sockets.unwrap_or_default(),
-            self.private_key,
+            private_key,
             self.os_version_override,
-            self.callbacks,
+            callbacks,
             self.max_partition_time,
-            self.handle,
+            handle,
         )
     }
 

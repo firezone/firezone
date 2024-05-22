@@ -300,18 +300,18 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
                 )?;
 
                 connlib = Some(
-                    connlib_client_shared::SessionBuilder::new(
-                        login,
-                        private_key,
-                        callback_handler.clone(),
-                        tokio::runtime::Handle::try_current()?,
-                    )
-                    .max_partition_time(
-                        cli.max_partition_time
-                            .map(|t| t.into())
-                            .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
-                    )
-                    .build(),
+                    connlib_client_shared::SessionBuilder::default()
+                        .max_partition_time(
+                            cli.max_partition_time
+                                .map(|t| t.into())
+                                .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
+                        )
+                        .build(
+                            login,
+                            private_key,
+                            callback_handler.clone(),
+                            tokio::runtime::Handle::try_current()?,
+                        ),
                 );
             }
             IpcClientMsg::Disconnect => {
