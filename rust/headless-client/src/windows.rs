@@ -198,7 +198,7 @@ pub(crate) struct IpcServer {
 }
 
 /// Opaque wrapper around platform-specific IPC stream
-pub(crate) struct IpcStream(pub named_pipe::NamedPipeServer);
+pub(crate) type IpcStream = named_pipe::NamedPipeServer;
 
 impl IpcServer {
     /// Platform-specific setup
@@ -217,7 +217,7 @@ impl IpcServer {
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
-        Ok(IpcStream(server))
+        Ok(server)
     }
 }
 
