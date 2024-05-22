@@ -97,7 +97,10 @@ pub(crate) fn signing_in(waiting_message: &str) -> SystemTrayMenu {
 }
 
 pub(crate) fn signed_out() -> SystemTrayMenu {
+    let debug_submenu = SystemTrayMenu::new().add_item(CustomMenuItem::new("", "line 1\nline 2"));
+
     SystemTrayMenu::new()
+        .add_submenu(SystemTraySubmenu::new("line 1\nline 2", debug_submenu))
         .add_item(CustomMenuItem::new("/sign_in".to_string(), "Sign In"))
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(about())
