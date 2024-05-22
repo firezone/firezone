@@ -576,7 +576,11 @@ impl Controller {
                     )?;
                 } else {
                     tracing::error!(?error_msg, "Disconnected");
-                    // TODO: Dialog box here
+                    native_dialog::MessageDialog::new()
+                        .set_title("Firezone Error")
+                        .set_text(&error_msg)
+                        .set_type(native_dialog::MessageType::Error)
+                        .show_alert()?;
                 }
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)

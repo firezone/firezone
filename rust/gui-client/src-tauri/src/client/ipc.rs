@@ -33,7 +33,6 @@ pub(crate) struct CallbackHandler {
 // Because of the IPC boundary, we can deviate.
 impl CallbackHandler {
     fn on_disconnect(&self, error_msg: String, is_authentication_error: bool) {
-        tracing::error!("on_disconnect {error_msg:?}");
         self.ctlr_tx
             .try_send(ControllerRequest::Disconnected {
                 error_msg,
