@@ -23,6 +23,17 @@ export const metadata: Metadata = {
   description: "Open-source, zero-trust access platform built on WireGuard®",
 };
 
+interface HubSpotSubmittedFormData {
+  type: string;
+  eventName: string;
+  redirectUrl: string;
+  conversionId: string;
+  formGuid: string;
+  submissionValues: {
+    [key: string]: string;
+  };
+}
+
 function Mixpanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,6 +50,35 @@ function Mixpanel() {
     mixpanel.track("$mp_web_page_view", {
       $current_url: url,
     });
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
+        const formData: HubSpotSubmittedFormData = event.data.data;
+        if (!formData || !formData.formGuid || !formData.submissionValues) {
+          console.error("Missing form data:", formData);
+          return;
+        }
+
+        if (formData.submissionValues.email && formData.submissionValues.firstname && formData.submissionValues.lastname) {
+          mixpanel.people.set({
+            $email: formData.submissionValues.email,
+            $first_name: formData.submissionValues.firstname,
+            $last_name: formData.submissionValues.lastname
+          });
+
+          mixpanel.track("HubSpot Form Submitted", {
+            formId: formData.formGuid,
+            conversionId: formData.conversionId,
+          });
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, [pathname, searchParams, mixpanel]);
 
   return null;
