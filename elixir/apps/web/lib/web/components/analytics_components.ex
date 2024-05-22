@@ -30,10 +30,6 @@ defmodule Web.AnalyticsComponents do
       src={"//js.hs-analytics.net/analytics/1716219600000/#{@hubspot_workspace_id}.js"}
     >
     </script>
-    <script :if={not is_nil(@hubspot_workspace_id)} type="text/javascript">
-      var _hsq = window._hsq = window._hsq || [];
-      _hsq.push(["setPath", window.location.pathname + window.location.search]);
-    </script>
     """
   end
 
