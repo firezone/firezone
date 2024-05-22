@@ -84,7 +84,6 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand)]
 enum CmdIpc {
-    #[command(hide = true)]
     DebugIpcService,
     IpcService,
 }
@@ -166,7 +165,9 @@ pub enum IpcClientMsg {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
-    OnDisconnect,
+    OnDisconnect {
+        error_msg: String,
+    },
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
@@ -350,7 +351,9 @@ impl Callbacks for CallbackHandlerIpc {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
         self.cb_tx
-            .try_send(IpcServerMsg::OnDisconnect)
+            .try_send(IpcServerMsg::OnDisconnect {
+                error_msg: error.to_string()
+            })
             .expect("should be able to send OnDisconnect");
     }
 

@@ -55,7 +55,7 @@ impl Client {
                 let msg: IpcServerMsg = serde_json::from_slice(&msg)?;
                 match msg {
                     IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
+                    IpcServerMsg::OnDisconnect{error_msg} => callback_handler.on_disconnect(
                         &connlib_client_shared::Error::Other("errors can't be serialized"),
                     ),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
