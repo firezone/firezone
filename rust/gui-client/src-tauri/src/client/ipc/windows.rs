@@ -1,16 +1,30 @@
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
-use futures::{SinkExt, Stream};
+use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{pin::pin, task::Poll};
-use tokio::{net::windows::named_pipe, sync::mpsc};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio::net::windows::named_pipe::{self, NamedPipeClient};
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: mpsc::Sender<String>,
+    tx: FramedWrite<tokio::io::WriteHalf<NamedPipeClient>, LengthDelimitedCodec>,
+}
+
+struct IpcStream(pub NamedPipeClient);
+
+impl IpcStream {
+    /// Connect to the IPC service
+    ///
+    /// This is async on Linux
+    #[allow(clippy::unused_async)]
+    async fn connect() -> Result<Self> {
+        let ipc = named_pipe::ClientOptions::new()
+            .open(firezone_headless_client::windows::pipe_path())
+            .context("Couldn't connect to named pipe server")?;
+        Ok(Self(ipc))
+    }
 }
 
 impl Client {
@@ -25,7 +39,7 @@ impl Client {
     #[allow(clippy::unused_async)]
     pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
-            .send(serde_json::to_string(msg).context("Couldn't encode IPC message as JSON")?)
+            .send(serde_json::to_string(msg).context("Couldn't encode IPC message as JSON")?.into())
             .await
             .context("Couldn't send IPC message")?;
         Ok(())
@@ -38,62 +52,25 @@ impl Client {
         tokio_handle: tokio::runtime::Handle,
     ) -> Result<Self> {
         tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
-        let ipc = named_pipe::ClientOptions::new()
-            .open(firezone_headless_client::windows::pipe_path())
-            .context("Couldn't connect to named pipe server")?;
-        let ipc = Framed::new(ipc, LengthDelimitedCodec::new());
-        // This channel allows us to communicate with the GUI even though NamedPipeClient
-        // doesn't have `into_split`.
-        let (tx, mut rx) = mpsc::channel(1);
+        let stream = IpcStream::connect().await?;
+        let (rx, tx) = tokio::io::split(stream.0);
+        let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
+        let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
 
         let task = tokio_handle.spawn(async move {
-            let mut ipc = pin!(ipc);
-            loop {
-                let ev = std::future::poll_fn(|cx| {
-                    match rx.poll_recv(cx) {
-                        Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Gui(msg))),
-                        Poll::Ready(None) => {
-                            return Poll::Ready(Err(anyhow!("MPSC channel from GUI closed")))
-                        }
-                        Poll::Pending => {}
-                    }
-
-                    match ipc.as_mut().poll_next(cx) {
-                        Poll::Ready(Some(msg)) => {
-                            let msg = serde_json::from_slice(&msg?)?;
-                            return Poll::Ready(Ok(IpcEvent::Connlib(msg)));
-                        }
-                        Poll::Ready(None) => {
-                            return Poll::Ready(Err(anyhow!("IPC service disconnected from us")))
-                        }
-                        Poll::Pending => {}
-                    }
-
-                    Poll::Pending
-                })
-                .await;
-
-                match ev {
-                    Ok(IpcEvent::Gui(msg)) => ipc.send(msg.into()).await?,
-                    Ok(IpcEvent::Connlib(msg)) => match msg {
-                        IpcServerMsg::Ok => {}
-                        IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
-                            &connlib_client_shared::Error::Other("errors can't be serialized"),
-                        ),
-                        IpcServerMsg::OnUpdateResources(v) => {
-                            callback_handler.on_update_resources(v)
-                        }
-                        IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                            callback_handler.on_set_interface_config(ipv4, ipv6, dns);
-                        }
-                    },
-                    Err(error) => {
-                        tracing::error!(?error, "Error while waiting for IPC tx/rx");
-                        // TODO: Catch that error when the task is joined
-                        Err(error)?
+            while let Some(msg) = rx.next().await.transpose()? {
+                match serde_json::from_slice::<IpcServerMsg>(&msg)? {
+                    IpcServerMsg::Ok => {}
+                    IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
+                        &connlib_client_shared::Error::Other("errors can't be serialized"),
+                    ),
+                    IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
+                    IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                        callback_handler.on_set_interface_config(ipv4, ipv6, dns);
                     }
                 }
             }
+            Ok(())
         });
 
         let mut client = Self { task, tx };
@@ -107,11 +84,4 @@ impl Client {
             .context("Couldn't send Connect message")?;
         Ok(client)
     }
-}
-
-enum IpcEvent {
-    /// The GUI wants to send a message to the service
-    Gui(String),
-    /// The connlib instance in the service wants to send a message to the GUI
-    Connlib(IpcServerMsg),
 }
