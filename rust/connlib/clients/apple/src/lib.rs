@@ -3,7 +3,7 @@
 
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
-    LoginUrl, Session, Sockets,
+    LoginUrl, Session, SessionBuilder,
 };
 use secrecy::SecretString;
 use std::{
@@ -191,17 +191,17 @@ impl WrappedSession {
             .build()
             .map_err(|e| e.to_string())?;
 
-        let session = Session::connect(
-            login,
-            Sockets::new(),
-            private_key,
-            os_version_override,
-            CallbackHandler {
-                inner: Arc::new(callback_handler),
-            },
-            Some(MAX_PARTITION_TIME),
-            runtime.handle().clone(),
-        );
+        let session = SessionBuilder::default()
+            .max_partition_time(MAX_PARTITION_TIME)
+            .os_version_override(os_version_override)
+            .build(
+                login,
+                private_key,
+                CallbackHandler {
+                    inner: Arc::new(callback_handler),
+                },
+                runtime.handle().clone(),
+            );
 
         Ok(Self {
             inner: session,

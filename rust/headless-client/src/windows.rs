@@ -7,7 +7,7 @@
 use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets};
+use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, SessionBuilder};
 use connlib_shared::BUNDLE_ID;
 use futures::{SinkExt, Stream};
 use std::{
@@ -406,15 +406,16 @@ async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
                         public_key.to_bytes(),
                     )?;
 
-                    connlib = Some(connlib_client_shared::Session::connect(
-                        login,
-                        Sockets::new(),
-                        private_key,
-                        None,
-                        callback_handler.clone(),
-                        Some(std::time::Duration::from_secs(60 * 60 * 24 * 30)),
-                        tokio::runtime::Handle::try_current()?,
-                    ));
+                    connlib = Some(
+                        SessionBuilder::default()
+                            .max_partition_time(std::time::Duration::from_secs(60 * 60 * 24 * 30))
+                            .build(
+                                login,
+                                private_key,
+                                callback_handler.clone(),
+                                tokio::runtime::Handle::try_current()?,
+                            ),
+                    );
                 }
                 IpcClientMsg::Disconnect => {
                     if let Some(connlib) = connlib.take() {

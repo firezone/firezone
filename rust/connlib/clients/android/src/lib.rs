@@ -5,7 +5,7 @@
 
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
-    LoginUrl, LoginUrlError, Session, Sockets,
+    LoginUrl, LoginUrlError, Session, SessionBuilder, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -376,15 +376,16 @@ fn connect(
         }
     });
 
-    let session = Session::connect(
-        login,
-        sockets,
-        private_key,
-        Some(os_version),
-        callback_handler,
-        Some(MAX_PARTITION_TIME),
-        runtime.handle().clone(),
-    );
+    let session = SessionBuilder::default()
+        .max_partition_time(MAX_PARTITION_TIME)
+        .os_version_override(os_version)
+        .sockets(sockets)
+        .build(
+            login,
+            private_key,
+            callback_handler,
+            runtime.handle().clone(),
+        );
 
     Ok(SessionWrapper {
         inner: session,

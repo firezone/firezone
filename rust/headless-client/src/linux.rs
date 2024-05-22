@@ -3,7 +3,7 @@
 use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks};
+use connlib_client_shared::{file_logger, Callbacks, SessionBuilder};
 use connlib_shared::{
     callbacks, keypair,
     linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
@@ -300,11 +300,11 @@ async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
                 )?;
 
                 connlib = Some(
-                    connlib_client_shared::SessionBuilder::default()
+                    SessionBuilder::default()
                         .max_partition_time(
                             cli.max_partition_time
                                 .map(|t| t.into())
-                                .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
+                                .unwrap_or(std::time::Duration::from_secs(60 * 60 * 24 * 30)),
                         )
                         .build(
                             login,

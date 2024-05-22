@@ -35,9 +35,9 @@ pub struct Session {
 // Tried `derive_builder` for this but couldn't make it do what we need
 #[derive(Default)]
 pub struct SessionBuilder {
-    sockets: Option<Sockets>,
-    os_version_override: Option<String>,
     max_partition_time: Option<Duration>,
+    os_version_override: Option<String>,
+    sockets: Option<Sockets>,
 }
 
 impl SessionBuilder {
@@ -48,19 +48,21 @@ impl SessionBuilder {
         callbacks: CB,
         handle: tokio::runtime::Handle,
     ) -> Session {
-        Session::connect(
-            url,
-            self.sockets.unwrap_or_default(),
-            private_key,
-            self.os_version_override,
-            callbacks,
-            self.max_partition_time,
-            handle,
-        )
+        Session::connect(self, url, private_key, callbacks, handle)
     }
 
-    pub fn max_partition_time(mut self, x: Option<Duration>) -> Self {
-        self.max_partition_time = x;
+    pub fn max_partition_time<T: Into<Option<Duration>>>(mut self, x: T) -> Self {
+        self.max_partition_time = x.into();
+        self
+    }
+
+    pub fn os_version_override<T: Into<Option<String>>>(mut self, x: T) -> Self {
+        self.os_version_override = x.into();
+        self
+    }
+
+    pub fn sockets<T: Into<Option<Sockets>>>(mut self, x: T) -> Self {
+        self.sockets = x.into();
         self
     }
 }
@@ -70,25 +72,16 @@ impl Session {
     ///
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
+        builder: SessionBuilder,
         url: LoginUrl,
-        sockets: Sockets,
         private_key: StaticSecret,
-        os_version_override: Option<String>,
         callbacks: CB,
-        max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let connect_handle = handle.spawn(connect(
-            url,
-            sockets,
-            private_key,
-            os_version_override,
-            callbacks.clone(),
-            max_partition_time,
-            rx,
-        ));
+        let connect_handle =
+            handle.spawn(connect(builder, url, private_key, callbacks.clone(), rx));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -140,26 +133,25 @@ impl Session {
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
+    builder: SessionBuilder,
     url: LoginUrl,
-    sockets: Sockets,
     private_key: StaticSecret,
-    os_version_override: Option<String>,
     callbacks: CB,
-    max_partition_time: Option<Duration>,
     rx: UnboundedReceiver<Command>,
 ) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
 {
+    let sockets = builder.sockets.unwrap_or_default();
     let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone())?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
-        get_user_agent(os_version_override),
+        get_user_agent(builder.os_version_override),
         PHOENIX_TOPIC,
         (),
         ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(max_partition_time)
+            .with_max_elapsed_time(builder.max_partition_time)
             .build(),
     );
 
