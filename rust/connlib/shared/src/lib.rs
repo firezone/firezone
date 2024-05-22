@@ -54,6 +54,12 @@ const LIB_NAME: &str = "connlib";
 #[derive(Clone, Copy, Debug)]
 pub enum DnsControlMethod {
     /// Don't control DNS at all. Suitable for Gateways, Clients that only need CIDR Resources, or running without root
+    ///
+    /// This is used instead of `Option::None` because the control methods should be
+    /// explicit. We don't want "The user said don't touch their DNS" to be conflated
+    /// with "The user didn't say anything about DNS"
+    ///
+    /// The `LevelFilter` in the `tracing` crate similarly has an explicit `OFF` value.
     NoControl,
     /// The only DNS control method for Windows
     Windows,

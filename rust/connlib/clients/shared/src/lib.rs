@@ -33,6 +33,64 @@ pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
+// Tried `derive_builder` for this but couldn't make it do what we need
+pub struct SessionBuilder<CB> {
+    // These fields are required because they can't possibly have defaults
+    url: LoginUrl,
+    private_key: StaticSecret,
+    callbacks: CB,
+    handle: tokio::runtime::Handle,
+
+    // These fields have some default value or are inherently optional
+    sockets: Option<Sockets>,
+    os_version_override: Option<String>,
+    max_partition_time: Option<Duration>,
+    dns_control_method: DnsControlMethod,
+}
+
+impl<CB: Callbacks + 'static> SessionBuilder<CB> {
+    pub fn new(
+        url: LoginUrl,
+        private_key: StaticSecret,
+        callbacks: CB,
+        handle: tokio::runtime::Handle,
+    ) -> Self {
+        Self {
+            url,
+            private_key,
+            callbacks,
+            handle,
+
+            sockets: None,
+            os_version_override: None,
+            max_partition_time: None,
+            dns_control_method: DnsControlMethod::NoControl,
+        }
+    }
+
+    pub fn build(self) -> Session {
+        Session::connect(
+            self.url,
+            self.sockets.unwrap_or_default(),
+            self.private_key,
+            self.os_version_override,
+            self.callbacks,
+            self.max_partition_time,
+            self.handle,
+        )
+    }
+
+    pub fn dns_control_method(mut self, x: DnsControlMethod) -> Self {
+        self.dns_control_method = x;
+        self
+    }
+
+    pub fn max_partition_time(mut self, x: Option<Duration>) -> Self {
+        self.max_partition_time = x;
+        self
+    }
+}
+
 impl Session {
     /// Creates a new [`Session`].
     ///
