@@ -248,26 +248,6 @@ impl ReferenceStateMachine for ReferenceState {
                 "client and gateway priv key must be different",
                 |(c, g, _, _, _)| c.state != g.state,
             )
-            .prop_filter(
-                "viable network path must exist",
-                |(client, gateway, relay, __, _)| {
-                    if client.ip4_socket.is_some()
-                        && relay.ip_stack.as_v4().is_none()
-                        && gateway.ip4_socket.is_none()
-                    {
-                        return false;
-                    }
-
-                    if client.ip6_socket.is_some()
-                        && relay.ip_stack.as_v6().is_none()
-                        && gateway.ip6_socket.is_none()
-                    {
-                        return false;
-                    }
-
-                    true
-                },
-            )
             .prop_map(|(client, gateway, relay, now, utc_now)| Self {
                 now,
                 utc_now,
