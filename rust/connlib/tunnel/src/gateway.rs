@@ -197,7 +197,7 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource_addresses: Vec<IpNetwork>,
     ) {
-        let mut peer = ClientOnGateway::new(client_id, &ips);
+        let mut peer = ClientOnGateway::new(client_id);
 
         peer.add_resource(resource_addresses, resource, filters, expires_at);
 

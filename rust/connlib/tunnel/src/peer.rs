@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Instant;
 
@@ -105,7 +105,6 @@ const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
-    pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
 
     pub translations: BiMap<IpAddr, IpAddr>,
     dns_mapping: BiMap<IpAddr, DnsServer>,
@@ -113,29 +112,9 @@ pub(crate) struct GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
-        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
-            resources.insert(*id);
-        } else {
-            self.allowed_ips.insert(*ip, HashSet::from([*id]));
-        }
-    }
-}
-
-impl GatewayOnClient {
-    pub(crate) fn new(
-        id: GatewayId,
-        ips: &[IpNetwork],
-        resource: HashSet<ResourceId>,
-    ) -> GatewayOnClient {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(*ip, resource.clone());
-        }
-
+    pub(crate) fn new(id: GatewayId) -> GatewayOnClient {
         GatewayOnClient {
             id,
-            allowed_ips,
             translations: Default::default(),
             dns_mapping: Default::default(),
             mangled_dns_ids: Default::default(),
@@ -169,15 +148,9 @@ impl GatewayOnClient {
 }
 
 impl ClientOnGateway {
-    pub(crate) fn new(id: ClientId, ips: &[IpNetwork]) -> ClientOnGateway {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(*ip, ());
-        }
-
+    pub(crate) fn new(id: ClientId) -> ClientOnGateway {
         ClientOnGateway {
             id,
-            allowed_ips,
             resources: HashMap::new(),
             filters: IpNetworkTable::new(),
         }
@@ -268,10 +241,6 @@ impl ClientOnGateway {
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
-        if self.allowed_ips.longest_match(packet.source()).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket(packet.source()));
-        }
-
         let dst = packet.destination();
         if !self
             .filters
@@ -295,13 +264,9 @@ impl GatewayOnClient {
     pub(crate) fn transform_network_to_tun<'a>(
         &mut self,
         mut pkt: MutableIpPacket<'a>,
-    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
+    ) -> MutableIpPacket<'a> {
         let addr = pkt.source();
         let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
-
-        if self.allowed_ips.longest_match(src).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket(src));
-        }
 
         if let Some(dgm) = pkt.as_udp() {
             if let Some(sentinel) = self
@@ -323,7 +288,7 @@ impl GatewayOnClient {
         pkt.set_src(src);
         pkt.update_checksum();
 
-        Ok(pkt)
+        pkt
     }
 
     /// Transform a packet that arrvied on the TUN device for the network.
@@ -364,7 +329,6 @@ struct ResourceOnGateway {
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
-    allowed_ips: IpNetworkTable<()>,
     resources: HashMap<ResourceId, Vec<ResourceOnGateway>>,
     filters: IpNetworkTable<FilterEngine>,
 }
@@ -384,7 +348,7 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        let mut peer = ClientOnGateway::new(client_id());
         let now = Utc::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -504,7 +468,7 @@ mod proptests {
         let (src, resource_addr, dest) = config;
         let mut filters = protocol_config.iter();
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id);
         let mut resource_addr = Some(resource_addr);
         let mut resources = 0;
 
@@ -545,10 +509,7 @@ mod proptests {
     ) {
         let (src, resource_addr, dest): (Vec<_>, Vec<_>, Vec<_>) = config.into_iter().multiunzip();
         let (filters, protocol) = protocol_config;
-        let mut peer = ClientOnGateway::new(
-            client_id,
-            &src.clone().into_iter().map(Into::into).collect_vec(),
-        );
+        let mut peer = ClientOnGateway::new(client_id);
 
         peer.add_resource(resource_addr, resource_id, filters, None);
 
@@ -596,10 +557,7 @@ mod proptests {
         let mut src = Vec::new();
         src.extend(src_1);
         src.extend(src_2);
-        let mut peer = ClientOnGateway::new(
-            client_id,
-            &src.clone().into_iter().map(Into::into).collect_vec(),
-        );
+        let mut peer = ClientOnGateway::new(client_id);
 
         peer.add_resource(resource_addr_1, resource_id, filters.clone(), None);
         peer.add_resource(resource_addr_2, resource_id, filters, None);
@@ -651,7 +609,7 @@ mod proptests {
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
         let (src, resource_addr, dest) = config;
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id);
         let mut resources_ids = resources_ids.iter();
         for (filters, _) in &protocol_config {
             // This test could be extended to test multiple src
@@ -686,7 +644,7 @@ mod proptests {
         let (src, resource_addr, dest) = config;
         let (filters, protocol) = protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id);
         let packet = match protocol {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
@@ -718,7 +676,7 @@ mod proptests {
         let ((filters_allowed, protocol_allowed), (filters_removed, protocol_removed)) =
             protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id);
 
         let packet_allowed = match protocol_allowed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),

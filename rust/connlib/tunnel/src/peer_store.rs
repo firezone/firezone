@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::net::IpAddr;
 
 use crate::peer::{ClientOnGateway, GatewayOnClient};
-use connlib_shared::messages::{ClientId, GatewayId, ResourceId};
+use connlib_shared::messages::{ClientId, GatewayId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 
@@ -17,22 +17,6 @@ impl<TId, P> Default for PeerStore<TId, P> {
         Self {
             id_by_ip: IpNetworkTable::new(),
             peer_by_id: HashMap::new(),
-        }
-    }
-}
-
-impl PeerStore<GatewayId, GatewayOnClient> {
-    pub(crate) fn add_ips_with_resource(
-        &mut self,
-        id: &GatewayId,
-        ips: &[IpNetwork],
-        resource: &ResourceId,
-    ) {
-        for ip in ips {
-            let Some(peer) = self.add_ip(id, ip) else {
-                continue;
-            };
-            peer.insert_id(ip, resource);
         }
     }
 }

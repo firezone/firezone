@@ -425,16 +425,9 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.transform_network_to_tun(packet) {
-            Ok(packet) => packet,
-            Err(e) => {
-                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
+        let packet = peer.transform_network_to_tun(packet).into_immutable();
 
-                return None;
-            }
-        };
-
-        Some(packet.into_immutable())
+        Some(packet)
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
@@ -461,29 +454,16 @@ impl ClientState {
             Instant::now(),
         );
 
-        let desc = self
-            .resource_ids
-            .get(&resource_id)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let ips = self.get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
-
         // Tidy up state once everything succeeded.
         self.awaiting_connection.remove(&resource_id);
 
-        let resource_ids = HashSet::from([resource_id]);
-        let mut peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
+        let mut peer = GatewayOnClient::new(gateway_id);
         peer.set_dns(self.dns_mapping());
         self.peers.insert(peer, &[]);
 
-        let peer_ips = if let Some(domain_response) = domain_response {
-            self.dns_response(&resource_id, &domain_response, &gateway_id)?
-        } else {
-            ips
+        if let Some(domain_response) = domain_response {
+            self.dns_response(&resource_id, &domain_response, &gateway_id)?;
         };
-
-        self.peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
     }
@@ -521,11 +501,9 @@ impl ClientState {
         self.resources_gateways.insert(resource_id, gateway_id);
 
         if self.peers.get(&gateway_id).is_some() {
-            self.peers.add_ips_with_resource(
-                &gateway_id,
-                &self.get_resource_ip(desc, &domain),
-                &resource_id,
-            );
+            for ip in self.get_resource_ip(desc, &domain) {
+                self.peers.add_ip(&gateway_id, &ip);
+            }
 
             self.awaiting_connection.remove(&resource_id);
 
@@ -571,10 +549,7 @@ impl ClientState {
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
-
-        self.peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+        self.dns_response(&resource_id, &domain_response, &gateway_id)?;
 
         Ok(())
     }
@@ -584,7 +559,7 @@ impl ClientState {
         resource_id: &ResourceId,
         domain_response: &DomainResponse,
         peer_id: &GatewayId,
-    ) -> connlib_shared::Result<Vec<IpNetwork>> {
+    ) -> connlib_shared::Result<()> {
         let peer = self
             .peers
             .get_mut(peer_id)
@@ -618,7 +593,7 @@ impl ClientState {
         send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
         send_dns_answer(self, Rtype::A, &resource_description, &addrs);
 
-        Ok(addrs.iter().copied().map(Into::into).collect())
+        Ok(())
     }
 
     /// Attempt to handle the given packet as a DNS packet.
@@ -1017,41 +992,9 @@ impl ClientState {
 
             self.resource_ids.remove(id);
 
-            let Some(gateway_id) = self.resources_gateways.remove(id) else {
+            if self.resources_gateways.remove(id).is_none() {
                 tracing::debug!("No gateway associated with resource");
-                continue;
             };
-
-            let Some(peer) = self.peers.get_mut(&gateway_id) else {
-                continue;
-            };
-
-            // First we remove the id from all allowed ips
-            for (network, resources) in peer
-                .allowed_ips
-                .iter_mut()
-                .filter(|(_, resources)| resources.contains(id))
-            {
-                resources.remove(id);
-
-                if !resources.is_empty() {
-                    continue;
-                }
-
-                // If the allowed_ips doesn't correspond to any resource anymore we
-                // clean up any related translation.
-                peer.translations.remove_by_left(&network.network_address());
-            }
-
-            // We remove all empty allowed ips entry since there's no resource that corresponds to it
-            peer.allowed_ips.retain(|_, r| !r.is_empty());
-
-            // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
-            if peer.allowed_ips.is_empty() {
-                self.peers.remove(&gateway_id);
-                self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
-                // TODO: should we have a Node::remove_connection?
-            }
         }
 
         tracing::debug!("Resources removed")
