@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "clap",
  "tracing",
@@ -1895,7 +1895,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1928,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1981,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -2013,7 +2013,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2054,7 +2054,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2885,7 +2885,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2900,7 +2900,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3159,7 +3159,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "pnet_packet",
 ]
@@ -4549,7 +4549,7 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "backoff",
  "base64 0.22.1",
@@ -5800,7 +5800,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5821,7 +5821,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "boringtun",
