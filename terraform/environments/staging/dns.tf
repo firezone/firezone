@@ -376,3 +376,16 @@ resource "google_dns_record_set" "google-dkim" {
     "\"v=DKIM1;\" \"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlrJHV7oQ63ebQcZ7fsvo+kjb1R9UrkpcdAOkOeN74qMjypQA+hKVV9F2aDM8hFeZoQH9zwIgQi+\" \"0TcDKRr1O7BklmbSkoMaqM5gH2OQTqQWwU0v49POHiL6yWKO4L68peJMMEVX+xFcjxHI5j6dkLMmv+Y6IxrzsqgeXx7V6cFt5V1G8lr0DWC+yzhPioda+S21dWl1GwPdLBbQb80GV1mpV2rGImzeiZVv4/4Et7w0M55Rfy\" \"m4JICJ89FmjC1Ua05CvrD4dvugWqfVoGuP3nyQXEqP8wgyoPuOZPrcEQXu+IlBrWMRBKv7slI571YnUznwoKlkourgB+7qC/zU8KQIDAQAB\""
   ]
 }
+
+resource "google_dns_record_set" "google-search-console-verification" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = module.google-cloud-dns.dns_name
+  type = "TXT"
+  ttl  = 3600
+
+  rrdatas = [
+    "\"google-site-verification=NbGHbeX7TprsiSQfxz2JVtP7xrPJE5Orej2_Ip8JHyo\""
+  ]
+}
