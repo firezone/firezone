@@ -637,12 +637,12 @@ mod tests {
 
     #[test]
     fn parse_args_otlp_grpc_endpoint() {
-        let result = Args::try_parse_from(&["relay", "--otlp-grpc-endpoint", "127.0.0.1:4317"]);
+        let result = Args::try_parse_from(["relay", "--otlp-grpc-endpoint", "127.0.0.1:4317"]);
         assert!(
             result.is_ok_and(|args| args.otlp_grpc_endpoint == Some("127.0.0.1:4317".to_string()))
         );
 
-        let result = Args::try_parse_from(&["relay", "--otlp-grpc-endpoint", "localhost:4317"]);
+        let result = Args::try_parse_from(["relay", "--otlp-grpc-endpoint", "localhost:4317"]);
         assert!(
             result.is_ok_and(|args| args.otlp_grpc_endpoint == Some("localhost:4317".to_string()))
         );
