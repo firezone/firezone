@@ -438,7 +438,10 @@ pub(crate) enum ControllerRequest {
     ApplySettings(AdvancedSettings),
     /// Only used for smoke tests
     ClearLogs,
-    Disconnected,
+    Disconnected {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -560,13 +563,21 @@ impl Controller {
             Req::ClearLogs => logging::clear_logs_inner()
                 .await
                 .context("Failed to clear logs")?,
-            Req::Disconnected => {
-                tracing::info!("Disconnected by connlib");
+            Req::Disconnected {
+                error_msg,
+                is_authentication_error,
+            } => {
                 self.sign_out().await?;
-                os::show_notification(
-                    "Firezone disconnected",
-                    "To access resources, sign in again.",
-                )?;
+                if is_authentication_error {
+                    tracing::info!(?error_msg, "Auth error");
+                    os::show_notification(
+                        "Firezone disconnected",
+                        "To access resources, sign in again.",
+                    )?;
+                } else {
+                    tracing::error!(?error_msg, "Disconnected");
+                    // TODO: Dialog box here
+                }
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await

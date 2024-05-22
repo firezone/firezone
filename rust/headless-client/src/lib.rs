@@ -10,7 +10,9 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, Error as ConnlibError, LoginUrl, Session, Sockets,
+};
 use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{Future, SinkExt, StreamExt};
@@ -167,6 +169,7 @@ pub enum IpcServerMsg {
     Ok,
     OnDisconnect {
         error_msg: String,
+        is_authentication_error: bool,
     },
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
@@ -348,11 +351,17 @@ struct CallbackHandlerIpc {
 }
 
 impl Callbacks for CallbackHandlerIpc {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+    fn on_disconnect(&self, error: &ConnlibError) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
         self.cb_tx
             .try_send(IpcServerMsg::OnDisconnect {
-                error_msg: error.to_string()
+                error_msg: error.to_string(),
+                is_authentication_error: if let ConnlibError::PortalConnectionFailed(error) = error
+                {
+                    error.is_authentication_error()
+                } else {
+                    false
+                },
             })
             .expect("should be able to send OnDisconnect");
     }

@@ -5,10 +5,7 @@ use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    net::IpAddr,
-    sync::Arc,
-};
+use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
@@ -35,21 +32,20 @@ pub(crate) struct CallbackHandler {
 // Almost but not quite implements `Callbacks` from connlib.
 // Because of the IPC boundary, we can deviate.
 impl CallbackHandler {
-    fn on_disconnect(&self, error: String) {
-        // The errors don't implement `Serialize`, so we don't get a machine-readable
-        // error here, but we should consider it an error anyway. `on_disconnect`
-        // is always an error
-        tracing::error!("on_disconnect {error:?}");
+    fn on_disconnect(&self, error_msg: String, is_authentication_error: bool) {
+        tracing::error!("on_disconnect {error_msg:?}");
         self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected)
+            .try_send(ControllerRequest::Disconnected {
+                error_msg,
+                is_authentication_error,
+            })
             .expect("controller channel failed");
     }
 
-    fn on_set_interface_config(&self) -> Option<i32> {
+    fn on_set_interface_config(&self) {
         self.ctlr_tx
             .try_send(ControllerRequest::TunnelReady)
             .expect("controller channel failed");
-        None
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
@@ -104,9 +100,16 @@ impl Client {
             while let Some(msg) = rx.next().await.transpose()? {
                 match serde_json::from_slice::<IpcServerMsg>(&msg)? {
                     IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect{error_msg} => callback_handler.on_disconnect(error_msg),
+                    IpcServerMsg::OnDisconnect {
+                        error_msg,
+                        is_authentication_error,
+                    } => callback_handler.on_disconnect(error_msg, is_authentication_error),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                    IpcServerMsg::OnSetInterfaceConfig { ipv4: _, ipv6: _, dns: _ } => {
+                    IpcServerMsg::OnSetInterfaceConfig {
+                        ipv4: _,
+                        ipv6: _,
+                        dns: _,
+                    } => {
                         callback_handler.on_set_interface_config();
                     }
                 }
