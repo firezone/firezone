@@ -418,11 +418,7 @@ impl ClientState {
             return None;
         };
 
-        let Some(peer) = self
-            .resources_gateways
-            .get(&resource)
-            .and_then(|g: &GatewayId| self.peers.get_mut(g))
-        else {
+        let Some(peer) = self.peer_by_resource_mut(resource) else {
             // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
             let domain = self
                 .dns_resources_internal_ips
@@ -434,10 +430,11 @@ impl ClientState {
         };
 
         let packet = peer.transform_tun_to_network(packet);
+        let gateway_id = peer.id();
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), now)
+            .encapsulate(gateway_id, packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -877,17 +874,14 @@ impl ClientState {
                 self.peers.iter_mut().for_each(|p| p.expire_dns_track());
 
                 for resource in self.dns_resources_internal_ips.keys() {
-                    let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
+                    let Some(peer) = self.peer_by_resource(resource.id) else {
+                        // filter inactive connections
                         continue;
                     };
-                    // filter inactive connections
-                    if self.peers.get(gateway_id).is_none() {
-                        continue;
-                    }
 
                     connections.push(ReuseConnection {
                         resource_id: resource.id,
-                        gateway_id: *gateway_id,
+                        gateway_id: peer.id(),
                         payload: Some(resource.address.clone()),
                     });
                 }
@@ -1025,14 +1019,10 @@ impl ClientState {
 
             self.resource_ids.remove(id);
 
-            let Some(gateway_id) = self.resources_gateways.remove(id) else {
-                tracing::debug!("No gateway associated with resource");
+            let Some(peer) = self.peer_by_resource_mut(*id) else {
                 continue;
             };
-
-            let Some(peer) = self.peers.get_mut(&gateway_id) else {
-                continue;
-            };
+            let gateway_id = peer.id();
 
             // First we remove the id from all allowed ips
             for (network, resources) in peer
@@ -1100,6 +1090,20 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+    }
+
+    fn peer_by_resource(&self, resource: ResourceId) -> Option<&GatewayOnClient> {
+        let gateway_id = self.resources_gateways.get(&resource)?;
+        let peer = self.peers.get(gateway_id)?;
+
+        Some(peer)
+    }
+
+    fn peer_by_resource_mut(&mut self, resource: ResourceId) -> Option<&mut GatewayOnClient> {
+        let gateway_id = self.resources_gateways.get(&resource)?;
+        let peer = self.peers.get_mut(gateway_id)?;
+
+        Some(peer)
     }
 }
 
