@@ -13,7 +13,7 @@ use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
@@ -74,7 +74,7 @@ struct Args {
     ///
     /// If set, we will report traces and metrics to this collector via gRPC.
     #[arg(long, env, hide = true)]
-    otlp_grpc_endpoint: Option<SocketAddr>,
+    otlp_grpc_endpoint: Option<String>,
 
     /// The Google Project ID to embed in spans.
     ///
@@ -178,7 +178,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let dispatch: Dispatch = match args.otlp_grpc_endpoint {
+    let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
         None => tracing_subscriber::registry().with(log_layer(args)).into(),
         Some(endpoint) => {
             let grpc_endpoint = format!("http://{endpoint}");
@@ -633,5 +633,22 @@ mod tests {
         ))));
 
         assert!(!is_healthy)
+    }
+
+    // Regression tests to ensure we can parse sockets as well as domains for the otlp-grpc endpoint.
+    #[test]
+    fn args_can_parse_otlp_endpoint_from_socket() {
+        let args =
+            Args::try_parse_from(["relay", "--otlp-grpc-endpoint", "127.0.0.1:4317"]).unwrap();
+
+        assert_eq!(args.otlp_grpc_endpoint.unwrap(), "127.0.0.1:4317");
+    }
+
+    #[test]
+    fn args_can_parse_otlp_endpoint_from_domain() {
+        let args =
+            Args::try_parse_from(["relay", "--otlp-grpc-endpoint", "localhost:4317"]).unwrap();
+
+        assert_eq!(args.otlp_grpc_endpoint.unwrap(), "localhost:4317");
     }
 }
