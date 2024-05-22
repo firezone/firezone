@@ -1197,7 +1197,6 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "snownet",
  "swift-bridge",
  "tempfile",
  "thiserror",
