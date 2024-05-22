@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@docsearch/react':
         specifier: ^3.6.0
-        version: 3.6.0(@algolia/client-search@4.22.1)(@types/react@18.2.73)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.13.0)
+        version: 3.6.0(@algolia/client-search@4.22.1)(@types/react@18.2.73)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(search-insights@2.13.0)
       '@mdx-js/loader':
         specifier: ^3.0.1
         version: 3.0.1(webpack@5.90.3)
@@ -19,7 +19,7 @@ importers:
         version: 3.0.1(@types/react@18.2.73)(react@18.2.0)
       '@next/mdx':
         specifier: ~14.2.3
-        version: 14.2.3(@mdx-js/loader@3.0.1)(@mdx-js/react@3.0.1)
+        version: 14.2.3(@mdx-js/loader@3.0.1(webpack@5.90.3))(@mdx-js/react@3.0.1(@types/react@18.2.73)(react@18.2.0))
       '@types/mdx':
         specifier: ^2.0.11
         version: 2.0.11
@@ -52,7 +52,10 @@ importers:
         version: 2.3.0
       flowbite-react:
         specifier: ^0.9.0
-        version: 0.9.0(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.3)
+        version: 0.9.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(tailwindcss@3.4.3)
+      framer-motion:
+        specifier: ^11.2.4
+        version: 11.2.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       highlight.js:
         specifier: ^11.9.0
         version: 11.9.0
@@ -64,13 +67,13 @@ importers:
         version: 2.50.0
       next:
         specifier: ^14.1.3
-        version: 14.1.3(react-dom@18.2.0)(react@18.2.0)
+        version: 14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       next-hubspot:
         specifier: ^1.3.0
-        version: 1.3.0(next@14.1.3)(react-dom@18.2.0)(react@18.2.0)
+        version: 1.3.0(next@14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       next-sitemap:
         specifier: ^4.2.3
-        version: 4.2.3(next@14.1.3)
+        version: 4.2.3(next@14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0))
       postcss:
         specifier: 8.4.35
         version: 8.4.35
@@ -82,7 +85,7 @@ importers:
         version: 18.2.0(react@18.2.0)
       react-fast-marquee:
         specifier: ^1.6.4
-        version: 1.6.4(react-dom@18.2.0)(react@18.2.0)
+        version: 1.6.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-icons:
         specifier: ^5.2.0
         version: 5.2.0(react@18.2.0)
@@ -836,6 +839,20 @@ packages:
 
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
+
+  framer-motion@11.2.6:
+    resolution: {integrity: sha512-XUrjjBt57e5YoHQtjwc3eNchFBuHvIgN/cS8SC4oIaAn2J/0+bLanUxXizidJKZVeHJam/JrmMnPRjYMglVn5g==}
+    peerDependencies:
+      '@emotion/is-prop-valid': '*'
+      react: ^18.0.0
+      react-dom: ^18.0.0
+    peerDependenciesMeta:
+      '@emotion/is-prop-valid':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -1927,13 +1944,14 @@ snapshots:
 
   '@docsearch/css@3.6.0': {}
 
-  '@docsearch/react@3.6.0(@algolia/client-search@4.22.1)(@types/react@18.2.73)(react-dom@18.2.0)(react@18.2.0)(search-insights@2.13.0)':
+  '@docsearch/react@3.6.0(@algolia/client-search@4.22.1)(@types/react@18.2.73)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(search-insights@2.13.0)':
     dependencies:
       '@algolia/autocomplete-core': 1.9.3(@algolia/client-search@4.22.1)(algoliasearch@4.22.1)(search-insights@2.13.0)
       '@algolia/autocomplete-preset-algolia': 1.9.3(@algolia/client-search@4.22.1)(algoliasearch@4.22.1)
       '@docsearch/css': 3.6.0
-      '@types/react': 18.2.73
       algoliasearch: 4.22.1
+    optionalDependencies:
+      '@types/react': 18.2.73
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       search-insights: 2.13.0
@@ -1949,15 +1967,15 @@ snapshots:
       '@floating-ui/core': 1.6.0
       '@floating-ui/utils': 0.2.1
 
-  '@floating-ui/react-dom@2.0.8(react-dom@18.2.0)(react@18.2.0)':
+  '@floating-ui/react-dom@2.0.8(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@floating-ui/dom': 1.6.3
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@floating-ui/react@0.26.10(react-dom@18.2.0)(react@18.2.0)':
+  '@floating-ui/react@0.26.10(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
     dependencies:
-      '@floating-ui/react-dom': 2.0.8(react-dom@18.2.0)(react@18.2.0)
+      '@floating-ui/react-dom': 2.0.8(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@floating-ui/utils': 0.2.1
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -2042,11 +2060,12 @@ snapshots:
 
   '@next/env@14.1.3': {}
 
-  '@next/mdx@14.2.3(@mdx-js/loader@3.0.1)(@mdx-js/react@3.0.1)':
+  '@next/mdx@14.2.3(@mdx-js/loader@3.0.1(webpack@5.90.3))(@mdx-js/react@3.0.1(@types/react@18.2.73)(react@18.2.0))':
     dependencies:
+      source-map: 0.7.4
+    optionalDependencies:
       '@mdx-js/loader': 3.0.1(webpack@5.90.3)
       '@mdx-js/react': 3.0.1(@types/react@18.2.73)(react@18.2.0)
-      source-map: 0.7.4
 
   '@next/swc-darwin-arm64@14.1.3':
     optional: true
@@ -2540,7 +2559,7 @@ snapshots:
     dependencies:
       to-regex-range: 5.0.1
 
-  flowbite-react@0.9.0(react-dom@18.2.0)(react@18.2.0)(tailwindcss@3.4.3):
+  flowbite-react@0.9.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(tailwindcss@3.4.3):
     dependencies:
       '@floating-ui/core': 1.6.0
       '@floating-ui/react': 0.26.10(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -2573,6 +2592,13 @@ snapshots:
   format@0.2.2: {}
 
   fraction.js@4.3.7: {}
+
+  framer-motion@11.2.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      tslib: 2.6.2
+    optionalDependencies:
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
 
   fsevents@2.3.3:
     optional: true
@@ -3348,22 +3374,22 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  next-hubspot@1.3.0(next@14.1.3)(react-dom@18.2.0)(react@18.2.0):
+  next-hubspot@1.3.0(next@14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
-      next: 14.1.3(react-dom@18.2.0)(react@18.2.0)
+      next: 14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react: 18.2.0
     optionalDependencies:
       react-dom: 18.2.0(react@18.2.0)
 
-  next-sitemap@4.2.3(next@14.1.3):
+  next-sitemap@4.2.3(next@14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)):
     dependencies:
       '@corex/deepmerge': 4.0.43
       '@next/env': 13.5.6
       fast-glob: 3.3.2
       minimist: 1.2.8
-      next: 14.1.3(react-dom@18.2.0)(react@18.2.0)
+      next: 14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
 
-  next@14.1.3(react-dom@18.2.0)(react@18.2.0):
+  next@14.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
       '@next/env': 14.1.3
       '@swc/helpers': 0.5.2
@@ -3460,8 +3486,9 @@ snapshots:
   postcss-load-config@4.0.2(postcss@8.4.35):
     dependencies:
       lilconfig: 3.1.1
-      postcss: 8.4.35
       yaml: 2.4.0
+    optionalDependencies:
+      postcss: 8.4.35
 
   postcss-nested@6.0.1(postcss@8.4.35):
     dependencies:
@@ -3511,7 +3538,7 @@ snapshots:
       react: 18.2.0
       scheduler: 0.23.0
 
-  react-fast-marquee@1.6.4(react-dom@18.2.0)(react@18.2.0):
+  react-fast-marquee@1.6.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
