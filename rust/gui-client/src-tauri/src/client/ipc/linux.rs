@@ -6,10 +6,21 @@ use secrecy::{ExposeSecret, SecretString};
 use tokio::net::{unix::OwnedWriteHalf, UnixStream};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
+/// A type alias to abstract over the Windows and Unix IPC primitives
+pub(crate) type IpcStream = UnixStream;
+
 /// Forwards events to and from connlib
 pub(crate) struct Client {
     recv_task: tokio::task::JoinHandle<Result<()>>,
-    tx: FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>,
+    tx: FramedWrite<tokio::io::WriteHalf<IpcStream>, LengthDelimitedCodec>,
+}
+
+/// Connect to the IPC service
+pub(crate) async fn connect_to_service() -> Result<IpcStream> {
+    let stream = UnixStream::connect(sock_path())
+        .await
+        .context("Couldn't connect to Unix domain socket")?;
+    Ok(stream)
 }
 
 impl Client {
@@ -18,7 +29,7 @@ impl Client {
             .await
             .context("Couldn't send Disconnect")?;
         self.tx.close().await?;
-        self.recv_task.abort();
+        self.task.abort();
         Ok(())
     }
 
@@ -41,16 +52,14 @@ impl Client {
         tokio_handle: tokio::runtime::Handle,
     ) -> Result<Self> {
         tracing::info!(pid = std::process::id(), "Connecting to IPC service...");
-        let stream = UnixStream::connect(sock_path())
-            .await
-            .context("Couldn't connect to UDS")?;
-        let (rx, tx) = stream.into_split();
+        let stream = connect_to_service().await?;
+        let (rx, tx) = tokio::io::split(stream.0);
         // Receives messages from the IPC service
         let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
         let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
 
         // TODO: Make sure this joins / drops somewhere
-        let recv_task = tokio_handle.spawn(async move {
+        let task = tokio_handle.spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {
                 let msg: IpcServerMsg = serde_json::from_slice(&msg)?;
                 match msg {
@@ -67,7 +76,7 @@ impl Client {
             Ok(())
         });
 
-        let mut client = Self { recv_task, tx };
+        let mut client = Self { task, tx };
         let token = token.expose_secret().clone();
         client
             .send_msg(&IpcClientMsg::Connect {
