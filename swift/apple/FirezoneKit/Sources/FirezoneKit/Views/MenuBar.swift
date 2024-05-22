@@ -34,8 +34,6 @@ public final class MenuBar: NSObject {
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
-  private lazy var menu = NSMenu()
-
   public init(model: SessionViewModel) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.model = model
@@ -66,23 +64,6 @@ public final class MenuBar: NSObject {
     }
   }
 
-  private func createMenu() {
-    menu.addItem(signInMenuItem)
-    menu.addItem(signOutMenuItem)
-    menu.addItem(NSMenuItem.separator())
-
-    menu.addItem(resourcesTitleMenuItem)
-    menu.addItem(resourcesUnavailableMenuItem)
-    menu.addItem(resourcesUnavailableReasonMenuItem)
-    menu.addItem(resourcesSeparatorMenuItem)
-
-    menu.addItem(aboutMenuItem)
-    menu.addItem(settingsMenuItem)
-    menu.addItem(quitMenuItem)
-
-    menu.delegate = self
-  }
-
   private func setupObservers() {
     model.store.$status
       .receive(on: DispatchQueue.main)
@@ -111,6 +92,7 @@ public final class MenuBar: NSObject {
       }).store(in: &cancellables)
   }
 
+  private lazy var menu = NSMenu()
 
   private lazy var signInMenuItem = createMenuItem(
     menu,
@@ -179,6 +161,23 @@ public final class MenuBar: NSObject {
     }
     return menuItem
   }()
+
+  private func createMenu() {
+    menu.addItem(signInMenuItem)
+    menu.addItem(signOutMenuItem)
+    menu.addItem(NSMenuItem.separator())
+
+    menu.addItem(resourcesTitleMenuItem)
+    menu.addItem(resourcesUnavailableMenuItem)
+    menu.addItem(resourcesUnavailableReasonMenuItem)
+    menu.addItem(resourcesSeparatorMenuItem)
+
+    menu.addItem(aboutMenuItem)
+    menu.addItem(settingsMenuItem)
+    menu.addItem(quitMenuItem)
+
+    menu.delegate = self
+  }
 
   private func createMenuItem(
     _: NSMenu,
