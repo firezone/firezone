@@ -24,6 +24,13 @@ pub struct ResourceId(Uuid);
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RelayId(Uuid);
 
+impl RelayId {
+    #[cfg(feature = "proptest")]
+    pub fn from_u128(v: u128) -> Self {
+        Self(Uuid::from_u128(v))
+    }
+}
+
 impl FromStr for RelayId {
     type Err = uuid::Error;
 
@@ -43,16 +50,9 @@ impl ResourceId {
     }
 }
 
-impl ClientId {
-    #[cfg(feature = "proptest")]
-    pub(crate) fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
 impl GatewayId {
     #[cfg(feature = "proptest")]
-    pub(crate) fn from_u128(v: u128) -> Self {
+    pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
 }
@@ -65,6 +65,13 @@ impl FromStr for ClientId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ClientId(Uuid::parse_str(s)?))
+    }
+}
+
+impl ClientId {
+    #[cfg(feature = "proptest")]
+    pub fn from_u128(v: u128) -> Self {
+        Self(Uuid::from_u128(v))
     }
 }
 
@@ -150,7 +157,6 @@ pub struct RequestConnection {
     pub resource_id: ResourceId,
     /// The preshared key the client generated for the connection that it is trying to establish.
     pub client_preshared_key: SecretKey,
-    /// Client's local RTC Session Description that the client will use for this connection.
     pub client_payload: ClientPayload,
 }
 
