@@ -143,8 +143,6 @@ impl Tun {
         connlib_shared::windows::dns::change(dns_config, iface_idx)
             .expect("Should be able to control DNS");
 
-        panic!("Panic to test error propagation to the GUI. TODO: Remove before merging");
-
         Ok(())
     }
 
