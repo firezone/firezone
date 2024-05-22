@@ -177,7 +177,7 @@ where
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            dns_control_method: connlib_shared::DnsControlMethod::NoControl,
+            dns_control_method: connlib_shared::DnsControlMethod::Default,
         })
     }
 

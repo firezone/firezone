@@ -10,7 +10,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
+use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, SessionBuilder};
 use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
 use secrecy::SecretString;
@@ -205,16 +205,9 @@ pub fn run_only_headless_client() -> Result<()> {
     let callback_handler = CallbackHandler { on_disconnect_tx };
 
     platform::setup_before_connlib()?;
-    let session = Session::connect(
-        login,
-        Sockets::new(),
-        private_key,
-        None,
-        callback_handler,
-        max_partition_time,
-        rt.handle().clone(),
-        connlib_shared::DnsControlMethod::NoControl,
-    );
+    let session = SessionBuilder::default()
+        .max_partition_time(max_partition_time)
+        .build(login, private_key, callback_handler, rt.handle().clone());
     // TODO: this should be added dynamically
     session.set_dns(platform::system_resolvers().unwrap_or_default());
 

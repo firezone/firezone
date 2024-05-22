@@ -60,7 +60,7 @@ pub enum DnsControlMethod {
     /// with "The user didn't say anything about DNS"
     ///
     /// The `LevelFilter` in the `tracing` crate similarly has an explicit `OFF` value.
-    NoControl,
+    Default,
     /// The only DNS control method for Windows
     Windows,
     /// Back up `/etc/resolv.conf` and replace it with our own
@@ -74,6 +74,12 @@ pub enum DnsControlMethod {
     ///
     /// Suitable for most Ubuntu systems, probably
     Systemd,
+}
+
+impl Default for DnsControlMethod {
+    fn default() -> Self {
+        Self::Default
+    }
 }
 
 /// Deactivates DNS control on Windows

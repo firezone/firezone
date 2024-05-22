@@ -269,7 +269,7 @@ async fn set_iface_config(
     res_v4.or(res_v6)?;
 
     if let Err(error) = match dns_control_method {
-        DnsControlMethod::NoControl => Ok(()),
+        DnsControlMethod::Default => Ok(()),
         DnsControlMethod::EtcResolvConf => etc_resolv_conf::configure(&dns_config)
             .await
             .map_err(Error::ResolvConf),

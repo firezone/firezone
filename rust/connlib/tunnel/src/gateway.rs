@@ -35,7 +35,7 @@ where
             config,
             vec![],
             &callbacks,
-            connlib_shared::DnsControlMethod::NoControl,
+            connlib_shared::DnsControlMethod::Default,
         )?;
         self.io.device_mut().set_routes(
             HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),

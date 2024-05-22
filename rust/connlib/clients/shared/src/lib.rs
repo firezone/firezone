@@ -34,50 +34,24 @@ pub struct Session {
 }
 
 // Tried `derive_builder` for this but couldn't make it do what we need
-pub struct SessionBuilder<CB> {
-    // These fields are required because they can't possibly have defaults
-    url: LoginUrl,
-    private_key: StaticSecret,
-    callbacks: CB,
-    handle: tokio::runtime::Handle,
-
-    // These fields have some default value or are inherently optional
-    sockets: Option<Sockets>,
-    os_version_override: Option<String>,
-    max_partition_time: Option<Duration>,
+// Only the optional fields are included, to keep it short
+#[derive(Default)]
+pub struct SessionBuilder {
     dns_control_method: DnsControlMethod,
+    max_partition_time: Option<Duration>,
+    os_version_override: Option<String>,
+    sockets: Option<Sockets>,
 }
 
-impl<CB: Callbacks + 'static> SessionBuilder<CB> {
-    pub fn new(
+impl SessionBuilder {
+    pub fn build<CB: Callbacks + 'static>(
+        self,
         url: LoginUrl,
         private_key: StaticSecret,
         callbacks: CB,
         handle: tokio::runtime::Handle,
-    ) -> Self {
-        Self {
-            url,
-            private_key,
-            callbacks,
-            handle,
-
-            sockets: None,
-            os_version_override: None,
-            max_partition_time: None,
-            dns_control_method: DnsControlMethod::NoControl,
-        }
-    }
-
-    pub fn build(self) -> Session {
-        Session::connect(
-            self.url,
-            self.sockets.unwrap_or_default(),
-            self.private_key,
-            self.os_version_override,
-            self.callbacks,
-            self.max_partition_time,
-            self.handle,
-        )
+    ) -> Session {
+        Session::connect(self, url, private_key, callbacks, handle)
     }
 
     pub fn dns_control_method(mut self, x: DnsControlMethod) -> Self {
@@ -85,8 +59,18 @@ impl<CB: Callbacks + 'static> SessionBuilder<CB> {
         self
     }
 
-    pub fn max_partition_time(mut self, x: Option<Duration>) -> Self {
-        self.max_partition_time = x;
+    pub fn max_partition_time<T: Into<Option<Duration>>>(mut self, x: T) -> Self {
+        self.max_partition_time = x.into();
+        self
+    }
+
+    pub fn os_version_override<T: Into<Option<String>>>(mut self, x: T) -> Self {
+        self.os_version_override = x.into();
+        self
+    }
+
+    pub fn sockets<T: Into<Option<Sockets>>>(mut self, x: T) -> Self {
+        self.sockets = x.into();
         self
     }
 }
@@ -96,27 +80,16 @@ impl Session {
     ///
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
+        builder: SessionBuilder,
         url: LoginUrl,
-        sockets: Sockets,
         private_key: StaticSecret,
-        os_version_override: Option<String>,
         callbacks: CB,
-        max_partition_time: Option<Duration>,
         handle: tokio::runtime::Handle,
-        dns_control_method: connlib_shared::DnsControlMethod,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let connect_handle = handle.spawn(connect(
-            url,
-            sockets,
-            private_key,
-            os_version_override,
-            callbacks.clone(),
-            max_partition_time,
-            rx,
-            dns_control_method,
-        ));
+        let connect_handle =
+            handle.spawn(connect(builder, url, private_key, callbacks.clone(), rx));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -168,27 +141,30 @@ impl Session {
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
+    builder: SessionBuilder,
     url: LoginUrl,
-    sockets: Sockets,
     private_key: StaticSecret,
-    os_version_override: Option<String>,
     callbacks: CB,
-    max_partition_time: Option<Duration>,
     rx: UnboundedReceiver<Command>,
-    dns_control_method: connlib_shared::DnsControlMethod,
 ) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone(), dns_control_method)?;
+    let sockets = builder.sockets.unwrap_or_default();
+    let tunnel = ClientTunnel::new(
+        private_key,
+        sockets,
+        callbacks.clone(),
+        builder.dns_control_method,
+    )?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
-        get_user_agent(os_version_override),
+        get_user_agent(builder.os_version_override),
         PHOENIX_TOPIC,
         (),
         ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(max_partition_time)
+            .with_max_elapsed_time(builder.max_partition_time)
             .build(),
     );
 
@@ -271,8 +247,13 @@ mod tests {
         let (private_key, _public_key) = connlib_shared::keypair();
         let sockets = crate::Sockets::new();
         let callbacks = Callbacks::default();
-        let mut tunnel =
-            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks).unwrap();
+        let mut tunnel = firezone_tunnel::ClientTunnel::new(
+            private_key,
+            sockets,
+            callbacks,
+            connlib_shared::DnsControlMethod::Default,
+        )
+        .unwrap();
         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
         let interface = connlib_shared::messages::Interface {
             ipv4: [100, 71, 96, 96].into(),
