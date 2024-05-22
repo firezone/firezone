@@ -393,6 +393,7 @@ impl ClientState {
         self.node.public_key()
     }
 
+    #[tracing::instrument(level = "trace", skip_all, fields(dest))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -406,12 +407,35 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
+        tracing::Span::current().record("dest", tracing::field::display(dest));
+
         if is_definitely_not_a_resource(dest) {
             return None;
         }
 
-        let Some(peer) = self.peers.peer_by_ip_mut(dest) else {
-            self.on_connection_intent_ip(dest, now);
+        let Some(resource) = self.get_cidr_resource_by_destination(dest) else {
+            if let Some(resource) = self
+                .dns_resources_internal_ips
+                .iter()
+                .find_map(|(r, i)| i.contains(&dest).then_some(r))
+                .cloned()
+            {
+                self.on_connection_intent_dns(&resource, now);
+                return None;
+            }
+
+            tracing::trace!("Unknown resource");
+
+            return None;
+        };
+
+        let Some(gateway) = self.resources_gateways.get(&resource.id) else {
+            self.on_connection_intent_cidr(&resource, now);
+            return None;
+        };
+
+        let Some(peer) = self.peers.get_mut(gateway) else {
+            self.on_connection_intent_cidr(&resource, now);
             return None;
         };
 
@@ -422,6 +446,8 @@ impl ClientState {
             .encapsulate(peer.id(), packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
+
+        tracing::trace!("Encapsulated packet");
 
         Some(transmit)
     }
@@ -532,10 +558,6 @@ impl ClientState {
 
         let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
         let domain = awaiting_connection.domain.clone();
-
-        if self.is_connected_to(resource_id, &domain) {
-            return Err(Error::UnexpectedConnectionDetails);
-        }
 
         self.resources_gateways.insert(resource_id, gateway_id);
 
@@ -708,26 +730,9 @@ impl ClientState {
         self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
-    fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
-        let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
-            if let Some(resource) = self
-                .dns_resources_internal_ips
-                .iter()
-                .find_map(|(r, i)| i.contains(&destination).then_some(r))
-                .cloned()
-            {
-                self.on_connection_intent_dns(&resource, now);
-            }
-
-            tracing::trace!("Unknown resource");
-
-            return;
-        };
-
-        tracing::Span::current().record("resource_id", tracing::field::display(&resource_id));
-
-        self.on_connection_intent_to_resource(resource_id, None, now)
+    #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %resource.address, resource_id = %resource.id))]
+    fn on_connection_intent_cidr(&mut self, resource: &ResourceDescriptionCidr, now: Instant) {
+        self.on_connection_intent_to_resource(resource.id, None, now)
     }
 
     fn on_connection_intent_to_resource(
@@ -789,15 +794,6 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    fn is_connected_to(&self, resource: ResourceId, domain: &Option<DomainName>) -> bool {
-        let Some(resource) = self.resource_ids.get(&resource) else {
-            return false;
-        };
-
-        let ips = self.get_resource_ip(resource, domain);
-        ips.iter().any(|ip| self.peers.exact_match(*ip).is_some())
-    }
-
     fn get_resource_ip(
         &self,
         resource: &ResourceDescription,
@@ -842,10 +838,14 @@ impl ClientState {
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
-    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
+    fn get_cidr_resource_by_destination(
+        &self,
+        destination: IpAddr,
+    ) -> Option<ResourceDescriptionCidr> {
         self.cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| res.id)
+            .map(|(_, r)| r)
+            .cloned()
     }
 
     #[must_use]

@@ -79,8 +79,8 @@ struct ReferenceState {
 
     /// Which resources the clients is aware of.
     client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    /// The IP ranges we are connected to.
-    connected_resources: IpNetworkTable<()>,
+    /// The resources we have connected to.
+    connected_resources: HashSet<ResourceId>,
 
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
 }
@@ -733,25 +733,22 @@ impl ReferenceState {
 
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
-        // First, check if we are connected to this IP range.
-        // This is rather odd and waiting to be fixed in https://github.com/firezone/firezone/issues/5054.
-        if self.connected_resources.longest_match(dst).is_some() {
-            tracing::debug!("Connected to resource, expecting packet to be routed to gateway");
-
-            self.gateway_received_icmp_packets
-                .push_back((self.now, src, dst));
-            return;
-        }
-
         // Second, if we are not yet connected, check if we have a resource for this IP.
         let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
             tracing::debug!("No resource corresponds to IP");
             return;
         };
 
+        if self.connected_resources.contains(&resource.id) {
+            tracing::debug!("Connected to resource, expecting packet to be routed");
+            self.gateway_received_icmp_packets
+                .push_back((self.now, src, dst));
+            return;
+        }
+
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_resources.insert(resource.address, ());
+        self.connected_resources.insert(resource.id);
     }
 
     /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
