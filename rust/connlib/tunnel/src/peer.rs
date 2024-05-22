@@ -269,7 +269,14 @@ impl ClientOnGateway {
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
         if self.allowed_ips.longest_match(packet.source()).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket(packet.source()));
+            return Err(connlib_shared::Error::UnallowedPacket {
+                src: packet.source(),
+                allowed_ips: self
+                    .allowed_ips
+                    .iter()
+                    .map(|(ip, &())| ip.network_address())
+                    .collect(),
+            });
         }
 
         let dst = packet.destination();
@@ -300,7 +307,15 @@ impl GatewayOnClient {
         let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket(src));
+            return Err(connlib_shared::Error::UnallowedPacket {
+                src,
+
+                allowed_ips: self
+                    .allowed_ips
+                    .iter()
+                    .map(|(ip, _)| ip.network_address())
+                    .collect(),
+            });
         }
 
         if let Some(dgm) = pkt.as_udp() {

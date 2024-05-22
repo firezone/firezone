@@ -57,7 +57,7 @@ impl MessageIntegrityExt for MessageIntegrity {
 ///
 /// For simplicity reasons, we use a count-based strategy.
 /// Each nonce can be used for a certain number of requests before it is invalid.
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub(crate) struct Nonces {
     inner: HashMap<Uuid, u64>,
 }

@@ -46,6 +46,7 @@ use uuid::Uuid;
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
 /// Additionally, we assume to have complete ownership over the port range `lowest_port` - `highest_port`.
+#[derive(Debug)]
 pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
@@ -84,7 +85,7 @@ pub struct Server<R> {
 /// The commands returned from a [`Server`].
 ///
 /// The [`Server`] itself is sans-IO, meaning it is the caller responsibility to cause the side-effects described by these commands.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Command {
     SendMessage {
         payload: Vec<u8>,
@@ -967,6 +968,7 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
 }
 
 /// Represents an allocation of a client.
+#[derive(Debug, Clone)]
 struct Allocation {
     /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
     port: AllocationPort,
@@ -976,6 +978,7 @@ struct Allocation {
     second_relay_addr: Option<IpAddr>,
 }
 
+#[derive(Debug, Clone)]
 struct Channel {
     /// When the channel expires.
     expiry: Instant,

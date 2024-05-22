@@ -27,7 +27,7 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Decoder {
     stun_message_decoder: stun_codec::MessageDecoder<Attribute>,
 }

@@ -190,14 +190,11 @@ where
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.role_state
-            .node
-            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
+            .add_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state
-            .node
-            .remove_remote_candidate(conn_id, ice_candidate);
+        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
     }
 
     pub fn create_or_reuse_connection(
@@ -223,8 +220,18 @@ where
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> connlib_shared::Result<()> {
-        self.role_state
-            .accept_answer(answer, resource_id, gateway_public_key, domain_response)?;
+        self.role_state.accept_answer(
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: answer.username,
+                    password: answer.password,
+                },
+            },
+            resource_id,
+            gateway_public_key,
+            domain_response,
+            Instant::now(),
+        )?;
 
         Ok(())
     }
@@ -246,6 +253,15 @@ where
 pub enum Request {
     NewConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
+}
+
+impl Request {
+    pub fn resource_id(&self) -> ResourceId {
+        match self {
+            Request::NewConnection(i) => i.resource_id,
+            Request::ReuseConnection(i) => i.resource_id,
+        }
+    }
 }
 
 fn send_dns_answer(
@@ -372,6 +388,11 @@ impl ClientState {
         }
     }
 
+    #[cfg(all(feature = "proptest", test))]
+    pub(crate) fn public_key(&self) -> PublicKey {
+        self.node.public_key()
+    }
+
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -437,29 +458,28 @@ impl ClientState {
         Some(packet.into_immutable())
     }
 
+    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
+        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    }
+
+    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
-    fn accept_answer(
+    pub fn accept_answer(
         &mut self,
-        answer: Answer,
+        answer: snownet::Answer,
         resource_id: ResourceId,
         gateway: PublicKey,
         domain_response: Option<DomainResponse>,
+        now: Instant,
     ) -> connlib_shared::Result<()> {
         let gateway_id = self
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.node.accept_answer(
-            gateway_id,
-            gateway,
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: answer.username,
-                    password: answer.password,
-                },
-            },
-            Instant::now(),
-        );
+        self.node.accept_answer(gateway_id, gateway, answer, now);
 
         let desc = self
             .resource_ids
@@ -489,7 +509,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
-    fn create_or_reuse_connection(
+    pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
@@ -562,7 +582,7 @@ impl ClientState {
         }));
     }
 
-    fn received_domain_parameters(
+    pub fn received_domain_parameters(
         &mut self,
         resource_id: ResourceId,
         domain_response: DomainResponse,
@@ -951,7 +971,7 @@ impl ClientState {
         self.node.reconnect(now)
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
         self.node.poll_transmit()
     }
 
@@ -1085,7 +1105,7 @@ impl ClientState {
         true
     }
 
-    fn update_relays(
+    pub fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
         to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
