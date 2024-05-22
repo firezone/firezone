@@ -34,6 +34,8 @@ public final class MenuBar: NSObject {
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
+  private lazy var menu = NSMenu()
+
   public init(model: SessionViewModel) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.model = model
@@ -42,10 +44,43 @@ public final class MenuBar: NSObject {
 
     if let button = statusItem.button {
       button.image = signedOutIcon
+      button.target = self
+      button.action = #selector(statusItemClicked)
     }
 
     createMenu()
     setupObservers()
+  }
+
+  @objc private func statusItemClicked() {
+    // Bring our app to the foreground.
+    // Prevents the "Window ordered front from a non-active application" warning, which
+    // can cause display issues with the menu.
+    NSApp.activate(ignoringOtherApps: true)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+      guard let self = self, let button = self.statusItem.button else { return }
+      self.statusItem.menu = menu
+
+      // Simulate a click to open the menu
+      button.performClick(nil)
+    }
+  }
+
+  private func createMenu() {
+    menu.addItem(signInMenuItem)
+    menu.addItem(signOutMenuItem)
+    menu.addItem(NSMenuItem.separator())
+
+    menu.addItem(resourcesTitleMenuItem)
+    menu.addItem(resourcesUnavailableMenuItem)
+    menu.addItem(resourcesUnavailableReasonMenuItem)
+    menu.addItem(resourcesSeparatorMenuItem)
+
+    menu.addItem(aboutMenuItem)
+    menu.addItem(settingsMenuItem)
+    menu.addItem(quitMenuItem)
+
+    menu.delegate = self
   }
 
   private func setupObservers() {
@@ -76,7 +111,6 @@ public final class MenuBar: NSObject {
       }).store(in: &cancellables)
   }
 
-  private lazy var menu = NSMenu()
 
   private lazy var signInMenuItem = createMenuItem(
     menu,
@@ -145,25 +179,6 @@ public final class MenuBar: NSObject {
     }
     return menuItem
   }()
-
-  private func createMenu() {
-    menu.addItem(signInMenuItem)
-    menu.addItem(signOutMenuItem)
-    menu.addItem(NSMenuItem.separator())
-
-    menu.addItem(resourcesTitleMenuItem)
-    menu.addItem(resourcesUnavailableMenuItem)
-    menu.addItem(resourcesUnavailableReasonMenuItem)
-    menu.addItem(resourcesSeparatorMenuItem)
-
-    menu.addItem(aboutMenuItem)
-    menu.addItem(settingsMenuItem)
-    menu.addItem(quitMenuItem)
-
-    menu.delegate = self
-
-    statusItem.menu = menu
-  }
 
   private func createMenuItem(
     _: NSMenu,
@@ -389,5 +404,9 @@ public final class MenuBar: NSObject {
 }
 
 extension MenuBar: NSMenuDelegate {
+  public func menuDidClose(_ menu: NSMenu) {
+    // Reset the menu so our custom action continues to work
+    statusItem.menu = nil
+  }
 }
 #endif
