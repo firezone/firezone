@@ -418,13 +418,18 @@ impl ClientState {
             return None;
         };
 
-        let Some(gateway) = self.resources_gateways.get(&resource) else {
-            self.on_connection_intent_to_resource(resource, now);
-            return None;
-        };
+        let Some(peer) = self
+            .resources_gateways
+            .get(&resource)
+            .and_then(|g: &GatewayId| self.peers.get_mut(g))
+        else {
+            // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
+            let domain = self
+                .dns_resources_internal_ips
+                .iter()
+                .find_map(|(r, _)| (r.id == resource).then_some(r.address.clone()));
 
-        let Some(peer) = self.peers.get_mut(gateway) else {
-            self.on_connection_intent_to_resource(resource, now);
+            self.on_connection_intent_to_resource(resource, domain, now);
             return None;
         };
 
@@ -687,7 +692,11 @@ impl ClientState {
                 Ok(None)
             }
             Some(dns::ResolveStrategy::DeferredResponse((resource, r_type))) => {
-                self.on_connection_intent_to_resource(resource.id, now);
+                self.on_connection_intent_to_resource(
+                    resource.id,
+                    Some(resource.address.clone()),
+                    now,
+                );
                 self.deferred_dns_queries
                     .insert((resource, r_type), packet.as_immutable().to_owned());
 
@@ -714,7 +723,13 @@ impl ClientState {
         self.resources_gateways.remove(&resource);
     }
 
-    fn on_connection_intent_to_resource(&mut self, resource: ResourceId, now: Instant) {
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource, ?domain))]
+    fn on_connection_intent_to_resource(
+        &mut self,
+        resource: ResourceId,
+        domain: Option<DomainName>,
+        now: Instant,
+    ) {
         debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
@@ -736,12 +751,6 @@ impl ClientState {
                 occupied.get_mut().last_intent_sent_at = now;
             }
             Entry::Vacant(vacant) => {
-                // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
-                let domain = self
-                    .dns_resources_internal_ips
-                    .iter()
-                    .find_map(|(r, _)| (r.id == resource).then_some(r.address.clone()));
-
                 vacant.insert(AwaitingConnectionDetails {
                     domain,
                     gateways: gateways.clone(),
