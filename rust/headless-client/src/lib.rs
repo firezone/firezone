@@ -387,7 +387,7 @@ async fn ipc_listen() -> Result<()> {
 }
 
 async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
-    let (rx, tx) = tokio::io::split(stream.0);
+    let (rx, tx) = tokio::io::split(stream);
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
     let (cb_tx, mut cb_rx) = mpsc::channel(100);
