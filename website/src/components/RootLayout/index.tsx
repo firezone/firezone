@@ -84,6 +84,34 @@ function Mixpanel() {
   return null;
 }
 
+function GoogleAds() {
+  const trackingId = process.env.NODE_ENV == "development" ? null : "AW-16577398140";
+
+  useEffect(() => {
+    const addGoogleScript = () => {
+      if (!trackingId) return;
+
+      const scriptTag = document.createElement('script');
+      scriptTag.src = `https://www.googletagmanager.com/gtag/js?id=${trackingId}`;
+      scriptTag.async = true;
+      document.head.appendChild(scriptTag);
+
+      scriptTag.onload = () => {
+        (window as any).dataLayer = (window as any).dataLayer || [];
+        const gtag: (...args: any[]) => void = (...args) => {
+          (window as any).dataLayer.push(args);
+        };
+        gtag('js', new Date());
+        gtag('config', trackingId);
+      };
+    };
+
+    addGoogleScript();
+  }, [trackingId]);
+
+  return null;
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -98,6 +126,7 @@ export default function RootLayout({
       ></Script>
       <Suspense>
         <Mixpanel />
+        <GoogleAds />
       </Suspense>
       <body className={source_sans_3.className}>
         <Banner active={false}>
