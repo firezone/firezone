@@ -42,10 +42,26 @@ public final class MenuBar: NSObject {
 
     if let button = statusItem.button {
       button.image = signedOutIcon
+      button.target = self
+      button.action = #selector(statusItemClicked)
     }
 
     createMenu()
     setupObservers()
+  }
+
+  @objc private func statusItemClicked() {
+    // Bring our app to the foreground.
+    // Prevents the "Window ordered front from a non-active application" warning, which
+    // can cause display issues with the menu.
+    NSApp.activate(ignoringOtherApps: true)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+      guard let self = self, let button = self.statusItem.button else { return }
+      self.statusItem.menu = menu
+
+      // Simulate a click to open the menu
+      button.performClick(nil)
+    }
   }
 
   private func setupObservers() {
@@ -161,8 +177,6 @@ public final class MenuBar: NSObject {
     menu.addItem(quitMenuItem)
 
     menu.delegate = self
-
-    statusItem.menu = menu
   }
 
   private func createMenuItem(
@@ -197,7 +211,6 @@ public final class MenuBar: NSObject {
   }
 
   @objc private func aboutButtonTapped() {
-    NSApp.activate(ignoringOtherApps: true)
     NSApp.orderFrontStandardAboutPanel(self)
   }
 
@@ -389,5 +402,9 @@ public final class MenuBar: NSObject {
 }
 
 extension MenuBar: NSMenuDelegate {
+  public func menuDidClose(_ menu: NSMenu) {
+    // Reset the menu so our custom action continues to work
+    statusItem.menu = nil
+  }
 }
 #endif
