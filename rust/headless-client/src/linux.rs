@@ -186,7 +186,7 @@ pub(crate) struct IpcServer {
 }
 
 /// Opaque wrapper around platform-specific IPC stream
-pub(crate) struct IpcStream(pub UnixStream);
+pub(crate) type IpcStream = UnixStream;
 
 impl IpcServer {
     /// Platform-specific setup
@@ -214,7 +214,7 @@ impl IpcServer {
             pid = cred.pid(),
             "Got an IPC connection"
         );
-        Ok(IpcStream(stream))
+        Ok(stream)
     }
 }
 
