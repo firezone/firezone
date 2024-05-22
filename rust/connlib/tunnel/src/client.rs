@@ -530,17 +530,12 @@ impl ClientState {
             .get(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let domain = self.get_awaiting_connection(&resource_id)?.domain.clone();
+        let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
+        let domain = awaiting_connection.domain.clone();
 
         if self.is_connected_to(resource_id, &domain) {
             return Err(Error::UnexpectedConnectionDetails);
         }
-
-        let awaiting_connection = self
-            .awaiting_connection
-            .get(&resource_id)
-            .ok_or(Error::UnexpectedConnectionDetails)?
-            .clone();
 
         self.resources_gateways.insert(resource_id, gateway_id);
 
@@ -581,7 +576,7 @@ impl ClientState {
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain: awaiting_connection.domain,
+                domain,
             },
         }));
     }
