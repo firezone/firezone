@@ -112,6 +112,37 @@ function GoogleAds() {
   return null;
 }
 
+function LinkedInInsights() {
+  const linkedInPartnerId = "6200852";
+
+  useEffect(() => {
+    const winAny = window as any;
+    winAny._linkedin_data_partner_ids = winAny._linkedin_data_partner_ids || [];
+    winAny._linkedin_data_partner_ids.push(linkedInPartnerId);
+
+    const initializeLintrk = () => {
+      if (winAny.lintrk) return;
+
+      winAny.lintrk = function (a: any, b: any) {
+        (winAny.lintrk.q = winAny.lintrk.q || []).push([a, b]);
+      };
+
+      const s = document.getElementsByTagName("script")[0];
+      const b = document.createElement("script");
+      b.type = "text/javascript";
+      b.async = true;
+      b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
+      if (s && s.parentNode) {
+        s.parentNode.insertBefore(b, s);
+      }
+    };
+
+    initializeLintrk();
+  }, [linkedInPartnerId]);
+
+  return null;
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -127,6 +158,7 @@ export default function RootLayout({
       <Suspense>
         <Mixpanel />
         <GoogleAds />
+        <LinkedInInsights />
       </Suspense>
       <body className={source_sans_3.className}>
         <Banner active={false}>
