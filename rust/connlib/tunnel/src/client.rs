@@ -413,29 +413,19 @@ impl ClientState {
             return None;
         }
 
-        let Some(resource) = self.get_cidr_resource_by_destination(dest) else {
-            if let Some(resource) = self
-                .dns_resources_internal_ips
-                .iter()
-                .find_map(|(r, i)| i.contains(&dest).then_some(r))
-                .cloned()
-            {
-                self.on_connection_intent_dns(&resource, now);
-                return None;
-            }
-
+        let Some(resource) = self.get_resource_by_destination(dest) else {
             tracing::trace!("Unknown resource");
 
             return None;
         };
 
-        let Some(gateway) = self.resources_gateways.get(&resource.id) else {
-            self.on_connection_intent_cidr(&resource, now);
+        let Some(gateway) = self.resources_gateways.get(&resource) else {
+            self.on_connection_intent_to_resource(resource, now);
             return None;
         };
 
         let Some(peer) = self.peers.get_mut(gateway) else {
-            self.on_connection_intent_cidr(&resource, now);
+            self.on_connection_intent_to_resource(resource, now);
             return None;
         };
 
@@ -697,10 +687,10 @@ impl ClientState {
 
                 Ok(None)
             }
-            Some(dns::ResolveStrategy::DeferredResponse(resource)) => {
-                self.on_connection_intent_dns(&resource.0, now);
+            Some(dns::ResolveStrategy::DeferredResponse((resource, r_type))) => {
+                self.on_connection_intent_to_resource(resource.id, now);
                 self.deferred_dns_queries
-                    .insert(resource, packet.as_immutable().to_owned());
+                    .insert((resource, r_type), packet.as_immutable().to_owned());
 
                 Ok(None)
             }
@@ -725,22 +715,7 @@ impl ClientState {
         self.resources_gateways.remove(&resource);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(resource_address = %resource.address, resource_id = %resource.id))]
-    fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
-        self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %resource.address, resource_id = %resource.id))]
-    fn on_connection_intent_cidr(&mut self, resource: &ResourceDescriptionCidr, now: Instant) {
-        self.on_connection_intent_to_resource(resource.id, None, now)
-    }
-
-    fn on_connection_intent_to_resource(
-        &mut self,
-        resource: ResourceId,
-        domain: Option<DomainName>,
-        now: Instant,
-    ) {
+    fn on_connection_intent_to_resource(&mut self, resource: ResourceId, now: Instant) {
         debug_assert!(self.resource_ids.contains_key(&resource));
 
         let gateways = self
@@ -762,6 +737,12 @@ impl ClientState {
                 occupied.get_mut().last_intent_sent_at = now;
             }
             Entry::Vacant(vacant) => {
+                // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
+                let domain = self
+                    .dns_resources_internal_ips
+                    .iter()
+                    .find_map(|(r, _)| (r.id == resource).then_some(r.address.clone()));
+
                 vacant.insert(AwaitingConnectionDetails {
                     domain,
                     gateways: gateways.clone(),
@@ -838,14 +819,18 @@ impl ClientState {
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
-    fn get_cidr_resource_by_destination(
-        &self,
-        destination: IpAddr,
-    ) -> Option<ResourceDescriptionCidr> {
-        self.cidr_resources
+    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
+        let maybe_cidr_resource_id = self
+            .cidr_resources
             .longest_match(destination)
-            .map(|(_, r)| r)
-            .cloned()
+            .map(|(_, r)| r.id);
+
+        let maybe_dns_resource_id = self
+            .dns_resources_internal_ips
+            .iter()
+            .find_map(|(r, i)| i.contains(&destination).then_some(r.id));
+
+        maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
 
     #[must_use]
