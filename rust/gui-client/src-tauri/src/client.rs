@@ -127,7 +127,7 @@ fn show_error_dialog(error: &gui::Error) -> Result<()> {
         gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         gui::Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
         gui::Error::Logging(_) => "Logging error".to_string(),
-        gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo adduser $USER {FIREZONE_GROUP}` and then reboot"),
+        gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         gui::Error::Other(error) => error.to_string(),
     };
 

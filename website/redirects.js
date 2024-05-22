@@ -3,7 +3,7 @@
 module.exports = [
   /*
    *
-   * Windows Client
+   * Windows GUI Client
    *
    */
   // latest
@@ -23,7 +23,7 @@ module.exports = [
   },
   /*
    *
-   * Linux Client
+   * Linux Clients
    *
    */
   // latest
