@@ -1,0 +1,174 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+
+# Linux GUI Client
+
+The Linux GUI Client is designed for Linux desktop environments where a user is
+present to authenticate with your identity provider interactively.
+
+<Alert color="info">
+  If you're looking for a headless Client suitable for server or container-based
+  installs, see the [Linux headless Client](/kb/user-guides/linux-client) user
+  guide instead.
+</Alert>
+
+## Prerequisites
+
+- Ubuntu **20.04** or **22.04**. Other distributions may work, but are not
+  officially supported.
+- **x86-64** CPU architecture
+- **systemd-resolved**. Ubuntu already uses this by default.
+
+## Installation
+
+Download the `.deb` package from our
+[releases page](https://github.com/firezone/firezone/releases), or from the
+direct link below:
+
+- [Download the Linux GUI `.deb` for `x86-64`](/dl/firezone-client-gui-linux/latest/x86_64)
+
+Run these commands:
+
+```bash
+# Install the package
+# The leading `./` is needed so `apt-get` can tell this is a local file
+sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb
+
+# Add yourself to the `firezone-client` group so you can use the tunnel service
+sudo usermod -aG firezone-client "$USER"
+
+# Reboot to finish adding yourself to the group
+reboot
+```
+
+## Usage
+
+### Signing in
+
+1. Start the GUI by running `firezone-client-gui` from your desktop
+   environment's application menu or from an interactive shell.
+1. At the Welcome screen, click `Sign in`. This will open the Firezone sign-in
+   page in your default web browser.
+1. Sign in using your account slug and identity provider
+1. On the first run, check `Always allow` to allow your web browser to sign in
+   to Firezone, then click `Open` or `Open link`
+1. Unlock your desktop's keyring, or create one if needed. Most desktops,
+   including GNOME, encrypt the keyring with your login password, so your
+   Firezone token is encrypted at rest.
+1. When you see the `Firezone connected` notification, the tunnel is ready.
+
+The Welcome screen only appears during your first sign-in. After that, you can
+click on the Firezone icon in the system tray to open the tray menu and sign in.
+
+### Accessing a Resource
+
+When Firezone is signed in, web browsers and other programs will automatically
+use it to securely connect to Resources.
+
+To copy-paste the address of a Resource you have access to:
+
+1. Click on the Firezone tray icon to open the menu.
+1. Open a Resource's submenu and click on its address to copy it.
+
+### Quitting
+
+When you quit the Firezone GUI, your token is still stored on the disk, so it
+will sign in automatically next time you open the GUI.
+
+### Signing out
+
+1. Click on the Firezone tray icon to open the menu.
+1. Click `Sign out`.
+
+The tunnel is now stopped until you sign in again.
+
+## Upgrading
+
+1. Quit `firezone-client-gui` if it's running.
+1. Install the new package:
+   `sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.deb`
+1. Restart `firezone-client-gui`.
+
+## Diagnostic logs
+
+Firezone writes log files to disk. These logs stay on your computer and are not
+transmitted anywhere. If you encounter a bug, sending us a zip archive of your
+logs may help us fix the bug.
+
+To export your logs as a zip archive, or clear your log directory:
+
+1. Click on the Firezone tray icon to open the menu.
+1. Click `Settings`.
+1. Click `Diagnostic Logs`.
+
+## Uninstalling
+
+1. Quit `firezone-client-gui` if it's running.
+1. Remove the package: `sudo apt-get remove firezone-client-gui`
+
+## Troubleshooting
+
+### Check if `systemd-resolved` is enabled
+
+```bash
+systemctl status systemd-resolved
+stat /etc/resolv.conf
+```
+
+`systemctl` should show that `systemd-resolved` is `enabled` and
+`active (running)`.
+
+`stat` should show that `resolv.conf` is a symlink to `stub-resolv.conf`:
+`File: /etc/resolv.conf -> ../run/systemd/resolve/stub-resolv.conf`
+
+If `systemd-resolved` is not running, or the symlink is not set up, Firezone may
+not be able to start, or may not be able to access DNS resources.
+
+### Check if Firezone is controlling DNS
+
+```bash
+resolvectl dns
+```
+
+Firezone Split DNS:
+
+```text
+Global:
+Link 2 (enp0s6): 10.0.2.3 fec0::3
+Link 3 (tun-firezone): 100.100.111.1 fd00:2021:1111:8000:100:100:111:0
+```
+
+Normal system DNS:
+
+```text
+Global:
+Link 2 (enp0s6): 10.0.2.3 fec0::3
+```
+
+### Revert Firezone DNS control
+
+The Firezone GUI Client for Linux uses `systemd-resolved` to control DNS, which
+will automatically revert DNS to the system defaults when you quit the Firezone
+GUI, which destroys the `tun-firezone` virtual network interface.
+
+If the network interface stays up and DNS does not revert, you can try
+restarting the tunnel service. Quit the Firezone GUI, then run:
+
+```bash
+sudo systemctl restart firezone-client-ipc
+```
+
+## Known issues
+
+- Web browsers that use DNS-over-HTTPS by default may not work with Firezone.
+  See
+  [this guide](/kb/administer/troubleshooting#some-browsers-break-dns-routing)
+  to disable DNS-over-HTTPS if you're experiencing issues connecting to DNS
+  Resources within your browser.
+- After clearing diagnostic logs, no more logs are written until the GUI and
+  tunnel service each restart.
+  [#4764](https://github.com/firezone/firezone/issues/4764)
+- The GUI Client does not run on Ubuntu 24.04 yet
+  [#4883](https://github.com/firezone/firezone/issues/4883)
+
+<SupportOptions />

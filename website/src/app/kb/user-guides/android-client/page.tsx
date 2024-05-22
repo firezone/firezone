@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
-  title: "Android Client • Firezone Docs",
+  title: "Android & ChromeOS Client • Firezone Docs",
   description: "Firezone Documentation",
 };
 

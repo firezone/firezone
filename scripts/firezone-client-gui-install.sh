@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/user-guides/linux-gui-client`
 # Usage: ./firezone-client-gui-install.sh ./firezone-client-gui_VERSION_ARCH.deb
 #
 # The `./` is necessary
@@ -14,7 +15,7 @@ echo "Installing Firezone..."
 sudo apt-get install --yes "$DEB_PATH"
 
 echo "Adding your user to the $GROUP_NAME group..."
-sudo usermod -a -G "$GROUP_NAME" "$USER"
+sudo usermod -aG "$GROUP_NAME" "$USER"
 
 # Check if the user is already in the group
 if ! groups | grep "$GROUP_NAME" &>/dev/null; then
