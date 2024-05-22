@@ -298,16 +298,16 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::parse();
     match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(cli.common),
+        CmdIpc::DebugIpcService => run_debug_ipc_service(),
         CmdIpc::IpcService => platform::run_ipc_service(cli.common),
     }
 }
 
-pub(crate) fn run_debug_ipc_service(cli: CliCommon) -> Result<()> {
+pub(crate) fn run_debug_ipc_service() -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut ipc_service = pin!(ipc_listen(cli));
+        let mut ipc_service = pin!(ipc_listen());
         let mut signals = platform::Signals::new()?;
 
         std::future::poll_fn(|cx| {
@@ -375,18 +375,18 @@ impl Callbacks for CallbackHandlerIpc {
     }
 }
 
-async fn ipc_listen(cli: CliCommon) -> Result<()> {
+async fn ipc_listen() -> Result<()> {
     let mut server = platform::IpcServer::new().await?;
     loop {
         connlib_shared::deactivate_dns_control()?;
         let stream = server.next_client().await?;
-        if let Err(error) = handle_ipc_client(&cli, stream).await {
+        if let Err(error) = handle_ipc_client(stream).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
     }
 }
 
-async fn handle_ipc_client(cli: &CliCommon, stream: platform::IpcStream) -> Result<()> {
+async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (rx, tx) = tokio::io::split(stream.0);
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
@@ -427,9 +427,7 @@ async fn handle_ipc_client(cli: &CliCommon, stream: platform::IpcStream) -> Resu
                     private_key,
                     None,
                     callback_handler.clone(),
-                    cli.max_partition_time
-                        .map(|t| t.into())
-                        .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
+                    Some(std::time::Duration::from_secs(60 * 60 * 24 * 30)),
                     tokio::runtime::Handle::try_current()?,
                 ));
             }

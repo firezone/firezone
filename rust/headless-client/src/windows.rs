@@ -4,9 +4,8 @@
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 
-use crate::{CliCommon, CliIpcService, SignalKind};
+use crate::{CliCommon, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
-use clap::Parser;
 use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
 use std::{
@@ -89,6 +88,8 @@ fn windows_service_run(arguments: Vec<OsString>) {
 }
 
 // Most of the Windows-specific service stuff should go here
+//
+// The arguments don't seem to match the ones passed to the main thread at all.
 fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     let log_path =
         crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
@@ -98,6 +99,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber)?;
     tracing::info!(git_version = crate::GIT_VERSION);
+    tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
@@ -147,9 +149,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(super::ipc_listen(
-        CliIpcService::parse_from(arguments).common
-    ));
+    let mut ipc_service = pin!(super::ipc_listen());
     let result = rt.block_on(async {
         std::future::poll_fn(|cx| {
             match shutdown_rx.poll_recv(cx) {

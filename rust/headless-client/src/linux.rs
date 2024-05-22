@@ -171,7 +171,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async { crate::ipc_listen(cli).await })
+    rt.block_on(async { crate::ipc_listen().await })
 }
 
 pub fn firezone_group() -> Result<nix::unistd::Group> {
