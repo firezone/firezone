@@ -95,6 +95,10 @@ struct Cli {
     #[arg(default_value_t = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: String,
 
+    /// Friendly name for this client to display in the UI.
+    #[arg(long, env = "FIREZONE_NAME")]
+    firezone_name: Option<String>,
+
     /// Identifier used by the portal to identify and display the device.
 
     // AKA `device_id` in the Windows and Linux GUI clients
@@ -192,7 +196,7 @@ pub fn run_only_headless_client() -> Result<()> {
         cli.api_url,
         &token,
         firezone_id,
-        None,
+        cli.firezone_name,
         public_key.to_bytes(),
     )?;
 
