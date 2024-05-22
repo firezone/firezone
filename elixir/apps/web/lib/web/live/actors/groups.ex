@@ -133,9 +133,14 @@ defmodule Web.Actors.EditGroups do
             </:col>
           </.live_table>
           <div class="flex justify-between items-center">
-            <p class="px-4 text-sm text-gray-500">
-              Note: Users will always belong to the <strong>Everyone</strong> group.
-            </p>
+            <div>
+              <p
+                :if={@actor.type == :account_user || @actor.type == :account_admin_user}
+                class="px-4 text-sm text-gray-500"
+              >
+                Note: Users always belong to the default <strong>Everyone</strong> group.
+              </p>
+            </div>
             <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
               Save
             </.button>
