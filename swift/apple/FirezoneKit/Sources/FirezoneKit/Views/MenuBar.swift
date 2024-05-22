@@ -212,7 +212,6 @@ public final class MenuBar: NSObject {
   }
 
   @objc private func aboutButtonTapped() {
-    NSApp.activate(ignoringOtherApps: true)
     NSApp.orderFrontStandardAboutPanel(self)
   }
 
