@@ -2,6 +2,7 @@ use crate::Binding;
 use crate::ChannelData;
 use crate::IpStack;
 use proptest::arbitrary::any;
+use proptest::prop_oneof;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
@@ -69,11 +70,12 @@ pub fn nonce() -> impl Strategy<Value = Uuid> {
 }
 
 pub fn any_ip_stack() -> impl Strategy<Value = IpStack> {
-    (dual_ip_stack(), any::<u8>()).prop_map(|(ip_stack, mode)| match mode % 3 {
-        0 => IpStack::Ip4(*ip_stack.as_v4().unwrap()),
-        1 => IpStack::Ip6(*ip_stack.as_v6().unwrap()),
-        2 => ip_stack,
-        _ => unreachable!(),
+    dual_ip_stack().prop_flat_map(|ip_stack| {
+        prop_oneof![
+            Just(IpStack::Ip4(*ip_stack.as_v4().unwrap())),
+            Just(IpStack::Ip6(*ip_stack.as_v6().unwrap())),
+            Just(ip_stack),
+        ]
     })
 }
 
