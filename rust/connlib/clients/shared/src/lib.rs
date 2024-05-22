@@ -66,7 +66,7 @@ impl<CB: Callbacks + 'static> SessionBuilder<CB> {
     pub fn build(self) -> Session {
         Session::connect(
             self.url,
-            self.sockets.unwrap_or_else(|| Sockets::new()),
+            self.sockets.unwrap_or_default(),
             self.private_key,
             self.os_version_override,
             self.callbacks,
