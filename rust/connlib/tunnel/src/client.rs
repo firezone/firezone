@@ -406,6 +406,10 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
+        if is_definitely_not_a_resource(dest) {
+            return None;
+        }
+
         let Some(peer) = self.peers.peer_by_ip_mut(dest) else {
             self.on_connection_intent_ip(dest, now);
             return None;
@@ -711,10 +715,6 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
     fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
-        if is_definitely_not_a_resource(destination) {
-            return;
-        }
-
         let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
             if let Some(resource) = self
                 .dns_resources_internal_ips
