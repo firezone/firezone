@@ -114,6 +114,7 @@ enum Transition {
     SendICMPPacketToIp4Resource { r_idx: sample::Index },
     /// Send a ICMP packet to an IPv6 resource.
     SendICMPPacketToIp6Resource { r_idx: sample::Index },
+    // TODO: Do we need a separate transition for sending a packet to a DNS resolved resource? Or should we reuse the two above?
     /// Send a DNS query for one of our DNS resources.
     ResolveDnsResource {
         r_idx: sample::Index,
@@ -437,6 +438,9 @@ impl ReferenceStateMachine for ReferenceState {
                 r_idx, resolved_ip, ..
             } => {
                 let domain = state.sample_dns_resource_domain(r_idx);
+
+                // TODO: What if we don't have any upstream resolvers?
+
                 state.resolved_domain_names.insert(domain, *resolved_ip);
             }
             Transition::SendICMPPacketToRandomIp { dst } => {
@@ -1067,6 +1071,8 @@ impl ReferenceState {
     }
 
     fn sample_dns_resource_domain(&self, idx: &sample::Index) -> String {
+        // TODO: Do we need to come up with a sub-domain too?
+
         todo!()
     }
 }
