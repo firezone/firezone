@@ -58,13 +58,10 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var isAppLaunched = false
     private var menuBar: MenuBar?
-
     public var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {
-      isAppLaunched = true
       if let store = store {
         menuBar = MenuBar(model: SessionViewModel(store: store))
       }
