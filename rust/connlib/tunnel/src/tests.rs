@@ -80,7 +80,7 @@ struct ReferenceState {
     gateway: SimNode<GatewayId, PrivateKey>,
     relay: SimRelay<u64>,
 
-    /// The DNS resolvers configured on the client before connlib started.
+    /// The DNS resolvers configured on the client outside of connlib.
     system_dns_resolvers: Vec<IpAddr>,
     /// The upstream DNS resolvers configured in the portal.
     upstream_dns_resolvers: Vec<DnsServer>,
@@ -106,7 +106,7 @@ enum Transition {
     SendICMPPacketToIp6Resource { r_idx: sample::Index },
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
-    /// The upstream DNS servers.
+    /// The upstream DNS servers changed.
     UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },

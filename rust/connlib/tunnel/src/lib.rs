@@ -269,7 +269,7 @@ pub enum ClientEvent {
         /// The map of DNS servers that connlib will use, indexed by the proxy (or "sentinel") IP assigned by connlib.
         ///
         /// If upstream DNS servers are configured (in the portal), we will use those.
-        /// Otherwise, we will use the DNS servers configured on the system (prior to firezone starting).
+        /// Otherwise, we will use the DNS servers configured on the system.
         dns_by_sentinel: HashMap<IpAddr, SocketAddr>,
     },
 }
