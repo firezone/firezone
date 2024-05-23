@@ -58,7 +58,16 @@ Firezone component.
 
 We recommend [Docker Desktop](https://docs.docker.com/engine/install/#desktop)
 even if you're developing on Linux. This is what the Firezone core devs use and
-comes with `compose` included.
+comes with the correct version of `compose` included.
+
+If you're using Docker Engine on Linux instead, you'll want to make sure to
+[ install the compose plugin ](https://docs.docker.com/compose/install/#scenario-two-install-the-compose-plugin)
+instead so that you have v2 installed.
+
+```bash
+> docker compose version
+Docker Compose version v2.27.0
+```
 
 #### Test With Docker
 
@@ -97,8 +106,8 @@ docker compose exec -it client /bin/sh
 ##### Rust development with docker
 
 Sometimes it's useful to test your changes in a local docker, however the
-`docker-compose.yml` file at the root directory requires rebuilding the
-images each time you want to test the change.
+`docker-compose.yml` file at the root directory requires rebuilding the images
+each time you want to test the change.
 
 To solve this, you can use the `rust/docker-compose-dev.yml` file like
 `docker compose -f docker-compose.yml -f rust/docker-compose-dev.yml <command>`
@@ -106,7 +115,8 @@ To solve this, you can use the `rust/docker-compose-dev.yml` file like
 This will use locally compiled binaries situated at
 `rust/target/x86_64-unknown-musl/debug`
 
-You can also set use the env variable `COMPOSE_FILE` as explained [here](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
+You can also set use the env variable `COMPOSE_FILE` as explained
+[here](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
 so you don't have to manually set the compose files each time.
 
 ### Bootstrapping
@@ -168,7 +178,8 @@ setup properly.
 
 While not strictly required, we use [asdf-vm](https://asdf-vm.com) to manage
 language versions for Firezone. You'll need to install the language runtimes
-according to the versions laid out in the [.tool-versions](../.tool-versions) file.
+according to the versions laid out in the [.tool-versions](../.tool-versions)
+file.
 
 If using asdf, simply run `asdf install` from the project root.
 
