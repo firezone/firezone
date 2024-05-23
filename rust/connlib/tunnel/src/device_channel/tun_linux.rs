@@ -1,19 +1,13 @@
 use super::utils;
 use crate::device_channel::ioctl;
-use crate::FIREZONE_MARK;
 use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
-use futures::TryStreamExt;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
     S_IFCHR,
 };
-use netlink_packet_route::route::{RouteProtocol, RouteScope};
-use netlink_packet_route::rule::RuleAction;
-use rtnetlink::{new_connection, Error::NetlinkError, Handle};
-use rtnetlink::{RouteAddRequest, RuleAddRequest};
 use std::collections::HashSet;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
@@ -30,9 +24,6 @@ const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
-const DEFAULT_MTU: u32 = 1280;
-const FILE_ALREADY_EXISTS: i32 = -17;
-const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 // Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };

@@ -9,7 +9,6 @@ use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
-use nix::libc;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
 use std::{
     collections::HashSet,
@@ -33,9 +32,6 @@ const ROOT_USER: u32 = 0;
 
 // TODO: De-dupe before merging
 const IFACE_NAME: &str = "tun-firezone";
-const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
-const TUN_DEV_MAJOR: u32 = 10;
-const TUN_DEV_MINOR: u32 = 200;
 const DEFAULT_MTU: u32 = 1280;
 const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
@@ -319,7 +315,7 @@ impl InterfaceManager {
         handle.link().set(index).up().execute().await?;
 
         if res_v4.is_ok() {
-            if let Err(e) = make_rule(&handle).v4().execute().await {
+            if let Err(e) = make_rule(handle).v4().execute().await {
                 if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
                     tracing::warn!(
                         "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
@@ -332,7 +328,7 @@ impl InterfaceManager {
         }
 
         if res_v6.is_ok() {
-            if let Err(e) = make_rule(&handle).v6().execute().await {
+            if let Err(e) = make_rule(handle).v6().execute().await {
                 if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
                     tracing::warn!(
                         "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
@@ -402,11 +398,11 @@ impl InterfaceManager {
             .index;
 
         for route in new_routes.difference(&self.routes) {
-            add_route(route, index, &handle).await;
+            add_route(route, index, handle).await;
         }
 
         for route in self.routes.difference(&new_routes) {
-            delete_route(route, index, &handle).await;
+            delete_route(route, index, handle).await;
         }
 
         self.routes = new_routes;
