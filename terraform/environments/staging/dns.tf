@@ -318,6 +318,21 @@ resource "google_dns_record_set" "postmark-return" {
   ttl     = 3600
 }
 
+# Oneleet
+
+resource "google_dns_record_set" "oneleet-verification" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = module.google-cloud-dns.dns_name
+  type = "TXT"
+  ttl  = 3600
+
+  rrdatas = [
+    "oneleet-domain-verification-b98be3d1-70c2-4cdb-b444-8dac1ee7b8d4"
+  ]
+}
+
 # Google Workspace
 
 resource "google_dns_record_set" "google-mail" {
