@@ -107,6 +107,32 @@ function GoogleAds() {
     };
 
     addGoogleScript();
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
+        const formData: HubSpotSubmittedFormData = event.data.data;
+        if (!formData || !formData.formGuid || !formData.submissionValues) {
+          console.error("Missing form data:", formData);
+          return;
+        }
+
+        (window as any).dataLayer = (window as any).dataLayer || [];
+        const gtag: (...args: any[]) => void = (...args) => {
+          (window as any).dataLayer.push(args);
+        };
+
+        gtag('event', 'conversion', {
+          'send_to': 'AW-16577398140/DOF7CNue0rIZEPyK3OA9',
+          'transaction_id': formData.conversionId,
+        });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, [trackingId]);
 
   return null;
