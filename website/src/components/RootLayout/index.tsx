@@ -161,6 +161,24 @@ function LinkedInInsights() {
     };
 
     initializeLintrk();
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
+        const formData: HubSpotSubmittedFormData = event.data.data;
+        if (!formData || !formData.formGuid || !formData.submissionValues) {
+          console.error("Missing form data:", formData);
+          return;
+        }
+
+        (window as any).lintrk('track', { conversion_id: 16519956 });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, [linkedInPartnerId]);
 
   return null;
