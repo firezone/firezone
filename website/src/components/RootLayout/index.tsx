@@ -122,7 +122,7 @@ function GoogleAds() {
         };
 
         gtag('event', 'conversion', {
-          'send_to': 'AW-16577398140/DOF7CNue0rIZEPyK3OA9',
+          'send_to': 'AW-16577398140/1wX_CNmzg7MZEPyK3OA9',
           'transaction_id': formData.conversionId,
         });
       }
