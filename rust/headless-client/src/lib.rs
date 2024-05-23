@@ -11,7 +11,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
-use connlib_shared::callbacks;
+use connlib_shared::{callbacks, Cidrv4, Cidrv6};
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{Future, SinkExt, StreamExt};
 use secrecy::SecretString;
@@ -163,15 +163,23 @@ pub enum IpcClientMsg {
     SetDns(Vec<IpAddr>),
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum IpcServerMsg {
-    Ok,
-    OnDisconnect,
+enum InternalServerMsg {
+    Ipc(IpcServerMsg),
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
+    OnUpdateRoutes {
+        ipv4: Vec<Cidrv4>,
+        ipv6: Vec<Cidrv6>,
+    },
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum IpcServerMsg {
+    Ok,
+    OnDisconnect,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
 
@@ -343,14 +351,14 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
 
 #[derive(Clone)]
 struct CallbackHandlerIpc {
-    cb_tx: mpsc::Sender<IpcServerMsg>,
+    cb_tx: mpsc::Sender<InternalServerMsg>,
 }
 
 impl Callbacks for CallbackHandlerIpc {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
         self.cb_tx
-            .try_send(IpcServerMsg::OnDisconnect)
+            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect))
             .expect("should be able to send OnDisconnect");
     }
 
@@ -362,7 +370,7 @@ impl Callbacks for CallbackHandlerIpc {
     ) -> Option<i32> {
         tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
-            .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");
         None
     }
@@ -370,8 +378,17 @@ impl Callbacks for CallbackHandlerIpc {
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
-            .try_send(IpcServerMsg::OnUpdateResources(resources))
+            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(
+                resources,
+            )))
             .expect("Should be able to send OnUpdateResources");
+    }
+
+    fn on_update_routes(&self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Option<i32> {
+        self.cb_tx
+            .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
+            .expect("Should be able to send messages");
+        None
     }
 }
 
@@ -393,8 +410,18 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (cb_tx, mut cb_rx) = mpsc::channel(100);
 
     let send_task = tokio::spawn(async move {
+        let mut interface = platform::InterfaceManager::new()?;
+
         while let Some(msg) = cb_rx.recv().await {
-            tx.send(serde_json::to_string(&msg)?.into()).await?;
+            match msg {
+                InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
+                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                    interface.on_set_interface_config(ipv4, ipv6, dns).await?
+                }
+                InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                    interface.on_update_routes(ipv4, ipv6).await?
+                }
+            }
         }
         Ok::<_, anyhow::Error>(())
     });

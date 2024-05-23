@@ -59,9 +59,6 @@ impl Client {
                         &connlib_client_shared::Error::Other("errors can't be serialized"),
                     ),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                    IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        callback_handler.on_set_interface_config(ipv4, ipv6, dns);
-                    }
                 }
             }
             Ok(())
