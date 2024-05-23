@@ -17,10 +17,6 @@ use tokio::{
     signal::unix::SignalKind as TokioSignalKind,
 };
 
-mod interface;
-
-pub(crate) use interface::InterfaceManager;
-
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
