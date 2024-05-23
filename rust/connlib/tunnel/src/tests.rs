@@ -509,7 +509,7 @@ impl TunnelTest {
 
         let src = transmit
             .src
-            .expect("to have handled all packets without src via relays");
+            .expect("all packets without src should have been handled via relays");
 
         if self.try_handle_client(dst, src, payload).is_break() {
             return;
