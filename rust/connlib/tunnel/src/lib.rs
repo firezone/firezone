@@ -213,7 +213,10 @@ where
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(packet) else {
+                    let Some(transmit) = self
+                        .role_state
+                        .encapsulate(packet, std::time::Instant::now())
+                    else {
                         continue;
                     };
 
