@@ -263,8 +263,8 @@ pub enum ClientEvent {
         resources: Vec<callbacks::ResourceDescription>,
     },
     DnsServersChanged {
-        /// The map of DNS servers known to connlib, indexed by the connlib-assigned sentinal IP, mapping to the original DNS server.
-        system_dns_by_sentinal: HashMap<IpAddr, SocketAddr>,
+        /// The map of DNS servers that connlib will use, indexed by the proxy IP assigned by connlib.
+        dns_by_sentinal: HashMap<IpAddr, SocketAddr>,
     },
 }
 
