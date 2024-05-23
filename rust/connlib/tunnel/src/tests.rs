@@ -293,7 +293,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "client, gateway and relay ip must be different",
-                |(c, g, r, _, _)| {
+                |(c, g, r, _, _, _, _)| {
                     let c4 = c.ip4_socket.map(|s| *s.ip());
                     let g4 = g.ip4_socket.map(|s| *s.ip());
                     let r4 = r.ip_stack.as_v4().copied();
