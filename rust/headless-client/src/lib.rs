@@ -180,6 +180,9 @@ enum InternalServerMsg {
 pub enum IpcServerMsg {
     Ok,
     OnDisconnect,
+    // TODO: We can probably just consider the first `OnUpdateResources` to be the same as
+    // an `OnTunnelReady`
+    OnTunnelReady,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
 
