@@ -521,26 +521,43 @@ impl TunnelTest {
             return;
         };
 
-        if self.relay.wants(dst) {
-            self.relay
-                .handle_packet(payload, src, dst, self.now, buffered_transmits);
-
+        if self
+            .try_handle_relay(dst, src, payload, buffered_transmits)
+            .is_break()
+        {
             return;
         }
 
         let src = transmit
             .src
-            .expect("to have handled all packets without src via relays");
+            .expect("all packets without src should have been handled via relays");
 
-        if let ControlFlow::Break(_) = self.try_handle_client(dst, src, payload) {
+        if self.try_handle_client(dst, src, payload).is_break() {
             return;
         }
 
-        if let ControlFlow::Break(_) = self.try_handle_gateway(dst, src, payload) {
+        if self.try_handle_gateway(dst, src, payload).is_break() {
             return;
         }
 
         panic!("Unhandled packet: {src} -> {dst}")
+    }
+
+    fn try_handle_relay(
+        &mut self,
+        dst: SocketAddr,
+        src: SocketAddr,
+        payload: &[u8],
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) -> ControlFlow<()> {
+        if !self.relay.wants(dst) {
+            return ControlFlow::Continue(());
+        }
+
+        self.relay
+            .handle_packet(payload, src, dst, self.now, buffered_transmits);
+
+        ControlFlow::Break(())
     }
 
     fn try_handle_client(
@@ -551,19 +568,19 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
 
-        if self.client.wants(dst) {
-            if let Some(packet) = self.client.span.in_scope(|| {
-                self.client
-                    .state
-                    .decapsulate(dst, src, payload, self.now, &mut buffer)
-            }) {
-                self.client_received_packets.push_back(packet.to_owned());
-            };
-
-            return ControlFlow::Break(());
+        if !self.client.wants(dst) {
+            return ControlFlow::Continue(());
         }
 
-        ControlFlow::Continue(())
+        if let Some(packet) = self.client.span.in_scope(|| {
+            self.client
+                .state
+                .decapsulate(dst, src, payload, self.now, &mut buffer)
+        }) {
+            self.client_received_packets.push_back(packet.to_owned());
+        };
+
+        ControlFlow::Break(())
     }
 
     fn try_handle_gateway(
@@ -574,25 +591,25 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
 
-        if self.gateway.wants(dst) {
-            if let Some(packet) = self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .decapsulate(dst, src, payload, self.now, &mut buffer)
-            }) {
-                // TODO: Assert that it is an ICMP packet.
-
-                self.gateway_received_icmp_packets.push_back((
-                    self.now,
-                    packet.source(),
-                    packet.destination(),
-                ));
-            };
-
-            return ControlFlow::Break(());
+        if !self.gateway.wants(dst) {
+            return ControlFlow::Continue(());
         }
 
-        ControlFlow::Continue(())
+        if let Some(packet) = self.gateway.span.in_scope(|| {
+            self.gateway
+                .state
+                .decapsulate(dst, src, payload, self.now, &mut buffer)
+        }) {
+            // TODO: Assert that it is an ICMP packet.
+
+            self.gateway_received_icmp_packets.push_back((
+                self.now,
+                packet.source(),
+                packet.destination(),
+            ));
+        };
+
+        ControlFlow::Break(())
     }
 
     fn on_client_event(
