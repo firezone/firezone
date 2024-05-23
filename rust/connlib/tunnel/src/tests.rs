@@ -706,6 +706,9 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
+            ClientEvent::DnsServersChanged { .. } => {
+                tracing::warn!("Unimplemented");
+            }
         }
     }
 

@@ -158,6 +158,10 @@ where
 
                 self.tunnel.callbacks.on_update_resources(resources)
             }
+            firezone_tunnel::ClientEvent::DnsServersChanged { .. } => {
+                // Unhandled for now.
+                // As we decouple the core of connlib from the callbacks, this is where we will hook into the DNS server change and notify our clients to set new DNS servers on their platform.
+            }
         }
     }
 

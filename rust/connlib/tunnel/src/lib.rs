@@ -12,7 +12,8 @@ use connlib_shared::{
 };
 use io::Io;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
+    net::{IpAddr, SocketAddr},
     task::{Context, Poll},
     time::Instant,
 };
@@ -260,6 +261,10 @@ pub enum ClientEvent {
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
+    },
+    DnsServersChanged {
+        /// The map of DNS servers known to connlib, indexed by the connlib-assigned sentinal IP, mapping to the original DNS server.
+        system_dns_by_sentinal: HashMap<IpAddr, SocketAddr>,
     },
 }
 

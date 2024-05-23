@@ -1102,6 +1102,15 @@ impl ClientState {
 
         self.set_dns_mapping(dns_mapping);
 
+        self.buffered_events
+            .push_back(ClientEvent::DnsServersChanged {
+                system_dns_by_sentinal: self
+                    .dns_mapping
+                    .iter()
+                    .map(|(sentinal_dns, system_dns)| (*sentinal_dns, system_dns.address()))
+                    .collect(),
+            });
+
         true
     }
 
