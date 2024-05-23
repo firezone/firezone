@@ -88,6 +88,11 @@ function GoogleAds() {
   const trackingId = process.env.NODE_ENV == "development" ? null : "AW-16577398140";
 
   useEffect(() => {
+    (window as any).dataLayer = (window as any).dataLayer || [];
+    const gtag: (...args: any[]) => void = (...args) => {
+      (window as any).dataLayer.push(args);
+    };
+
     const addGoogleScript = () => {
       if (!trackingId) return;
 
@@ -97,10 +102,6 @@ function GoogleAds() {
       document.head.appendChild(scriptTag);
 
       scriptTag.onload = () => {
-        (window as any).dataLayer = (window as any).dataLayer || [];
-        const gtag: (...args: any[]) => void = (...args) => {
-          (window as any).dataLayer.push(args);
-        };
         gtag('js', new Date());
         gtag('config', trackingId);
       };
@@ -116,14 +117,10 @@ function GoogleAds() {
           return;
         }
 
-        (window as any).dataLayer = (window as any).dataLayer || [];
-        const gtag: (...args: any[]) => void = (...args) => {
-          (window as any).dataLayer.push(args);
-        };
-
         gtag('event', 'conversion', {
           'send_to': 'AW-16577398140/1wX_CNmzg7MZEPyK3OA9',
-          'transaction_id': formData.conversionId,
+          'value': Number(formData.submissionValues['0-2/numberofemployees']) * 5,
+          'currency': 'USD',
         });
       }
     };
