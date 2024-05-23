@@ -500,10 +500,10 @@ impl TunnelTest {
             return;
         };
 
-        if self.relay.wants(dst) {
-            self.relay
-                .handle_packet(payload, src, dst, self.now, buffered_transmits);
-
+        if self
+            .try_handle_relay(dst, src, payload, buffered_transmits)
+            .is_break()
+        {
             return;
         }
 
@@ -511,15 +511,32 @@ impl TunnelTest {
             .src
             .expect("to have handled all packets without src via relays");
 
-        if let ControlFlow::Break(_) = self.try_handle_client(dst, src, payload) {
+        if self.try_handle_client(dst, src, payload).is_break() {
             return;
         }
 
-        if let ControlFlow::Break(_) = self.try_handle_gateway(dst, src, payload) {
+        if self.try_handle_gateway(dst, src, payload).is_break() {
             return;
         }
 
         panic!("Unhandled packet: {src} -> {dst}")
+    }
+
+    fn try_handle_relay(
+        &mut self,
+        dst: SocketAddr,
+        src: SocketAddr,
+        payload: &[u8],
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+    ) -> ControlFlow<()> {
+        if !self.relay.wants(dst) {
+            return ControlFlow::Continue(());
+        }
+
+        self.relay
+            .handle_packet(payload, src, dst, self.now, buffered_transmits);
+
+        ControlFlow::Break(())
     }
 
     fn try_handle_client(
