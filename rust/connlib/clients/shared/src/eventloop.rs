@@ -161,6 +161,7 @@ where
             firezone_tunnel::ClientEvent::DnsServersChanged { .. } => {
                 // Unhandled for now.
                 // As we decouple the core of connlib from the callbacks, this is where we will hook into the DNS server change and notify our clients to set new DNS servers on their platform.
+                // See https://github.com/firezone/firezone/issues/5106 for details.
             }
         }
     }
