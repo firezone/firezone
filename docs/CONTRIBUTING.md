@@ -115,8 +115,7 @@ To solve this, you can use the `rust/docker-compose-dev.yml` file like
 This will use locally compiled binaries situated at
 `rust/target/x86_64-unknown-musl/debug`
 
-You can also set use the env variable `COMPOSE_FILE` as explained
-[here](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
+You can also [set the env variable `COMPOSE_FILE`](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
 so you don't have to manually set the compose files each time.
 
 ### Bootstrapping
@@ -176,10 +175,9 @@ setup properly.
 
 ### asdf-vm Setup
 
-While not strictly required, we use [asdf-vm](https://asdf-vm.com) to manage
-language versions for Firezone. You'll need to install the language runtimes
-according to the versions laid out in the [.tool-versions](../.tool-versions)
-file.
+We use [asdf-vm](https://asdf-vm.com) to manage
+language versions for Firezone. Install the language runtimes
+defined in the [.tool-versions](../.tool-versions) file.
 
 If using asdf, simply run `asdf install` from the project root.
 
