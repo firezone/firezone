@@ -11,7 +11,6 @@ use connlib_shared::{
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -59,8 +58,8 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    client_received_packets: VecDeque<IpPacket<'static>>,
-    gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
+    gateway_received_icmp_requests: VecDeque<(Instant, IpAddr, IpAddr)>,
+    client_received_icmp_replies: VecDeque<(Instant, IpAddr, IpAddr)>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -82,7 +81,8 @@ struct ReferenceState {
     /// The IP ranges we are connected to.
     connected_resources: IpNetworkTable<()>,
 
-    gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
+    gateway_received_icmp_requests: VecDeque<(Instant, IpAddr, IpAddr)>,
+    client_received_icmp_replies: VecDeque<(Instant, IpAddr, IpAddr)>,
 }
 
 /// The possible transitions of the state machine.
@@ -159,9 +159,9 @@ impl StateMachineTest for TunnelTest {
             gateway,
             portal,
             logger,
-            client_received_packets: Default::default(),
-            gateway_received_icmp_packets: Default::default(),
             relay,
+            gateway_received_icmp_requests: Default::default(),
+            client_received_icmp_replies: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -218,8 +218,12 @@ impl StateMachineTest for TunnelTest {
 
         // Assert: Check that our actual state is equivalent to our expectation (the reference state).
         assert_eq!(
-            state.gateway_received_icmp_packets,
-            ref_state.gateway_received_icmp_packets
+            state.gateway_received_icmp_requests,
+            ref_state.gateway_received_icmp_requests
+        );
+        assert_eq!(
+            state.client_received_icmp_replies,
+            ref_state.client_received_icmp_replies
         );
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
@@ -256,7 +260,8 @@ impl ReferenceStateMachine for ReferenceState {
                 relay,
                 client_cidr_resources: IpNetworkTable::new(),
                 connected_resources: Default::default(),
-                gateway_received_icmp_packets: Default::default(),
+                gateway_received_icmp_requests: Default::default(),
+                client_received_icmp_replies: Default::default(),
             })
             .boxed()
     }
@@ -405,7 +410,9 @@ impl TunnelTest {
                             continue;
                         }
 
-                        if let ControlFlow::Break(_) = self.try_handle_gateway(dst, src, &payload) {
+                        if let ControlFlow::Break(_) =
+                            self.try_handle_gateway(dst, src, &payload, buffered_transmits)
+                        {
                             continue;
                         }
 
@@ -515,7 +522,9 @@ impl TunnelTest {
             return;
         }
 
-        if let ControlFlow::Break(_) = self.try_handle_gateway(dst, src, payload) {
+        if let ControlFlow::Break(_) =
+            self.try_handle_gateway(dst, src, payload, buffered_transmits)
+        {
             return;
         }
 
@@ -536,7 +545,11 @@ impl TunnelTest {
                     .state
                     .decapsulate(dst, src, payload, self.now, &mut buffer)
             }) {
-                self.client_received_packets.push_back(packet.to_owned());
+                self.client_received_icmp_replies.push_back((
+                    self.now,
+                    packet.source(),
+                    packet.destination(),
+                ));
             };
 
             return ControlFlow::Break(());
@@ -550,6 +563,7 @@ impl TunnelTest {
         dst: SocketAddr,
         src: SocketAddr,
         payload: &[u8],
+        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
 
@@ -561,11 +575,29 @@ impl TunnelTest {
             }) {
                 // TODO: Assert that it is an ICMP packet.
 
-                self.gateway_received_icmp_packets.push_back((
-                    self.now,
-                    packet.source(),
-                    packet.destination(),
-                ));
+                let packet_src = packet.source();
+                let packet_dst = packet.destination();
+
+                assert_eq!(
+                    packet_src,
+                    self.client.tunnel_ip(packet_src),
+                    "ICMP packet to originate from client"
+                );
+
+                self.gateway_received_icmp_requests
+                    .push_back((self.now, packet_src, packet_dst));
+
+                if let Some(transmit) = self.gateway.span.in_scope(|| {
+                    self.gateway.state.encapsulate(
+                        ip_packet::make::icmp_response_packet(packet_dst, packet_src),
+                        self.now,
+                    )
+                }) {
+                    let transmit = transmit.into_owned();
+                    let dst = transmit.dst;
+
+                    buffered_transmits.push_back((transmit, self.gateway.sending_socket_for(dst)));
+                };
             };
 
             return ControlFlow::Break(());
@@ -738,8 +770,10 @@ impl ReferenceState {
         if self.connected_resources.longest_match(dst).is_some() {
             tracing::debug!("Connected to resource, expecting packet to be routed to gateway");
 
-            self.gateway_received_icmp_packets
+            self.gateway_received_icmp_requests
                 .push_back((self.now, src, dst));
+            self.client_received_icmp_replies
+                .push_back((self.now, dst, src));
             return;
         }
 
