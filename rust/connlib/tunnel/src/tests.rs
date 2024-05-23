@@ -530,19 +530,19 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
 
-        if self.client.wants(dst) {
-            if let Some(packet) = self.client.span.in_scope(|| {
-                self.client
-                    .state
-                    .decapsulate(dst, src, payload, self.now, &mut buffer)
-            }) {
-                self.client_received_packets.push_back(packet.to_owned());
-            };
-
-            return ControlFlow::Break(());
+        if !self.client.wants(dst) {
+            return ControlFlow::Continue(());
         }
 
-        ControlFlow::Continue(())
+        if let Some(packet) = self.client.span.in_scope(|| {
+            self.client
+                .state
+                .decapsulate(dst, src, payload, self.now, &mut buffer)
+        }) {
+            self.client_received_packets.push_back(packet.to_owned());
+        };
+
+        ControlFlow::Break(())
     }
 
     fn try_handle_gateway(
@@ -553,25 +553,25 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
 
-        if self.gateway.wants(dst) {
-            if let Some(packet) = self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .decapsulate(dst, src, payload, self.now, &mut buffer)
-            }) {
-                // TODO: Assert that it is an ICMP packet.
-
-                self.gateway_received_icmp_packets.push_back((
-                    self.now,
-                    packet.source(),
-                    packet.destination(),
-                ));
-            };
-
-            return ControlFlow::Break(());
+        if !self.gateway.wants(dst) {
+            return ControlFlow::Continue(());
         }
 
-        ControlFlow::Continue(())
+        if let Some(packet) = self.gateway.span.in_scope(|| {
+            self.gateway
+                .state
+                .decapsulate(dst, src, payload, self.now, &mut buffer)
+        }) {
+            // TODO: Assert that it is an ICMP packet.
+
+            self.gateway_received_icmp_packets.push_back((
+                self.now,
+                packet.source(),
+                packet.destination(),
+            ));
+        };
+
+        ControlFlow::Break(())
     }
 
     fn on_client_event(
