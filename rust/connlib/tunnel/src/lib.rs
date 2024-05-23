@@ -266,8 +266,11 @@ pub enum ClientEvent {
         resources: Vec<callbacks::ResourceDescription>,
     },
     DnsServersChanged {
-        /// The map of DNS servers that connlib will use, indexed by the proxy IP assigned by connlib.
-        dns_by_sentinal: HashMap<IpAddr, SocketAddr>,
+        /// The map of DNS servers that connlib will use, indexed by the proxy (or "sentinel") IP assigned by connlib.
+        ///
+        /// If upstream DNS servers are configured (in the portal), we will use those.
+        /// Otherwise, we will use the DNS servers configured on the system (prior to firezone starting).
+        dns_by_sentinel: HashMap<IpAddr, SocketAddr>,
     },
 }
 

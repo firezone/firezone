@@ -1104,10 +1104,10 @@ impl ClientState {
 
         self.buffered_events
             .push_back(ClientEvent::DnsServersChanged {
-                dns_by_sentinal: self
+                dns_by_sentinel: self
                     .dns_mapping
                     .iter()
-                    .map(|(sentinal_dns, system_dns)| (*sentinal_dns, system_dns.address()))
+                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
             });
 

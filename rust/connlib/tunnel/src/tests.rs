@@ -60,7 +60,7 @@ struct TunnelTest {
     portal: SimPortal,
 
     /// The effective DNS resolvers indexed by the IP assigned by connlib.
-    dns_by_sentinal: HashMap<IpAddr, SocketAddr>,
+    dns_by_sentinel: HashMap<IpAddr, SocketAddr>,
 
     client_received_packets: VecDeque<IpPacket<'static>>,
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
@@ -184,7 +184,7 @@ impl StateMachineTest for TunnelTest {
             relay,
             client_received_packets: Default::default(),
             gateway_received_icmp_packets: Default::default(),
-            dns_by_sentinal: Default::default(),
+            dns_by_sentinel: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -522,7 +522,7 @@ impl TunnelTest {
 
     /// Returns the _effective_ DNS servers that connlib is using.
     fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
-        self.dns_by_sentinal.values().copied().collect()
+        self.dns_by_sentinel.values().copied().collect()
     }
 
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
@@ -818,10 +818,8 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::DnsServersChanged {
-                dns_by_sentinal: system_dns_by_sentinal,
-            } => {
-                self.dns_by_sentinal = system_dns_by_sentinal;
+            ClientEvent::DnsServersChanged { dns_by_sentinel } => {
+                self.dns_by_sentinel = dns_by_sentinel;
             }
         }
     }
