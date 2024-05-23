@@ -52,7 +52,6 @@ proptest = ["dep:proptest", "connlib-shared/proptest"]
 netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
-sd-notify = "0.4.1"
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]
