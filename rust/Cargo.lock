@@ -2087,7 +2087,6 @@ dependencies = [
  "rand_core 0.6.4",
  "rangemap",
  "rtnetlink",
- "sd-notify",
  "secrecy",
  "serde",
  "serde_json",

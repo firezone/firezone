@@ -7,11 +7,11 @@
 use crate::{CliCommon, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use connlib_client_shared::file_logger;
-use connlib_shared::BUNDLE_ID;
+use connlib_shared::{BUNDLE_ID, Cidrv4, Cidrv6};
 use std::{
     ffi::{c_void, OsString},
     future::Future,
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::{Path, PathBuf},
     pin::pin,
     str::FromStr,
@@ -289,6 +289,41 @@ pub fn named_pipe_path(id: &str) -> String {
 pub(crate) fn setup_before_connlib() -> Result<()> {
     wintun_install::ensure_dll()?;
     Ok(())
+}
+
+pub(crate) struct InterfaceManager {
+
+}
+
+impl Drop for InterfaceManager {
+    fn drop(&mut self) {
+        todo!()
+    }
+}
+
+impl InterfaceManager {
+    pub(crate) fn new() -> Result<Self> {
+        todo!()
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(crate) async fn on_set_interface_config(
+        &mut self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns_config: Vec<IpAddr>,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(crate) async fn on_update_routes(
+        &mut self,
+        ipv4: Vec<Cidrv4>,
+        ipv6: Vec<Cidrv6>,
+    ) -> Result<()> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
