@@ -249,21 +249,6 @@ resource "google_dns_record_set" "github-verification" {
   ]
 }
 
-# Oneleet
-
-resource "google_dns_record_set" "oneleet-verification" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  name = module.google-cloud-dns.dns_name
-  type = "TXT"
-  ttl  = 3600
-
-  rrdatas = [
-    "oneleet-domain-verification-72120df0-57da-4da7-b7bf-e26eaee9dd85"
-  ]
-}
-
 # Twilio
 
 resource "google_dns_record_set" "twilio-verification" {
@@ -311,7 +296,7 @@ resource "google_dns_record_set" "google-dmarc" {
   ]
 }
 
-resource "google_dns_record_set" "google-spf" {
+resource "google_dns_record_set" "root-verifications" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
@@ -326,6 +311,7 @@ resource "google_dns_record_set" "google-spf" {
     "google-site-verification=oAugt2Arr7OyWaqJ0bkytkmIE-VQ8D_IFa-rdNiqa8s",
     "google-site-verification=VDl82gbqVHJW6un8Mcki6qDhL_OGK6G8ByOB6qhaVbg",
     "protonmail-verification=775efd155d2dec59fc6341d6bbfec288038f1917",
+    "oneleet-domain-verification-72120df0-57da-4da7-b7bf-e26eaee9dd85"
   ]
 }
 
