@@ -367,10 +367,10 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
-                state.system_dns_resolvers = servers.clone();
+                state.system_dns_resolvers.clone_from(servers);
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
-                state.upstream_dns_resolvers = servers.clone();
+                state.upstream_dns_resolvers.clone_from(servers);
             }
         };
 
