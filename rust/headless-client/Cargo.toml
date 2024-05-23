@@ -51,9 +51,14 @@ windows-service = "0.7.0"
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.56.0"
 features = [
+    # For DNS control and route control
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+
     # For named pipe IPC
     "Win32_Security",
-    # For named pipe IPC
     "Win32_System_SystemServices",
 ]
 

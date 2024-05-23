@@ -5,10 +5,7 @@ use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    net::IpAddr,
-    sync::Arc,
-};
+use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 

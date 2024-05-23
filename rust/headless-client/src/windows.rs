@@ -7,11 +7,13 @@
 use crate::{CliCommon, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use connlib_client_shared::file_logger;
-use connlib_shared::{BUNDLE_ID, Cidrv4, Cidrv6};
+use connlib_shared::{Cidrv4, Cidrv6, BUNDLE_ID};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use std::{
+    collections::HashSet,
     ffi::{c_void, OsString},
     future::Future,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
     pin::pin,
     str::FromStr,
@@ -21,7 +23,12 @@ use std::{
 use tokio::{net::windows::named_pipe, sync::mpsc};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
-use windows::Win32::Security as WinSec;
+use windows::Win32::{
+    NetworkManagement::IpHelper::{
+        CreateIpForwardEntry2, DeleteIpForwardEntry2, InitializeIpForwardEntry, MIB_IPFORWARD_ROW2,
+    },
+    Security as WinSec,
+};
 use windows_service::{
     service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
@@ -292,7 +299,8 @@ pub(crate) fn setup_before_connlib() -> Result<()> {
 }
 
 pub(crate) struct InterfaceManager {
-
+    iface_idx: u32,
+    routes: HashSet<IpNetwork>,
 }
 
 impl Drop for InterfaceManager {
@@ -322,7 +330,78 @@ impl InterfaceManager {
         ipv4: Vec<Cidrv4>,
         ipv6: Vec<Cidrv6>,
     ) -> Result<()> {
-        todo!()
+        let new_routes: HashSet<IpNetwork> = ipv4
+            .into_iter()
+            .map(|x| Into::<Ipv4Network>::into(x).into())
+            .chain(
+                ipv6.into_iter()
+                    .map(|x| Into::<Ipv6Network>::into(x).into()),
+            )
+            .collect();
+        if new_routes == self.routes {
+            return Ok(());
+        }
+
+        for new_route in new_routes.difference(&self.routes) {
+            self.add_route(*new_route)?;
+        }
+
+        for old_route in self.routes.difference(&new_routes) {
+            self.remove_route(*old_route)?;
+        }
+
+        // TODO: Might be calling this more often than it needs
+        connlib_shared::windows::dns::flush().expect("Should be able to flush Windows' DNS cache");
+        self.routes = new_routes;
+        Ok(())
+    }
+
+    // It's okay if this blocks until the route is added in the OS.
+    fn add_route(&self, route: IpNetwork) -> Result<()> {
+        const DUPLICATE_ERR: u32 = 0x80071392;
+        let entry = self.forward_entry(route);
+
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+        match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
+            Ok(()) => Ok(()),
+            Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
+                tracing::debug!(%route, "Failed to add duplicate route, ignoring");
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    // It's okay if this blocks until the route is removed in the OS.
+    fn remove_route(&self, route: IpNetwork) -> Result<()> {
+        let entry = self.forward_entry(route);
+
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+        unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
+        Ok(())
+    }
+
+    fn forward_entry(&self, route: IpNetwork) -> MIB_IPFORWARD_ROW2 {
+        let mut row = MIB_IPFORWARD_ROW2::default();
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
+        unsafe { InitializeIpForwardEntry(&mut row) };
+
+        let prefix = &mut row.DestinationPrefix;
+        match route {
+            IpNetwork::V4(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+            }
+            IpNetwork::V6(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+            }
+        }
+
+        row.InterfaceIndex = self.iface_idx;
+        row.Metric = 0;
+
+        row
     }
 }
 
