@@ -5,10 +5,8 @@ use std::{
     collections::HashSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
 };
-use windows::Win32::{
-    NetworkManagement::IpHelper::{
-        CreateIpForwardEntry2, DeleteIpForwardEntry2, InitializeIpForwardEntry, MIB_IPFORWARD_ROW2,
-    },
+use windows::Win32::NetworkManagement::IpHelper::{
+    CreateIpForwardEntry2, DeleteIpForwardEntry2, InitializeIpForwardEntry, MIB_IPFORWARD_ROW2,
 };
 
 pub(crate) struct InterfaceManager {
