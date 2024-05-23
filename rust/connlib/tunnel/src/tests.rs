@@ -248,6 +248,27 @@ impl ReferenceStateMachine for ReferenceState {
                 "client and gateway priv key must be different",
                 |(c, g, _, _, _)| c.state != g.state,
             )
+            .prop_filter(
+                "client, gateway and relay ip must be different",
+                |(c, g, r, _, _)| {
+                    let c4 = c.ip4_socket.map(|s| *s.ip());
+                    let g4 = g.ip4_socket.map(|s| *s.ip());
+                    let r4 = r.ip_stack.as_v4().copied();
+
+                    let c6 = c.ip6_socket.map(|s| *s.ip());
+                    let g6 = g.ip6_socket.map(|s| *s.ip());
+                    let r6 = r.ip_stack.as_v6().copied();
+
+                    let c4_eq_g4 = c4.is_some_and(|c| g4.is_some_and(|g| c == g));
+                    let c6_eq_g6 = c6.is_some_and(|c| g6.is_some_and(|g| c == g));
+                    let c4_eq_r4 = c4.is_some_and(|c| r4.is_some_and(|r| c == r));
+                    let c6_eq_r6 = c6.is_some_and(|c| r6.is_some_and(|r| c == r));
+                    let g4_eq_r4 = g4.is_some_and(|g| r4.is_some_and(|r| g == r));
+                    let g6_eq_r6 = g6.is_some_and(|g| r6.is_some_and(|r| g == r));
+
+                    !c4_eq_g4 && !c6_eq_g6 && !c4_eq_r4 && !c6_eq_r6 && !g4_eq_r4 && !g6_eq_r6
+                },
+            )
             .prop_map(|(client, gateway, relay, now, utc_now)| Self {
                 now,
                 utc_now,
