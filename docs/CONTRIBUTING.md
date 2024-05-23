@@ -177,9 +177,7 @@ setup properly.
 
 We use [asdf-vm](https://asdf-vm.com) to manage
 language versions for Firezone. Install the language runtimes
-defined in the [.tool-versions](../.tool-versions) file.
-
-If using asdf, simply run `asdf install` from the project root.
+defined in the [.tool-versions](../.tool-versions) file by running `asdf install` from the project root.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). Running
