@@ -88,27 +88,6 @@ function GoogleAds() {
   const trackingId = process.env.NODE_ENV == "development" ? null : "AW-16577398140";
 
   useEffect(() => {
-    (window as any).dataLayer = (window as any).dataLayer || [];
-    const gtag: (...args: any[]) => void = (...args) => {
-      (window as any).dataLayer.push(args);
-    };
-
-    const addGoogleScript = () => {
-      if (!trackingId) return;
-
-      const scriptTag = document.createElement('script');
-      scriptTag.src = `https://www.googletagmanager.com/gtag/js?id=${trackingId}`;
-      scriptTag.async = true;
-      document.head.appendChild(scriptTag);
-
-      scriptTag.onload = () => {
-        gtag('js', new Date());
-        gtag('config', trackingId);
-      };
-    };
-
-    addGoogleScript();
-
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
         const formData: HubSpotSubmittedFormData = event.data.data;
@@ -117,10 +96,15 @@ function GoogleAds() {
           return;
         }
 
-        gtag('event', 'conversion', {
+        const callback = function () {
+          return;
+        };
+
+        (window as any).gtag('event', 'conversion', {
           'send_to': 'AW-16577398140/1wX_CNmzg7MZEPyK3OA9',
           'value': Number(formData.submissionValues['0-2/numberofemployees']) * 5,
           'currency': 'USD',
+          'event_callback': callback
         });
       }
     };
