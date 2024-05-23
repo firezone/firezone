@@ -150,6 +150,7 @@ impl GatewayState {
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
+        now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
         let dest = packet.destination();
 
@@ -157,7 +158,7 @@ impl GatewayState {
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), Instant::now())
+            .encapsulate(peer.id(), packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
 
