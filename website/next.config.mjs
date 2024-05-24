@@ -20,6 +20,7 @@ import langJson from "highlight.js/lib/languages/json";
 import langBash from "highlight.js/lib/languages/bash";
 import langRust from "highlight.js/lib/languages/rust";
 import langRuby from "highlight.js/lib/languages/ruby";
+import langPowerShell from "highlight.js/lib/languages/powershell";
 
 const highlightLanguages = {
   elixir: langElixir,
@@ -28,6 +29,7 @@ const highlightLanguages = {
   bash: langBash,
   rust: langRust,
   ruby: langRuby,
+  powershell: langPowerShell,
 };
 
 /** @type {import('next').NextConfig} */
