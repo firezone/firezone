@@ -275,7 +275,9 @@ pub fn run_only_headless_client() -> Result<()> {
                 future::Either::Right((None, _)) => {
                     return Err(anyhow::anyhow!("on_disconnect_rx unexpectedly ran empty"));
                 }
-                future::Either::Right((Some(error), _)) => return Err(anyhow!(error).context("Firezone disconnected")),
+                future::Either::Right((Some(error), _)) => {
+                    return Err(anyhow!(error).context("Firezone disconnected"))
+                }
             }
         }
     });
