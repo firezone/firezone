@@ -812,7 +812,7 @@ impl ReferenceState {
 
         if self.connected_resources.contains(&resource.id) {
             tracing::debug!("Connected to resource, expecting packet to be routed");
-            self.gateway_received_icmp_packets
+            self.gateway_received_icmp_requests
                 .push_back((self.now, src, dst));
             self.client_received_icmp_replies
                 .push_back((self.now, dst, src));
