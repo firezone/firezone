@@ -140,7 +140,6 @@ enum Transition {
     UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
-    // TODO: Add a transition where we change the system DNS resolvers.
 }
 
 impl StateMachineTest for TunnelTest {
