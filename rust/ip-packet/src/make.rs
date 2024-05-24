@@ -1,6 +1,10 @@
 //! Factory module for making all kinds of packets.
 
 use crate::MutableIpPacket;
+use hickory_proto::{
+    rr::{Name, RecordType},
+    serialize::binary::BinEncodable,
+};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -10,12 +14,12 @@ use pnet_packet::{
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-pub fn icmp_request_packet(src: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
-    icmp_packet(src, dst, 1, 0, IcmpKind::Request)
+pub fn icmp_request_packet(src: IpAddr, dst: impl Into<IpAddr>) -> MutableIpPacket<'static> {
+    icmp_packet(src, dst.into(), 1, 0, IcmpKind::Request)
 }
 
-pub fn icmp_response_packet(src: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
-    icmp_packet(src, dst, 1, 0, IcmpKind::Response)
+pub fn icmp_response_packet(src: IpAddr, dst: impl Into<IpAddr>) -> MutableIpPacket<'static> {
+    icmp_packet(src, dst.into(), 1, 0, IcmpKind::Response)
 }
 
 enum IcmpKind {
@@ -187,8 +191,23 @@ pub fn udp_packet(
     }
 }
 
-pub fn dns_request(domain: String, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
-    let payload = vec![];
+pub fn dns_a_query(domain: Name, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
+    dns_query(domain, RecordType::A, src, dst)
+}
+
+pub fn dns_aaaa_query(domain: Name, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
+    dns_query(domain, RecordType::AAAA, src, dst)
+}
+
+fn dns_query(
+    domain: Name,
+    kind: RecordType,
+    src: SocketAddr,
+    dst: SocketAddr,
+) -> MutableIpPacket<'static> {
+    let payload = hickory_proto::op::Query::query(domain, kind)
+        .to_bytes()
+        .unwrap();
 
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }

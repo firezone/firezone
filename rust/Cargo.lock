@@ -2068,6 +2068,7 @@ dependencies = [
  "futures-bounded",
  "futures-util",
  "hex",
+ "hickory-proto",
  "hickory-resolver",
  "ip-packet",
  "ip_network",
@@ -3163,6 +3164,7 @@ dependencies = [
 name = "ip-packet"
 version = "1.0.6"
 dependencies = [
+ "hickory-proto",
  "pnet_packet",
 ]
 
