@@ -13,7 +13,7 @@ use std::{
     future::Future,
     net::IpAddr,
     path::{Path, PathBuf},
-    pin::pin,
+    pin::{pin, Pin},
     str::FromStr,
     task::{Context, Poll},
     time::Duration,
@@ -53,7 +53,8 @@ impl Signals {
 }
 
 impl Future for Signals {
-    fn poll(&mut self, cx: &mut Context) -> Poll<SignalKind> {
+    type Output = SignalKind;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(SignalKind::Interrupt);
         }
