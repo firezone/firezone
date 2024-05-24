@@ -5,6 +5,8 @@ resource "google_project" "project" {
   org_id          = var.organization_id
   billing_account = var.billing_account_id
   project_id      = var.id != "" ? var.id : replace(lower(var.name), " ", "-")
+
+  auto_create_network = var.auto_create_network
 }
 
 resource "google_project_service" "oslogin" {

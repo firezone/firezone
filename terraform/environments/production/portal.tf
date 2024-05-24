@@ -50,6 +50,11 @@ resource "google_compute_subnetwork" "apps" {
 
   ipv6_access_type = "EXTERNAL"
 
+  log_config {
+    aggregation_interval = "INTERVAL_5_MIN"
+    metadata             = "INCLUDE_ALL_METADATA"
+  }
+
   private_ip_google_access = true
 }
 
@@ -66,6 +71,11 @@ resource "google_compute_subnetwork" "tools" {
   network       = module.google-cloud-vpc.id
 
   ipv6_access_type = "EXTERNAL"
+
+  log_config {
+    aggregation_interval = "INTERVAL_5_MIN"
+    metadata             = "INCLUDE_ALL_METADATA"
+  }
 
   private_ip_google_access = true
 }

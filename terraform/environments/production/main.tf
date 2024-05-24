@@ -45,6 +45,8 @@ module "google-cloud-project" {
   name               = "Production Environment"
   organization_id    = "335836213177"
   billing_account_id = "01DFC9-3D6951-579BE1"
+
+  auto_create_network = false
 }
 
 # Enable audit logs for the production project

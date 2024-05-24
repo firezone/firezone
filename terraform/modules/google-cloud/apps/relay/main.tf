@@ -141,6 +141,11 @@ resource "google_compute_subnetwork" "subnetwork" {
 
   network = google_compute_network.network.self_link
 
+  log_config {
+    aggregation_interval = "INTERVAL_10_MIN"
+    metadata             = "INCLUDE_ALL_METADATA"
+  }
+
   stack_type               = "IPV4_IPV6"
   ip_cidr_range            = each.value.cidr_range
   ipv6_access_type         = "EXTERNAL"

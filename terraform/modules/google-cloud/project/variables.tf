@@ -14,3 +14,8 @@ variable "id" {
   description = "ID of a Google Cloud Project. Can be omitted and will be generated automatically"
   default     = ""
 }
+
+variable "auto_create_network" {
+  description = "Whether to create a default network in the project"
+  default     = "true"
+}
