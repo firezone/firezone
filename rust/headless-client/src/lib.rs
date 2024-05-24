@@ -320,14 +320,12 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
             }
             future::Either::Left((SignalKind::Interrupt, _)) => {
                 tracing::info!("Caught Interrupt signal");
-                return Ok(());
+                Ok(())
             }
             future::Either::Right((Ok(()), _)) => {
                 bail!("Impossible, ipc_listen can't return Ok");
             }
-            future::Either::Right((Err(error), _)) => {
-                return Err(error).context("ipc_listen failed")
-            }
+            future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
         }
     })
 }
