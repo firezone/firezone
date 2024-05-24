@@ -1,5 +1,6 @@
 //! Factory module for making all kinds of packets.
 
+use crate::MutableIpPacket;
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -7,9 +8,7 @@ use pnet_packet::{
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
 };
-
-use crate::MutableIpPacket;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 pub fn icmp_request_packet(src: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
     icmp_packet(src, dst, 1, 0, IcmpKind::Request)
@@ -186,6 +185,10 @@ pub fn udp_packet(
             panic!("IPs must be of the same version")
         }
     }
+}
+
+pub fn dns_request(domain: String, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
+    todo!()
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {

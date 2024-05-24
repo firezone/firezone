@@ -273,10 +273,9 @@ impl StateMachineTest for TunnelTest {
                     .gateway_dns_resolver
                     .insert(domain.clone(), resolved_ip);
 
-                // Pick the source IP based on the IP version of the DNS server.
-                let src = state.client.tunnel_ip(dns_server);
+                // Pick the source socket based on the DNS server address.
+                let src = state.client.sending_socket_for(dns_server).unwrap();
 
-                // Send the DNS query into the client.
                 state.send_dns_query_packet(src, dns_server, domain);
             }
             Transition::Tick { millis } => {
@@ -653,16 +652,12 @@ impl TunnelTest {
         Some((transmit, sending_socket))
     }
 
-    fn send_dns_query_packet(
-        &mut self,
-        src: impl Into<IpAddr>,
-        dns_server: impl Into<IpAddr>,
-        domain: String,
-    ) {
+    fn send_dns_query_packet(&mut self, src: SocketAddr, dns_server: SocketAddr, domain: String) {
         let maybe_transmit = self.client.span.in_scope(|| {
-            self.client
-                .state
-                .encapsulate(todo!("make DNS query packet"), self.now)
+            self.client.state.encapsulate(
+                ip_packet::make::dns_request(domain, src, dns_server),
+                self.now,
+            )
         });
 
         debug_assert!(
@@ -671,12 +666,15 @@ impl TunnelTest {
         );
     }
 
-    fn sample_dns_server(&mut self, idx: sample::Index) -> IpAddr {
-        // In order to correctly sample a DNS server, we need learn, which DNS servers connlib assigned for the upstream ones.
-        // To do _that_, we probably need to refactor the callbacks slightly to introduce an event on the client-side, for `on_set_interface_config`.
-        // That is because we only have access to the events in these tests and not the callbacks.
+    fn sample_dns_server(&mut self, idx: sample::Index) -> SocketAddr {
+        let mut servers = self
+            .effective_dns_servers()
+            .into_iter()
+            .filter(|s| self.client.sending_socket_for(*s).is_some()) // Only pick DNS servers that we can talk to. That is what the operating system would do too.
+            .collect::<Vec<_>>();
+        servers.sort(); // Ensure determinism.
 
-        todo!()
+        *idx.get(&servers)
     }
 
     /// Dispatches a [`Transmit`] to the correct component.
