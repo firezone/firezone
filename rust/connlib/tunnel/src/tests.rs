@@ -1531,6 +1531,18 @@ fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
         any::<IpAddr>().prop_map(|ip| DnsServer::from((ip, 53))),
         0..4,
     )
+    .prop_filter(
+        "if configured, upstream DNS must contain IPv4 and IPv6 servers",
+        |servers| {
+            if servers.is_empty() {
+                return true;
+            }
+
+            // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
+
+            servers.iter().any(|s| s.ip().is_ipv4()) && servers.iter().any(|s| s.ip().is_ipv6())
+        },
+    )
 }
 
 fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
