@@ -50,8 +50,10 @@ impl Signals {
         let sigint = tokio::signal::windows::ctrl_c()?;
         Ok(Self { sigint })
     }
+}
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<SignalKind> {
+impl Future for Signals {
+    fn poll(&mut self, cx: &mut Context) -> Poll<SignalKind> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(SignalKind::Interrupt);
         }

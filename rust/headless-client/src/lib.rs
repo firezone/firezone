@@ -13,14 +13,12 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
 use connlib_shared::callbacks;
 use firezone_cli_utils::setup_global_subscriber;
-use futures::{Future, SinkExt, StreamExt};
+use futures::{future, SinkExt, StreamExt};
 use secrecy::SecretString;
 use std::{
-    future,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::{Path, PathBuf},
     pin::pin,
-    task::Poll,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -261,30 +259,24 @@ pub fn run_only_headless_client() -> Result<()> {
     // TODO: this should be added dynamically
     session.set_dns(platform::system_resolvers().unwrap_or_default());
 
-    let mut signals = platform::Signals::new()?;
+    let disconnect_fut = pin!(on_disconnect_rx.recv());
+    let signals = platform::Signals::new()?;
 
     let result = rt.block_on(async {
-        future::poll_fn(|cx| loop {
-            match on_disconnect_rx.poll_recv(cx) {
-                Poll::Ready(Some(error)) => return Poll::Ready(Err(anyhow::anyhow!(error))),
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow::anyhow!(
-                        "on_disconnect_rx unexpectedly ran empty"
-                    )))
-                }
-                Poll::Pending => {}
+        match future::select(signals, disconnect_fut).await {
+            future::Either::Left((SignalKind::Hangup, _)) => {
+                tracing::info!("Caught Hangup signal");
+                Ok(())
             }
-
-            match signals.poll(cx) {
-                Poll::Ready(SignalKind::Hangup) => {
-                    session.reconnect();
-                    continue;
-                }
-                Poll::Ready(SignalKind::Interrupt) => return Poll::Ready(Ok(())),
-                Poll::Pending => return Poll::Pending,
+            future::Either::Left((SignalKind::Interrupt, _)) => {
+                tracing::info!("Caught Interrupt signal");
+                Ok(())
             }
-        })
-        .await
+            future::Either::Right((None, _)) => {
+                Err(anyhow::anyhow!("on_disconnect_rx unexpectedly ran empty"))
+            }
+            future::Either::Right((Some(error), _)) => Err(anyhow::anyhow!(error)),
+        }
     });
 
     session.disconnect();
@@ -315,37 +307,23 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let mut ipc_service = pin!(ipc_listen());
-        let mut signals = platform::Signals::new()?;
+        let ipc_service = pin!(ipc_listen());
+        let signals = platform::Signals::new()?;
 
-        std::future::poll_fn(|cx| {
-            match signals.poll(cx) {
-                Poll::Ready(SignalKind::Hangup) => {
-                    tracing::info!("Caught Hangup signal");
-                    return Poll::Ready(Ok(()));
-                }
-                Poll::Ready(SignalKind::Interrupt) => {
-                    tracing::info!("Caught Interrupt signal");
-                    return Poll::Ready(Ok(()));
-                }
-                Poll::Pending => {}
+        match future::select(signals, ipc_service).await {
+            future::Either::Left((SignalKind::Hangup, _)) => {
+                tracing::info!("Caught Hangup signal");
+                Ok(())
             }
-
-            match ipc_service.as_mut().poll(cx) {
-                Poll::Ready(Ok(())) => {
-                    return Poll::Ready(Err(anyhow::anyhow!(
-                        "Impossible, ipc_listen can't return Ok"
-                    )));
-                }
-                Poll::Ready(Err(error)) => {
-                    return Poll::Ready(Err(error).context("ipc_listen failed"));
-                }
-                Poll::Pending => {}
+            future::Either::Left((SignalKind::Interrupt, _)) => {
+                tracing::info!("Caught Interrupt signal");
+                Ok(())
             }
-
-            Poll::Pending
-        })
-        .await
+            future::Either::Right((Ok(()), _)) => {
+                Err(anyhow::anyhow!("Impossible, ipc_listen can't return Ok"))
+            }
+            future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
+        }
     })
 }
 
@@ -564,13 +542,13 @@ mod tests {
 
         let actual = Cli::parse_from([exe_name]);
         assert_eq!(actual.api_url, Url::parse("wss://api.firezone.dev")?);
-        assert_eq!(actual.check, false);
+        assert!(!actual.check);
 
         let actual = Cli::parse_from([exe_name, "--api-url", "wss://api.firez.one"]);
         assert_eq!(actual.api_url, Url::parse("wss://api.firez.one")?);
 
         let actual = Cli::parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]);
-        assert_eq!(actual.check, true);
+        assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = CliIpcService::parse_from([

@@ -9,6 +9,7 @@ use std::{
     net::IpAddr,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
+    pin::Pin,
     str::FromStr,
     task::{Context, Poll},
 };
@@ -34,8 +35,11 @@ impl Signals {
 
         Ok(Self { sighup, sigint })
     }
+}
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
+impl futures::future::Future for Signals {
+    type Output = super::SignalKind;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         if self.sigint.poll_recv(cx).is_ready() {
             return Poll::Ready(super::SignalKind::Interrupt);
         }
