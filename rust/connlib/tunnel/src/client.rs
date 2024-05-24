@@ -315,9 +315,7 @@ pub struct ClientState {
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
 
     /// The (internal) IPs we have assigned for a certain DNS resource.
-    ///
-    /// We assign one internal IP per externally resolved IP.
-    dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
+    dns_resources_internal_ips: HashMap<IpAddr, DnsResource>,
     /// DNS queries we can only answer once we have connected to the resource.
     ///
     /// See [`dns::ResolveStrategy`] for details.
@@ -446,8 +444,8 @@ impl ClientState {
             // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
             let domain = self
                 .dns_resources_internal_ips
-                .iter()
-                .find_map(|(r, _)| (r.id == resource).then_some(r.address.clone()));
+                .values()
+                .find_map(|r| (r.id == resource).then_some(r.address.clone()));
 
             self.on_connection_intent_to_resource(resource, domain, now);
             return None;
@@ -668,8 +666,10 @@ impl ClientState {
             })
             .collect();
 
-        self.dns_resources_internal_ips
-            .insert(resource_description.clone(), addrs.clone());
+        for addr in addrs.clone() {
+            self.dns_resources_internal_ips
+                .insert(addr, resource_description.clone());
+        }
 
         send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
         send_dns_answer(self, Rtype::A, &resource_description, &addrs);
@@ -816,11 +816,7 @@ impl ClientState {
                 };
 
                 let description = DnsResource::from_description(dns_resource, domain.clone());
-                self.dns_resources_internal_ips
-                    .get(&description)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
+                dns::ips_of_resource(&self.dns_resources_internal_ips, &description)
                     .map(Into::into)
                     .collect()
             }
@@ -831,7 +827,7 @@ impl ClientState {
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
         self.update_site_status_by_gateway(gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
-        self.dns_resources_internal_ips.retain(|resource, _| {
+        self.dns_resources_internal_ips.retain(|_, resource| {
             !self
                 .resources_gateways
                 .get(&resource.id)
@@ -856,8 +852,8 @@ impl ClientState {
 
         let maybe_dns_resource_id = self
             .dns_resources_internal_ips
-            .iter()
-            .find_map(|(r, i)| i.contains(&destination).then_some(r.id));
+            .get(&destination)
+            .map(|r| r.id);
 
         maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
@@ -897,7 +893,7 @@ impl ClientState {
 
                 self.peers.iter_mut().for_each(|p| p.expire_dns_track());
 
-                for resource in self.dns_resources_internal_ips.keys() {
+                for resource in self.dns_resources_internal_ips.values() {
                     let Some(peer) = self.peer_by_resource(resource.id) else {
                         // filter inactive connections
                         continue;
@@ -1036,7 +1032,7 @@ impl ClientState {
     fn remove_resources(&mut self, ids: &[ResourceId]) {
         for id in ids {
             self.awaiting_connection.remove(id);
-            self.dns_resources_internal_ips.retain(|r, _| r.id != *id);
+            self.dns_resources_internal_ips.retain(|_, r| r.id != *id);
             self.dns_resources.retain(|_, r| r.id != *id);
             self.cidr_resources.retain(|_, r| r.id != *id);
             self.deferred_dns_queries.retain(|(r, _), _| r.id != *id);
