@@ -1,9 +1,13 @@
 use crate::Binding;
 use crate::ChannelData;
+use crate::IpStack;
 use proptest::arbitrary::any;
+use proptest::prop_oneof;
 use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::time::Duration;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use stun_codec::TransactionId;
@@ -63,4 +67,30 @@ pub fn username_salt() -> impl Strategy<Value = String> {
 
 pub fn nonce() -> impl Strategy<Value = Uuid> {
     any::<u128>().prop_map(Uuid::from_u128)
+}
+
+pub fn any_ip_stack() -> impl Strategy<Value = IpStack> {
+    dual_ip_stack().prop_flat_map(|ip_stack| {
+        prop_oneof![
+            Just(IpStack::Ip4(*ip_stack.as_v4().unwrap())),
+            Just(IpStack::Ip6(*ip_stack.as_v6().unwrap())),
+            Just(ip_stack),
+        ]
+    })
+}
+
+pub fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
+    (
+        any::<Ipv4Addr>().prop_filter("must be normal ip", |ip| {
+            !ip.is_broadcast()
+                && !ip.is_unspecified()
+                && !ip.is_documentation()
+                && !ip.is_link_local()
+                && !ip.is_multicast()
+        }),
+        any::<Ipv6Addr>().prop_filter("must be normal ip", |ip| {
+            !ip.is_unspecified() && !ip.is_multicast()
+        }),
+    )
+        .prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
 }

@@ -289,11 +289,6 @@ RUN set -xe \
     && adduser -s /bin/sh -u 1001 -G root -h /app -S -D default \
     && chown -R 1001:0 /app
 
-# Add other directories firezone needs to run
-RUN set -xe \
-    && mkdir -p /var/firezone \
-    && chown -R 1001:0 /var/firezone
-
 WORKDIR /app
 
 ARG APPLICATION_NAME

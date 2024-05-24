@@ -190,14 +190,11 @@ where
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.role_state
-            .node
-            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
+            .add_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state
-            .node
-            .remove_remote_candidate(conn_id, ice_candidate);
+        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
     }
 
     pub fn create_or_reuse_connection(
@@ -223,8 +220,18 @@ where
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> connlib_shared::Result<()> {
-        self.role_state
-            .accept_answer(answer, resource_id, gateway_public_key, domain_response)?;
+        self.role_state.accept_answer(
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: answer.username,
+                    password: answer.password,
+                },
+            },
+            resource_id,
+            gateway_public_key,
+            domain_response,
+            Instant::now(),
+        )?;
 
         Ok(())
     }
@@ -248,6 +255,15 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
+impl Request {
+    pub fn resource_id(&self) -> ResourceId {
+        match self {
+            Request::NewConnection(i) => i.resource_id,
+            Request::ReuseConnection(i) => i.resource_id,
+        }
+    }
+}
+
 fn send_dns_answer(
     role_state: &mut ClientState,
     qtype: Rtype,
@@ -265,37 +281,61 @@ fn send_dns_answer(
     }
 }
 
+/// A sans-IO implementation of a Client's functionality.
+///
+/// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
+/// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
+/// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
 pub struct ClientState {
-    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    resources_gateways: HashMap<ResourceId, GatewayId>,
-
-    pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
-    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    pub resource_ids: HashMap<ResourceId, ResourceDescription>,
-    pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
-
-    peers: PeerStore<GatewayId, GatewayOnClient>,
-
+    /// Manages wireguard tunnels to gateways.
     node: ClientNode<GatewayId, RelayId>,
+    /// All gateways we are connected to and the associated, connection-specific state.
+    peers: PeerStore<GatewayId, GatewayOnClient>,
+    /// Which Resources we are trying to connect to.
+    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
 
-    pub ip_provider: IpProvider,
+    /// Tracks which gateway to use for a particular Resource.
+    resources_gateways: HashMap<ResourceId, GatewayId>,
+    /// The site a gateway belongs to.
+    gateways_site: HashMap<GatewayId, SiteId>,
+    /// The online/offline status of a site.
+    sites_status: HashMap<SiteId, Status>,
 
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
+    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// All resources indexed by their ID.
+    resource_ids: HashMap<ResourceId, ResourceDescription>,
 
-    buffered_events: VecDeque<ClientEvent>,
-    interface_config: Option<InterfaceConfig>,
-    buffered_packets: VecDeque<IpPacket<'static>>,
+    /// The DNS resolvers configured on the system outside of connlib.
+    system_resolvers: Vec<IpAddr>,
 
     /// DNS queries that we need to forward to the system resolver.
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
 
+    /// The (internal) IPs we have assigned for a certain DNS resource.
+    ///
+    /// We assign one internal IP per externally resolved IP.
+    dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
+    /// DNS queries we can only answer once we have connected to the resource.
+    ///
+    /// See [`dns::ResolveStrategy`] for details.
+    deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
+    /// Hands out IPs for DNS resources.
+    ip_provider: IpProvider,
+    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
+    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// When to next refresh DNS resources.
+    ///
+    /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
     next_dns_refresh: Option<Instant>,
 
-    system_resolvers: Vec<IpAddr>,
+    /// Configuration of the TUN device, when it is up.
+    interface_config: Option<InterfaceConfig>,
 
-    gateways_site: HashMap<GatewayId, SiteId>,
-    sites_status: HashMap<SiteId, Status>,
+    buffered_events: VecDeque<ClientEvent>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -372,6 +412,11 @@ impl ClientState {
         }
     }
 
+    #[cfg(all(feature = "proptest", test))]
+    pub(crate) fn public_key(&self) -> PublicKey {
+        self.node.public_key()
+    }
+
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -437,29 +482,28 @@ impl ClientState {
         Some(packet.into_immutable())
     }
 
+    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
+        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    }
+
+    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
-    fn accept_answer(
+    pub fn accept_answer(
         &mut self,
-        answer: Answer,
+        answer: snownet::Answer,
         resource_id: ResourceId,
         gateway: PublicKey,
         domain_response: Option<DomainResponse>,
+        now: Instant,
     ) -> connlib_shared::Result<()> {
         let gateway_id = self
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.node.accept_answer(
-            gateway_id,
-            gateway,
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: answer.username,
-                    password: answer.password,
-                },
-            },
-            Instant::now(),
-        );
+        self.node.accept_answer(gateway_id, gateway, answer, now);
 
         let desc = self
             .resource_ids
@@ -489,7 +533,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
-    fn create_or_reuse_connection(
+    pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
@@ -562,7 +606,7 @@ impl ClientState {
         }));
     }
 
-    fn received_domain_parameters(
+    pub fn received_domain_parameters(
         &mut self,
         resource_id: ResourceId,
         domain_response: DomainResponse,
@@ -834,14 +878,14 @@ impl ClientState {
     }
 
     #[must_use]
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
     #[must_use]
-    fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
+    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
         self.interface_config = Some(config);
 
         self.update_dns_mapping()
@@ -951,7 +995,7 @@ impl ClientState {
         self.node.reconnect(now)
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
         self.node.poll_transmit()
     }
 
@@ -1082,10 +1126,19 @@ impl ClientState {
 
         self.set_dns_mapping(dns_mapping);
 
+        self.buffered_events
+            .push_back(ClientEvent::DnsServersChanged {
+                dns_by_sentinel: self
+                    .dns_mapping
+                    .iter()
+                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
+                    .collect(),
+            });
+
         true
     }
 
-    fn update_relays(
+    pub fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
         to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,

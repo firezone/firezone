@@ -89,7 +89,7 @@ impl FromStr for SiteId {
 
 impl SiteId {
     #[cfg(feature = "proptest")]
-    pub(crate) fn from_u128(v: u128) -> Self {
+    pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
 }
