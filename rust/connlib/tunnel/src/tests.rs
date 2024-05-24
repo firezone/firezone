@@ -365,6 +365,32 @@ impl ReferenceStateMachine for ReferenceState {
                     !c4_eq_g4 && !c6_eq_g6 && !c4_eq_r4 && !c6_eq_r6 && !g4_eq_r4 && !g6_eq_r6
                 },
             )
+            .prop_filter(
+                "at least one DNS server needs to be reachable",
+                |(c, _, _, system_dns, upstream_dns, _, _)| {
+                    // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                    if !upstream_dns.is_empty() {
+                        if c.ip4_socket.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv4()) {
+                            return false;
+                        }
+                        if c.ip6_socket.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv6()) {
+                            return false;
+                        }
+
+                        return true;
+                    }
+
+                    if c.ip4_socket.is_none() && system_dns.iter().all(|s| s.is_ipv4()) {
+                        return false;
+                    }
+                    if c.ip6_socket.is_none() && system_dns.iter().all(|s| s.is_ipv6()) {
+                        return false;
+                    }
+
+                    true
+                },
+            )
             .prop_map(
                 |(
                     client,
@@ -511,8 +537,30 @@ impl ReferenceStateMachine for ReferenceState {
 
                 state.client.tunnel_ip6 != dst
             }
-            Transition::UpdateSystemDnsServers { .. } => true,
-            Transition::UpdateUpstreamDnsServers { .. } => true,
+            Transition::UpdateSystemDnsServers { servers } => {
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                if state.client.ip4_socket.is_none() && servers.iter().all(|s| s.is_ipv4()) {
+                    return false;
+                }
+                if state.client.ip6_socket.is_none() && servers.iter().all(|s| s.is_ipv6()) {
+                    return false;
+                }
+
+                true
+            }
+            Transition::UpdateUpstreamDnsServers { servers } => {
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                if state.client.ip4_socket.is_none() && servers.iter().all(|s| s.ip().is_ipv4()) {
+                    return false;
+                }
+                if state.client.ip6_socket.is_none() && servers.iter().all(|s| s.ip().is_ipv6()) {
+                    return false;
+                }
+
+                true
+            }
             Transition::AddDnsResource(_) => {
                 // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
 
