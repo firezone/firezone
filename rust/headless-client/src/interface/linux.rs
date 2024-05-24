@@ -22,15 +22,22 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
 pub(crate) struct InterfaceManager {
-    connection: tokio::task::JoinHandle<()>,
+    // This gets lazy-initialized when the interface is first configured
+    connection: Option<Connection>,
     dns_control_method: Option<DnsControlMethod>,
-    handle: Handle,
     routes: HashSet<IpNetwork>,
+}
+
+struct Connection {
+    handle: Handle,
+    task: tokio::task::JoinHandle<()>,
 }
 
 impl Drop for InterfaceManager {
     fn drop(&mut self) {
-        self.connection.abort();
+        if let Some(connection) = self.connection.take() {
+            connection.task.abort();
+        }
         tracing::debug!("Reverting DNS control...");
         if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
@@ -41,16 +48,12 @@ impl Drop for InterfaceManager {
 
 impl InterfaceManager {
     pub(crate) fn new() -> Result<Self> {
-        let (connection, handle, _) = new_connection()?;
-        let connection = tokio::spawn(connection);
-
         let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
         tracing::info!(?dns_control_method);
 
         Ok(Self {
-            connection,
+            connection: None,
             dns_control_method,
-            handle,
             routes: Default::default(),
         })
     }
@@ -62,7 +65,17 @@ impl InterfaceManager {
         ipv6: Ipv6Addr,
         dns_config: Vec<IpAddr>,
     ) -> Result<()> {
-        let handle = &self.handle;
+        let connection = match self.connection.as_mut() {
+            None => {
+                let (cxn, handle, _) = new_connection()?;
+                let task = tokio::spawn(cxn);
+                let connection = Connection { handle, task };
+                self.connection.insert(connection)
+            }
+            Some(x) => x,
+        };
+
+        let handle = &connection.handle;
         let index = handle
             .link()
             .get()
@@ -153,7 +166,6 @@ impl InterfaceManager {
         ipv4: Vec<Cidrv4>,
         ipv6: Vec<Cidrv6>,
     ) -> Result<()> {
-        tracing::info!("on_update_routes");
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
             .map(|x| Into::<Ipv4Network>::into(x).into())
@@ -165,7 +177,8 @@ impl InterfaceManager {
         if new_routes == self.routes {
             return Ok(());
         }
-        let handle = &self.handle;
+        tracing::info!(?new_routes, "on_update_routes");
+        let handle = &self.connection.as_ref().ok_or_else(|| anyhow!("on_update_routes should only be called after at least one call to on_set_interface_config"))?.handle;
 
         let index = handle
             .link()
