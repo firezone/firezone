@@ -127,7 +127,7 @@ pub fn resource_name() -> impl Strategy<Value = String> {
 }
 
 pub fn dns_resource_address() -> impl Strategy<Value = String> {
-    any_with::<String>("[a-z]{4,10}".into())
+    any_with::<String>("[a-z]{4,10}".into()) // TODO: Should this have a more explicit domain structure?
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.

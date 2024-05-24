@@ -117,8 +117,11 @@ enum Transition {
     // TODO: Do we need a separate transition for sending a packet to a DNS resolved resource? Or should we reuse the two above?
     /// Send a DNS query for one of our DNS resources.
     ResolveDnsResource {
+        /// The index into our list of DNS resources.
         r_idx: sample::Index,
+        /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
+        /// The IP we resolve the domain to.
         resolved_ip: IpAddr,
     },
     /// The system's DNS servers changed.
@@ -506,7 +509,11 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::UpdateSystemDnsServers { .. } => true,
             Transition::UpdateUpstreamDnsServers { .. } => true,
-            Transition::AddDnsResource(_) => true,
+            Transition::AddDnsResource(_) => {
+                // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
+
+                true
+            }
             Transition::ResolveDnsResource { .. } => {
                 if state.client_dns_resources.is_empty() {
                     return false;
@@ -1071,7 +1078,14 @@ impl ReferenceState {
     fn sample_dns_resource_domain(&self, idx: &sample::Index) -> String {
         // TODO: Do we need to come up with a sub-domain too?
 
-        todo!()
+        let mut domains = self
+            .client_dns_resources
+            .iter()
+            .map(|r| r.address.clone())
+            .collect::<Vec<_>>();
+        domains.sort();
+
+        idx.get(&domains).clone()
     }
 }
 
