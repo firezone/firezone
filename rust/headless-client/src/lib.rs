@@ -186,7 +186,7 @@ enum InternalServerMsg {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
-    OnDisconnect,
+    OnDisconnect { error_msg: String },
     // TODO: We can probably just consider the first `OnUpdateResources` to be the same as
     // an `OnTunnelReady`
     OnTunnelReady,
@@ -260,8 +260,8 @@ pub fn run_only_headless_client() -> Result<()> {
         return Ok(());
     }
 
-    let (on_disconnect_tx, mut on_disconnect_rx) = mpsc::channel(1);
-    let callback_handler = CallbackHandler { on_disconnect_tx };
+    let (cb_tx, mut cb_rx) = mpsc::channel(10);
+    let callback_handler = CallbackHandler { cb_tx };
 
     platform::setup_before_connlib()?;
     let session = Session::connect(
@@ -277,10 +277,11 @@ pub fn run_only_headless_client() -> Result<()> {
     session.set_dns(platform::system_resolvers().unwrap_or_default());
 
     let result = rt.block_on(async {
+        let mut interface = interface::InterfaceManager::new();
         let mut signals = Signals::new()?;
 
         loop {
-            match future::select(pin!(signals.recv()), pin!(on_disconnect_rx.recv())).await {
+            match future::select(pin!(signals.recv()), pin!(cb_rx.recv())).await {
                 future::Either::Left((SignalKind::Hangup, _)) => {
                     tracing::info!("Caught Hangup signal");
                     session.reconnect();
@@ -290,11 +291,22 @@ pub fn run_only_headless_client() -> Result<()> {
                     return Ok(());
                 }
                 future::Either::Right((None, _)) => {
-                    return Err(anyhow::anyhow!("on_disconnect_rx unexpectedly ran empty"));
+                    return Err(anyhow::anyhow!("cb_rx unexpectedly ran empty"));
                 }
-                future::Either::Right((Some(error), _)) => {
-                    return Err(anyhow!(error).context("Firezone disconnected"))
-                }
+                future::Either::Right((Some(msg), _)) => match msg {
+                    InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect { error_msg }) => {
+                        return Err(anyhow!(error_msg).context("Firezone disconnected"))
+                    }
+                    InternalServerMsg::Ipc(IpcServerMsg::Ok)
+                    | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
+                    | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
+                    InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                        interface.on_set_interface_config(ipv4, ipv6, dns).await?;
+                    }
+                    InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                        interface.on_update_routes(ipv4, ipv6).await?
+                    }
+                },
             }
         }
     });
@@ -350,15 +362,17 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
 }
 
 #[derive(Clone)]
-struct CallbackHandlerIpc {
+struct CallbackHandler {
     cb_tx: mpsc::Sender<InternalServerMsg>,
 }
 
-impl Callbacks for CallbackHandlerIpc {
+impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect))
+            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+                error_msg: error.to_string(),
+            }))
             .expect("should be able to send OnDisconnect");
     }
 
@@ -407,7 +421,7 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (rx, tx) = tokio::io::split(stream);
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
-    let (cb_tx, mut cb_rx) = mpsc::channel(100);
+    let (cb_tx, mut cb_rx) = mpsc::channel(10);
 
     let send_task = tokio::spawn(async move {
         let mut interface = interface::InterfaceManager::new();
@@ -429,7 +443,7 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     });
 
     let mut connlib = None;
-    let callback_handler = CallbackHandlerIpc { cb_tx };
+    let callback_handler = CallbackHandler { cb_tx };
     while let Some(msg) = rx.next().await {
         let msg = msg?;
         let msg: IpcClientMsg = serde_json::from_slice(&msg)?;
@@ -483,28 +497,6 @@ enum SignalKind {
     Hangup,
     /// SIGINT
     Interrupt,
-}
-
-#[derive(Clone)]
-struct CallbackHandler {
-    /// Channel for an error message if connlib disconnects due to an error
-    on_disconnect_tx: mpsc::Sender<String>,
-}
-
-impl Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        // Convert the error to a String since we can't clone it
-        self.on_disconnect_tx
-            .try_send(error.to_string())
-            .expect("should be able to tell the main thread that we disconnected");
-    }
-
-    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
-        // See easily with `export RUST_LOG=firezone_headless_client=debug`
-        for resource in &resources {
-            tracing::debug!(?resource);
-        }
-    }
 }
 
 /// Read the token from disk if it was not in the environment

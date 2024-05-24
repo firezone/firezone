@@ -98,8 +98,8 @@ impl Client {
             while let Some(msg) = rx.next().await.transpose()? {
                 match serde_json::from_slice::<IpcServerMsg>(&msg)? {
                     IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
-                        &connlib_client_shared::Error::Other("errors can't be serialized"),
+                    IpcServerMsg::OnDisconnect { error_msg: _ } => callback_handler.on_disconnect(
+                        &connlib_client_shared::Error::Other("errors can't be serialized yet"),
                     ),
                     IpcServerMsg::OnTunnelReady => callback_handler.on_tunnel_ready(),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
