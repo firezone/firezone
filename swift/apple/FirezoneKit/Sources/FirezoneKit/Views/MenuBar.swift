@@ -500,7 +500,7 @@ public final class MenuBar: NSObject {
       siteStatusItem.action = #selector(resourceValueTapped(_:))
       siteStatusItem.title = resource.status.toSiteStatus()
       siteStatusItem.toolTip = "\(resource.status.toSiteStatusTooltip()) (click to copy)"
-      siteStatusItem.state = resource.status.toState()
+      siteStatusItem.state = statusToState(status: resource.status)
       siteStatusItem.isEnabled = true
       siteStatusItem.target = self
       if let onImage = NSImage(named: NSImage.statusAvailableName),
@@ -533,6 +533,17 @@ public final class MenuBar: NSObject {
     let pasteBoard = NSPasteboard.general
     pasteBoard.clearContents()
     pasteBoard.writeObjects([string as NSString])
+  }
+
+  private func statusToState(status: ResourceStatus) -> NSControl.StateValue {
+    switch status {
+    case .offline:
+      return .off
+    case .online:
+      return .on
+    case .unknown:
+      return .mixed
+    }
   }
 }
 

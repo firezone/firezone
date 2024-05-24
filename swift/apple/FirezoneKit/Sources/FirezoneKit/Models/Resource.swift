@@ -7,7 +7,6 @@
 // This models resources that are displayed in the UI
 
 import Foundation
-import AppKit
 
 public struct Resource: Decodable, Identifiable {
   public let id: String
@@ -54,17 +53,6 @@ public enum ResourceStatus: String, Decodable {
       return "You're connected to a healthy Gateway in this Site."
     case .unknown:
       return "No connection has been attempted to Resources in this Site. Access a Resource to establish a Gateway connection."
-    }
-  }
-
-  public func toState() -> NSControl.StateValue {
-    switch self {
-    case .offline:
-      return .off
-    case .online:
-      return .on
-    case .unknown:
-      return .mixed
     }
   }
 }
