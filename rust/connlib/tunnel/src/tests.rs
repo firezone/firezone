@@ -1,4 +1,5 @@
 use crate::{ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
+use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
@@ -25,7 +26,7 @@ use secrecy::ExposeSecret;
 use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
@@ -59,8 +60,8 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    /// The effective DNS resolvers indexed by the IP assigned by connlib.
-    dns_by_sentinel: HashMap<IpAddr, SocketAddr>,
+    /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
+    dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
     client_received_packets: VecDeque<IpPacket<'static>>,
     gateway_received_icmp_packets: VecDeque<(Instant, IpAddr, IpAddr)>,
@@ -522,7 +523,7 @@ impl TunnelTest {
 
     /// Returns the _effective_ DNS servers that connlib is using.
     fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
-        self.dns_by_sentinel.values().copied().collect()
+        self.dns_by_sentinel.right_values().copied().collect()
     }
 
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
