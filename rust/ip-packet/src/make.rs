@@ -188,7 +188,9 @@ pub fn udp_packet(
 }
 
 pub fn dns_request(domain: String, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
-    todo!()
+    let payload = vec![];
+
+    udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {
