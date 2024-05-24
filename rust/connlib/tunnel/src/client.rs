@@ -878,14 +878,14 @@ impl ClientState {
     }
 
     #[must_use]
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
     #[must_use]
-    fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
+    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
         self.interface_config = Some(config);
 
         self.update_dns_mapping()
@@ -1125,6 +1125,15 @@ impl ClientState {
         );
 
         self.set_dns_mapping(dns_mapping);
+
+        self.buffered_events
+            .push_back(ClientEvent::DnsServersChanged {
+                dns_by_sentinel: self
+                    .dns_mapping
+                    .iter()
+                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
+                    .collect(),
+            });
 
         true
     }

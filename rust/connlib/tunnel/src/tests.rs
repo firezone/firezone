@@ -1,9 +1,10 @@
 use crate::{ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
+use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
         client::{ResourceDescription, ResourceDescriptionCidr, SiteId},
-        gateway, ClientId, GatewayId, RelayId, ResourceId,
+        gateway, ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
     proptest::cidr_resource,
     StaticSecret,
@@ -14,7 +15,7 @@ use ip_network_table::IpNetworkTable;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
-    prop_oneof, sample,
+    collection, prop_oneof, sample,
     strategy::{Just, Strategy},
     test_runner::Config,
 };
@@ -58,6 +59,9 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
+    /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
+    dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
     gateway_received_icmp_requests: VecDeque<(Instant, IpAddr, IpAddr)>,
     client_received_icmp_replies: VecDeque<(Instant, IpAddr, IpAddr)>,
 
@@ -75,6 +79,11 @@ struct ReferenceState {
     client: SimNode<ClientId, PrivateKey>,
     gateway: SimNode<GatewayId, PrivateKey>,
     relay: SimRelay<u64>,
+
+    /// The DNS resolvers configured on the client outside of connlib.
+    system_dns_resolvers: Vec<IpAddr>,
+    /// The upstream DNS resolvers configured in the portal.
+    upstream_dns_resolvers: Vec<DnsServer>,
 
     /// Which resources the clients is aware of.
     client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
@@ -96,6 +105,10 @@ enum Transition {
     SendICMPPacketToIp4Resource { r_idx: sample::Index },
     /// Send a ICMP packet to an IPv6 resource.
     SendICMPPacketToIp6Resource { r_idx: sample::Index },
+    /// The system's DNS servers changed.
+    UpdateSystemDnsServers { servers: Vec<IpAddr> },
+    /// The upstream DNS servers changed.
+    UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
 }
@@ -135,11 +148,21 @@ impl StateMachineTest for TunnelTest {
             allocations: ref_state.relay.allocations.clone(),
             buffer: ref_state.relay.buffer.clone(),
         };
+
         client.state.update_relays(
             HashSet::default(),
             HashSet::from([relay.explode("client")]),
             ref_state.now,
         );
+        let _ = client.state.update_interface_config(Interface {
+            ipv4: client.tunnel_ip4,
+            ipv6: client.tunnel_ip6,
+            upstream_dns: ref_state.upstream_dns_resolvers.clone(),
+        });
+        let _ = client
+            .state
+            .update_system_resolvers(ref_state.system_dns_resolvers.clone());
+
         gateway.state.update_relays(
             HashSet::default(),
             HashSet::from([relay.explode("gateway")]),
@@ -160,6 +183,7 @@ impl StateMachineTest for TunnelTest {
             portal,
             logger,
             relay,
+            dns_by_sentinel: Default::default(),
             gateway_received_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
         };
@@ -213,18 +237,34 @@ impl StateMachineTest for TunnelTest {
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
             }
+            Transition::UpdateSystemDnsServers { servers } => {
+                let _ = state.client.state.update_system_resolvers(servers);
+            }
+            Transition::UpdateUpstreamDnsServers { servers } => {
+                let _ = state.client.state.update_interface_config(Interface {
+                    ipv4: state.client.tunnel_ip4,
+                    ipv6: state.client.tunnel_ip6,
+                    upstream_dns: servers,
+                });
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
 
-        // Assert: Check that our actual state is equivalent to our expectation (the reference state).
+        // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
         assert_eq!(
-            state.gateway_received_icmp_requests,
-            ref_state.gateway_received_icmp_requests
+            state.gateway_received_icmp_requests, ref_state.gateway_received_icmp_requests,
+            "Packets should flow from client to gateway"
         );
         assert_eq!(
-            state.client_received_icmp_replies,
-            ref_state.client_received_icmp_replies
+            state.client_received_icmp_replies, ref_state.client_received_icmp_replies,
+            "Packets should flow from gateway to client"
         );
+        assert_eq!(
+            state.effective_dns_servers(),
+            ref_state.expected_dns_servers(),
+            "Effective DNS servers should match either system or upstream DNS"
+        );
+
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         state
@@ -245,16 +285,18 @@ impl ReferenceStateMachine for ReferenceState {
             sim_node_prototype(client_id()),
             sim_node_prototype(gateway_id()),
             sim_relay_prototype(),
+            system_dns_servers(),
+            upstream_dns_servers(),
             Just(Instant::now()),
             Just(Utc::now()),
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _)| c.state != g.state,
+                |(c, g, _, _, _, _, _)| c.state != g.state,
             )
             .prop_filter(
                 "client, gateway and relay ip must be different",
-                |(c, g, r, _, _)| {
+                |(c, g, r, _, _, _, _)| {
                     let c4 = c.ip4_socket.map(|s| *s.ip());
                     let g4 = g.ip4_socket.map(|s| *s.ip());
                     let r4 = r.ip_stack.as_v4().copied();
@@ -273,17 +315,29 @@ impl ReferenceStateMachine for ReferenceState {
                     !c4_eq_g4 && !c6_eq_g6 && !c4_eq_r4 && !c6_eq_r6 && !g4_eq_r4 && !g6_eq_r6
                 },
             )
-            .prop_map(|(client, gateway, relay, now, utc_now)| Self {
-                now,
-                utc_now,
-                client,
-                gateway,
-                relay,
-                client_cidr_resources: IpNetworkTable::new(),
-                connected_resources: Default::default(),
-                gateway_received_icmp_requests: Default::default(),
-                client_received_icmp_replies: Default::default(),
-            })
+            .prop_map(
+                |(
+                    client,
+                    gateway,
+                    relay,
+                    system_dns_resolvers,
+                    upstream_dns_resolvers,
+                    now,
+                    utc_now,
+                )| Self {
+                    now,
+                    utc_now,
+                    client,
+                    gateway,
+                    relay,
+                    client_cidr_resources: IpNetworkTable::new(),
+                    connected_resources: Default::default(),
+                    gateway_received_icmp_requests: Default::default(),
+                    system_dns_resolvers,
+                    upstream_dns_resolvers,
+                    client_received_icmp_replies: Default::default(),
+                },
+            )
             .boxed()
     }
 
@@ -294,6 +348,10 @@ impl ReferenceStateMachine for ReferenceState {
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
+        let set_system_dns_servers =
+            system_dns_servers().prop_map(|servers| Transition::UpdateSystemDnsServers { servers });
+        let set_upstream_dns_servers = upstream_dns_servers()
+            .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers });
 
         let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
 
@@ -304,6 +362,8 @@ impl ReferenceStateMachine for ReferenceState {
         prop_oneof![
             1 => add_cidr_resource,
             1 => tick,
+            1 => set_system_dns_servers,
+            1 => set_upstream_dns_servers,
             1 => icmp_to_random_ip(),
             weight_ip4 => icmp_to_ipv4_cidr_resource(),
             weight_ip6 => icmp_to_ipv6_cidr_resource()
@@ -331,6 +391,12 @@ impl ReferenceStateMachine for ReferenceState {
                 state.on_icmp_packet(state.client.tunnel_ip6, dst);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
+            Transition::UpdateSystemDnsServers { servers } => {
+                state.system_dns_resolvers.clone_from(servers);
+            }
+            Transition::UpdateUpstreamDnsServers { servers } => {
+                state.upstream_dns_resolvers.clone_from(servers);
+            }
         };
 
         state
@@ -375,6 +441,8 @@ impl ReferenceStateMachine for ReferenceState {
 
                 state.client.tunnel_ip6 != dst
             }
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDnsServers { .. } => true,
         }
     }
 }
@@ -456,6 +524,11 @@ impl TunnelTest {
 
             break;
         }
+    }
+
+    /// Returns the _effective_ DNS servers that connlib is using.
+    fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
+        self.dns_by_sentinel.right_values().copied().collect()
     }
 
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
@@ -777,6 +850,9 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
+            ClientEvent::DnsServersChanged { dns_by_sentinel } => {
+                self.dns_by_sentinel = dns_by_sentinel;
+            }
         }
     }
 
@@ -878,6 +954,25 @@ impl ReferenceState {
         };
 
         network.network_address()
+    }
+
+    /// Returns the DNS servers that we expect connlib to use.
+    ///
+    /// If there are upstream DNS servers configured in the portal, it should use those.
+    /// Otherwise it should use whatever was configured on the system prior to connlib starting.
+    fn expected_dns_servers(&self) -> HashSet<SocketAddr> {
+        if !self.upstream_dns_resolvers.is_empty() {
+            return self
+                .upstream_dns_resolvers
+                .iter()
+                .map(|s| s.address())
+                .collect();
+        }
+
+        self.system_dns_resolvers
+            .iter()
+            .map(|ip| SocketAddr::new(*ip, 53))
+            .collect()
     }
 }
 
@@ -1313,4 +1408,15 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
             allocations: HashSet::new(),
             buffer: vec![0u8; (1 << 16) - 1],
         })
+}
+
+fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
+    collection::vec(
+        any::<IpAddr>().prop_map(|ip| DnsServer::from((ip, 53))),
+        0..4,
+    )
+}
+
+fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
+    collection::vec(any::<IpAddr>(), 1..4) // Always need at least 1 system DNS server. TODO: Should we test what happens if we don't?
 }

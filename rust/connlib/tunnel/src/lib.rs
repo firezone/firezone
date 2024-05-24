@@ -13,10 +13,12 @@ use connlib_shared::{
 use io::Io;
 use std::{
     collections::HashSet,
+    net::{IpAddr, SocketAddr},
     task::{Context, Poll},
     time::Instant,
 };
 
+use bimap::BiMap;
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
 pub use sockets::Sockets;
@@ -269,6 +271,15 @@ pub enum ClientEvent {
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
+    },
+    DnsServersChanged {
+        /// The map of DNS servers that connlib will use.
+        ///
+        /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
+        /// - The "right" values are the effective DNS servers.
+        ///   If upstream DNS servers are configured (in the portal), we will use those.
+        ///   Otherwise, we will use the DNS servers configured on the system.
+        dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
     },
 }
 
