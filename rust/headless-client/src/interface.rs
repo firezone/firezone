@@ -1,4 +1,4 @@
-//! A cross-platform virtual network interface that can control DNS
+//! DNS and route control  for the virtual network interface in `firezone-tunnel`
 
 #[cfg(target_os = "linux")]
 pub mod linux;

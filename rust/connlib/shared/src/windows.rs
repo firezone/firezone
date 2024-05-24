@@ -45,11 +45,14 @@ pub mod dns {
     // Copied from the deep link schema
     const FZ_MAGIC: &str = "firezone-fd0020211111";
 
+    // TODO: De-dupe
+    const TUNNEL_NAME: &str = "Firezone";
+
     /// Tells Windows to send all DNS queries to our sentinels
     ///
     /// Parameters:
     /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
-    pub fn activate(dns_config: &[IpAddr], iface_idx: u32) -> Result<()> {
+    pub fn activate(dns_config: &[IpAddr]) -> Result<()> {
         let dns_config_string = dns_config
             .iter()
             .map(|ip| format!("\"{ip}\""))
@@ -65,7 +68,7 @@ pub mod dns {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
-            .arg(format!("Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({dns_config_string})"))
+            .arg(format!("Set-DnsClientServerAddress {TUNNEL_NAME} -ServerAddresses({dns_config_string})"))
             .status()?;
 
         tracing::info!("Activating DNS control");
@@ -93,9 +96,9 @@ pub mod dns {
     ///
     /// Parameters:
     /// - `dns_config_string` - Passed verbatim to [`activate`]
-    pub fn change(dns_config: &[IpAddr], iface_idx: u32) -> Result<()> {
+    pub fn change(dns_config: &[IpAddr]) -> Result<()> {
         deactivate()?;
-        activate(dns_config, iface_idx)?;
+        activate(dns_config)?;
         Ok(())
     }
 

@@ -32,7 +32,38 @@ impl InterfaceManager {
         ipv6: Ipv6Addr,
         dns_config: Vec<IpAddr>,
     ) -> Result<()> {
-        todo!()
+        tracing::debug!("Setting our IPv4 = {}", config.ipv4);
+        tracing::debug!("Setting our IPv6 = {}", config.ipv6);
+
+        // TODO: See if there's a good Win32 API for this
+        // Using netsh directly instead of wintun's `set_network_addresses_tuple` because their code doesn't work for IPv6
+        Command::new("netsh")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("interface")
+            .arg("ipv4")
+            .arg("set")
+            .arg("address")
+            .arg(format!("name=\"{TUNNEL_NAME}\""))
+            .arg("source=static")
+            .arg(format!("address={}", config.ipv4))
+            .arg("mask=255.255.255.255")
+            .stdout(Stdio::null())
+            .status()?;
+
+        Command::new("netsh")
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("interface")
+            .arg("ipv6")
+            .arg("set")
+            .arg("address")
+            .arg(format!("interface=\"{TUNNEL_NAME}\""))
+            .arg(format!("address={}", config.ipv6))
+            .stdout(Stdio::null())
+            .status()?;
+
+        connlib_shared::windows::dns::change(dns_config)
+            .context("Should be able to control DNS")?;
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

@@ -82,7 +82,7 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
@@ -96,29 +96,6 @@ impl Device {
         if self.tun.is_none() {
             self.tun = Some(Tun::new()?);
         }
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
-
-        Ok(())
-    }
-
-    #[cfg(target_family = "windows")]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        // On Windows we create the tunnel once and then we can reconfigure it in-place
-        if self.tun.is_none() {
-            self.tun = Some(Tun::new()?);
-        }
-
-        self.tun.as_ref().unwrap().set_config(config, &dns_config)?;
 
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
