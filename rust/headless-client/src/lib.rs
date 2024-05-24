@@ -122,8 +122,6 @@ struct CliCommon {
 
     /// A filesystem path where the token can be found
 
-    // Clap doesn't seem to allow `PathBuf` as an arg.
-
     // Apparently passing secrets through stdin is the most secure method, but
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
