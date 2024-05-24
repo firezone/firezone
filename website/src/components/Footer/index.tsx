@@ -211,7 +211,7 @@ export default function Footer() {
           <div className="flex p-2 items-center justify-center space-x-5">
             <AppleIcon size={5} href="/kb/user-guides/macos-client" />
             <WindowsIcon size={5} href="/kb/user-guides/windows-client" />
-            <LinuxIcon size={5} href="/kb/user-guides/linux-client" />
+            <LinuxIcon size={5} href="/kb/user-guides/linux-gui-client" />
             <AndroidIcon size={5} href="/kb/user-guides/android-client" />
           </div>
           <div className="flex p-2 items-center justify-center sm:justify-end space-x-5">

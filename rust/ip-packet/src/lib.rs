@@ -312,6 +312,15 @@ impl<'a> IpPacket<'a> {
     }
 }
 
+impl Clone for IpPacket<'static> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Ipv4(ip4) => Self::Ipv4(Ipv4Packet::owned(ip4.packet().to_vec()).unwrap()),
+            Self::Ipv6(ip6) => Self::Ipv6(Ipv6Packet::owned(ip6.packet().to_vec()).unwrap()),
+        }
+    }
+}
+
 impl<'a> From<Ipv4Packet<'a>> for IpPacket<'a> {
     fn from(value: Ipv4Packet<'a>) -> Self {
         Self::Ipv4(value)
