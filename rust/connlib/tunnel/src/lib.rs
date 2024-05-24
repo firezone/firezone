@@ -48,7 +48,7 @@ pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`], [`Sockets`] or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`] or time and pass it to the respective state.
 pub struct Tunnel<CB: Callbacks, TRoleState> {
     pub callbacks: CB,
 
