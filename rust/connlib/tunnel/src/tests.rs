@@ -10,6 +10,7 @@ use connlib_shared::{
     StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
+use hickory_proto::rr::RecordType;
 use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
 use ip_packet::MutableIpPacket;
@@ -116,23 +117,16 @@ enum Transition {
     /// Send a ICMP packet to an IPv6 resource.
     SendICMPPacketToIp6Resource { r_idx: sample::Index },
     // TODO: Do we need a separate transition for sending a packet to a DNS resolved resource? Or should we reuse the two above?
-    /// Send a DNS A query (IPv4) for one of our DNS resources.
-    SendAQueryToDnsResource {
+    /// Send a DNS query for one of our DNS resources.
+    SendQueryToDnsResource {
         /// The index into our list of DNS resources.
         r_idx: sample::Index,
+        /// The type of DNS query we should send.
+        r_type: RecordType,
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
         /// The IP we resolve the domain to.
-        resolved_ip: Ipv4Addr,
-    },
-    /// Send a DNS AAAA query (IPv6) for one of our DNS resources.
-    SendAAAAQueryToDnsResource {
-        /// The index into our list of DNS resources.
-        r_idx: sample::Index,
-        /// The index into our list of DNS servers.
-        dns_server_idx: sample::Index,
-        /// The IP we resolve the domain to.
-        resolved_ip: Ipv6Addr,
+        resolved_ip: IpAddr,
     },
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -272,8 +266,9 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
-            Transition::SendAQueryToDnsResource {
+            Transition::SendQueryToDnsResource {
                 r_idx,
+                r_type,
                 dns_server_idx,
                 resolved_ip,
             } => {
@@ -282,31 +277,13 @@ impl StateMachineTest for TunnelTest {
                 // Configure the gateway's "resolver" to return the sampled IP.
                 state
                     .gateway_dns_resolver
-                    .insert(domain.clone(), resolved_ip.into());
+                    .insert(domain.clone(), resolved_ip);
 
                 let (src, dns_server) = state.sample_dns_server(dns_server_idx);
-                let packet = ip_packet::make::dns_a_query(domain, src, dns_server);
+                let packet = ip_packet::make::dns_query(domain, r_type, src, dns_server);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
-            Transition::SendAAAAQueryToDnsResource {
-                r_idx,
-                dns_server_idx,
-                resolved_ip,
-            } => {
-                let domain = ref_state.sample_dns_resource_domain(&r_idx);
-
-                // Configure the gateway's "resolver" to return the sampled IP.
-                state
-                    .gateway_dns_resolver
-                    .insert(domain.clone(), resolved_ip.into());
-
-                let (src, dns_server) = state.sample_dns_server(dns_server_idx);
-                let packet = ip_packet::make::dns_aaaa_query(domain, src, dns_server);
-
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
-            }
-
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
             }
@@ -463,29 +440,15 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::AddDnsResource(r) => {
                 state.client_dns_resources.insert(r.clone());
             }
-            Transition::SendAQueryToDnsResource {
+            Transition::SendQueryToDnsResource {
                 r_idx, resolved_ip, ..
             } => {
                 let domain = state.sample_dns_resource_domain(r_idx);
 
                 // TODO: What if we don't have any upstream resolvers?
 
-                state
-                    .resolved_domain_names
-                    .insert(domain, (*resolved_ip).into());
+                state.resolved_domain_names.insert(domain, *resolved_ip);
             }
-            Transition::SendAAAAQueryToDnsResource {
-                r_idx, resolved_ip, ..
-            } => {
-                let domain = state.sample_dns_resource_domain(r_idx);
-
-                // TODO: What if we don't have any upstream resolvers?
-
-                state
-                    .resolved_domain_names
-                    .insert(domain, (*resolved_ip).into());
-            }
-
             Transition::SendICMPPacketToRandomIp { dst } => {
                 state.on_icmp_packet(state.client.tunnel_ip(*dst), *dst);
             }
@@ -555,14 +518,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::SendAQueryToDnsResource { .. } => {
-                if state.client_dns_resources.is_empty() {
-                    return false;
-                }
-
-                true
-            }
-            Transition::SendAAAAQueryToDnsResource { .. } => {
+            Transition::SendQueryToDnsResource { .. } => {
                 if state.client_dns_resources.is_empty() {
                     return false;
                 }
@@ -1491,10 +1447,11 @@ fn a_query_to_dns_resource() -> impl Strategy<Value = Transition> {
         any::<Ipv4Addr>(),
     )
         .prop_map(move |(r_idx, dns_server_idx, resolved_ip)| {
-            Transition::SendAQueryToDnsResource {
+            Transition::SendQueryToDnsResource {
                 r_idx,
+                r_type: RecordType::A,
                 dns_server_idx,
-                resolved_ip,
+                resolved_ip: resolved_ip.into(), // TODO: In the future, we should also test that the actual IP might be a different IP version than what we requested.
             }
         })
 }
@@ -1506,10 +1463,11 @@ fn aaaa_query_to_dns_resource() -> impl Strategy<Value = Transition> {
         any::<Ipv6Addr>(),
     )
         .prop_map(move |(r_idx, dns_server_idx, resolved_ip)| {
-            Transition::SendAAAAQueryToDnsResource {
+            Transition::SendQueryToDnsResource {
                 r_idx,
+                r_type: RecordType::AAAA,
                 dns_server_idx,
-                resolved_ip,
+                resolved_ip: resolved_ip.into(), // TODO: In the future, we should also test that the actual IP might be a different IP version than what we requested.
             }
         })
 }

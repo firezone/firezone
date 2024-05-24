@@ -191,15 +191,7 @@ pub fn udp_packet(
     }
 }
 
-pub fn dns_a_query(domain: Name, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
-    dns_query(domain, RecordType::A, src, dst)
-}
-
-pub fn dns_aaaa_query(domain: Name, src: SocketAddr, dst: SocketAddr) -> MutableIpPacket<'static> {
-    dns_query(domain, RecordType::AAAA, src, dst)
-}
-
-fn dns_query(
+pub fn dns_query(
     domain: Name,
     kind: RecordType,
     src: SocketAddr,
