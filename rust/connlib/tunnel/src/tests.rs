@@ -1126,6 +1126,7 @@ impl ReferenceState {
             .collect::<Vec<_>>();
         domains.sort();
 
+        // TODO: This is probably going to fail because we currently don't generate proper domains for DNS resources in the strategy.
         idx.get(&domains).clone().parse().unwrap()
     }
 }
