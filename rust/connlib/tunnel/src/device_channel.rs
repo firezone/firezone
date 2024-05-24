@@ -90,7 +90,7 @@ impl Device {
         callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         // For macos the filedescriptor is the same throughout its lifetime.
-        // If we reinitialzie tun, we might drop the old tun after the new one is created
+        // If we reinitialize tun, we might drop the old tun after the new one is created
         // this unregisters the file descriptor with the reactor so we never wake up
         // in case an event is triggered.
         if self.tun.is_none() {

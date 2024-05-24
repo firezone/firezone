@@ -68,7 +68,9 @@ pub mod dns {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
-            .arg(format!("Set-DnsClientServerAddress {TUNNEL_NAME} -ServerAddresses({dns_config_string})"))
+            .arg(format!(
+                "Set-DnsClientServerAddress {TUNNEL_NAME} -ServerAddresses({dns_config_string})"
+            ))
             .status()?;
 
         tracing::info!("Activating DNS control");
