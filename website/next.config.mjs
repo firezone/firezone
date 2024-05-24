@@ -53,18 +53,11 @@ const nextConfig = {
   images: {
     dangerouslyAllowSVG: true,
     remotePatterns: [
-      {
-        hostname: "api.star-history.com",
-      },
-      {
-        hostname: "github.com",
-      },
-      {
-        hostname: "avatars.githubusercontent.com",
-      },
-      {
-        hostname: "www.gravatar.com",
-      },
+      { hostname: "runacap.com" },
+      { hostname: "api.star-history.com" },
+      { hostname: "github.com" },
+      { hostname: "avatars.githubusercontent.com" },
+      { hostname: "www.gravatar.com" },
     ],
   },
 };
