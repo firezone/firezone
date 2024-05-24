@@ -8,7 +8,7 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
 use connlib_shared::callbacks;
@@ -275,7 +275,7 @@ pub fn run_only_headless_client() -> Result<()> {
                 future::Either::Right((None, _)) => {
                     return Err(anyhow::anyhow!("on_disconnect_rx unexpectedly ran empty"));
                 }
-                future::Either::Right((Some(error), _)) => return Err(anyhow::anyhow!(error)),
+                future::Either::Right((Some(error), _)) => return Err(anyhow!(error).context("Firezone disconnected")),
             }
         }
     });
@@ -310,8 +310,8 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
     let ipc_service = pin!(ipc_listen());
     let mut signals = platform::Signals::new()?;
 
+    // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        // Couldn't get the loop to work here yet, so SIGHUP is not implemented
         match future::select(pin!(signals.recv()), ipc_service).await {
             future::Either::Left((SignalKind::Hangup, _)) => {
                 bail!("Exiting, SIGHUP not implemented for the IPC service");
