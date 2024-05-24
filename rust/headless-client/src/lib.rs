@@ -8,7 +8,7 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
 use connlib_shared::callbacks;
@@ -260,10 +260,10 @@ pub fn run_only_headless_client() -> Result<()> {
     session.set_dns(platform::system_resolvers().unwrap_or_default());
 
     let disconnect_fut = pin!(on_disconnect_rx.recv());
-    let signals = platform::Signals::new()?;
+    let mut signals = platform::Signals::new()?;
 
     let result = rt.block_on(async {
-        match future::select(signals, disconnect_fut).await {
+        match future::select(pin!(signals.recv()), disconnect_fut).await {
             future::Either::Left((SignalKind::Hangup, _)) => {
                 tracing::info!("Caught Hangup signal");
                 Ok(())
@@ -275,7 +275,9 @@ pub fn run_only_headless_client() -> Result<()> {
             future::Either::Right((None, _)) => {
                 Err(anyhow::anyhow!("on_disconnect_rx unexpectedly ran empty"))
             }
-            future::Either::Right((Some(error), _)) => Err(anyhow::anyhow!(error)),
+            future::Either::Right((Some(error), _)) => {
+                Err(anyhow!(error).context("Connlib disconnected"))
+            }
         }
     });
 
@@ -306,11 +308,11 @@ pub fn run_only_ipc_service() -> Result<()> {
 pub(crate) fn run_debug_ipc_service() -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
+    let mut signals = platform::Signals::new()?;
     rt.block_on(async {
         let ipc_service = pin!(ipc_listen());
-        let signals = platform::Signals::new()?;
 
-        match future::select(signals, ipc_service).await {
+        match future::select(pin!(signals.recv()), ipc_service).await {
             future::Either::Left((SignalKind::Hangup, _)) => {
                 tracing::info!("Caught Hangup signal");
                 Ok(())

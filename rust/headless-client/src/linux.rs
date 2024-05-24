@@ -1,22 +1,21 @@
 //! Implementation, Linux-specific
 
-use super::{CliCommon, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
 use firezone_cli_utils::setup_global_subscriber;
-use futures::future::{Either, select};
+use futures::future::{select, Either};
 use std::{
     net::IpAddr,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    pin::Pin,
+    pin::pin,
     str::FromStr,
-    task::{Context, Poll},
 };
 use tokio::{
     net::{UnixListener, UnixStream},
-    signal::unix::{SignalKind as TokioSignalKind, signal, Signal},
+    signal::unix::{signal, Signal, SignalKind as TokioSignalKind},
 };
 
 // The Client currently must run as root to control DNS
@@ -38,25 +37,10 @@ impl Signals {
     }
 
     pub(crate) async fn recv(&mut self) -> SignalKind {
-        match select(self.sighup.recv(), self.sigin.recv()).await {
+        match select(pin!(self.sighup.recv()), pin!(self.sigint.recv())).await {
             Either::Left((_, _)) => SignalKind::Hangup,
             Either::Right((_, _)) => SignalKind::Interrupt,
         }
-    }
-}
-
-impl futures::future::Future for Signals {
-    type Output = super::SignalKind;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if self.sigint.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Interrupt);
-        }
-
-        if self.sighup.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Hangup);
-        }
-
-        Poll::Pending
     }
 }
 
