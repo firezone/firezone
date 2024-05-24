@@ -127,7 +127,26 @@ pub fn resource_name() -> impl Strategy<Value = String> {
 }
 
 pub fn dns_resource_address() -> impl Strategy<Value = String> {
-    any_with::<String>("[a-z]{4,10}".into()) // TODO: Should this have a more explicit domain structure?
+    (domain_name(), any::<bool>()).prop_map(|(domain, wildcard)| {
+        let name = if wildcard {
+            domain.append_label("*").unwrap()
+        } else {
+            domain
+        };
+
+        name.to_string()
+    })
+}
+
+pub fn domain_name() -> impl Strategy<Value = hickory_proto::rr::Name> {
+    let labels = any_with::<String>("[a-z]{3,6}".into());
+
+    collection::vec(labels, 2..4).prop_map(|labels| {
+        let mut name = hickory_proto::rr::Name::from_labels(labels).unwrap();
+        name.set_fqdn(false);
+
+        name
+    })
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.
