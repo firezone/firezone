@@ -27,6 +27,10 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Regis
 use url::Url;
 
 use platform::default_token_path;
+/// SIGINT and, on Linux, SIGHUP.
+///
+/// Must be constructed inside a Tokio runtime context.
+use platform::Signals;
 
 pub mod known_dirs;
 
@@ -259,9 +263,9 @@ pub fn run_only_headless_client() -> Result<()> {
     // TODO: this should be added dynamically
     session.set_dns(platform::system_resolvers().unwrap_or_default());
 
-    let mut signals = platform::Signals::new()?;
-
     let result = rt.block_on(async {
+        let mut signals = Signals::new()?;
+
         loop {
             match future::select(pin!(signals.recv()), pin!(on_disconnect_rx.recv())).await {
                 future::Either::Left((SignalKind::Hangup, _)) => {
@@ -309,11 +313,13 @@ pub fn run_only_ipc_service() -> Result<()> {
 pub(crate) fn run_debug_ipc_service() -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
-    let ipc_service = pin!(ipc_listen());
-    let mut signals = platform::Signals::new()?;
+    let _guard = rt.enter();
+    let mut signals = Signals::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
+        let ipc_service = pin!(ipc_listen());
+
         match future::select(pin!(signals.recv()), ipc_service).await {
             future::Either::Left((SignalKind::Hangup, _)) => {
                 bail!("Exiting, SIGHUP not implemented for the IPC service");
