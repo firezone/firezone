@@ -16,3 +16,9 @@ public struct Site: Decodable, Identifiable {
     self.name = name
   }
 }
+
+extension Site: Equatable {
+  public static func == (lhs: Site, rhs: Site) -> Bool {
+    return lhs.id == rhs.id && lhs.name == rhs.name
+  }
+}
