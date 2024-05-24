@@ -327,6 +327,8 @@ pub struct ClientState {
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
     /// When to next refresh DNS resources.
+    ///
+    /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
     next_dns_refresh: Option<Instant>,
 
     /// Configuration of the TUN device, when it is up.
