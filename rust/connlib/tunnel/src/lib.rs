@@ -55,7 +55,7 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
-    /// The [`Io`] component of connlib.
+    /// The I/O component of connlib.
     ///
     /// Handles all side-effects.
     io: Io,

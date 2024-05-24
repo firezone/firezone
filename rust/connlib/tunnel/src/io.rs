@@ -28,7 +28,7 @@ const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 pub struct Io {
     /// The TUN device offered to the user.
     ///
-    /// This is the `firezone-tun` network interface that users see when they e.g. type `ip addr` on Linux.
+    /// This is the `tun-firezone` network interface that users see when they e.g. type `ip addr` on Linux.
     device: Device,
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,

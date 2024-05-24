@@ -281,36 +281,34 @@ fn send_dns_answer(
     }
 }
 
-/// A SANS-IO implementation of a client's functionality.
+/// A sans-IO implementation of a Client's functionality.
 ///
 /// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
 /// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
-/// They also initiate connections to gateways based on packets sent to resources.
+/// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
 pub struct ClientState {
-    /// The [`snownet::ClientNode`].
-    ///
     /// Manages wireguard tunnels to gateways.
     node: ClientNode<GatewayId, RelayId>,
-    /// All peers gateways we are connected to and the associated, connection-specific state.
+    /// All gateways we are connected to and the associated, connection-specific state.
     peers: PeerStore<GatewayId, GatewayOnClient>,
-    /// Which resources are trying to connect to.
+    /// Which Resources we are trying to connect to.
     awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
 
-    /// Tracks, which gateway to use for a particular resource.
+    /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
     /// The site a gateway belongs to.
     gateways_site: HashMap<GatewayId, SiteId>,
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, Status>,
 
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like *.mycompany.com).
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// All resources indexed by their ID.
     resource_ids: HashMap<ResourceId, ResourceDescription>,
 
-    /// The DNS resolvers configured on the system prior to connlib starting up.
+    /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
 
     /// DNS queries that we need to forward to the system resolver.
