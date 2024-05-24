@@ -24,10 +24,15 @@ use std::{
 
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
+/// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
+    /// The TUN device offered to the user.
+    ///
+    /// This is the `tun-firezone` network interface that users see when they e.g. type `ip addr` on Linux.
     device: Device,
-    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+    timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
     upstream_dns_servers: HashMap<IpAddr, TokioAsyncResolver>,
     forwarded_dns_queries: FuturesTupleSet<

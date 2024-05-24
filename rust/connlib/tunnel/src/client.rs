@@ -281,37 +281,61 @@ fn send_dns_answer(
     }
 }
 
+/// A sans-IO implementation of a Client's functionality.
+///
+/// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
+/// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
+/// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
 pub struct ClientState {
-    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    resources_gateways: HashMap<ResourceId, GatewayId>,
-
-    pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
-    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    pub resource_ids: HashMap<ResourceId, ResourceDescription>,
-    pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
-
-    peers: PeerStore<GatewayId, GatewayOnClient>,
-
+    /// Manages wireguard tunnels to gateways.
     node: ClientNode<GatewayId, RelayId>,
+    /// All gateways we are connected to and the associated, connection-specific state.
+    peers: PeerStore<GatewayId, GatewayOnClient>,
+    /// Which Resources we are trying to connect to.
+    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
 
-    pub ip_provider: IpProvider,
+    /// Tracks which gateway to use for a particular Resource.
+    resources_gateways: HashMap<ResourceId, GatewayId>,
+    /// The site a gateway belongs to.
+    gateways_site: HashMap<GatewayId, SiteId>,
+    /// The online/offline status of a site.
+    sites_status: HashMap<SiteId, Status>,
 
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
+    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// All resources indexed by their ID.
+    resource_ids: HashMap<ResourceId, ResourceDescription>,
 
-    buffered_events: VecDeque<ClientEvent>,
-    interface_config: Option<InterfaceConfig>,
-    buffered_packets: VecDeque<IpPacket<'static>>,
+    /// The DNS resolvers configured on the system outside of connlib.
+    system_resolvers: Vec<IpAddr>,
 
     /// DNS queries that we need to forward to the system resolver.
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
 
+    /// The (internal) IPs we have assigned for a certain DNS resource.
+    ///
+    /// We assign one internal IP per externally resolved IP.
+    dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
+    /// DNS queries we can only answer once we have connected to the resource.
+    ///
+    /// See [`dns::ResolveStrategy`] for details.
+    deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
+    /// Hands out IPs for DNS resources.
+    ip_provider: IpProvider,
+    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
+    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// When to next refresh DNS resources.
+    ///
+    /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
     next_dns_refresh: Option<Instant>,
 
-    system_resolvers: Vec<IpAddr>,
+    /// Configuration of the TUN device, when it is up.
+    interface_config: Option<InterfaceConfig>,
 
-    gateways_site: HashMap<GatewayId, SiteId>,
-    sites_status: HashMap<SiteId, Status>,
+    buffered_events: VecDeque<ClientEvent>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

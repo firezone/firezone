@@ -60,6 +60,7 @@ clippy.unused_async = "warn"
 clippy.wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
 clippy.redundant_else = "warn"
 clippy.redundant_clone = "warn"
+rustdoc.private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
