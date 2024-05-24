@@ -8,7 +8,7 @@
 
 import Foundation
 
-public struct Resource: Decodable, Identifiable {
+public struct Resource: Decodable, Identifiable, Equatable {
   public let id: String
   public var name: String
   public var address: String
@@ -61,17 +61,4 @@ public enum ResourceType: String, Decodable {
   case dns = "dns"
   case cidr = "cidr"
   case ip = "ip"
-}
-
-extension Resource: Equatable {
-  public static func == (lhs: Resource, rhs: Resource) -> Bool {
-    // Resources are the same if their members are the same
-    return lhs.id == rhs.id &&
-    lhs.name == rhs.name &&
-    lhs.address == rhs.address &&
-    lhs.addressDescription == rhs.addressDescription &&
-    lhs.sites == rhs.sites &&
-    lhs.type == rhs.type &&
-    lhs.status == rhs.status
-  }
 }
