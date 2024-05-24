@@ -128,8 +128,8 @@ struct CliCommon {
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
     // on disk somewhere anyway.)
-    #[arg(default_value_t = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
-    token_path: String,
+    #[arg(default_value = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
+    token_path: PathBuf,
 
     /// Friendly name for this client to display in the UI.
     #[arg(long, env = "FIREZONE_NAME")]
@@ -210,10 +210,10 @@ pub fn run_only_headless_client() -> Result<()> {
         .enable_all()
         .build()?;
 
-    let token = get_token(token_env_var, &PathBuf::from(&cli.token_path))?.with_context(|| {
+    let token = get_token(token_env_var, &cli.token_path)?.with_context(|| {
         format!(
             "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-            cli.token_path
+            cli.token_path.display()
         )
     })?;
     tracing::info!("Running in headless / standalone mode");
@@ -502,9 +502,7 @@ fn get_token(
 /// Try to retrieve the token from disk
 ///
 /// Sync because we do blocking file I/O
-fn read_token_file(token_path: &Path) -> Result<Option<SecretString>> {
-    let path = PathBuf::from(token_path);
-
+fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
     if let Ok(token) = std::env::var(TOKEN_ENV_KEY) {
         std::env::remove_var(TOKEN_ENV_KEY);
 
@@ -518,12 +516,12 @@ fn read_token_file(token_path: &Path) -> Result<Option<SecretString>> {
         return Ok(Some(token));
     }
 
-    if std::fs::metadata(&path).is_err() {
+    if std::fs::metadata(path).is_err() {
         return Ok(None);
     }
-    platform::check_token_permissions(&path)?;
+    platform::check_token_permissions(path)?;
 
-    let Ok(bytes) = std::fs::read(&path) else {
+    let Ok(bytes) = std::fs::read(path) else {
         // We got the metadata a second ago, but can't read the file itself.
         // Pretty strange, would have to be a disk fault or TOCTOU.
         tracing::info!(?path, "Token file existed but now is unreadable");
