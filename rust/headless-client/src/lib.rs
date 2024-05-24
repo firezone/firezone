@@ -410,7 +410,7 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (cb_tx, mut cb_rx) = mpsc::channel(100);
 
     let send_task = tokio::spawn(async move {
-        let mut interface = interface::InterfaceManager::new()?;
+        let mut interface = interface::InterfaceManager::new();
 
         while let Some(msg) = cb_rx.recv().await {
             match msg {

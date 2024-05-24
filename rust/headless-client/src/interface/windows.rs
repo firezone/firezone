@@ -25,10 +25,8 @@ impl Drop for InterfaceManager {
 }
 
 impl InterfaceManager {
-    // Fallible on Linux
-    #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn new() -> Result<Self> {
-        Ok(Self {})
+    pub(crate) fn new() -> Self {
+        Self {}
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

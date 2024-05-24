@@ -47,15 +47,15 @@ impl Drop for InterfaceManager {
 }
 
 impl InterfaceManager {
-    pub(crate) fn new() -> Result<Self> {
+    pub(crate) fn new() -> Self {
         let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
         tracing::info!(?dns_control_method);
 
-        Ok(Self {
+        Self {
             connection: None,
             dns_control_method,
             routes: Default::default(),
-        })
+        }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
