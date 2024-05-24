@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     pin::pin,
     str::FromStr,
-    task::{Context, Poll},
+    task::Poll,
     time::Duration,
 };
 use tokio::{net::windows::named_pipe, sync::mpsc};
@@ -41,6 +41,8 @@ const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
+// This looks like a pointless wrapper around `CtrlC`, because it must match
+// the Linux signatures
 pub(crate) struct Signals {
     sigint: tokio::signal::windows::CtrlC,
 }
@@ -51,11 +53,9 @@ impl Signals {
         Ok(Self { sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<SignalKind> {
-        if self.sigint.poll_recv(cx).is_ready() {
-            return Poll::Ready(SignalKind::Interrupt);
-        }
-        Poll::Pending
+    pub(crate) async fn recv(&mut self) -> SignalKind {
+        self.sigint.recv().await;
+        SignalKind::Interrupt
     }
 }
 

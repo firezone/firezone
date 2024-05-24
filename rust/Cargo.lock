@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "clap",
  "tracing",
@@ -1895,7 +1895,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1928,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1981,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2067,6 +2067,7 @@ dependencies = [
  "chrono",
  "connlib-shared",
  "domain",
+ "firezone-relay",
  "futures",
  "futures-bounded",
  "futures-util",
@@ -2084,6 +2085,7 @@ dependencies = [
  "proptest",
  "proptest-state-machine",
  "quinn-udp",
+ "rand 0.8.5",
  "rand_core 0.6.4",
  "rangemap",
  "rtnetlink",
@@ -2888,7 +2890,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2903,7 +2905,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3162,7 +3164,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "pnet_packet",
 ]
@@ -4552,7 +4554,7 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "backoff",
  "base64 0.22.1",
@@ -5424,9 +5426,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97a4f06d93f32c3d835893e3ba8f953f9e0ccadfed414e95e595dec947fdb075"
+checksum = "b6220f78bb44c15f326b0596113305f6101097a18755d53727a575c97e09fb24"
 dependencies = [
  "bytes",
  "crc",
@@ -5682,18 +5684,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha-1"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "digest",
- "sha1-asm",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5702,6 +5692,7 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+ "sha1-asm",
 ]
 
 [[package]]
@@ -5803,7 +5794,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5824,7 +5815,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "boringtun",
@@ -5923,8 +5914,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.5.0"
-source = "git+https://github.com/firezone/str0m?branch=main#44b616945145033ade739f30cdce004728011619"
+version = "0.5.1"
+source = "git+https://github.com/firezone/str0m?branch=main#07c4fb0449db1fdde4b3421a61b666312ec81106"
 dependencies = [
  "combine",
  "crc",
@@ -5933,7 +5924,7 @@ dependencies = [
  "once_cell",
  "sctp-proto",
  "serde",
- "sha-1",
+ "sha1",
  "thiserror",
  "tracing",
 ]

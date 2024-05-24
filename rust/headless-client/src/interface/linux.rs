@@ -153,6 +153,7 @@ impl InterfaceManager {
         ipv4: Vec<Cidrv4>,
         ipv6: Vec<Cidrv6>,
     ) -> Result<()> {
+        tracing::info!("on_update_routes");
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
             .map(|x| Into::<Ipv4Network>::into(x).into())

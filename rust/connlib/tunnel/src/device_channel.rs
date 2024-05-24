@@ -64,7 +64,23 @@ impl Device {
         }
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg(target_os = "android")]
+    pub(crate) fn set_config(
+        &mut self,
+        config: &Interface,
+        dns_config: Vec<IpAddr>,
+        callbacks: &impl Callbacks,
+    ) -> Result<(), ConnlibError> {
+        self.tun = Some(Tun::new(config, dns_config, callbacks)?);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
@@ -73,6 +89,8 @@ impl Device {
     ) -> Result<(), ConnlibError> {
         // On Android / Linux we recreate the tunnel every time we re-configure it
         self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
+
+        // The actual values are ignored, this is just used as a `TunnelReady` signal
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         if let Some(waker) = self.waker.take() {

@@ -13,10 +13,12 @@ use connlib_shared::{
 use io::Io;
 use std::{
     collections::HashSet,
+    net::{IpAddr, SocketAddr},
     task::{Context, Poll},
     time::Instant,
 };
 
+use bimap::BiMap;
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
 pub use sockets::Sockets;
@@ -45,13 +47,19 @@ const FIREZONE_MARK: u32 = 0xfd002021;
 pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState>;
 pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 
-/// Tunnel is a wireguard state machine that uses webrtc's ICE channels instead of UDP sockets to communicate between peers.
+/// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
+///
+/// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`] or time and pass it to the respective state.
 pub struct Tunnel<CB: Callbacks, TRoleState> {
     pub callbacks: CB,
 
-    /// State that differs per role, i.e. clients vs gateways.
+    /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
+    /// The I/O component of connlib.
+    ///
+    /// Handles all side-effects.
     io: Io,
 
     write_buf: Box<[u8; MAX_UDP_SIZE]>,
@@ -207,7 +215,10 @@ where
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(packet) else {
+                    let Some(transmit) = self
+                        .role_state
+                        .encapsulate(packet, std::time::Instant::now())
+                    else {
                         continue;
                     };
 
@@ -261,8 +272,18 @@ pub enum ClientEvent {
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
+    DnsServersChanged {
+        /// The map of DNS servers that connlib will use.
+        ///
+        /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
+        /// - The "right" values are the effective DNS servers.
+        ///   If upstream DNS servers are configured (in the portal), we will use those.
+        ///   Otherwise, we will use the DNS servers configured on the system.
+        dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    },
 }
 
+#[derive(Debug, Clone)]
 pub enum GatewayEvent {
     NewIceCandidate {
         conn_id: ClientId,

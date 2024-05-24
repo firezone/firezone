@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
-  title: "Apple Clients • Firezone Docs",
+  title: "iOS Client • Firezone Docs",
   description: "Firezone Documentation",
 };
 

@@ -7,8 +7,12 @@ pub(crate) type IpcStream = UnixStream;
 
 /// Connect to the IPC service
 pub(crate) async fn connect_to_service() -> Result<IpcStream> {
-    let stream = UnixStream::connect(sock_path())
-        .await
-        .context("Couldn't connect to Unix domain socket")?;
+    let path = sock_path();
+    let stream = UnixStream::connect(&path).await.with_context(|| {
+        format!(
+            "Couldn't connect to Unix domain socket at `{}`",
+            path.display()
+        )
+    })?;
     Ok(stream)
 }

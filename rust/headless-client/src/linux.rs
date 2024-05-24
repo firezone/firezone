@@ -1,20 +1,21 @@
 //! Implementation, Linux-specific
 
-use super::{CliCommon, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod};
 use firezone_cli_utils::setup_global_subscriber;
+use futures::future::{select, Either};
 use std::{
     net::IpAddr,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
+    pin::pin,
     str::FromStr,
-    task::{Context, Poll},
 };
 use tokio::{
     net::{UnixListener, UnixStream},
-    signal::unix::SignalKind as TokioSignalKind,
+    signal::unix::{signal, Signal, SignalKind as TokioSignalKind},
 };
 
 // The Client currently must run as root to control DNS
@@ -23,28 +24,23 @@ const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
 pub(crate) struct Signals {
-    sighup: tokio::signal::unix::Signal,
-    sigint: tokio::signal::unix::Signal,
+    sighup: Signal,
+    sigint: Signal,
 }
 
 impl Signals {
     pub(crate) fn new() -> Result<Self> {
-        let sighup = tokio::signal::unix::signal(TokioSignalKind::hangup())?;
-        let sigint = tokio::signal::unix::signal(TokioSignalKind::interrupt())?;
+        let sighup = signal(TokioSignalKind::hangup())?;
+        let sigint = signal(TokioSignalKind::interrupt())?;
 
         Ok(Self { sighup, sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
-        if self.sigint.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Interrupt);
+    pub(crate) async fn recv(&mut self) -> SignalKind {
+        match select(pin!(self.sighup.recv()), pin!(self.sigint.recv())).await {
+            Either::Left((_, _)) => SignalKind::Hangup,
+            Either::Right((_, _)) => SignalKind::Interrupt,
         }
-
-        if self.sighup.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Hangup);
-        }
-
-        Poll::Pending
     }
 }
 
