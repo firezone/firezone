@@ -125,10 +125,20 @@ where
     }
 }
 
+/// A SANS-IO implementation of a gateway's functionality.
+///
+/// Internally, this composes a [`snownet::ServerNode`] with firezone's policy engine around resources.
 pub struct GatewayState {
-    peers: PeerStore<ClientId, ClientOnGateway>,
+    /// The [`snownet::ClientNode`].
+    ///
+    /// Manages wireguard tunnels to clients.
     node: ServerNode<ClientId, RelayId>,
+    /// All clients we are connected to and the associated, connection-specific state.
+    peers: PeerStore<ClientId, ClientOnGateway>,
+
+    /// When to next check whether a resource-access policy has expired.
     next_expiry_resources_check: Option<Instant>,
+
     buffered_events: VecDeque<GatewayEvent>,
 }
 
