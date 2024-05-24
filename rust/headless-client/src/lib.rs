@@ -421,7 +421,9 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
             match msg {
                 InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    interface.on_set_interface_config(ipv4, ipv6, dns).await?
+                    interface.on_set_interface_config(ipv4, ipv6, dns).await?;
+                    tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
+                        .await?;
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                     interface.on_update_routes(ipv4, ipv6).await?

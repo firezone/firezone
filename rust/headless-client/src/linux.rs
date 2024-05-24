@@ -197,12 +197,12 @@ impl IpcServer {
         let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
         let perms = std::fs::Permissions::from_mode(0o660);
         std::fs::set_permissions(sock_path, perms)?;
-        tracing::info!("Listening for GUI to connect over IPC...");
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
         Ok(Self { listener })
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
+        tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;
         // I'm not sure if we can enforce group membership here - Docker
