@@ -391,7 +391,7 @@ export default function ComplianceDiagram() {
           filter="url(#filter2_d_1082_965)"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 3 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
           viewport={{ once: true }}
         >
           <rect
@@ -424,7 +424,7 @@ export default function ComplianceDiagram() {
           filter="url(#filter3_d_1082_965)"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 2 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
           viewport={{ once: true }}
         >
           <rect
@@ -457,7 +457,7 @@ export default function ComplianceDiagram() {
           filter="url(#filter4_d_1082_965)"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 1 }}
+          transition={{ duration: 0.3, delay: 0.6 }}
           viewport={{ once: true }}
         >
           <rect
@@ -490,7 +490,7 @@ export default function ComplianceDiagram() {
           filter="url(#filter5_d_1082_965)"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 4 }}
+          transition={{ duration: 0.3, delay: 0.8 }}
           viewport={{ once: true }}
         >
           <rect
@@ -523,7 +523,7 @@ export default function ComplianceDiagram() {
           filter="url(#filter6_d_1082_965)"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 5 }}
+          transition={{ duration: 0.3, delay: 1 }}
           viewport={{ once: true }}
         >
           <rect

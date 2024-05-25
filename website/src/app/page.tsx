@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
 import BattleCard from "@/components/BattleCard";
+import { RunaCap } from "@/components/Badges";
 import { Metadata } from "next";
 import CustomerLogos from "@/components/CustomerLogos";
 import {
@@ -465,7 +466,7 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="flex justify-center mt-8">
+        <div className="mx-auto flex max-w-screen-md justify-center mt-8">
           <Image
             src="https://api.star-history.com/svg?repos=firezone/firezone&type=Date"
             alt="Firezone stars"
@@ -475,7 +476,8 @@ export default function Page() {
           />
         </div>
 
-        <div className="flex justify-center mt-8">
+        <div className="mx-auto flex max-w-lg justify-between mt-8">
+          <RunaCap />
           <ActionLink
             className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
             href="https://www.github.com/firezone/firezone"
