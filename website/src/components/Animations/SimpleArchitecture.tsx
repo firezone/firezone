@@ -55,42 +55,42 @@ export default function SimpleArchitecture() {
         d="M163.603 430.276C163.435 436.245 163.645 442.256 164.23 443.717C164.815 445.178 166.068 448.019 170.375 447.098C173.974 446.327 175.284 444.837 175.852 441.546C176.27 439.125 177.077 432.402 177.18 431.025"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M158.439 400.353C158.439 400.353 138.937 392.394 139.844 410.492C140.037 414.342 145.371 439.624 151.734 431.988C154.059 429.195 156.161 427.005 156.161 427.005"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M168.973 398.9C168.298 399.111 179.822 394.694 186.371 403.049C188.684 406.001 186.003 418.06 179.591 427.56"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M179.591 427.56C179.591 427.56 180.009 429.614 186.082 428.362C188.743 427.813 187.142 429.902 184.443 431.154C182.228 432.18 177.262 432.443 177.181 431.025C176.972 427.365 179.794 428.477 179.591 427.56C179.407 426.734 178.144 425.924 177.309 423.903C176.581 422.139 167.313 408.611 179.88 410.621C180.34 410.525 176.602 398.686 164.841 398.493C153.083 398.301 153.469 412.931 153.469 412.931"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="bevel"
       />
       <path
         d="M160.311 428.812C158.672 430.64 159.154 430.961 155.877 431.634C152.562 432.317 154.509 433.531 155.781 433.848C157.322 434.234 160.889 434.779 163.299 431.41C164.033 430.384 163.294 428.747 162.286 428.33C161.799 428.129 161.148 427.876 160.311 428.812V428.812Z"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M160.203 428.78C160.038 427.705 160.557 426.426 161.113 424.929C161.949 422.684 163.878 420.438 162.335 413.316C161.185 408.008 153.473 412.211 153.468 412.931C153.464 413.65 153.817 416.578 153.339 419.989C152.716 424.438 156.175 428.202 160.159 427.817"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
@@ -109,7 +109,7 @@ export default function SimpleArchitecture() {
         d="M179.88 410.62C179.984 412.549 179.464 413.862 179.398 415.914C179.301 418.898 180.823 422.312 178.53 425.731"
         stroke="white"
         strokeWidth="1.247"
-        stroke-linecap="round"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
@@ -138,7 +138,7 @@ export default function SimpleArchitecture() {
         rx="8.5"
         stroke="#333638"
         strokeWidth="3"
-        stroke-linecap="round"
+        strokeLinecap="round"
       />
       <rect x="304" y="60" width="75" height="70" fill="#F9FAFA" />
       <rect
@@ -305,7 +305,7 @@ export default function SimpleArchitecture() {
             rx="8.5"
             stroke="#333638"
             strokeWidth="3"
-            stroke-linecap="round"
+            strokeLinecap="round"
           />
           <rect x="785" y="437" width="75" height="70" fill="#F9FAFA" />
           <rect
