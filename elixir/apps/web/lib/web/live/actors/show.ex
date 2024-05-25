@@ -573,7 +573,7 @@ defmodule Web.Actors.Show do
 
     socket =
       socket
-      |> put_flash(:info, "Welcome email sent to #{identity.provider_identifier}")
+      |> put_flash(:info, "Welcome email sent to #{get_identity_email(identity)}")
 
     {:noreply, socket}
   end
