@@ -13,7 +13,7 @@ use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use hickory_proto::rr::RecordType;
 use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
-use ip_packet::MutableIpPacket;
+use ip_packet::{ip::IpNextHeaderProtocols, MutableIpPacket};
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -807,6 +807,11 @@ impl TunnelTest {
                 .state
                 .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
+            match packet.source() {
+                IpAddr::V4(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmp),
+                IpAddr::V6(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmpv6),
+            }
+
             self.client_received_icmp_replies.push_back((
                 self.now,
                 packet.source(),
@@ -835,7 +840,10 @@ impl TunnelTest {
                 .state
                 .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
-            // TODO: Assert that it is an ICMP packet.
+            match packet.source() {
+                IpAddr::V4(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmp),
+                IpAddr::V6(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmpv6),
+            }
 
             let packet_src = packet.source();
             let packet_dst = packet.destination();
