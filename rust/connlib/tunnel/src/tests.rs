@@ -13,7 +13,7 @@ use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use hickory_proto::rr::RecordType;
 use ip_network::Ipv4Network;
 use ip_network_table::IpNetworkTable;
-use ip_packet::{ip::IpNextHeaderProtocols, MutableIpPacket};
+use ip_packet::{ip::IpNextHeaderProtocols, IpPacket, MutableIpPacket};
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -281,6 +281,8 @@ impl StateMachineTest for TunnelTest {
 
                 let (src, dns_server) = state.sample_dns_server(dns_server_idx);
                 let packet = ip_packet::make::dns_query(domain, r_type, src, dns_server);
+
+                // TODO: We should remember the transaction ID of the DNS query that we sent.
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
@@ -606,6 +608,11 @@ impl TunnelTest {
                 self.on_client_event(self.client.id, event, &ref_state.client_cidr_resources);
                 continue;
             }
+            if let Some(packet) = self.client.state.poll_packets() {
+                self.on_client_buffered_packet(packet);
+                continue;
+            }
+
             if let Some(transmit) = self.gateway.state.poll_transmit() {
                 let sending_socket = self.gateway.sending_socket_for(transmit.dst);
 
@@ -1023,6 +1030,15 @@ impl TunnelTest {
                 .span
                 .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
         }
+    }
+
+    /// Process a buffered IP packet from the client.
+    ///
+    /// Currently, we rely on the implementation detail here that these are only ever DNS responses.
+    fn on_client_buffered_packet(&self, packet: IpPacket<'_>) {
+        assert_eq!(packet.next_header(), IpNextHeaderProtocols::Udp);
+
+        todo!()
     }
 }
 

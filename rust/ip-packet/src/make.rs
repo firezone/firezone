@@ -197,6 +197,8 @@ pub fn dns_query(
     src: SocketAddr,
     dst: SocketAddr,
 ) -> MutableIpPacket<'static> {
+    // TODO: This is wrong and not a full DNS query!
+
     let payload = hickory_proto::op::Query::query(domain, kind)
         .to_bytes()
         .unwrap();
