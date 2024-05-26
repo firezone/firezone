@@ -10,7 +10,7 @@ repos:
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+    rev: v4.6.0
     hooks:
       - id: mixed-line-ending
         args: ["--fix=lf"]
@@ -32,15 +32,30 @@ repos:
 
   # Third party pre-commit hooks
   - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.9.0
+    rev: v0.10.0
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
         exclude: ^.*/gradlew$
   - repo: https://github.com/pecigonzalo/pre-commit-shfmt
-    rev: v2.1.0
+    rev: v2.2.0
     hooks:
       - id: shell-fmt
         args:
           - -i
           - "4"
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: "v4.0.0-alpha.8"
+    hooks:
+      - id: prettier
+        exclude: "[^(^website)]"
+        types_or:
+          - javascript
+          - jsx
+          - css
+          - scss
+          - json
+          - mdx
+          - markdown
+          - html
+          - xml
