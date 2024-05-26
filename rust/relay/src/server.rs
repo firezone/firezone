@@ -60,6 +60,7 @@ pub struct Server<R> {
     channel_and_client_by_port_and_peer:
         HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
 
+    turn_port: u16,
     lowest_port: u16,
     highest_port: u16,
 
@@ -154,6 +155,7 @@ where
     pub fn new(
         public_address: impl Into<IpStack>,
         mut rng: R,
+        turn_port: u16,
         lowest_port: u16,
         highest_port: u16,
     ) -> Self {
@@ -181,6 +183,7 @@ where
             public_address: public_address.into(),
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
+            turn_port,
             lowest_port,
             highest_port,
             channels_by_client_and_number: Default::default(),
@@ -199,6 +202,10 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
+    }
+
+    pub fn turn_port(&self) -> u16 {
+        self.turn_port
     }
 
     /// Registers a new, valid nonce.

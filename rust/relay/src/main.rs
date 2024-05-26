@@ -27,8 +27,6 @@ use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
-const TURN_PORT: u16 = 3478;
-
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 15);
 
 #[derive(Parser, Debug)]
@@ -39,6 +37,9 @@ struct Args {
     /// The public (i.e. internet-reachable) IPv6 address of the relay server.
     #[arg(long, env)]
     public_ip6_addr: Option<Ipv6Addr>,
+    /// The port used by STUN/TURN clients
+    #[arg(long, env, hide = true, default_value = "3478")]
+    turn_port: u16,
     // See https://www.rfc-editor.org/rfc/rfc8656.html#name-allocations
     /// The lowest port used for TURN allocations.
     #[arg(long, env, hide = true, default_value = "49152")]
@@ -112,6 +113,7 @@ async fn main() -> Result<()> {
     let server = Server::new(
         public_addr,
         make_rng(args.rng_seed),
+        args.turn_port,
         args.lowest_port,
         args.highest_port,
     );
@@ -130,6 +132,7 @@ async fn main() -> Result<()> {
             args.api_url.clone(),
             token,
             args.name.clone(),
+            args.turn_port,
             args.public_ip4_addr,
             args.public_ip6_addr,
         )?;
@@ -153,7 +156,7 @@ async fn main() -> Result<()> {
 
     let mut eventloop = Eventloop::new(server, channel, public_addr, last_heartbeat_sent)?;
 
-    tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {TURN_PORT}");
+    tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {0}", args.turn_port);
 
     future::poll_fn(|cx| eventloop.poll(cx))
         .await
@@ -323,16 +326,22 @@ where
 
         if public_address.as_v4().is_some() {
             sockets
-                .bind(TURN_PORT, AddressFamily::V4)
+                .bind(server.turn_port(), AddressFamily::V4)
                 .with_context(|| {
-                    format!("Failed to bind to port {TURN_PORT} on IPv4 interfaces")
+                    format!(
+                        "Failed to bind to port {0} on IPv4 interfaces",
+                        server.turn_port()
+                    )
                 })?;
         }
         if public_address.as_v6().is_some() {
             sockets
-                .bind(TURN_PORT, AddressFamily::V6)
+                .bind(server.turn_port(), AddressFamily::V6)
                 .with_context(|| {
-                    format!("Failed to bind to port {TURN_PORT} on IPv6 interfaces")
+                    format!(
+                        "Failed to bind to port {0} on IPv6 interfaces",
+                        server.turn_port()
+                    )
                 })?;
         }
 
@@ -360,10 +369,11 @@ where
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        if let Err(e) =
-                            self.sockets
-                                .try_send(TURN_PORT, recipient.into_socket(), &payload)
-                        {
+                        if let Err(e) = self.sockets.try_send(
+                            self.server.turn_port(),
+                            recipient.into_socket(),
+                            &payload,
+                        ) {
                             tracing::warn!(target: "relay", %recipient, "Failed to send message: {e}");
                         }
                     }
@@ -416,10 +426,10 @@ where
 
             match self.sockets.poll_recv_from(payload, cx) {
                 Poll::Ready(Ok(sockets::Received {
-                    port: TURN_PORT, // Packets coming in on the TURN port are from clients.
+                    port, // Packets coming in on the TURN port are from clients.
                     from,
                     packet,
-                })) => {
+                })) if port == self.server.turn_port() => {
                     if let Some((port, peer)) = self.server.handle_client_input(
                         packet,
                         ClientSocket::new(from),
@@ -456,7 +466,7 @@ where
                         );
 
                         if let Err(e) = self.sockets.try_send(
-                            TURN_PORT, // Packets coming in from peers always go out on the TURN port
+                            self.server.turn_port(), // Packets coming in from peers always go out on the TURN port
                             client.into_socket(),
                             &self.buffer[..total_length],
                         ) {
