@@ -213,8 +213,8 @@ fn get_websocket_path<E>(
         if let Some(ipv4_address) = ipv4_address {
             query_pairs.append_pair("ipv4", &ipv4_address.to_string());
         }
-        if let Some(ipv4_address) = ipv6_address {
-            query_pairs.append_pair("ipv6", &ipv4_address.to_string());
+        if let Some(ipv6_address) = ipv6_address {
+            query_pairs.append_pair("ipv6", &ipv6_address.to_string());
         }
         if let Some(port) = port {
             query_pairs.append_pair("port", &port.to_string());
