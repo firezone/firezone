@@ -32,6 +32,7 @@ export default function RootLayout({
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
       />
+      <Mixpanel />
       <body className={source_sans_3.className}>
         <Banner active={false}>
           <p className="mx-auto text-center">
@@ -64,7 +65,6 @@ export default function RootLayout({
           defer
           src="//js.hs-scripts.com/23723443.js"
         />
-        <Mixpanel />
         <GoogleAds />
         <LinkedInInsights />
       </body>

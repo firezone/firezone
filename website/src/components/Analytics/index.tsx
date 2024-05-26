@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useMixpanel } from "react-mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
 
-export function Mixpanel() {
+function _Mixpanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mixpanel = useMixpanel();
@@ -58,7 +58,15 @@ export function Mixpanel() {
     };
   }, [pathname, searchParams, mixpanel]);
 
-  return <Suspense />;
+  return null;
+}
+
+export function Mixpanel() {
+  return (
+    <Suspense>
+      <_Mixpanel />
+    </Suspense>
+  );
 }
 
 export function GoogleAds() {
