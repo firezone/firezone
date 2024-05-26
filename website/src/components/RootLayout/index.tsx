@@ -52,18 +52,25 @@ function Mixpanel() {
     });
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
+      if (
+        event.data.type === "hsFormCallback" &&
+        event.data.eventName === "onFormSubmitted"
+      ) {
         const formData: HubSpotSubmittedFormData = event.data.data;
         if (!formData || !formData.formGuid || !formData.submissionValues) {
           console.error("Missing form data:", formData);
           return;
         }
 
-        if (formData.submissionValues.email && formData.submissionValues.firstname && formData.submissionValues.lastname) {
+        if (
+          formData.submissionValues.email &&
+          formData.submissionValues.firstname &&
+          formData.submissionValues.lastname
+        ) {
           mixpanel.people.set({
             $email: formData.submissionValues.email,
             $first_name: formData.submissionValues.firstname,
-            $last_name: formData.submissionValues.lastname
+            $last_name: formData.submissionValues.lastname,
           });
 
           mixpanel.track("HubSpot Form Submitted", {
@@ -74,10 +81,10 @@ function Mixpanel() {
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
 
     return () => {
-      window.removeEventListener('message', handleMessage);
+      window.removeEventListener("message", handleMessage);
     };
   }, [pathname, searchParams, mixpanel]);
 
@@ -85,11 +92,15 @@ function Mixpanel() {
 }
 
 function GoogleAds() {
-  const trackingId = process.env.NODE_ENV == "development" ? null : "AW-16577398140";
+  const trackingId =
+    process.env.NODE_ENV == "development" ? null : "AW-16577398140";
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
+      if (
+        event.data.type === "hsFormCallback" &&
+        event.data.eventName === "onFormSubmitted"
+      ) {
         const formData: HubSpotSubmittedFormData = event.data.data;
         if (!formData || !formData.formGuid || !formData.submissionValues) {
           console.error("Missing form data:", formData);
@@ -100,19 +111,19 @@ function GoogleAds() {
           return;
         };
 
-        (window as any).gtag('event', 'conversion', {
-          'send_to': 'AW-16577398140/1wX_CNmzg7MZEPyK3OA9',
-          'value': Number(formData.submissionValues['0-2/numberofemployees']) * 5,
-          'currency': 'USD',
-          'event_callback': callback
+        (window as any).gtag("event", "conversion", {
+          send_to: "AW-16577398140/1wX_CNmzg7MZEPyK3OA9",
+          value: Number(formData.submissionValues["0-2/numberofemployees"]) * 5,
+          currency: "USD",
+          event_callback: callback,
         });
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
 
     return () => {
-      window.removeEventListener('message', handleMessage);
+      window.removeEventListener("message", handleMessage);
     };
   }, [trackingId]);
 
@@ -147,21 +158,24 @@ function LinkedInInsights() {
     initializeLintrk();
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'hsFormCallback' && event.data.eventName === 'onFormSubmitted') {
+      if (
+        event.data.type === "hsFormCallback" &&
+        event.data.eventName === "onFormSubmitted"
+      ) {
         const formData: HubSpotSubmittedFormData = event.data.data;
         if (!formData || !formData.formGuid || !formData.submissionValues) {
           console.error("Missing form data:", formData);
           return;
         }
 
-        (window as any).lintrk('track', { conversion_id: 16519956 });
+        (window as any).lintrk("track", { conversion_id: 16519956 });
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
 
     return () => {
-      window.removeEventListener('message', handleMessage);
+      window.removeEventListener("message", handleMessage);
     };
   }, [linkedInPartnerId]);
 
@@ -175,11 +189,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <Script
-        src="https://app.termly.io/embed.min.js"
-        data-auto-block="off"
-        data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
-      ></Script>
+      <Script src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=off" />
       <Suspense>
         <Mixpanel />
         <GoogleAds />
