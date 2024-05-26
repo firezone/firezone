@@ -48,7 +48,9 @@ repos:
     rev: "v4.0.0-alpha.8"
     hooks:
       - id: prettier
-        exclude: "[^(^website)]"
+        # Exclude non-website files for now
+        # TODO: Lint these files in all directories
+        exclude: "^(?!website/)"
         types_or:
           - javascript
           - jsx
