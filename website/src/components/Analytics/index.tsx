@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMixpanel } from "react-mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
@@ -58,7 +58,7 @@ export function Mixpanel() {
     };
   }, [pathname, searchParams, mixpanel]);
 
-  return null;
+  return <Suspense />;
 }
 
 export function GoogleAds() {

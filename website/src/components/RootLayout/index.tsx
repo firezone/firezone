@@ -14,7 +14,6 @@ const source_sans_3 = Source_Sans_3({
 });
 import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, Suspense } from "react";
 import { Mixpanel, GoogleAds, LinkedInInsights } from "@/components/Analytics";
 
 export const metadata: Metadata = {
