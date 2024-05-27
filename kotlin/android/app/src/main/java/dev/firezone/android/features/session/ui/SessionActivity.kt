@@ -18,6 +18,7 @@ import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.TypeEnum
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -97,9 +98,6 @@ internal class SessionActivity : AppCompatActivity() {
         binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
         binding.rvResourcesList.adapter = resourcesAdapter
         binding.rvResourcesList.layoutManager = layoutManager
-
-        // Hack to show a connecting message until the service is bound
-        resourcesAdapter.updateResources(listOf(Resource("", "", "", "Connecting...")))
     }
 
     private fun setupObservers() {
