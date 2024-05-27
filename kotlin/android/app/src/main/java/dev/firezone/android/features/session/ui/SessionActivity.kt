@@ -1,4 +1,3 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import android.content.ComponentName
@@ -109,7 +108,7 @@ internal class SessionActivity : AppCompatActivity() {
         }
 
         viewModel.resourcesLiveData.observe(this) { resources ->
-            resourcesAdapter.updateResources(resources)
+            resourcesAdapter.submitList(resources)
         }
     }
 
