@@ -10,7 +10,10 @@ use proptest::{
     collection, sample,
     strategy::{Just, Strategy},
 };
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
 // Generate resources sharing 1 site
 pub fn resources_sharing_site() -> impl Strategy<Value = (Vec<ResourceDescription>, Site)> {
@@ -129,7 +132,10 @@ pub fn resource_name() -> impl Strategy<Value = String> {
 pub fn dns_resource_address() -> impl Strategy<Value = String> {
     (domain_name(), any::<bool>()).prop_map(|(domain, wildcard)| {
         let name = if wildcard {
-            domain.append_label("*").unwrap()
+            hickory_proto::rr::Name::from_str("*")
+                .unwrap()
+                .append_name(&domain)
+                .unwrap()
         } else {
             domain
         };

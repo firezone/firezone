@@ -262,6 +262,14 @@ impl Request {
             Request::ReuseConnection(i) => i.resource_id,
         }
     }
+
+    /// The domain that we need to resolve as part of the connection request.
+    pub fn domain_name(&self) -> Option<DomainName> {
+        match self {
+            Request::NewConnection(i) => i.client_payload.domain.clone(),
+            Request::ReuseConnection(i) => i.payload.clone(),
+        }
+    }
 }
 
 fn send_dns_answer(

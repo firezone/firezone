@@ -1,10 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::MutableIpPacket;
-use hickory_proto::{
-    rr::{Name, RecordType},
-    serialize::binary::BinEncodable,
-};
+use hickory_proto::rr::{Name, RecordType};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -196,12 +193,20 @@ pub fn dns_query(
     kind: RecordType,
     src: SocketAddr,
     dst: SocketAddr,
+    id: u16,
 ) -> MutableIpPacket<'static> {
-    // TODO: This is wrong and not a full DNS query!
+    // Create the DNS query message
+    let mut msg = hickory_proto::op::Message::new();
+    msg.set_message_type(hickory_proto::op::MessageType::Query);
+    msg.set_op_code(hickory_proto::op::OpCode::Query);
+    msg.set_recursion_desired(true);
+    msg.set_id(id);
 
-    let payload = hickory_proto::op::Query::query(domain, kind)
-        .to_bytes()
-        .unwrap();
+    // Create the query
+    let query = hickory_proto::op::Query::query(domain, kind);
+    msg.add_query(query);
+
+    let payload = msg.to_vec().unwrap();
 
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
