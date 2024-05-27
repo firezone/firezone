@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import android.view.LayoutInflater
@@ -10,13 +11,18 @@ import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 
 internal class ResourcesAdapter : ListAdapter<Resource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): ViewHolder {
         val binding = ListItemResourceBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ViewHolder(binding)
     }
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: ViewHolder,
+        position: Int,
+    ) {
         val resource = getItem(position)
         holder.bind(resource)
         holder.itemView.setOnClickListener {
@@ -35,11 +41,17 @@ internal class ResourcesAdapter : ListAdapter<Resource, ResourcesAdapter.ViewHol
     }
 
     class ResourceDiffCallback : DiffUtil.ItemCallback<Resource>() {
-        override fun areItemsTheSame(oldItem: Resource, newItem: Resource): Boolean {
+        override fun areItemsTheSame(
+            oldItem: Resource,
+            newItem: Resource,
+        ): Boolean {
             return oldItem.id == newItem.id
         }
 
-        override fun areContentsTheSame(oldItem: Resource, newItem: Resource): Boolean {
+        override fun areContentsTheSame(
+            oldItem: Resource,
+            newItem: Resource,
+        ): Boolean {
             return oldItem == newItem
         }
     }
