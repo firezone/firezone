@@ -1,4 +1,3 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import android.content.ComponentName
@@ -17,6 +16,8 @@ import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.TypeEnum
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -44,10 +45,8 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = false
             }
         }
-    private val resourcesAdapter: ResourcesAdapter =
-        ResourcesAdapter { resource ->
-            ClipboardUtils.copyToClipboard(this@SessionActivity, resource.name, resource.address)
-        }
+
+    private val resourcesAdapter = ResourcesAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvResourceName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Resource Name"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvResourceAddress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Resource Address" />
+
+    <!-- Additional fields for site name, status, etc. -->
+</LinearLayout>
