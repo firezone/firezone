@@ -7,7 +7,7 @@ use connlib_shared::{
         gateway, ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
     proptest::{cidr_resource, dns_resource},
-    StaticSecret,
+    DomainName, StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use hickory_proto::{rr::RecordType, serialize::binary::BinDecodable};
@@ -17,8 +17,8 @@ use ip_packet::{ip::IpNextHeaderProtocols, IpPacket, MutableIpPacket, Packet};
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
-    collection, prop_oneof, sample,
-    strategy::{Just, Strategy},
+    collection, sample,
+    strategy::{Just, Strategy, Union},
     test_runner::Config,
 };
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
@@ -31,6 +31,7 @@ use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
+    str::FromStr,
     time::{Duration, Instant, SystemTime},
 };
 use tracing::{debug_span, error_span, subscriber::DefaultGuard, Span};
@@ -64,10 +65,10 @@ struct TunnelTest {
     next_dns_id: u16, // TODO: Can we avoid this state?
 
     /// The DNS records created on the client as a result of received DNS responses.
-    client_dns_records: HashMap<hickory_proto::rr::Name, IpAddr>,
+    client_dns_records: HashMap<DomainName, IpAddr>,
 
     /// Stub for the gateway's DNS resolver.
-    gateway_dns_resolver: HashMap<hickory_proto::rr::Name, IpAddr>,
+    gateway_dns_resolver: HashMap<DomainName, IpAddr>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -100,7 +101,7 @@ struct ReferenceState {
     client_dns_resources: HashSet<ResourceDescriptionDns>,
 
     /// The IP we have resolved for a particular domain.
-    resolved_domain_names: HashMap<hickory_proto::rr::Name, IpAddr>,
+    resolved_domain_names: HashMap<DomainName, IpAddr>,
     /// The resources we have connected to.
     connected_resources: HashSet<ResourceId>,
 
@@ -133,10 +134,8 @@ enum Transition {
         /// The IP we resolve the domain to.
         resolved_ip: IpAddr,
     },
-    /// Send a ICMP packet to a DNS resolved IPv4 address.
-    SendICMPPacketToResolvedIp4Address { a_idx: sample::Index },
-    /// Send a ICMP packet to a DNS resolved IPv6 address.
-    SendICMPPacketToResolvedIp6Address { a_idx: sample::Index },
+    /// Send a ICMP packet to a DNS resolved address.
+    SendICMPPacketToResolvedAddress { a_idx: sample::Index },
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -292,23 +291,22 @@ impl StateMachineTest for TunnelTest {
                     .gateway_dns_resolver
                     .insert(domain.clone(), resolved_ip);
 
+                let name = domain_to_hickory_name(domain);
+
                 let (src, dns_server) = state.sample_dns_server(dns_server_idx);
                 let packet =
-                    ip_packet::make::dns_query(domain, r_type, src, dns_server, state.next_dns_id);
+                    ip_packet::make::dns_query(name, r_type, src, dns_server, state.next_dns_id);
                 state.next_dns_id += 1;
 
-                // TODO: We should remember the transaction ID of the DNS query that we sent.
-
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
-            Transition::SendICMPPacketToResolvedIp4Address { a_idx } => {
-                let dst = state.sample_resolved_ip4_address(a_idx);
-                let packet = ip_packet::make::icmp_request_packet(state.client.tunnel_ip(dst), dst);
+            Transition::SendICMPPacketToResolvedAddress { a_idx } => {
+                // Perform the same sampling as the reference state.
+                let (name, _) = ref_state.sample_resolved_address(a_idx);
 
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
-            }
-            Transition::SendICMPPacketToResolvedIp6Address { a_idx } => {
-                let dst = state.sample_resolved_ip6_address(a_idx);
+                // Lookup the IP that connlib resolved for this name.
+                let dst = state.client_dns_records.get(name).copied().unwrap();
+
                 let packet = ip_packet::make::icmp_request_packet(state.client.tunnel_ip(dst), dst);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
@@ -464,24 +462,32 @@ impl ReferenceStateMachine for ReferenceState {
         let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
         let num_dns_resource = state.client_dns_resources.len();
 
-        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 3 };
-        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 3 };
-        let weight_dns = if num_dns_resource == 0 { 0 } else { 3 };
+        let mut strategies = vec![
+            (1, add_cidr_resource.boxed()),
+            (1, add_dns_resource.boxed()),
+            (1, tick.boxed()),
+            (1, set_system_dns_servers.boxed()),
+            (1, set_upstream_dns_servers.boxed()),
+            (1, icmp_to_random_ip().boxed()),
+        ];
 
-        // Note: We use weighted strategies here to conditionally only include the ICMP strategies if we have a resource.
-        prop_oneof![
-            1 => add_cidr_resource,
-            1 => add_dns_resource,
-            1 => tick,
-            1 => set_system_dns_servers,
-            1 => set_upstream_dns_servers,
-            1 => icmp_to_random_ip(),
-            weight_ip4 => icmp_to_ipv4_cidr_resource(),
-            weight_ip6 => icmp_to_ipv6_cidr_resource(),
-            weight_dns => a_query_to_dns_resource(),
-            weight_dns => aaaa_query_to_dns_resource()
-        ]
-        .boxed()
+        if num_ip4_resources > 0 {
+            strategies.push((3, icmp_to_ipv4_cidr_resource().boxed()));
+        }
+
+        if num_ip6_resources > 0 {
+            strategies.push((3, icmp_to_ipv6_cidr_resource().boxed()));
+        }
+
+        if num_dns_resource > 0 {
+            strategies.extend([
+                (3, a_query_to_dns_resource().boxed()),
+                (3, aaaa_query_to_dns_resource().boxed()),
+                (3, icmp_to_resolved_address().boxed()),
+            ]);
+        }
+
+        Union::new_weighted(strategies).boxed()
     }
 
     /// Apply the transition to our reference state.
@@ -522,10 +528,19 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
-            Transition::SendICMPPacketToResolvedIp4Address { a_idx } => {
-                // TODO: Here should send an ICMP packet to the IP that we resolved?
+            Transition::SendICMPPacketToResolvedAddress { a_idx } => {
+                let (_, dst) = state.sample_resolved_address(*a_idx);
+                let src = state.client.tunnel_ip(dst);
+
+                state
+                    .gateway_received_icmp_requests
+                    .push_back((state.now, src, dst));
+                state.client_received_icmp_replies.push_back((
+                    state.now,
+                    todo!("Can the reference state know, who sent packet?"),
+                    src,
+                ));
             }
-            Transition::SendICMPPacketToResolvedIp6Address { a_idx } => {}
         };
 
         state
@@ -599,12 +614,9 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::SendQueryToDnsResource { .. } => {
-                if state.client_dns_resources.is_empty() {
-                    return false;
-                }
-
-                true
+            Transition::SendQueryToDnsResource { .. } => !state.client_dns_resources.is_empty(),
+            Transition::SendICMPPacketToResolvedAddress { .. } => {
+                !state.resolved_domain_names.is_empty()
             }
         }
     }
@@ -770,32 +782,6 @@ impl TunnelTest {
             .expect("we filtered above");
 
         (client_src, SocketAddr::new(dns_server, 53))
-    }
-
-    fn sample_resolved_ip4_address(&mut self, idx: sample::Index) -> Ipv4Addr {
-        let ip_addresses = self
-            .client_dns_records
-            .values()
-            .filter_map(|ip| match ip {
-                IpAddr::V4(ip4) => Some(*ip4),
-                IpAddr::V6(_) => None,
-            })
-            .collect::<Vec<_>>();
-
-        *idx.get(&ip_addresses)
-    }
-
-    fn sample_resolved_ip6_address(&mut self, idx: sample::Index) -> Ipv6Addr {
-        let ip_addresses = self
-            .client_dns_records
-            .values()
-            .filter_map(|ip| match ip {
-                IpAddr::V4(_) => None,
-                IpAddr::V6(ip6) => Some(*ip6),
-            })
-            .collect::<Vec<_>>();
-
-        *idx.get(&ip_addresses)
     }
 
     /// Dispatches a [`Transmit`] to the correct component.
@@ -990,11 +976,7 @@ impl TunnelTest {
                 // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
                 let resolved_ips = request
                     .domain_name()
-                    .and_then(|domain| {
-                        self.gateway_dns_resolver
-                            .get(&hickory_proto::rr::Name::from_bytes(domain.as_slice()).unwrap())
-                            .copied()
-                    })
+                    .and_then(|domain| self.gateway_dns_resolver.get(&domain).copied())
                     .map(IpNetwork::from);
 
                 let resource = map_client_resource_to_gateway_resource(
@@ -1118,14 +1100,16 @@ impl TunnelTest {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload()).unwrap();
 
                 for record in message.take_answers() {
-                    match record.data() {
+                    match &record.data() {
                         Some(hickory_proto::rr::RData::A(a)) => {
                             self.client_dns_records
-                                .insert(record.name().clone(), a.0.into());
+                                .insert(hickory_name_to_domain(record.name().clone()), a.0.into());
                         }
                         Some(hickory_proto::rr::RData::AAAA(aaaa)) => {
-                            self.client_dns_records
-                                .insert(record.name().clone(), aaaa.0.into());
+                            self.client_dns_records.insert(
+                                hickory_name_to_domain(record.name().clone()),
+                                aaaa.0.into(),
+                            );
                         }
                         unhandled => {
                             panic!("Unexpected record data: {unhandled:?}")
@@ -1242,7 +1226,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn sample_dns_resource_domain(&self, idx: &sample::Index) -> hickory_proto::rr::Name {
+    fn sample_dns_resource_domain(&self, idx: &sample::Index) -> DomainName {
         // TODO: Do we need to come up with a sub-domain too?
 
         let mut domains = self
@@ -1254,6 +1238,15 @@ impl ReferenceState {
 
         // TODO: This is probably going to fail because we currently don't generate proper domains for DNS resources in the strategy.
         idx.get(&domains).clone().parse().unwrap()
+    }
+
+    fn sample_resolved_address(&self, idx: sample::Index) -> (&DomainName, IpAddr) {
+        let num_records = self.resolved_domain_names.len();
+        let idx = idx.index(num_records);
+
+        let (name, addr) = self.resolved_domain_names.iter().nth(idx).unwrap();
+
+        (&name, *addr)
     }
 }
 
@@ -1627,6 +1620,11 @@ fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
     any::<sample::Index>().prop_map(move |r_idx| Transition::SendICMPPacketToIp6Resource { r_idx })
 }
 
+fn icmp_to_resolved_address() -> impl Strategy<Value = Transition> {
+    any::<sample::Index>()
+        .prop_map(move |a_idx| Transition::SendICMPPacketToResolvedAddress { a_idx })
+}
+
 fn a_query_to_dns_resource() -> impl Strategy<Value = Transition> {
     (
         any::<sample::Index>(),
@@ -1760,4 +1758,23 @@ fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
 
 fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
     collection::vec(any::<IpAddr>(), 1..4) // Always need at least 1 system DNS server. TODO: Should we test what happens if we don't?
+}
+
+fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
+    name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
+    let name = name.to_string();
+
+    let domain = DomainName::from_chars(name.chars()).unwrap();
+    debug_assert_eq!(name, domain.to_string());
+
+    domain
+}
+
+fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
+    let domain = domain.to_string();
+
+    let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
+    debug_assert_eq!(name.to_string(), domain);
+
+    name
 }

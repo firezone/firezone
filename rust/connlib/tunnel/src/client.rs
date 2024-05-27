@@ -285,6 +285,9 @@ fn send_dns_answer(
         let Some(packet) = dns::create_local_answer(addrs, packet) else {
             return;
         };
+
+        tracing::debug!(domain = %resource_description.address, ips = ?addrs, "Resolved DNS query");
+
         role_state.buffered_packets.push_back(packet);
     }
 }
