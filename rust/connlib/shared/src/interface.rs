@@ -10,4 +10,5 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use platform::InterfaceManager;
