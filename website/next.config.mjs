@@ -37,6 +37,19 @@ const nextConfig = {
   experimental: {
     typedRoutes: true,
   },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "browsing-topics=()",
+          },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return redirects;
   },
@@ -53,18 +66,11 @@ const nextConfig = {
   images: {
     dangerouslyAllowSVG: true,
     remotePatterns: [
-      {
-        hostname: "api.star-history.com",
-      },
-      {
-        hostname: "github.com",
-      },
-      {
-        hostname: "avatars.githubusercontent.com",
-      },
-      {
-        hostname: "www.gravatar.com",
-      },
+      { hostname: "runacap.com" },
+      { hostname: "api.star-history.com" },
+      { hostname: "github.com" },
+      { hostname: "avatars.githubusercontent.com" },
+      { hostname: "www.gravatar.com" },
     ],
   },
 };

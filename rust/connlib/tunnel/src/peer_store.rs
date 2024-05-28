@@ -72,11 +72,6 @@ where
         self.peer_by_id.remove(id)
     }
 
-    pub(crate) fn exact_match(&self, ip: IpNetwork) -> Option<&P> {
-        let ip = self.id_by_ip.exact_match(ip)?;
-        self.peer_by_id.get(ip)
-    }
-
     pub(crate) fn get(&self, id: &TId) -> Option<&P> {
         self.peer_by_id.get(id)
     }

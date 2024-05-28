@@ -27,7 +27,8 @@ settings required for the integration:
 In the Keycloak Admin Console, make sure the realm you want to use with Firezone
 is selected.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="keycloak realm"
   src="/images/keycloak-realm.png"
   width={960}
@@ -44,7 +45,8 @@ and configure the following:
 1. **Name**: `Firezone`
 1. Click **Next**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="create firezone client"
   src="/images/create-firezone-client.png"
   width={960}
@@ -54,7 +56,8 @@ and configure the following:
 1. Toggle **Client authentication** to `On` to generate the client secret.
 1. Click **Save**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="save firezone client"
   src="/images/save-firezone-client.png"
   width={960}
@@ -69,7 +72,8 @@ redirect URI:
    `https://firezone.example.com/auth/oidc/keycloak/callback/`).
 1. Click **Add valid redirect URIs**
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone access settings"
   src="/images/firezone-access-settings.png"
   width={960}
@@ -78,7 +82,8 @@ redirect URI:
 
 Click the **Credentials** tab and copy the client secret.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="firezone client secret"
   src="/images/firezone-client-secret.png"
   width={960}
@@ -88,7 +93,8 @@ Click the **Credentials** tab and copy the client secret.
 Navigate to the **Realm Settings** page to get the **Discovery Document URI** by
 copying the **OpenID Endpoint Configuration** link at the bottom of the page.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="keycloak realm settings"
   src="/images/keycloak-realm-settings.png"
   width={960}
