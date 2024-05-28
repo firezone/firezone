@@ -915,7 +915,7 @@ impl TunnelTest {
 
             if let Some(transmit) = self.gateway.span.in_scope(|| {
                 self.gateway.state.encapsulate(
-                    ip_packet::make::icmp_response_packet(packet_dst, packet_src),
+                    ip_packet::make::icmp_response_packet(packet_dst, packet_src), //TODO: This should use all data from the incoming ICMP request.
                     self.now,
                 )
             }) {
