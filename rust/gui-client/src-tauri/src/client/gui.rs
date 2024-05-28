@@ -11,8 +11,6 @@ use crate::client::{
     Failure,
 };
 use anyhow::{bail, Context, Result};
-use connlib_client_shared::callbacks::ResourceDescription;
-use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -159,7 +157,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match TrayMenuEvent::from_str(&id) {
+                let event = match serde_json::from_str::<TrayMenuEvent>(&id) {
                     Ok(x) => x,
                     Err(e) => {
                         tracing::error!("{e}");
@@ -516,24 +514,6 @@ impl Controller {
         Ok(())
     }
 
-    fn copy_resource(&self, id: &str) -> Result<()> {
-        let Some(session) = &self.session else {
-            bail!("app is signed out");
-        };
-        let resources = session.callback_handler.resources.load();
-        let id = ResourceId::from_str(id)?;
-        let Some(res) = resources.iter().find(|r| r.id() == id) else {
-            bail!("resource ID is not in the list");
-        };
-        let mut clipboard = arboard::Clipboard::new()?;
-        // TODO: Make this a method on `ResourceDescription`
-        match res {
-            ResourceDescription::Dns(x) => clipboard.set_text(&x.address)?,
-            ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
-        }
-        Ok(())
-    }
-
     async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
@@ -590,6 +570,15 @@ impl Controller {
                         .hide()?;
                 }
             }
+            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
+                &self.app.shell_scope(),
+                &self.advanced_settings.auth_base_url,
+                None,
+            )?,
+            Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
+                .context("Couldn't access clipboard")?
+                .set_text(s)
+                .context("Couldn't copy resource URL or other text to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 if self.session.is_some() {
                     if self.tunnel_ready {
@@ -617,12 +606,12 @@ impl Controller {
                     "Uptime info"
                 );
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
-                .copy_resource(&id)
-                .context("Couldn't copy resource to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
+                tauri::api::shell::open(&self.app.shell_scope(), url, None)?
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
