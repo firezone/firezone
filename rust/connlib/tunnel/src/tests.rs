@@ -1364,8 +1364,6 @@ impl ReferenceState {
     }
 
     fn sample_dns_resource_domain(&self, idx: &sample::Index) -> DomainName {
-        // TODO: Do we need to come up with a sub-domain too?
-
         let mut domains = self
             .client_dns_resources
             .iter()
@@ -1373,7 +1371,6 @@ impl ReferenceState {
             .collect::<Vec<_>>();
         domains.sort();
 
-        // TODO: This is probably going to fail because we currently don't generate proper domains for DNS resources in the strategy.
         idx.get(&domains).clone().parse().unwrap()
     }
 
