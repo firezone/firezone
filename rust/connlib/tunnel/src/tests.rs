@@ -1383,7 +1383,7 @@ impl ReferenceState {
 
         let (name, addr) = self.resolved_domain_names.iter().nth(idx).unwrap();
 
-        (&name, *addr)
+        (name, *addr)
     }
 }
 
