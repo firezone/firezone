@@ -26,25 +26,7 @@ pub(crate) enum Window {
     Settings,
 }
 
-const SETTINGS_ACCELERATOR: &str = "Ctrl+Shift+,";
-const QUIT_ACCELERATOR: &str = "Ctrl+Q";
-const QUIT_TEXT_SIGNED_IN: &str = "Disconnect and quit Firezone";
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
-
-#[cfg(target_os = "windows")]
-mod platform {
-    use url::Url;
-
-    pub(crate) fn documentation_url() -> Url {
-        Url::parse("https://www.firezone.dev/kb?utm_source=windows-client")
-            .expect("Hard-coded URL should always be parsable")
-    }
-
-    pub(crate) fn support_url() -> Url {
-        Url::parse("https://www.firezone.dev/support?utm_source=windows-client")
-            .expect("Hard-coded URL should always be parsable")
-    }
-}
 
 pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
@@ -89,7 +71,7 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
         menu = menu.add_submenu(SystemTraySubmenu::new(res.name(), submenu));
     }
 
-    menu.add_bottom_section(QUIT_TEXT_SIGNED_IN)
+    menu.add_bottom_section("Disconnect and quit Firezone")
 }
 
 pub(crate) fn signing_in(waiting_message: &str) -> SystemTrayMenu {
@@ -116,6 +98,8 @@ trait FirezoneMenu {
 
 impl FirezoneMenu for SystemTrayMenu {
     /// An item with an event and a keyboard accelerator
+    ///
+    /// Doesn't work on Windows: <https://github.com/tauri-apps/wry/issues/451>
     fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self {
         self.add_item(item(id, title).accelerator(accelerator))
     }
@@ -129,17 +113,21 @@ impl FirezoneMenu for SystemTrayMenu {
                 "Help",
                 SystemTrayMenu::new()
                     .item(
-                        Event::Url(platform::documentation_url()),
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
                         "Documentation...",
                     )
-                    .item(Event::Url(platform::support_url()), "Support..."),
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/support")),
+                        "Support...",
+                    ),
             ))
-            .add_item(
-                item(Event::ShowWindow(Window::Settings), "Settings")
-                    .accelerator(SETTINGS_ACCELERATOR),
+            .accelerated(
+                Event::ShowWindow(Window::Settings),
+                "Settings",
+                "Ctrl+Shift+,",
             )
             .separator()
-            .accelerated(Event::Quit, quit_text, QUIT_ACCELERATOR)
+            .accelerated(Event::Quit, quit_text, "Ctrl+Q")
     }
 
     fn copyable(self, s: &str) -> Self {
@@ -167,4 +155,12 @@ fn item<E: Into<Option<Event>>, S: Into<String>>(id: E, title: S) -> CustomMenuI
             .expect("`serde_json` should always be able to serialize tray menu events"),
         title,
     )
+}
+
+fn utm_url(base_url: &str) -> Url {
+    Url::parse(&format!(
+        "{base_url}?utm_source={}-client",
+        std::env::consts::OS
+    ))
+    .expect("Hard-coded URL should always be parsable")
 }
