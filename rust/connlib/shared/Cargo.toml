@@ -56,6 +56,8 @@ tracing-android = "0.2"
 atomicwrites = "0.4.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+netlink-packet-route = { version = "0.19", default-features = false }
+netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies

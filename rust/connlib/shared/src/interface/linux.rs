@@ -1,8 +1,10 @@
 //! Virtual network interface
 
-use crate::linux::{etc_resolv_conf, DnsControlMethod};
+use crate::{
+    callbacks::{Cidrv4, Cidrv6},
+    linux::{etc_resolv_conf, DnsControlMethod},
+};
 use anyhow::{anyhow, bail, Context as _, Result};
-use connlib_client_shared::{Cidrv4, Cidrv6};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -61,12 +63,7 @@ impl Default for InterfaceManager {
 
 impl InterfaceManager {
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn on_set_interface_config(
-        &mut self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns_config: Vec<IpAddr>,
-    ) -> Result<()> {
+    pub async fn on_set_interface_config(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         let connection = match self.connection.as_mut() {
             None => {
                 let (cxn, handle, _) = new_connection()?;
@@ -160,11 +157,12 @@ impl InterfaceManager {
         //
         // `sd_notify::notify` is always safe to call, it silently returns `Ok(())`
         // if we aren't running as a systemd service.
-        if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
-            // Nothing we can do about it
-            tracing::warn!(?error, "Failed to notify systemd that we're ready");
-        }
-
+        /*
+                if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
+                    // Nothing we can do about it
+                    tracing::warn!(?error, "Failed to notify systemd that we're ready");
+                }
+        */
         Ok(())
     }
 
