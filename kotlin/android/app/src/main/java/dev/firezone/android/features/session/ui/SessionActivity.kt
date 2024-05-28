@@ -13,11 +13,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
-import dev.firezone.android.tunnel.model.Resource
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -45,10 +43,8 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = false
             }
         }
-    private val resourcesAdapter: ResourcesAdapter =
-        ResourcesAdapter { resource ->
-            ClipboardUtils.copyToClipboard(this@SessionActivity, resource.name, resource.address)
-        }
+
+    private val resourcesAdapter = ResourcesAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,9 +93,6 @@ internal class SessionActivity : AppCompatActivity() {
         binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
         binding.rvResourcesList.adapter = resourcesAdapter
         binding.rvResourcesList.layoutManager = layoutManager
-
-        // Hack to show a connecting message until the service is bound
-        resourcesAdapter.updateResources(listOf(Resource("", "", "", "Connecting...")))
     }
 
     private fun setupObservers() {
@@ -111,7 +104,7 @@ internal class SessionActivity : AppCompatActivity() {
         }
 
         viewModel.resourcesLiveData.observe(this) { resources ->
-            resourcesAdapter.updateResources(resources)
+            resourcesAdapter.submitList(resources)
         }
     }
 
