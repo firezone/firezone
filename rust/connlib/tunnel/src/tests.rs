@@ -721,6 +721,10 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let has_dns_resources = !state.client_dns_resources.is_empty();
 
+                if !has_dns_resources {
+                    return false;
+                }
+
                 // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
                 // Connlib cannot know, when a DNS record expires, thus we currently don't allow DNS resources to change their IPs using this pre-condition.
                 let dns_resource = state.sample_dns_resource_domain(r_idx);
@@ -735,9 +739,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .longest_match(*resolved_ip)
                     .is_some();
 
-                has_dns_resources
-                    && !has_resolved_domain_to_different_ip_already
-                    && !real_ip_overlaps_with_cidr_resource
+                !has_resolved_domain_to_different_ip_already && !real_ip_overlaps_with_cidr_resource
             }
             Transition::SendICMPPacketToResolvedAddress { .. } => {
                 !state.resolved_domain_names.is_empty()
