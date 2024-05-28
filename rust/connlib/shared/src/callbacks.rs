@@ -57,6 +57,13 @@ pub enum ResourceDescription {
 }
 
 impl ResourceDescription {
+    pub fn address_description(&self) -> &str {
+        match self {
+            ResourceDescription::Dns(r) => &r.address_description,
+            ResourceDescription::Cidr(r) => &r.address_description,
+        }
+    }
+
     pub fn name(&self) -> &str {
         match self {
             ResourceDescription::Dns(r) => &r.name,
@@ -83,6 +90,13 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => Cow::from(&r.address),
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+        }
+    }
+
+    pub fn sites(&self) -> &[Site] {
+        match self {
+            ResourceDescription::Dns(r) => &r.sites,
+            ResourceDescription::Cidr(r) => &r.sites,
         }
     }
 }
