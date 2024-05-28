@@ -534,8 +534,8 @@ impl ReferenceStateMachine for ReferenceState {
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
-        let add_dns_resource = dns_resource().prop_map(Transition::AddDnsResource);
+        let add_cidr_resource = cidr_resource(8, 1).prop_map(Transition::AddCidrResource);
+        let add_dns_resource = dns_resource(1).prop_map(Transition::AddDnsResource);
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
         let set_system_dns_servers =
             system_dns_servers().prop_map(|servers| Transition::UpdateSystemDnsServers { servers });
