@@ -5,14 +5,12 @@ defmodule Domain.Flows do
   require Ecto.Query
   require Logger
 
-  def authorize_flow(client, gateway, id, subject, opts \\ [])
-
   def authorize_flow(
         %Clients.Client{
           id: client_id,
           account_id: account_id,
           actor_id: actor_id
-        },
+        } = client,
         %Gateways.Gateway{
           id: gateway_id,
           last_seen_remote_ip: gateway_remote_ip,
@@ -29,15 +27,16 @@ defmodule Domain.Flows do
             user_agent: client_user_agent
           }
         } = subject,
-        opts
+        opts \\ []
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
          {:ok, resource} <-
-           Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts) do
+           Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts),
+         {:ok, policy} <- fetch_conforming_policy(resource, client) do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
-          policy_id: resource.authorized_by_policy.id,
+          policy_id: policy.id,
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource.id,
@@ -53,27 +52,23 @@ defmodule Domain.Flows do
     end
   end
 
-  def authorize_flow(client, gateway, id, subject, _opts) do
-    Logger.error("authorize_flow/4 called with invalid arguments",
-      id: id,
-      client: %{
-        id: client.id,
-        account_id: client.account_id,
-        actor_id: client.actor_id,
-        identity_id: client.identity_id
-      },
-      gateway: %{
-        id: gateway.id,
-        account_id: gateway.account_id
-      },
-      subject: %{
-        account: %{id: subject.account.id, slug: subject.account.slug},
-        actor: %{id: subject.actor.id, type: subject.actor.type},
-        identity: %{id: subject.identity.id}
-      }
-    )
+  defp fetch_conforming_policy(%Resources.Resource{} = resource, client) do
+    Enum.reduce_while(resource.authorized_by_policies, {:error, []}, fn policy, {:error, acc} ->
+      case Policies.ensure_client_conforms_policy_constraints(client, policy) do
+        :ok ->
+          {:halt, {:ok, policy}}
 
-    {:error, :internal_error}
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          {:cont, {:error, violated_properties ++ acc}}
+      end
+    end)
+    |> case do
+      {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}}
+
+      {:ok, policy} ->
+        {:ok, policy}
+    end
   end
 
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do

@@ -5,13 +5,25 @@ defmodule Domain.Policies.Constraint.Evaluator do
 
   @days_of_week ~w[M T W R F S U]
 
-  def conforms?(
-        constraints,
-        %Clients.Client{} = client
-      )
-      when is_list(constraints) do
+  def ensure_conforms([], %Clients.Client{}) do
+    :ok
+  end
+
+  def ensure_conforms(constraints, %Clients.Client{} = client) when is_list(constraints) do
     client = Repo.preload(client, :identity)
-    Enum.all?(constraints, &conforms?(&1, client))
+
+    constraints
+    |> Enum.reduce([], fn constraint, violated_properties ->
+      cond do
+        conforms?(constraint, client) -> violated_properties
+        constraint.property in violated_properties -> violated_properties
+        true -> [constraint.property | violated_properties]
+      end
+    end)
+    |> case do
+      [] -> :ok
+      violated_properties -> {:error, Enum.reverse(violated_properties)}
+    end
   end
 
   def conforms?(
@@ -34,7 +46,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
       ) do
     Enum.any?(values, fn cidr ->
       {:ok, cidr} = Domain.Types.CIDR.cast(cidr)
-      Domain.Types.CIDR.contains?(client.last_seen_remote_ip, cidr)
+      Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip)
     end)
   end
 
@@ -44,7 +56,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
       ) do
     Enum.all?(values, fn cidr ->
       {:ok, cidr} = Domain.Types.CIDR.cast(cidr)
-      not Domain.Types.CIDR.contains?(client.last_seen_remote_ip, cidr)
+      not Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip)
     end)
   end
 

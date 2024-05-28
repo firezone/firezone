@@ -900,6 +900,49 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :offline}
     end
 
+    test "returns error when flow is not authorized due to failing constraints", %{
+      account: account,
+      client: client,
+      actor_group: actor_group,
+      gateway_group: gateway_group,
+      gateway: gateway,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        constraints: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_not_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
+        "payload" => "DNS_Q"
+      }
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "reuse_connection", attrs)
+
+      assert_reply ref, :error, %{
+        reason: :forbidden,
+        violated_properties: [:remote_ip_location_region]
+      }
+    end
+
     test "returns error when client has no policy allowing access to resource", %{
       account: account,
       socket: socket
@@ -1079,6 +1122,50 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "request_connection", attrs)
       assert_reply ref, :error, %{reason: :not_found}
+    end
+
+    test "returns error when flow is not authorized due to failing constraints", %{
+      account: account,
+      client: client,
+      actor_group: actor_group,
+      gateway_group: gateway_group,
+      gateway: gateway,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        constraints: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_not_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "gateway_id" => gateway.id,
+        "client_payload" => "RTC_SD",
+        "client_preshared_key" => "PSK"
+      }
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "request_connection", attrs)
+
+      assert_reply ref, :error, %{
+        reason: :forbidden,
+        violated_properties: [:remote_ip_location_region]
+      }
     end
 
     test "returns error when gateway is offline", %{

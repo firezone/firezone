@@ -2,6 +2,81 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
   use Domain.DataCase, async: true
   import Domain.Policies.Constraint.Evaluator
 
+  describe "ensure_conforms/2" do
+    test "returns ok when there are no constraints" do
+      client = %Domain.Clients.Client{}
+      assert ensure_conforms([], client) == :ok
+    end
+
+    test "returns ok when all constraints are met" do
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip_location_region: "US",
+        last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
+      }
+
+      constraints = [
+        %Domain.Policies.Constraint{
+          property: :remote_ip_location_region,
+          operator: :is_in,
+          values: ["US"]
+        },
+        %Domain.Policies.Constraint{
+          property: :remote_ip,
+          operator: :is_in_cidr,
+          values: ["192.168.0.1/24"]
+        }
+      ]
+
+      assert ensure_conforms(constraints, client) == :ok
+    end
+
+    test "returns error when all constraints are not met" do
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip_location_region: "US",
+        last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
+      }
+
+      constraints = [
+        %Domain.Policies.Constraint{
+          property: :remote_ip_location_region,
+          operator: :is_in,
+          values: ["CN"]
+        },
+        %Domain.Policies.Constraint{
+          property: :remote_ip,
+          operator: :is_in_cidr,
+          values: ["10.10.0.1/24"]
+        }
+      ]
+
+      assert ensure_conforms(constraints, client) ==
+               {:error, [:remote_ip_location_region, :remote_ip]}
+    end
+
+    test "returns error when one of the constraints is not met" do
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip_location_region: "US",
+        last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
+      }
+
+      constraints = [
+        %Domain.Policies.Constraint{
+          property: :remote_ip_location_region,
+          operator: :is_in,
+          values: ["CN"]
+        },
+        %Domain.Policies.Constraint{
+          property: :remote_ip,
+          operator: :is_in_cidr,
+          values: ["192.168.0.1/24"]
+        }
+      ]
+
+      assert ensure_conforms(constraints, client) ==
+               {:error, [:remote_ip_location_region]}
+    end
+  end
+
   describe "conforms?/2" do
     test "when client last seen remote ip location region is in or not in the values" do
       constraint = %Domain.Policies.Constraint{
@@ -177,6 +252,9 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
 
       assert parse_day_of_week_time_ranges("U/08:00:00-17:00:00") ==
                {:ok, {"U", [{~T[08:00:00], ~T[17:00:00]}]}}
+
+      assert parse_day_of_week_time_ranges("U/08:00-17:00:00") ==
+               {:ok, {"U", [{~T[08:00:00], ~T[17:00:00]}]}}
     end
 
     test "returns error when invalid day of week is provided" do
@@ -190,11 +268,11 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
     end
 
     test "returns error when invalid time is provided" do
-      assert parse_day_of_week_time_ranges("M/08:00-17:00:00") ==
-               {:error, "invalid time range: 08:00-17:00:00"}
+      assert parse_day_of_week_time_ranges("M/25-17:00:00") ==
+               {:error, "invalid time range: 25-17:00:00"}
 
-      assert parse_day_of_week_time_ranges("M/08:00:00-17:00") ==
-               {:error, "invalid time range: 08:00:00-17:00"}
+      assert parse_day_of_week_time_ranges("M/08:00:00-25") ==
+               {:error, "invalid time range: 08:00:00-25"}
     end
 
     test "returns error when start of the time range is greater than the end of it" do
@@ -211,6 +289,18 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
       assert parse_time_ranges("08:00:00-17:00:00") ==
                {:ok, [{~T[08:00:00], ~T[17:00:00]}]}
 
+      assert parse_time_ranges("08:00-17:00:00") ==
+               {:ok, [{~T[08:00:00], ~T[17:00:00]}]}
+
+      assert parse_time_ranges("08:00:00-17:00") ==
+               {:ok, [{~T[08:00:00], ~T[17:00:00]}]}
+
+      assert parse_time_ranges("08-17:00:00") ==
+               {:ok, [{~T[08:00:00], ~T[17:00:00]}]}
+
+      assert parse_time_ranges("08:00:00-17") ==
+               {:ok, [{~T[08:00:00], ~T[17:00:00]}]}
+
       assert parse_time_ranges("08:00:00-17:00:00,09:00:00-10:00:00") ==
                {:ok, [{~T[08:00:00], ~T[17:00:00]}, {~T[09:00:00], ~T[10:00:00]}]}
     end
@@ -221,11 +311,17 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
     end
 
     test "returns error when invalid time is provided" do
-      assert parse_time_ranges("08:00-17:00:00") ==
-               {:error, "invalid time range: 08:00-17:00:00"}
+      assert parse_time_ranges("25:00:00-17:00:00") ==
+               {:error, "invalid time range: 25:00:00-17:00:00"}
 
-      assert parse_time_ranges("08:00:00-17:00") ==
-               {:error, "invalid time range: 08:00:00-17:00"}
+      assert parse_time_ranges("08:00:00-25:00:00") ==
+               {:error, "invalid time range: 08:00:00-25:00:00"}
+
+      assert parse_time_ranges("25-17:00:00") ==
+               {:error, "invalid time range: 25-17:00:00"}
+
+      assert parse_time_ranges("08:00:00-25") ==
+               {:error, "invalid time range: 08:00:00-25"}
     end
 
     test "returns error when start of the time range is greater than the end of it" do
@@ -239,6 +335,12 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
       assert parse_time_range("08:00:00-17:00:00") ==
                {:ok, {~T[08:00:00], ~T[17:00:00]}}
 
+      assert parse_time_range("08:00-17:00:00") ==
+               {:ok, {~T[08:00:00], ~T[17:00:00]}}
+
+      assert parse_time_range("08:00:00-17:00") ==
+               {:ok, {~T[08:00:00], ~T[17:00:00]}}
+
       assert parse_time_range("true") ==
                {:ok, true}
     end
@@ -249,11 +351,11 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
     end
 
     test "returns error when invalid time is provided" do
-      assert parse_time_range("08:00-17:00:00") ==
-               {:error, "invalid time range: 08:00-17:00:00"}
+      assert parse_time_range("25-17:00:00") ==
+               {:error, "invalid time range: 25-17:00:00"}
 
-      assert parse_time_range("08:00:00-17:00") ==
-               {:error, "invalid time range: 08:00:00-17:00"}
+      assert parse_time_range("08:00:00-33") ==
+               {:error, "invalid time range: 08:00:00-33"}
     end
 
     test "returns error when start of the time range is greater than the end of it" do

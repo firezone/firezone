@@ -165,15 +165,13 @@ defmodule Domain.Policies do
     {:ok, policies}
   end
 
-  def ensure_client_conforms_policy_constraints(%Clients.Client{}, %Policy{constraints: []}) do
-    :ok
-  end
-
   def ensure_client_conforms_policy_constraints(%Clients.Client{} = client, %Policy{} = policy) do
-    if Constraint.Evaluator.conforms?(policy.constraints, client) do
-      :ok
-    else
-      {:error, :unauthorized}
+    case Constraint.Evaluator.ensure_conforms(policy.constraints, client) do
+      :ok ->
+        :ok
+
+      {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}}
     end
   end
 

@@ -997,7 +997,8 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert ensure_client_conforms_policy_constraints(client, policy) == {:error, :unauthorized}
+      assert ensure_client_conforms_policy_constraints(client, policy) ==
+               {:error, {:forbidden, [violated_properties: [:remote_ip_location_region]]}}
     end
   end
 end
