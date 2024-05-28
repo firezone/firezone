@@ -3,17 +3,19 @@ use crate::messages::InitGateway;
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
+use connlib_shared::{get_user_agent, keypair, Callbacks, Cidrv4, Cidrv6, LoginUrl, StaticSecret};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::{future, TryFutureExt};
 use secrecy::{Secret, SecretString};
 use std::collections::HashSet;
 use std::convert::Infallible;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::pin::pin;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
+use tokio::sync::mpsc;
 use tracing_subscriber::layer;
 use uuid::Uuid;
 
@@ -111,6 +113,10 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     tunnel
         .set_interface(&init.interface)
         .context("Failed to set interface")?;
+    let mut interface = connlib_shared::interface::InterfaceManager::new();
+    interface
+        .on_set_interface_config(init.interface.ipv4, init.interface.ipv6)
+        .await?;
     tunnel.update_relays(HashSet::default(), init.relays);
 
     let mut eventloop = Eventloop::new(tunnel, portal);

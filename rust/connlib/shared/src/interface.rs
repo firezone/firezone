@@ -10,4 +10,4 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
 
-pub(crate) use platform::InterfaceManager;
+pub use platform::InterfaceManager;

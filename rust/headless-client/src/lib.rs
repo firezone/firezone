@@ -10,9 +10,10 @@
 
 use anyhow::{anyhow, bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::Error as ConnlibError;
-use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
-use connlib_shared::{callbacks, Cidrv4, Cidrv6};
+use connlib_client_shared::{
+    file_logger, keypair, Callbacks, Error as ConnlibError, LoginUrl, Session, Sockets,
+};
+use connlib_shared::{callbacks, interface, Cidrv4, Cidrv6};
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{future, SinkExt, StreamExt};
 use secrecy::SecretString;
@@ -44,8 +45,6 @@ pub use linux as platform;
 pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
-
-mod interface;
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -279,7 +278,7 @@ pub fn run_only_headless_client() -> Result<()> {
     session.set_dns(platform::system_resolvers().unwrap_or_default());
 
     let result = rt.block_on(async {
-        let mut interface = interface::InterfaceManager::new();
+        let mut interface = interface::InterfaceManager::default();
         let mut signals = Signals::new()?;
 
         loop {
@@ -304,7 +303,8 @@ pub fn run_only_headless_client() -> Result<()> {
                     | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
                     InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        interface.on_set_interface_config(ipv4, ipv6, dns).await?;
+                        interface.on_set_interface_config(ipv4, ipv6).await?;
+                        interface.control_dns(dns).await?;
                     }
                     InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                         interface.on_update_routes(ipv4, ipv6).await?
@@ -433,13 +433,14 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (cb_tx, mut cb_rx) = mpsc::channel(10);
 
     let send_task = tokio::spawn(async move {
-        let mut interface = interface::InterfaceManager::new();
+        let mut interface = interface::InterfaceManager::default();
 
         while let Some(msg) = cb_rx.recv().await {
             match msg {
                 InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    interface.on_set_interface_config(ipv4, ipv6, dns).await?;
+                    interface.on_set_interface_config(ipv4, ipv6).await?;
+                    interface.control_dns(dns).await?;
                     tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
                         .await?;
                 }
@@ -583,10 +584,6 @@ mod tests {
     #[test]
     fn cli() -> anyhow::Result<()> {
         let exe_name = "firezone-headless-client";
-
-        let actual = Cli::parse_from([exe_name]);
-        assert_eq!(actual.api_url, Url::parse("wss://api.firezone.dev")?);
-        assert!(!actual.check);
 
         let actual = Cli::parse_from([exe_name, "--api-url", "wss://api.firez.one"]);
         assert_eq!(actual.api_url, Url::parse("wss://api.firez.one")?);

@@ -5,6 +5,7 @@
 
 pub mod callbacks;
 pub mod error;
+pub mod interface;
 pub mod messages;
 
 /// Module to generate and store a persistent device ID on disk

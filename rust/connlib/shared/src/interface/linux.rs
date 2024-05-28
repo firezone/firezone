@@ -1,8 +1,8 @@
 //! Virtual network interface
 
+use crate::linux::{etc_resolv_conf, DnsControlMethod};
 use anyhow::{anyhow, bail, Context as _, Result};
 use connlib_client_shared::{Cidrv4, Cidrv6};
-use connlib_shared::linux::{etc_resolv_conf, DnsControlMethod};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -21,7 +21,7 @@ const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
-pub(crate) struct InterfaceManager {
+pub struct InterfaceManager {
     // This gets lazy-initialized when the interface is first configured
     connection: Option<Connection>,
     dns_control_method: Option<DnsControlMethod>,
@@ -46,9 +46,9 @@ impl Drop for InterfaceManager {
     }
 }
 
-impl InterfaceManager {
-    pub(crate) fn new() -> Self {
-        let dns_control_method = connlib_shared::linux::get_dns_control_from_env();
+impl Default for InterfaceManager {
+    fn default() -> Self {
+        let dns_control_method = crate::linux::get_dns_control_from_env();
         tracing::info!(?dns_control_method);
 
         Self {
@@ -57,9 +57,11 @@ impl InterfaceManager {
             routes: Default::default(),
         }
     }
+}
 
+impl InterfaceManager {
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn on_set_interface_config(
+    pub async fn on_set_interface_config(
         &mut self,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
@@ -135,6 +137,12 @@ impl InterfaceManager {
 
         res_v4.or(res_v6)?;
 
+        Ok(())
+    }
+
+    // Fallible on Windows
+    #[allow(clippy::unnecessary_wraps)]
+    pub async fn control_dns(&self, dns_config: Vec<IpAddr>) -> Result<()> {
         if let Err(error) = match self.dns_control_method {
             None => Ok(()),
             Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config).await,
@@ -161,11 +169,7 @@ impl InterfaceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn on_update_routes(
-        &mut self,
-        ipv4: Vec<Cidrv4>,
-        ipv6: Vec<Cidrv6>,
-    ) -> Result<()> {
+    pub async fn on_update_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
             .map(|x| Into::<Ipv4Network>::into(x).into())

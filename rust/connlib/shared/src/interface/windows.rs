@@ -1,5 +1,5 @@
+use crate::{Cidrv4, Cidrv6};
 use anyhow::{Context as _, Result};
-use connlib_shared::{Cidrv4, Cidrv6};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::windows::process::CommandExt,
@@ -14,28 +14,20 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 // TODO: De-dupe
 const TUNNEL_NAME: &str = "Firezone";
 
-pub(crate) struct InterfaceManager {}
+#[derive(Default)]
+pub struct InterfaceManager {}
 
 impl Drop for InterfaceManager {
     fn drop(&mut self) {
-        if let Err(error) = connlib_shared::windows::dns::deactivate() {
+        if let Err(error) = crate::windows::dns::deactivate() {
             tracing::error!(?error, "Failed to deactivate DNS control");
         }
     }
 }
 
 impl InterfaceManager {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn on_set_interface_config(
-        &mut self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns_config: Vec<IpAddr>,
-    ) -> Result<()> {
+    pub async fn on_set_interface_config(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);
         tracing::debug!("Setting our IPv6 = {}", ipv6);
 
@@ -65,13 +57,18 @@ impl InterfaceManager {
             .stdout(Stdio::null())
             .status()?;
 
-        connlib_shared::windows::dns::change(&dns_config)
-            .context("Should be able to control DNS")?;
+        Ok(())
+    }
+
+    // async on Linux
+    #[allow(clippy::unused_async)]
+    pub async fn control_dns(&self, dns_config: Vec<IpAddr>) -> Result<()> {
+        crate::windows::dns::change(&dns_config).context("Should be able to control DNS")?;
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn on_update_routes(&mut self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Result<()> {
+    pub async fn on_update_routes(&mut self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Result<()> {
         unimplemented!()
     }
 }
