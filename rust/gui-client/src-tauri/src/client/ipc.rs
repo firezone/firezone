@@ -1,14 +1,11 @@
 use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
-use connlib_client_shared::{callbacks::ResourceDescription, Callbacks};
+use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    sync::Arc,
-};
+use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
@@ -32,23 +29,22 @@ pub(crate) struct CallbackHandler {
     pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
-// Callbacks must all be non-blocking
-impl connlib_client_shared::Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        // The errors don't implement `Serialize`, so we don't get a machine-readable
-        // error here, but we should consider it an error anyway. `on_disconnect`
-        // is always an error
-        tracing::error!("on_disconnect {error:?}");
+// Almost but not quite implements `Callbacks` from connlib.
+// Because of the IPC boundary, we can deviate.
+impl CallbackHandler {
+    fn on_disconnect(&self, error_msg: String, is_authentication_error: bool) {
         self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected)
+            .try_send(ControllerRequest::Disconnected {
+                error_msg,
+                is_authentication_error,
+            })
             .expect("controller channel failed");
     }
 
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<i32> {
+    fn on_set_interface_config(&self) {
         self.ctlr_tx
             .try_send(ControllerRequest::TunnelReady)
             .expect("controller channel failed");
-        None
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
@@ -103,12 +99,17 @@ impl Client {
             while let Some(msg) = rx.next().await.transpose()? {
                 match serde_json::from_slice::<IpcServerMsg>(&msg)? {
                     IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect => callback_handler.on_disconnect(
-                        &connlib_client_shared::Error::Other("errors can't be serialized"),
-                    ),
+                    IpcServerMsg::OnDisconnect {
+                        error_msg,
+                        is_authentication_error,
+                    } => callback_handler.on_disconnect(error_msg, is_authentication_error),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                    IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        callback_handler.on_set_interface_config(ipv4, ipv6, dns);
+                    IpcServerMsg::OnSetInterfaceConfig {
+                        ipv4: _,
+                        ipv6: _,
+                        dns: _,
+                    } => {
+                        callback_handler.on_set_interface_config();
                     }
                 }
             }
