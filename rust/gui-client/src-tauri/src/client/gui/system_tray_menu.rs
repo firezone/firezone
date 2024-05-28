@@ -39,9 +39,12 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
         let submenu = SystemTrayMenu::new();
 
         let address_description = res.address_description();
-        let submenu = match Url::parse(address_description) {
-            Ok(url) => submenu.item(Event::Url(url), address_description),
-            Err(_) => submenu.copyable(address_description),
+        let submenu = if address_description.is_empty() {
+            submenu.copyable(&res.pastable())
+        } else if let Ok(url) = Url::parse(address_description) {
+            submenu.item(Event::Url(url), address_description)
+        } else {
+            submenu.copyable(address_description)
         };
 
         let submenu = submenu
