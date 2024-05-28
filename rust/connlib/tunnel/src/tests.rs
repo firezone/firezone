@@ -13,7 +13,7 @@ use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use hickory_proto::{rr::RecordType, serialize::binary::BinDecodable};
 use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{ip::IpNextHeaderProtocols, IpPacket, MutableIpPacket, Packet};
+use ip_packet::{IpPacket, MutableIpPacket, Packet};
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -73,8 +73,9 @@ struct TunnelTest {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
-    gateway_received_icmp_requests: VecDeque<(Instant, IpAddr, IpAddr)>,
-    client_received_icmp_replies: VecDeque<(Instant, IpAddr, IpAddr)>,
+    client_sent_icmp_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
+    client_received_icmp_replies: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
+    gateway_received_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -105,8 +106,8 @@ struct ReferenceState {
     /// The resources we have connected to.
     connected_resources: HashSet<ResourceId>,
 
-    gateway_received_icmp_requests: VecDeque<(Instant, IpAddr, IpAddr)>,
-    client_received_icmp_replies: VecDeque<(Instant, IpAddr, IpAddr)>,
+    /// The expected ICMP handshakes (resource dst IP, seq, identifier)
+    expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16)>,
 }
 
 /// The possible transitions of the state machine.
@@ -115,11 +116,23 @@ enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
     /// Send a ICMP packet to random IP.
-    SendICMPPacketToRandomIp { dst: IpAddr },
+    SendICMPPacketToRandomIp {
+        dst: IpAddr,
+        seq: u16,
+        identifier: u16,
+    },
     /// Send a ICMP packet to an IPv4 resource.
-    SendICMPPacketToIp4Resource { r_idx: sample::Index },
+    SendICMPPacketToIp4Resource {
+        r_idx: sample::Index,
+        seq: u16,
+        identifier: u16,
+    },
     /// Send a ICMP packet to an IPv6 resource.
-    SendICMPPacketToIp6Resource { r_idx: sample::Index },
+    SendICMPPacketToIp6Resource {
+        r_idx: sample::Index,
+        seq: u16,
+        identifier: u16,
+    },
 
     /// Add a new DNS resource to the client.
     AddDnsResource(ResourceDescriptionDns),
@@ -135,7 +148,11 @@ enum Transition {
         resolved_ip: IpAddr,
     },
     /// Send a ICMP packet to a DNS resolved address.
-    SendICMPPacketToResolvedAddress { a_idx: sample::Index },
+    SendICMPPacketToResolvedAddress {
+        a_idx: sample::Index,
+        seq: u16,
+        identifier: u16,
+    },
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -221,9 +238,10 @@ impl StateMachineTest for TunnelTest {
             client_dns_records: Default::default(),
             gateway_dns_resolver: Default::default(),
             dns_by_sentinel: Default::default(),
-            gateway_received_icmp_requests: Default::default(),
-            client_received_icmp_replies: Default::default(),
             next_dns_id: 0,
+            client_sent_icmp_requests: Default::default(),
+            client_received_icmp_replies: Default::default(),
+            gateway_received_requests: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -261,20 +279,47 @@ impl StateMachineTest for TunnelTest {
                     .state
                     .add_resources(&[ResourceDescription::Dns(r)]);
             }),
-            Transition::SendICMPPacketToRandomIp { dst } => {
-                let packet = ip_packet::make::icmp_request_packet(state.client.tunnel_ip(dst), dst);
+            Transition::SendICMPPacketToRandomIp {
+                dst,
+                seq,
+                identifier,
+            } => {
+                let packet = ip_packet::make::icmp_request_packet(
+                    state.client.tunnel_ip(dst),
+                    dst,
+                    seq,
+                    identifier,
+                );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToIp4Resource { r_idx } => {
+            Transition::SendICMPPacketToIp4Resource {
+                r_idx,
+                seq,
+                identifier,
+            } => {
                 let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
-                let packet = ip_packet::make::icmp_request_packet(state.client.tunnel_ip(dst), dst);
+                let packet = ip_packet::make::icmp_request_packet(
+                    state.client.tunnel_ip(dst),
+                    dst,
+                    seq,
+                    identifier,
+                );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToIp6Resource { r_idx } => {
+            Transition::SendICMPPacketToIp6Resource {
+                r_idx,
+                seq,
+                identifier,
+            } => {
                 let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
-                let packet = ip_packet::make::icmp_request_packet(state.client.tunnel_ip(dst), dst);
+                let packet = ip_packet::make::icmp_request_packet(
+                    state.client.tunnel_ip(dst),
+                    dst,
+                    seq,
+                    identifier,
+                );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
@@ -300,14 +345,23 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
-            Transition::SendICMPPacketToResolvedAddress { a_idx } => {
+            Transition::SendICMPPacketToResolvedAddress {
+                a_idx,
+                seq,
+                identifier,
+            } => {
                 // Perform the same sampling as the reference state.
                 let (name, _) = ref_state.sample_resolved_address(a_idx);
 
                 // Lookup the IP that connlib resolved for this name.
                 let dst = state.client_dns_records.get(name).copied().unwrap();
 
-                let packet = ip_packet::make::icmp_request_packet(state.client.tunnel_ip(dst), dst);
+                let packet = ip_packet::make::icmp_request_packet(
+                    state.client.tunnel_ip(dst),
+                    dst,
+                    seq,
+                    identifier,
+                );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
@@ -328,14 +382,44 @@ impl StateMachineTest for TunnelTest {
         state.advance(ref_state, &mut buffered_transmits);
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        assert_eq!(
-            state.gateway_received_icmp_requests, ref_state.gateway_received_icmp_requests,
-            "Packets should flow from client to gateway"
-        );
-        assert_eq!(
-            state.client_received_icmp_replies, ref_state.client_received_icmp_replies,
-            "Packets should flow from gateway to client"
-        );
+        for (resource_dst, seq, identifier) in ref_state.expected_icmp_handshakes.iter() {
+            let client_sent_request = &state
+                .client_sent_icmp_requests
+                .get(&(*seq, *identifier))
+                .unwrap();
+            let client_received_reply = &state
+                .client_received_icmp_replies
+                .get(&(*seq, *identifier))
+                .unwrap();
+            let gateway_received_request = &state
+                .gateway_received_requests
+                .get(&(*seq, *identifier))
+                .unwrap();
+
+            assert_eq!(
+                gateway_received_request.source(),
+                ref_state
+                    .client
+                    .tunnel_ip(gateway_received_request.source()),
+                "ICMP request on gateway to originate from client"
+            );
+            assert_eq!(
+                gateway_received_request.destination(),
+                *resource_dst,
+                "ICMP request on gateway to target correct resource"
+            );
+            assert_eq!(
+                client_sent_request.destination(),
+                client_received_reply.source(),
+                "ICMP request destination == ICMP reply source"
+            );
+            assert_eq!(
+                client_sent_request.source(),
+                client_received_reply.destination(),
+                "ICMP request source == ICMP reply destination"
+            );
+        }
+
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
@@ -437,8 +521,7 @@ impl ReferenceStateMachine for ReferenceState {
                     upstream_dns_resolvers,
                     client_cidr_resources: IpNetworkTable::new(),
                     connected_resources: Default::default(),
-                    gateway_received_icmp_requests: Default::default(),
-                    client_received_icmp_replies: Default::default(),
+                    expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
                     resolved_domain_names: Default::default(),
                 },
@@ -510,16 +593,28 @@ impl ReferenceStateMachine for ReferenceState {
 
                 state.resolved_domain_names.insert(domain, *resolved_ip);
             }
-            Transition::SendICMPPacketToRandomIp { dst } => {
-                state.on_icmp_packet(state.client.tunnel_ip(*dst), *dst);
+            Transition::SendICMPPacketToRandomIp {
+                dst,
+                seq,
+                identifier,
+            } => {
+                state.on_icmp_packet(*dst, *seq, *identifier);
             }
-            Transition::SendICMPPacketToIp4Resource { r_idx } => {
+            Transition::SendICMPPacketToIp4Resource {
+                r_idx,
+                seq,
+                identifier,
+            } => {
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(state.client.tunnel_ip4, dst);
+                state.on_icmp_packet(dst, *seq, *identifier);
             }
-            Transition::SendICMPPacketToIp6Resource { r_idx } => {
+            Transition::SendICMPPacketToIp6Resource {
+                r_idx,
+                seq,
+                identifier,
+            } => {
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(state.client.tunnel_ip6, dst);
+                state.on_icmp_packet(dst, *seq, *identifier);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
@@ -528,18 +623,16 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
-            Transition::SendICMPPacketToResolvedAddress { a_idx } => {
+            Transition::SendICMPPacketToResolvedAddress {
+                a_idx,
+                seq,
+                identifier,
+            } => {
                 let (_, dst) = state.sample_resolved_address(*a_idx);
-                let src = state.client.tunnel_ip(dst);
 
                 state
-                    .gateway_received_icmp_requests
-                    .push_back((state.now, src, dst));
-                state.client_received_icmp_replies.push_back((
-                    state.now,
-                    todo!("Can the reference state know, who sent packet?"),
-                    src,
-                ));
+                    .expected_icmp_handshakes
+                    .push_back((dst, *seq, *identifier));
             }
         };
 
@@ -563,27 +656,36 @@ impl ReferenceStateMachine for ReferenceState {
                 true
             }
             Transition::Tick { .. } => true,
-            Transition::SendICMPPacketToRandomIp { dst } => match dst {
-                IpAddr::V4(dst) => dst != &state.client.tunnel_ip4,
-                IpAddr::V6(dst) => dst != &state.client.tunnel_ip6,
-            },
-            Transition::SendICMPPacketToIp4Resource { r_idx } => {
+            Transition::SendICMPPacketToRandomIp {
+                dst,
+                seq,
+                identifier,
+            } => state.is_valid_icmp_packet(dst, seq, identifier),
+            Transition::SendICMPPacketToIp4Resource {
+                r_idx,
+                seq,
+                identifier,
+            } => {
                 if state.client_cidr_resources.len().0 == 0 {
                     return false;
                 }
 
                 let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
 
-                state.client.tunnel_ip4 != dst
+                state.is_valid_icmp_packet(&dst.into(), seq, identifier)
             }
-            Transition::SendICMPPacketToIp6Resource { r_idx } => {
+            Transition::SendICMPPacketToIp6Resource {
+                r_idx,
+                seq,
+                identifier,
+            } => {
                 if state.client_cidr_resources.len().1 == 0 {
                     return false;
                 }
 
                 let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
 
-                state.client.tunnel_ip6 != dst
+                state.is_valid_icmp_packet(&dst.into(), seq, identifier)
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
@@ -614,7 +716,21 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::SendQueryToDnsResource { .. } => !state.client_dns_resources.is_empty(),
+            Transition::SendQueryToDnsResource {
+                r_idx, resolved_ip, ..
+            } => {
+                let has_dns_resources = !state.client_dns_resources.is_empty();
+
+                // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
+                // Connlib cannot know, when a DNS record expires, thus we currently don't allow DNS resources to change their IPs using this pre-condition.
+                let dns_resource = state.sample_dns_resource_domain(r_idx);
+                let has_resolved_domain_to_different_ip_already = state
+                    .resolved_domain_names
+                    .get(&dns_resource)
+                    .is_some_and(|ip| ip != resolved_ip);
+
+                has_dns_resources && !has_resolved_domain_to_different_ip_already
+            }
             Transition::SendICMPPacketToResolvedAddress { .. } => {
                 !state.resolved_domain_names.is_empty()
             }
@@ -753,6 +869,17 @@ impl TunnelTest {
         &mut self,
         packet: MutableIpPacket<'_>,
     ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
+        {
+            let packet = packet.to_owned().into_immutable();
+
+            if let Some(icmp) = packet.as_icmp() {
+                let echo_request = icmp.as_echo_request().expect("to be echo request");
+
+                self.client_sent_icmp_requests
+                    .insert((echo_request.sequence(), echo_request.identifier()), packet);
+            }
+        }
+
         let transmit = self
             .client
             .span
@@ -863,16 +990,13 @@ impl TunnelTest {
                 .state
                 .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
-            match packet.source() {
-                IpAddr::V4(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmp),
-                IpAddr::V6(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmpv6),
-            }
+            let icmp = packet.as_icmp().expect("to be ICMP packet");
+            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
 
-            self.client_received_icmp_replies.push_back((
-                self.now,
-                packet.source(),
-                packet.destination(),
-            ));
+            self.client_received_icmp_replies.insert(
+                (echo_reply.sequence(), echo_reply.identifier()),
+                packet.to_owned(),
+            );
         };
 
         ControlFlow::Break(())
@@ -896,28 +1020,20 @@ impl TunnelTest {
                 .state
                 .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
-            match packet.source() {
-                IpAddr::V4(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmp),
-                IpAddr::V6(_) => assert_eq!(packet.next_header(), IpNextHeaderProtocols::Icmpv6),
-            }
+            let packet = packet.to_owned();
 
-            let packet_src = packet.source();
-            let packet_dst = packet.destination();
+            let icmp = packet.as_icmp().expect("to be ICMP packet");
+            let echo_request = icmp.as_echo_request().expect("to be echo request");
 
-            assert_eq!(
-                packet_src,
-                self.client.tunnel_ip(packet_src),
-                "ICMP packet to originate from client"
+            self.gateway_received_requests.insert(
+                (echo_request.sequence(), echo_request.identifier()),
+                packet.clone(),
             );
 
-            self.gateway_received_icmp_requests
-                .push_back((self.now, packet_src, packet_dst));
-
             if let Some(transmit) = self.gateway.span.in_scope(|| {
-                self.gateway.state.encapsulate(
-                    ip_packet::make::icmp_response_packet(packet_dst, packet_src), //TODO: This should use all data from the incoming ICMP request.
-                    self.now,
-                )
+                self.gateway
+                    .state
+                    .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
             }) {
                 let transmit = transmit.into_owned();
                 let dst = transmit.dst;
@@ -1128,8 +1244,7 @@ impl TunnelTest {
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet(&mut self, src: impl Into<IpAddr>, dst: impl Into<IpAddr>) {
-        let src = src.into();
+    fn on_icmp_packet(&mut self, dst: impl Into<IpAddr>, seq: u16, identifier: u16) {
         let dst = dst.into();
 
         tracing::Span::current().record("dst", tracing::field::display(dst));
@@ -1142,10 +1257,8 @@ impl ReferenceState {
 
         if self.connected_resources.contains(&resource.id) {
             tracing::debug!("Connected to resource, expecting packet to be routed");
-            self.gateway_received_icmp_requests
-                .push_back((self.now, src, dst));
-            self.client_received_icmp_replies
-                .push_back((self.now, dst, src));
+            self.expected_icmp_handshakes
+                .push_back((dst, seq, identifier));
             return;
         }
 
@@ -1205,6 +1318,22 @@ impl ReferenceState {
         };
 
         network.network_address()
+    }
+
+    /// An ICMP packet is valid if it doesn't target the client directly and we didn't yet send an ICMP packet with the same seq and identifier.
+    fn is_valid_icmp_packet(&self, dst: &IpAddr, seq: &u16, identifier: &u16) -> bool {
+        let not_self_ping = match dst {
+            IpAddr::V4(dst) => dst != &self.client.tunnel_ip4,
+            IpAddr::V6(dst) => dst != &self.client.tunnel_ip6,
+        };
+        let not_existing_icmp =
+            self.expected_icmp_handshakes
+                .iter()
+                .all(|(_, existing_seq, existing_identifer)| {
+                    existing_seq != seq && existing_identifer != identifier
+                });
+
+        not_self_ping && not_existing_icmp
     }
 
     /// Returns the DNS servers that we expect connlib to use.
@@ -1609,20 +1738,43 @@ impl fmt::Debug for PrivateKey {
 /// By chance, it could be that we pick a resource IP here.
 /// That is okay as our reference state machine checks separately whether we are pinging a resource here.
 fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
-    any::<IpAddr>().prop_map(|dst| Transition::SendICMPPacketToRandomIp { dst })
+    (any::<IpAddr>(), any::<u16>(), any::<u16>()).prop_map(|(dst, seq, identifier)| {
+        Transition::SendICMPPacketToRandomIp {
+            dst,
+            seq,
+            identifier,
+        }
+    })
 }
 
 fn icmp_to_ipv4_cidr_resource() -> impl Strategy<Value = Transition> {
-    any::<sample::Index>().prop_map(move |r_idx| Transition::SendICMPPacketToIp4Resource { r_idx })
+    (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
+        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToIp4Resource {
+            r_idx,
+            seq,
+            identifier,
+        },
+    )
 }
 
 fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
-    any::<sample::Index>().prop_map(move |r_idx| Transition::SendICMPPacketToIp6Resource { r_idx })
+    (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
+        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToIp6Resource {
+            r_idx,
+            seq,
+            identifier,
+        },
+    )
 }
 
 fn icmp_to_resolved_address() -> impl Strategy<Value = Transition> {
-    any::<sample::Index>()
-        .prop_map(move |a_idx| Transition::SendICMPPacketToResolvedAddress { a_idx })
+    (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
+        move |(a_idx, seq, identifier)| Transition::SendICMPPacketToResolvedAddress {
+            a_idx,
+            seq,
+            identifier,
+        },
+    )
 }
 
 fn a_query_to_dns_resource() -> impl Strategy<Value = Transition> {

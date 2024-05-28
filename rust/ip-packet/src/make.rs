@@ -1,6 +1,6 @@
 //! Factory module for making all kinds of packets.
 
-use crate::MutableIpPacket;
+use crate::{IpPacket, MutableIpPacket};
 use hickory_proto::rr::{Name, RecordType};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
@@ -11,12 +11,26 @@ use pnet_packet::{
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-pub fn icmp_request_packet(src: IpAddr, dst: impl Into<IpAddr>) -> MutableIpPacket<'static> {
-    icmp_packet(src, dst.into(), 1, 0, IcmpKind::Request)
+pub fn icmp_request_packet(
+    src: IpAddr,
+    dst: impl Into<IpAddr>,
+    seq: u16,
+    identifier: u16,
+) -> MutableIpPacket<'static> {
+    icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Request)
 }
 
-pub fn icmp_response_packet(src: IpAddr, dst: impl Into<IpAddr>) -> MutableIpPacket<'static> {
-    icmp_packet(src, dst.into(), 1, 0, IcmpKind::Response)
+pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
+    let icmp = packet.as_icmp().expect("to be ICMP packet");
+    let echo_request = icmp.as_echo_request().expect("to be ICMP echo request");
+
+    icmp_packet(
+        packet.destination(),
+        packet.source(),
+        echo_request.sequence(),
+        echo_request.identifier(),
+        IcmpKind::Response,
+    )
 }
 
 enum IcmpKind {
