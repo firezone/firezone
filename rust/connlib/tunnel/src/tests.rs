@@ -729,7 +729,15 @@ impl ReferenceStateMachine for ReferenceState {
                     .get(&dns_resource)
                     .is_some_and(|ip| ip != resolved_ip);
 
-                has_dns_resources && !has_resolved_domain_to_different_ip_already
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
+                let real_ip_overlaps_with_cidr_resource = state
+                    .client_cidr_resources
+                    .longest_match(*resolved_ip)
+                    .is_some();
+
+                has_dns_resources
+                    && !has_resolved_domain_to_different_ip_already
+                    && !real_ip_overlaps_with_cidr_resource
             }
             Transition::SendICMPPacketToResolvedAddress { .. } => {
                 !state.resolved_domain_names.is_empty()
