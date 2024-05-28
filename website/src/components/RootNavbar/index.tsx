@@ -54,13 +54,14 @@ export default function RootNavbar() {
               />
             </Link>
             <Link href="/">
-              <Image
-                width={150}
-                height={150}
-                src="/images/logo-text.svg"
-                className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
-                alt="Firezone Logo"
-              />
+              <span className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5">
+                <Image
+                  width={150}
+                  height={150}
+                  src="/images/logo-text.svg"
+                  alt="Firezone Logo"
+                />
+              </span>
             </Link>
             <span className="p-2"></span>
             <button

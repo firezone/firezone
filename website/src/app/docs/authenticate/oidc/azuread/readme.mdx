@@ -22,7 +22,8 @@ the following config settings required for the integration:
    which returns a JSON document used to construct subsequent requests to this
    OIDC provider.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="azure sso login"
   src="/images/azure-sso-login.gif"
   width={960}
@@ -46,7 +47,8 @@ after entering the following:
    include the trailing slash both when saving the provider in Firezone and in
    Azure AD (`redirect_uri` field on the screenshot below).**
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="azure app registration"
   src="/images/azure-app-registration.png"
   width={960}
@@ -58,7 +60,8 @@ After registering, open the details view of the application and copy the
 the endpoints menu to retrieve the `OpenID Connect metadata document`. **This
 will be the `discovery_document_uri` value**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="azure client id"
   src="/images/azure-client-id.png"
   width={960}
@@ -69,7 +72,8 @@ Next, select the Certificates & secrets link under the Manage menu and create a
 new client secret. Copy the client secret - **this will be the `client_secret`
 value**.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="azure client secret"
   src="/images/azure-client-secret.png"
   width={960}
@@ -80,7 +84,8 @@ Lastly, select the API permissions link under the Manage menu, click
 `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 `offline_access` and `profile` to the required permissions.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="azure permissions"
   src="/images/azure-permissions.png"
   width={960}
