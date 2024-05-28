@@ -571,7 +571,7 @@ impl TunnelTest {
     ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
         let transmit = self.client.span.in_scope(|| {
             self.client.state.encapsulate(
-                ip_packet::make::icmp_request_packet(src.into(), dst.into()),
+                ip_packet::make::icmp_request_packet(src.into(), dst.into(), 1, 0),
                 self.now,
             )
         })?;
@@ -688,6 +688,8 @@ impl TunnelTest {
                 .state
                 .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
+            let packet = packet.to_owned();
+
             // TODO: Assert that it is an ICMP packet.
 
             let packet_src = packet.source();
@@ -703,10 +705,9 @@ impl TunnelTest {
                 .push_back((self.now, packet_src, packet_dst));
 
             if let Some(transmit) = self.gateway.span.in_scope(|| {
-                self.gateway.state.encapsulate(
-                    ip_packet::make::icmp_response_packet(packet_dst, packet_src),
-                    self.now,
-                )
+                self.gateway
+                    .state
+                    .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
             }) {
                 let transmit = transmit.into_owned();
                 let dst = transmit.dst;
