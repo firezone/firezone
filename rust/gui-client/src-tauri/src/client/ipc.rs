@@ -29,14 +29,15 @@ pub(crate) struct CallbackHandler {
     pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
 }
 
+// Almost but not quite implements `Callbacks` from connlib.
+// Because of the IPC boundary, we can deviate.
 impl CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        // The errors don't implement `Serialize`, so we don't get a machine-readable
-        // error here, but we should consider it an error anyway. `on_disconnect`
-        // is always an error
-        tracing::error!("on_disconnect {error:?}");
+    fn on_disconnect(&self, error_msg: String, is_authentication_error: bool) {
         self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected)
+            .try_send(ControllerRequest::Disconnected {
+                error_msg,
+                is_authentication_error,
+            })
             .expect("controller channel failed");
     }
 
@@ -98,9 +99,10 @@ impl Client {
             while let Some(msg) = rx.next().await.transpose()? {
                 match serde_json::from_slice::<IpcServerMsg>(&msg)? {
                     IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect { error_msg: _ } => callback_handler.on_disconnect(
-                        &connlib_client_shared::Error::Other("errors can't be serialized yet"),
-                    ),
+                    IpcServerMsg::OnDisconnect {
+                        error_msg,
+                        is_authentication_error,
+                    } => callback_handler.on_disconnect(error_msg, is_authentication_error),
                     IpcServerMsg::OnTunnelReady => callback_handler.on_tunnel_ready(),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
                 }

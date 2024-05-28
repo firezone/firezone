@@ -10,6 +10,7 @@
 
 use anyhow::{anyhow, bail, Context as _, Result};
 use clap::Parser;
+use connlib_client_shared::Error as ConnlibError;
 use connlib_client_shared::{file_logger, keypair, Callbacks, LoginUrl, Session, Sockets};
 use connlib_shared::{callbacks, Cidrv4, Cidrv6};
 use firezone_cli_utils::setup_global_subscriber;
@@ -186,9 +187,10 @@ enum InternalServerMsg {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
-    OnDisconnect { error_msg: String },
-    // TODO: We can probably just consider the first `OnUpdateResources` to be the same as
-    // an `OnTunnelReady`
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
     OnTunnelReady,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
@@ -294,9 +296,10 @@ pub fn run_only_headless_client() -> Result<()> {
                     return Err(anyhow::anyhow!("cb_rx unexpectedly ran empty"));
                 }
                 future::Either::Right((Some(msg), _)) => match msg {
-                    InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect { error_msg }) => {
-                        return Err(anyhow!(error_msg).context("Firezone disconnected"))
-                    }
+                    InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+                        error_msg,
+                        is_authentication_error: _,
+                    }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
                     InternalServerMsg::Ipc(IpcServerMsg::Ok)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
@@ -369,9 +372,15 @@ struct CallbackHandler {
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::Error) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
+        let is_authentication_error = if let ConnlibError::PortalConnectionFailed(error) = error {
+            error.is_authentication_error()
+        } else {
+            false
+        };
         self.cb_tx
             .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
                 error_msg: error.to_string(),
+                is_authentication_error,
             }))
             .expect("should be able to send OnDisconnect");
     }
