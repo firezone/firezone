@@ -252,6 +252,8 @@ pub fn run_only_headless_client() -> Result<()> {
         return Ok(());
     }
 
+    // TODO: Can theoretically be removed the same way the Windows IPC service works,
+    // using an abort handle
     let (on_disconnect_tx, mut on_disconnect_rx) = mpsc::channel(1);
     let callback_handler = CallbackHandler { on_disconnect_tx };
 
