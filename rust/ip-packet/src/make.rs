@@ -20,7 +20,9 @@ pub fn icmp_request_packet(
 }
 
 pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
-    let icmp = packet.as_icmp().expect("IP packet should be an ICMP packet");
+    let icmp = packet
+        .as_icmp()
+        .expect("IP packet should be an ICMP packet");
     let echo_request = icmp.as_echo_request().expect("to be ICMP echo request");
 
     icmp_packet(
