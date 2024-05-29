@@ -211,7 +211,7 @@ impl IpcServer {
 
     /// Uses a test path instead of what prod uses
     ///
-    /// The test path doesn't run admin powers and won't conflict with the prod
+    /// The test path doesn't need admin powers and won't conflict with the prod
     /// IPC service on a dev machine.
     ///
     /// This is async on Linux
