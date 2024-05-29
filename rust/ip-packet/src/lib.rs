@@ -39,8 +39,8 @@ pub enum IpPacket<'a> {
 
 #[derive(Debug, PartialEq)]
 pub enum IcmpPacket<'a> {
-    Ipv4(pnet_packet::icmp::IcmpPacket<'a>),
-    Ipv6(Icmpv6Packet<'a>),
+    Ipv4(icmp::IcmpPacket<'a>),
+    Ipv6(icmpv6::Icmpv6Packet<'a>),
 }
 
 #[derive(Debug, PartialEq)]

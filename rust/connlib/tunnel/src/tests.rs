@@ -1060,6 +1060,9 @@ impl TunnelTest {
                 self.gateway
                     .state
                     .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
+                self.gateway
+                    .state
+                    .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
             }) {
                 let transmit = transmit.into_owned();
                 let dst = transmit.dst;
