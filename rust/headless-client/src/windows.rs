@@ -194,7 +194,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
 }
 
 pub(crate) struct IpcServer {
-    // On Linux this has some fields
+    pipe_path: String,
 }
 
 /// Opaque wrapper around platform-specific IPC stream
@@ -218,11 +218,11 @@ impl IpcServer {
     #[allow(clippy::unused_async)]
     #[cfg(test)]
     pub(crate) async fn new_for_test() -> Result<Self> {
-        let pipe_path = named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"));
-        Self::new_with_path(pipe_path())
+        let pipe_path = named_pipe_path(&format!("{BUNDLE_ID}_test.ipc_service"));
+        Self::new_with_path(pipe_path)
     }
 
-    pub(crate) fn new_with_path(pipe_path: PathBuf) -> Result<Self> {
+    pub(crate) fn new_with_path(pipe_path: String) -> Result<Self> {
         setup_before_connlib()?;
         Ok(Self { pipe_path })
     }
@@ -238,7 +238,7 @@ impl IpcServer {
     }
 }
 
-fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
+fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
