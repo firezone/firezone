@@ -90,7 +90,6 @@ impl Device {
         // On Android / Linux we recreate the tunnel every time we re-configure it
         self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
 
-        // The actual values are ignored, this is just used as a `TunnelReady` signal
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         if let Some(waker) = self.waker.take() {

@@ -69,6 +69,10 @@ impl InterfaceManager {
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn on_update_routes(&mut self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Result<()> {
+        // TODO: Windows still does route updates in `tun_windows.rs`. I can move it up
+        // here, but since the Client and Gateway don't know the index of the WinTun
+        // interface, I'd have to use the Windows API
+        // <https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/NetworkManagement/IpHelper/fn.GetAdaptersAddresses.html>
         unimplemented!()
     }
 }
