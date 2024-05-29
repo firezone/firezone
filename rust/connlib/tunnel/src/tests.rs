@@ -30,7 +30,7 @@ use secrecy::ExposeSecret;
 use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
@@ -66,10 +66,18 @@ struct TunnelTest {
     portal: SimPortal,
 
     /// The DNS records created on the client as a result of received DNS responses.
+    ///
+    /// Per domain, we keep a [`HashMap`] of the resources' real IP to the connlib assigned proxy IP.
+    /// We need this to deterministically pick to the correct IP when we attempt to talk to a resource.
     client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
+    /// Mapping of proxy IPs to real resource destinations.
+    ///
+    /// As the client, we don't know how connlib attempts this mapping but we care about it being stable.
+    client_proxy_ip_mapping: HashMap<IpAddr, IpAddr>,
+
     /// Stub for the gateway's DNS resolver.
-    gateway_dns_resolver: HashMap<DomainName, Vec<IpAddr>>,
+    gateway_dns_resolver: HashMap<DomainName, HashSet<IpAddr>>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -124,7 +132,13 @@ struct ReferenceState {
     connected_cidr_resources: HashSet<ResourceId>,
 
     /// The expected ICMP handshakes (resource dst IP, seq, identifier)
-    expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16)>,
+    expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16, ResourceKind)>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ResourceKind {
+    Cidr,
+    Dns,
 }
 
 type QueryId = u16;
@@ -166,7 +180,7 @@ enum Transition {
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
         /// The IP we resolve the domain to.
-        resolved_ips: Vec<IpAddr>,
+        resolved_ips: HashSet<IpAddr>,
     },
     // TODO: Add a transition for sending another DNS query for an already resolved domain.
     /// Send a ICMP packet to a DNS resolved address.
@@ -264,6 +278,7 @@ impl StateMachineTest for TunnelTest {
             client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
             client_sent_dns_queries: Default::default(),
+            client_proxy_ip_mapping: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -393,10 +408,13 @@ impl StateMachineTest for TunnelTest {
                 let (name, _) = ref_state.sample_resolved_address(a_idx);
 
                 // Lookup the IPs that connlib resolved for this name.
-                let ips = dbg!(&state.client_dns_records)
-                    .get(name)
+                let proxy_ips = state
+                    .client_dns_records
+                    .get(&name)
                     .expect("domain name to be present in client DNS records");
-                let dst = *a_idx.get(ips);
+
+                // Pick a random proxy IP to use.
+                let dst = *a_idx.get(proxy_ips);
 
                 let packet = ip_packet::make::icmp_request_packet(
                     state.client.tunnel_ip(dst),
@@ -424,7 +442,7 @@ impl StateMachineTest for TunnelTest {
         state.advance(ref_state, &mut buffered_transmits);
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        for (resource_dst, seq, identifier) in ref_state.expected_icmp_handshakes.iter() {
+        for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
             let client_sent_request = &state
                 .client_sent_icmp_requests
                 .get(&(*seq, *identifier))
@@ -446,11 +464,6 @@ impl StateMachineTest for TunnelTest {
                 "ICMP request on gateway to originate from client"
             );
             assert_eq!(
-                gateway_received_request.destination(),
-                *resource_dst,
-                "ICMP request on gateway to target correct resource"
-            );
-            assert_eq!(
                 client_sent_request.destination(),
                 client_received_reply.source(),
                 "ICMP request destination == ICMP reply source"
@@ -460,6 +473,41 @@ impl StateMachineTest for TunnelTest {
                 client_received_reply.destination(),
                 "ICMP request source == ICMP reply destination"
             );
+
+            match kind {
+                ResourceKind::Cidr => {
+                    // For CIDR resources, the expected dst is always known.
+
+                    assert_eq!(
+                        gateway_received_request.destination(),
+                        *resource_dst,
+                        "ICMP request on gateway to target correct CIDR resource"
+                    );
+                }
+                ResourceKind::Dns => {
+                    // For DNS resources, we need to look up, which proxy IP we used.
+                    // We consider it an implementation detail, how connlib assigns those IPs.
+                    // We do want to assert that the mapping is stable.
+
+                    match state
+                        .client_proxy_ip_mapping
+                        .entry(client_sent_request.destination())
+                    {
+                        Entry::Vacant(v) => {
+                            // We have to gradually discover connlib's mapping ...
+                            // For the first packet, we just save the IP that we ended up talking to.
+                            v.insert(gateway_received_request.source());
+                        }
+                        Entry::Occupied(o) => {
+                            assert_eq!(
+                                gateway_received_request.source(),
+                                *o.get(),
+                                "ICMP request on gateway to target correct DNS resource"
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         assert_eq!(
@@ -740,9 +788,12 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let (_, dst) = state.sample_resolved_address(*a_idx);
 
-                state
-                    .expected_icmp_handshakes
-                    .push_back((dst, *seq, *identifier));
+                state.expected_icmp_handshakes.push_back((
+                    dst,
+                    *seq,
+                    *identifier,
+                    ResourceKind::Dns,
+                ));
             }
         };
 
@@ -1344,36 +1395,23 @@ impl TunnelTest {
                     .remove(&message.id())
                     .expect("DNS message to be response to previously sent request");
 
-                for record in message.take_answers() {
-                    let domain = hickory_name_to_domain(record.name().clone());
+                let proxy_ips = message.take_answers().into_iter().map(|r| {
+                    let domain = hickory_name_to_domain(r.name().clone());
                     debug_assert_eq!(domain, requested_domain);
 
-                    let ips = &mut self.client_dns_records.entry(domain).or_default();
-
-                    match &record.data() {
-                        Some(RData::A(rdata::A(ip4))) => {
-                            ips.push(IpAddr::from(*ip4));
-
-                            tracing::debug!(
-                                "DNS query for {requested_domain} resolved to {}",
-                                *ip4
-                            );
-                        }
-                        Some(RData::AAAA(rdata::AAAA(ip6))) => {
-                            ips.push(IpAddr::from(*ip6));
-
-                            tracing::debug!(
-                                "DNS query for {requested_domain} resolved to {}",
-                                *ip6
-                            );
-                        }
+                    match &r.data() {
+                        Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
+                        Some(RData::AAAA(rdata::AAAA(ip6))) => IpAddr::from(*ip6),
                         unhandled => {
                             panic!("Unexpected record data: {unhandled:?}")
                         }
                     }
+                });
 
-                    ips.sort(); // Ensure deterministic tests.
-                }
+                self.client_dns_records
+                    .entry(requested_domain.clone())
+                    .or_default()
+                    .extend(proxy_ips);
 
                 return;
             }
@@ -1400,7 +1438,7 @@ impl ReferenceState {
         if self.connected_cidr_resources.contains(&resource.id) {
             tracing::debug!("Connected to resource, expecting packet to be routed");
             self.expected_icmp_handshakes
-                .push_back((dst, seq, identifier));
+                .push_back((dst, seq, identifier, ResourceKind::Cidr));
             return;
         }
 
@@ -1471,7 +1509,7 @@ impl ReferenceState {
         let not_existing_icmp =
             self.expected_icmp_handshakes
                 .iter()
-                .all(|(_, existing_seq, existing_identifer)| {
+                .all(|(_, existing_seq, existing_identifer, _)| {
                     existing_seq != seq && existing_identifer != identifier
                 });
 
@@ -1522,17 +1560,13 @@ impl ReferenceState {
         *idx.get(&dns_servers)
     }
 
-    fn sample_resolved_address(&self, idx: sample::Index) -> (&DomainName, IpAddr) {
-        let num_records = dbg!(&self.client_dns_cache).len();
-        let r_idx = idx.index(num_records);
+    fn sample_resolved_address(&self, idx: sample::Index) -> (DomainName, IpAddr) {
+        let mut client_dns_cache = Vec::from_iter(self.client_dns_cache.clone());
+        client_dns_cache.sort();
 
-        let (name, addr) = self
-            .client_dns_cache
-            .iter()
-            .nth(r_idx)
-            .expect("`client_dns_cache` to have at least one entry");
+        let (name, addr) = idx.get(&client_dns_cache);
 
-        (name, *idx.get(addr))
+        (name.clone(), *idx.get(addr))
     }
 }
 
@@ -1945,7 +1979,7 @@ fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
         any::<sample::Index>(),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
-        collection::vec(any::<IpAddr>(), 1..4),
+        collection::hash_set(any::<IpAddr>(), 1..4),
     )
         .prop_map(
             move |(r_idx, dns_server_idx, r_type, query_id, resolved_ips)| {
