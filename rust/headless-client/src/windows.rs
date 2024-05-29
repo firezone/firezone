@@ -158,7 +158,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             Either::Left((None, _)) => {
                 bail!("shutdown channel unexpectedly dropped, shutting down")
             }
-            Either::Right((Ok(()), _)) => bail!("Impossible, ipc_listen can't return Ok"),
+            Either::Right((Ok(impossible), _)) => match impossible {},
             Either::Right((Err(error), _)) => Err(error.context("ipc_listen failed")),
         }
     });
