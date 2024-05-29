@@ -5,19 +5,17 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use crate::{CliCommon, SignalKind};
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
-use futures::future::{select, Either};
 use std::{
     ffi::{c_void, OsString},
     net::IpAddr,
     path::{Path, PathBuf},
-    pin::pin,
     str::FromStr,
     time::Duration,
 };
-use tokio::{net::windows::named_pipe, sync::mpsc};
+use tokio::net::windows::named_pipe;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 use windows::Win32::Security as WinSec;
@@ -101,7 +99,13 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
+
+    // Fixes <https://github.com/firezone/firezone/issues/4899>,
+    // DNS rules persisting after reboot
+    connlib_shared::deactivate_dns_control().ok();
+
+    let ipc_task = rt.spawn(super::ipc_listen());
+    let ipc_task_ah = ipc_task.abort_handle();
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
@@ -110,7 +114,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
             ServiceControl::Stop => {
                 tracing::info!("Got stop signal from service controller");
-                shutdown_tx.blocking_send(()).unwrap();
+                ipc_task_ah.abort();
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::UserEvent(_) => ServiceControlHandlerResult::NoError,
@@ -132,10 +136,6 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         }
     };
 
-    // Fixes <https://github.com/firezone/firezone/issues/4899>,
-    // DNS rules persisting after reboot
-    connlib_shared::deactivate_dns_control().ok();
-
     // Tell Windows that we're running (equivalent to sd_notify in systemd)
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
     status_handle.set_service_status(ServiceStatus {
@@ -148,20 +148,19 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         process_id: None,
     })?;
 
-    let ipc_service = pin!(super::ipc_listen());
-    let result = rt.block_on(async {
-        match select(pin!(shutdown_rx.recv()), ipc_service).await {
-            Either::Left((Some(()), _)) => {
-                tracing::info!("Got shutdown signal");
+    let result = match rt.block_on(ipc_task) {
+        Err(join_error) => {
+            if join_error.is_cancelled() {
+                // We cancelled because Windows asked us to shut down.
                 Ok(())
+            } else {
+                // The IPC task may have panicked
+                Err(join_error.into())
             }
-            Either::Left((None, _)) => {
-                bail!("shutdown channel unexpectedly dropped, shutting down")
-            }
-            Either::Right((Ok(impossible), _)) => match impossible {},
-            Either::Right((Err(error), _)) => Err(error.context("ipc_listen failed")),
         }
-    });
+        Ok(Err(error)) => Err(error.context("ipc_listen failed")),
+        Ok(Ok(impossible)) => match impossible {},
+    };
 
     // Tell Windows that we're stopping
     status_handle.set_service_status(ServiceStatus {
