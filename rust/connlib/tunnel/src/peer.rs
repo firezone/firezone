@@ -269,7 +269,14 @@ impl ClientOnGateway {
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
         if self.allowed_ips.longest_match(packet.source()).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket(packet.source()));
+            return Err(connlib_shared::Error::UnallowedPacket {
+                src: packet.source(),
+                allowed_ips: self
+                    .allowed_ips
+                    .iter()
+                    .map(|(ip, &())| ip.network_address())
+                    .collect(),
+            });
         }
 
         let dst = packet.destination();
@@ -300,7 +307,15 @@ impl GatewayOnClient {
         let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket(src));
+            return Err(connlib_shared::Error::UnallowedPacket {
+                src,
+
+                allowed_ips: self
+                    .allowed_ips
+                    .iter()
+                    .map(|(ip, _)| ip.network_address())
+                    .collect(),
+            });
         }
 
         if let Some(dgm) = pkt.as_udp() {
@@ -524,7 +539,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
             assert!(peer.ensure_allowed(&packet).is_ok());
         }
@@ -562,7 +577,7 @@ mod proptests {
                         Protocol::Udp { dport } => {
                             udp_packet(*src, dest, sport, dport, payload.clone())
                         }
-                        Protocol::Icmp => icmp_request_packet(*src, dest),
+                        Protocol::Icmp => icmp_request_packet(*src, dest, 1, 0),
                     };
                     assert!(peer.ensure_allowed(&packet).is_ok());
                 }
@@ -614,7 +629,7 @@ mod proptests {
                         Protocol::Udp { dport } => {
                             udp_packet(*src, dest, sport, dport, payload.clone())
                         }
-                        Protocol::Icmp => icmp_request_packet(*src, dest),
+                        Protocol::Icmp => icmp_request_packet(*src, dest, 1, 0),
                     };
                     assert!(peer.ensure_allowed(&packet).is_ok());
                 }
@@ -631,7 +646,7 @@ mod proptests {
                         Protocol::Udp { dport } => {
                             udp_packet(*src, dest, sport, dport, payload.clone())
                         }
-                        Protocol::Icmp => icmp_request_packet(*src, dest),
+                        Protocol::Icmp => icmp_request_packet(*src, dest, 1, 0),
                     };
                     assert!(peer.ensure_allowed(&packet).is_ok());
                 }
@@ -667,7 +682,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
 
             assert!(peer.ensure_allowed(&packet).is_ok());
@@ -690,7 +705,7 @@ mod proptests {
         let packet = match protocol {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
-            Protocol::Icmp => icmp_request_packet(src, dest),
+            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
         };
 
         peer.add_resource(vec![resource_addr], resource_id, filters, None);
@@ -723,13 +738,13 @@ mod proptests {
         let packet_allowed = match protocol_allowed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-            Protocol::Icmp => icmp_request_packet(src, dest),
+            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
         };
 
         let packet_rejected = match protocol_removed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
-            Protocol::Icmp => icmp_request_packet(src, dest),
+            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
         };
 
         peer.add_resource(

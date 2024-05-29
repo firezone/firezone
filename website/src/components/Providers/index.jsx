@@ -1,14 +1,21 @@
 "use client";
 import { MixpanelProvider } from "react-mixpanel-browser";
 import { HubspotProvider } from "next-hubspot";
+import { GoogleAnalytics } from "@next/third-parties/google";
 
 export default function Provider({ children }) {
-  const token = "b0ab1d66424a27555ed45a27a4fd0cd2";
+  const mpToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
+  const gaId = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID;
   const host = "https://t.firez.one";
 
   return (
-    <MixpanelProvider token={token} config={{ api_host: host }}>
+    <>
+      <MixpanelProvider
+        token={mpToken}
+        config={{ api_host: host, record_sessions_percent: 5 }}
+      />
       <HubspotProvider>{children}</HubspotProvider>
-    </MixpanelProvider>
+      <GoogleAnalytics gaId />
+    </>
   );
 }

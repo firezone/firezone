@@ -1,4 +1,3 @@
-"use client";
 import { Metadata } from "next";
 import Link from "next/link";
 
@@ -14,35 +13,13 @@ const source_sans_3 = Source_Sans_3({
   weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
 });
 import { HiArrowLongRight } from "react-icons/hi2";
-import { useMixpanel } from "react-mixpanel-browser";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, Suspense } from "react";
+import { Mixpanel, GoogleAds, LinkedInInsights } from "@/components/Analytics";
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",
   description: "Open-source, zero-trust access platform built on WireGuard®",
 };
-
-function Mixpanel() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const mixpanel = useMixpanel();
-
-  useEffect(() => {
-    if (!pathname) return;
-    if (!mixpanel) return;
-
-    let url = window.origin + pathname;
-    if (searchParams.toString()) {
-      url = url + `?${searchParams.toString()}`;
-    }
-    mixpanel.track("$mp_web_page_view", {
-      $current_url: url,
-    });
-  }, [pathname, searchParams, mixpanel]);
-
-  return null;
-}
 
 export default function RootLayout({
   children,
@@ -52,13 +29,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <Script
-        src="https://app.termly.io/embed.min.js"
-        data-auto-block="off"
-        data-website-uuid="c4df1a31-22d9-4000-82e6-a86cbec0bba0"
-      ></Script>
-      <Suspense>
-        <Mixpanel />
-      </Suspense>
+        type="text/javascript"
+        src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
+      />
+      <Mixpanel />
       <body className={source_sans_3.className}>
         <Banner active={false}>
           <p className="mx-auto text-center">
@@ -91,6 +65,8 @@ export default function RootLayout({
           defer
           src="//js.hs-scripts.com/23723443.js"
         />
+        <GoogleAds />
+        <LinkedInInsights />
       </body>
     </html>
   );

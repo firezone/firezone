@@ -4,27 +4,23 @@
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 
-use crate::{IpcClientMsg, IpcServerMsg, SignalKind};
+use crate::{CliCommon, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
-use clap::Parser;
-use connlib_client_shared::{callbacks, file_logger, keypair, Callbacks, LoginUrl, Sockets};
+use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
-use futures::{SinkExt, Stream};
 use std::{
     ffi::{c_void, OsString},
-    future::{poll_fn, Future},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    future::Future,
+    net::IpAddr,
     path::{Path, PathBuf},
     pin::pin,
     str::FromStr,
-    task::{Context, Poll},
+    task::Poll,
     time::Duration,
 };
 use tokio::{net::windows::named_pipe, sync::mpsc};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
-use url::Url;
 use windows::Win32::Security as WinSec;
 use windows_service::{
     service::{
@@ -45,6 +41,8 @@ const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
+// This looks like a pointless wrapper around `CtrlC`, because it must match
+// the Linux signatures
 pub(crate) struct Signals {
     sigint: tokio::signal::windows::CtrlC,
 }
@@ -55,31 +53,9 @@ impl Signals {
         Ok(Self { sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<SignalKind> {
-        if self.sigint.poll_recv(cx).is_ready() {
-            return Poll::Ready(SignalKind::Interrupt);
-        }
-        Poll::Pending
-    }
-}
-
-#[derive(clap::Parser, Default)]
-#[command(author, version, about, long_about = None)]
-struct CliIpcService {
-    #[command(subcommand)]
-    command: CmdIpc,
-}
-
-#[derive(clap::Subcommand)]
-enum CmdIpc {
-    #[command(hide = true)]
-    DebugIpcService,
-    IpcService,
-}
-
-impl Default for CmdIpc {
-    fn default() -> Self {
-        Self::IpcService
+    pub(crate) async fn recv(&mut self) -> SignalKind {
+        self.sigint.recv().await;
+        SignalKind::Interrupt
     }
 }
 
@@ -95,67 +71,26 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
     PathBuf::from("token.txt")
 }
 
-/// Only called from the GUI Client's build of the IPC service
+/// Cross-platform entry point for systemd / Windows services
 ///
-/// On Windows, this is wrapped specially so that Windows' service controller
-/// can launch it.
-pub(crate) fn run_only_ipc_service() -> Result<()> {
-    let cli = CliIpcService::parse();
-    match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(cli),
-        CmdIpc::IpcService => windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?"),
-    }
-}
-
-fn run_debug_ipc_service(cli: CliIpcService) -> Result<()> {
-    crate::debug_command_setup()?;
-    let rt = tokio::runtime::Runtime::new()?;
-    let mut ipc_service = pin!(ipc_listen(cli));
-    let mut signals = Signals::new()?;
-    rt.block_on(async {
-        std::future::poll_fn(|cx| {
-            match signals.poll(cx) {
-                Poll::Ready(SignalKind::Hangup) => {
-                    return Poll::Ready(Err(anyhow::anyhow!(
-                        "Impossible, we don't catch Hangup on Windows"
-                    )));
-                }
-                Poll::Ready(SignalKind::Interrupt) => {
-                    tracing::info!("Caught Interrupt signal");
-                    return Poll::Ready(Ok(()));
-                }
-                Poll::Pending => {}
-            }
-
-            match ipc_service.as_mut().poll(cx) {
-                Poll::Ready(Ok(())) => {
-                    return Poll::Ready(Err(anyhow::anyhow!(
-                        "Impossible, ipc_listen can't return Ok"
-                    )));
-                }
-                Poll::Ready(Err(error)) => {
-                    return Poll::Ready(Err(error).context("ipc_listen failed"));
-                }
-                Poll::Pending => {}
-            }
-
-            Poll::Pending
-        })
-        .await
-    })
+/// Linux uses the CLI args from here, Windows does not
+pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
+    windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
 // Generates `ffi_service_run` from `service_run`
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
-fn windows_service_run(_arguments: Vec<OsString>) {
-    if let Err(error) = fallible_windows_service_run() {
+fn windows_service_run(arguments: Vec<OsString>) {
+    if let Err(error) = fallible_windows_service_run(arguments) {
         tracing::error!(?error, "fallible_windows_service_run returned an error");
     }
 }
 
 // Most of the Windows-specific service stuff should go here
-fn fallible_windows_service_run() -> Result<()> {
+//
+// The arguments don't seem to match the ones passed to the main thread at all.
+fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     let log_path =
         crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
     std::fs::create_dir_all(&log_path)?;
@@ -164,6 +99,7 @@ fn fallible_windows_service_run() -> Result<()> {
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber)?;
     tracing::info!(git_version = crate::GIT_VERSION);
+    tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
@@ -213,7 +149,7 @@ fn fallible_windows_service_run() -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(ipc_listen(CliIpcService::default()));
+    let mut ipc_service = pin!(super::ipc_listen());
     let result = rt.block_on(async {
         std::future::poll_fn(|cx| {
             match shutdown_rx.poll_recv(cx) {
@@ -257,21 +193,31 @@ fn fallible_windows_service_run() -> Result<()> {
     result
 }
 
-async fn ipc_listen(_cli: CliIpcService) -> Result<()> {
-    setup_before_connlib()?;
-    loop {
-        // This is redundant on the first loop. After that it clears the rules
-        // between GUI instances.
-        connlib_shared::deactivate_dns_control()?;
+pub(crate) struct IpcServer {
+    // On Linux this has some fields
+}
+
+/// Opaque wrapper around platform-specific IPC stream
+pub(crate) type IpcStream = named_pipe::NamedPipeServer;
+
+impl IpcServer {
+    /// Platform-specific setup
+    ///
+    /// This is async on Linux
+    #[allow(clippy::unused_async)]
+    pub(crate) async fn new() -> Result<Self> {
+        setup_before_connlib()?;
+        Ok(Self {})
+    }
+
+    pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
         let server = create_pipe_server()?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
-        if let Err(error) = handle_ipc_client(server).await {
-            tracing::error!(?error, "Error while handling IPC client");
-        }
+        Ok(server)
     }
 }
 
@@ -315,130 +261,6 @@ pub fn pipe_path() -> String {
     named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
 }
 
-enum IpcEvent {
-    /// A message that the client sent us
-    Client(IpcClientMsg),
-    /// A message that connlib wants to send
-    Connlib(IpcServerMsg),
-    /// The IPC client disconnected
-    IpcDisconnect,
-}
-
-#[derive(Clone)]
-struct CallbackHandlerIpc {
-    cb_tx: mpsc::Sender<IpcServerMsg>,
-}
-
-impl Callbacks for CallbackHandlerIpc {
-    fn on_disconnect(&self, _error: &connlib_client_shared::Error) {
-        self.cb_tx
-            .try_send(IpcServerMsg::OnDisconnect)
-            .expect("should be able to send OnDisconnect");
-    }
-
-    fn on_set_interface_config(
-        &self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-    ) -> Option<i32> {
-        tracing::info!("TunnelReady");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
-            .expect("Should be able to send TunnelReady");
-        None
-    }
-
-    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
-        tracing::info!(len = resources.len(), "New resource list");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnUpdateResources(resources))
-            .expect("Should be able to send OnUpdateResources");
-    }
-}
-
-async fn handle_ipc_client(server: named_pipe::NamedPipeServer) -> Result<()> {
-    let framed = Framed::new(server, LengthDelimitedCodec::new());
-    let mut framed = pin!(framed);
-    let (cb_tx, mut cb_rx) = mpsc::channel(100);
-
-    let mut connlib = None;
-    let callback_handler = CallbackHandlerIpc { cb_tx };
-    loop {
-        let ev = poll_fn(|cx| {
-            match cb_rx.poll_recv(cx) {
-                Poll::Ready(Some(msg)) => return Poll::Ready(Ok(IpcEvent::Connlib(msg))),
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow!(
-                        "Impossible - MPSC channel from connlib closed"
-                    )))
-                }
-                Poll::Pending => {}
-            }
-
-            match framed.as_mut().poll_next(cx) {
-                Poll::Ready(Some(msg)) => {
-                    let msg = serde_json::from_slice(&msg?)?;
-                    return Poll::Ready(Ok(IpcEvent::Client(msg)));
-                }
-                Poll::Ready(None) => return Poll::Ready(Ok(IpcEvent::IpcDisconnect)),
-                Poll::Pending => {}
-            }
-
-            Poll::Pending
-        })
-        .await;
-
-        match ev {
-            Ok(IpcEvent::Client(msg)) => match msg {
-                IpcClientMsg::Connect { api_url, token } => {
-                    let token = secrecy::SecretString::from(token);
-                    assert!(connlib.is_none());
-                    let device_id = connlib_shared::device_id::get()
-                        .context("Failed to read / create device ID")?;
-                    let (private_key, public_key) = keypair();
-
-                    let login = LoginUrl::client(
-                        Url::parse(&api_url)?,
-                        &token,
-                        device_id.id,
-                        None,
-                        public_key.to_bytes(),
-                    )?;
-
-                    connlib = Some(connlib_client_shared::Session::connect(
-                        login,
-                        Sockets::new(),
-                        private_key,
-                        None,
-                        callback_handler.clone(),
-                        Some(std::time::Duration::from_secs(60 * 60 * 24 * 30)),
-                        tokio::runtime::Handle::try_current()?,
-                    ));
-                }
-                IpcClientMsg::Disconnect => {
-                    if let Some(connlib) = connlib.take() {
-                        connlib.disconnect();
-                    }
-                }
-                IpcClientMsg::Reconnect => {
-                    connlib.as_mut().context("No connlib session")?.reconnect()
-                }
-                IpcClientMsg::SetDns(v) => {
-                    connlib.as_mut().context("No connlib session")?.set_dns(v)
-                }
-            },
-            Ok(IpcEvent::Connlib(msg)) => framed.send(serde_json::to_string(&msg)?.into()).await?,
-            Ok(IpcEvent::IpcDisconnect) => {
-                tracing::info!("IPC client disconnected");
-                break;
-            }
-            Err(e) => Err(e)?,
-        }
-    }
-    Ok(())
-}
-
 pub fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
@@ -464,10 +286,14 @@ pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
 
-/// Platform-specific setup needed for connlib
-///
-/// On Windows this installs wintun.dll
+// Does nothing on Windows. On Linux this notifies systemd that we're ready.
+// When we eventually have a system service for the Windows Headless Client,
+// this could notify the Windows service controller too.
 #[allow(clippy::unnecessary_wraps)]
+pub(crate) fn notify_service_controller() -> Result<()> {
+    Ok(())
+}
+
 pub(crate) fn setup_before_connlib() -> Result<()> {
     wintun_install::ensure_dll()?;
     Ok(())

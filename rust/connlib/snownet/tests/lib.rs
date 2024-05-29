@@ -1,8 +1,8 @@
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::StaticSecret;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use ip_packet::*;
 use rand::rngs::OsRng;
-use snownet::{Answer, ClientNode, Event, RelaySocket, ServerNode, Transmit};
+use snownet::{Answer, Client, ClientNode, Event, Node, RelaySocket, Server, ServerNode, Transmit};
 use std::{
     collections::{HashSet, VecDeque},
     iter,
@@ -61,11 +61,13 @@ fn smoke_relayed() {
         ),
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        "alice",
         HashSet::default(),
         &mut relays,
         clock.now,
     );
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        "bob",
         HashSet::default(),
         &mut relays,
         clock.now,
@@ -109,11 +111,13 @@ fn reconnect_discovers_new_interface() {
         ),
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        "alice",
         HashSet::default(),
         &mut relays,
         clock.now,
     );
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        "bob",
         HashSet::default(),
         &mut relays,
         clock.now,
@@ -172,11 +176,13 @@ fn migrate_connection_to_new_relay() {
         ),
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        "alice",
         HashSet::default(),
         &mut relays,
         clock.now,
     );
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        "bob",
         HashSet::default(),
         &mut relays,
         clock.now,
@@ -203,7 +209,7 @@ fn migrate_connection_to_new_relay() {
             debug_span!("Robert"),
         ),
     )];
-    alice = alice.with_relays(HashSet::from([1]), &mut relays, clock.now);
+    alice = alice.with_relays("alice", HashSet::from([1]), &mut relays, clock.now);
 
     // Make some progress. (the fact that we only need 5 clock ticks means we are no relying on timeouts here)
     for _ in 0..5 {
@@ -379,8 +385,8 @@ fn ip(ip: &str) -> IpAddr {
 }
 
 // Heavily inspired by https://github.com/algesten/str0m/blob/7ed5143381cf095f7074689cc254b8c9e50d25c5/src/ice/mod.rs#L547-L647.
-struct TestNode {
-    node: EitherNode,
+struct TestNode<R> {
+    node: Node<R, u64, u64>,
     transmits: VecDeque<Transmit<'static>>,
 
     span: Span,
@@ -446,7 +452,7 @@ impl Clock {
 }
 
 impl Firewall {
-    fn with_block_rule(mut self, from: &TestNode, to: &TestNode) -> Self {
+    fn with_block_rule<R1, R2>(mut self, from: &TestNode<R1>, to: &TestNode<R2>) -> Self {
         self.blocked.push((from.primary, to.primary));
 
         self
@@ -499,12 +505,12 @@ impl TestRelay {
         self.listen_addr.as_v6().map(|s| IpAddr::V6(*s.ip()))
     }
 
-    fn handle_packet(
+    fn handle_packet<R>(
         &mut self,
         payload: &[u8],
         sender: SocketAddr,
         dst: SocketAddr,
-        other: &mut TestNode,
+        other: &mut TestNode<R>,
         now: Instant,
     ) {
         if self.listen_addr.matches(dst) {
@@ -521,11 +527,11 @@ impl TestRelay {
         )
     }
 
-    fn handle_client_input(
+    fn handle_client_input<R>(
         &mut self,
         payload: &[u8],
         client: ClientSocket,
-        receiver: &mut TestNode,
+        receiver: &mut TestNode<R>,
         now: Instant,
     ) {
         if let Some((port, peer)) = self
@@ -576,12 +582,12 @@ impl TestRelay {
         }
     }
 
-    fn handle_peer_traffic(
+    fn handle_peer_traffic<R>(
         &mut self,
         payload: &[u8],
         peer: PeerSocket,
         port: AllocationPort,
-        receiver: &mut TestNode,
+        receiver: &mut TestNode<R>,
         now: Instant,
     ) {
         if let Some((client, channel)) = self
@@ -606,7 +612,12 @@ impl TestRelay {
         }
     }
 
-    fn drain_messages(&mut self, a1: &mut TestNode, a2: &mut TestNode, now: Instant) {
+    fn drain_messages<R1, R2>(
+        &mut self,
+        a1: &mut TestNode<R1>,
+        a2: &mut TestNode<R2>,
+        now: Instant,
+    ) {
         while let Some(command) = self.inner.next_command() {
             match command {
                 firezone_relay::Command::SendMessage { payload, recipient } => {
@@ -661,153 +672,12 @@ fn to_ip_stack(socket: RelaySocket) -> IpStack {
     }
 }
 
-enum EitherNode {
-    Server(ServerNode<u64, u64>),
-    Client(ClientNode<u64, u64>),
-}
-
-impl From<ClientNode<u64, u64>> for EitherNode {
-    fn from(value: ClientNode<u64, u64>) -> Self {
-        Self::Client(value)
-    }
-}
-
-impl From<ServerNode<u64, u64>> for EitherNode {
-    fn from(value: ServerNode<u64, u64>) -> Self {
-        Self::Server(value)
-    }
-}
-
-impl EitherNode {
-    fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        match self {
-            EitherNode::Client(n) => n.poll_transmit(),
-            EitherNode::Server(n) => n.poll_transmit(),
-        }
-    }
-
-    fn poll_event(&mut self) -> Option<Event<u64>> {
-        match self {
-            EitherNode::Client(n) => n.poll_event(),
-            EitherNode::Server(n) => n.poll_event(),
-        }
-    }
-
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        match self {
-            EitherNode::Client(n) => n.poll_timeout(),
-            EitherNode::Server(n) => n.poll_timeout(),
-        }
-    }
-
-    fn add_remote_candidate(&mut self, id: u64, candidate: String, now: Instant) {
-        match self {
-            EitherNode::Client(n) => n.add_remote_candidate(id, candidate, now),
-            EitherNode::Server(n) => n.add_remote_candidate(id, candidate, now),
-        }
-    }
-
-    fn remove_remote_candidate(&mut self, id: u64, candidate: String) {
-        match self {
-            EitherNode::Client(n) => n.remove_remote_candidate(id, candidate),
-            EitherNode::Server(n) => n.remove_remote_candidate(id, candidate),
-        }
-    }
-
-    fn add_local_host_candidate(&mut self, socket: SocketAddr) {
-        match self {
-            EitherNode::Client(n) => n.add_local_host_candidate(socket).unwrap(),
-            EitherNode::Server(n) => n.add_local_host_candidate(socket).unwrap(),
-        }
-    }
-
-    fn connection_id(&self, key: PublicKey) -> Option<u64> {
-        match self {
-            EitherNode::Client(n) => n.connection_id(key),
-            EitherNode::Server(n) => n.connection_id(key),
-        }
-    }
-
-    fn public_key(&self) -> PublicKey {
-        match self {
-            EitherNode::Client(n) => n.public_key(),
-            EitherNode::Server(n) => n.public_key(),
-        }
-    }
-
-    fn as_client_mut(&mut self) -> Option<&mut ClientNode<u64, u64>> {
-        match self {
-            EitherNode::Server(_) => None,
-            EitherNode::Client(c) => Some(c),
-        }
-    }
-
-    fn as_server_mut(&mut self) -> Option<&mut ServerNode<u64, u64>> {
-        match self {
-            EitherNode::Server(s) => Some(s),
-            EitherNode::Client(_) => None,
-        }
-    }
-
-    fn encapsulate<'s>(
-        &'s mut self,
-        connection: u64,
-        packet: IpPacket<'_>,
-        now: Instant,
-    ) -> Result<Option<Transmit<'s>>, snownet::Error> {
-        match self {
-            EitherNode::Client(n) => n.encapsulate(connection, packet, now),
-            EitherNode::Server(n) => n.encapsulate(connection, packet, now),
-        }
-    }
-
-    fn decapsulate<'s>(
-        &mut self,
-        local: SocketAddr,
-        from: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-        buffer: &'s mut [u8],
-    ) -> Result<Option<(u64, MutableIpPacket<'s>)>, snownet::Error> {
-        match self {
-            EitherNode::Client(n) => n.decapsulate(local, from, packet, now, buffer),
-            EitherNode::Server(n) => n.decapsulate(local, from, packet, now, buffer),
-        }
-    }
-
-    fn handle_timeout(&mut self, now: Instant) {
-        match self {
-            EitherNode::Client(n) => n.handle_timeout(now),
-            EitherNode::Server(n) => n.handle_timeout(now),
-        }
-    }
-
-    fn reconnect(&mut self, now: Instant) {
-        match self {
-            EitherNode::Client(n) => n.reconnect(now),
-            EitherNode::Server(n) => n.reconnect(now),
-        }
-    }
-
-    fn update_relays(
-        &mut self,
-        to_remove: HashSet<u64>,
-        to_add: &HashSet<(u64, RelaySocket, String, String, String)>,
-        now: Instant,
-    ) {
-        match self {
-            EitherNode::Server(s) => s.update_relays(to_remove, to_add, now),
-            EitherNode::Client(c) => c.update_relays(to_remove, to_add, now),
-        }
-    }
-}
-
-impl TestNode {
-    pub fn new(span: Span, node: impl Into<EitherNode>, primary: &str) -> Self {
+impl<R> TestNode<R> {
+    pub fn new(span: Span, node: Node<R, u64, u64>, primary: &str) -> Self {
         let primary = primary.parse().unwrap();
 
         TestNode {
-            node: node.into(),
+            node,
             span,
             received_packets: vec![],
             buffer: Box::new([0u8; 10_000]),
@@ -820,15 +690,11 @@ impl TestNode {
 
     fn with_relays(
         mut self,
+        username: &str,
         to_remove: HashSet<u64>,
         relays: &mut [(u64, TestRelay)],
         now: Instant,
     ) -> Self {
-        let username = match self.node {
-            EitherNode::Server(_) => "server",
-            EitherNode::Client(_) => "client",
-        };
-
         let turn_servers = relays
             .iter()
             .map(|(idx, relay)| {
@@ -855,11 +721,11 @@ impl TestNode {
         self.local.push(self.primary);
     }
 
-    fn is_connected_to(&self, other: &TestNode) -> bool {
+    fn is_connected_to<RO>(&self, other: &TestNode<RO>) -> bool {
         self.node.connection_id(other.node.public_key()).is_some()
     }
 
-    fn ping(&mut self, src: IpAddr, dst: IpAddr, other: &TestNode, now: Instant) {
+    fn ping<RO>(&mut self, src: IpAddr, dst: IpAddr, other: &TestNode<RO>, now: Instant) {
         let id = self
             .node
             .connection_id(other.node.public_key())
@@ -870,7 +736,7 @@ impl TestNode {
             .in_scope(|| {
                 self.node.encapsulate(
                     id,
-                    ip_packet::make::icmp_request_packet(src, dst).to_immutable(),
+                    ip_packet::make::icmp_request_packet(src, dst, 1, 0).to_immutable(),
                     now,
                 )
             })
@@ -925,7 +791,7 @@ impl TestNode {
         }
     }
 
-    fn drain_events(&mut self, other: &mut TestNode, now: Instant) {
+    fn drain_events<RO>(&mut self, other: &mut TestNode<RO>, now: Instant) {
         while let Some(v) = self.span.in_scope(|| self.node.poll_event()) {
             self.events.push((v.clone(), now));
 
@@ -948,9 +814,9 @@ impl TestNode {
         }
     }
 
-    fn drain_transmits(
+    fn drain_transmits<RO>(
         &mut self,
-        other: &mut TestNode,
+        other: &mut TestNode<RO>,
         relays: &mut [(u64, TestRelay)],
         firewall: &Firewall,
         now: Instant,
@@ -982,18 +848,16 @@ impl TestNode {
 
     fn with_primary_as_host_candidate(mut self) -> Self {
         self.span
-            .in_scope(|| self.node.add_local_host_candidate(self.primary));
+            .in_scope(|| self.node.add_local_host_candidate(self.primary))
+            .unwrap();
 
         self
     }
 }
 
-fn handshake(client: &mut TestNode, server: &mut TestNode, clock: &Clock) {
-    let client_node = &mut client.node.as_client_mut().unwrap();
-    let server_node = &mut server.node.as_server_mut().unwrap();
-
+fn handshake(client: &mut TestNode<Client>, server: &mut TestNode<Server>, clock: &Clock) {
     let offer = client.span.in_scope(|| {
-        client_node.new_connection(
+        client.node.new_connection(
             1,
             HashSet::default(),
             HashSet::default(),
@@ -1002,23 +866,25 @@ fn handshake(client: &mut TestNode, server: &mut TestNode, clock: &Clock) {
         )
     });
     let answer = server.span.in_scope(|| {
-        server_node.accept_connection(
+        server.node.accept_connection(
             1,
             offer,
-            client_node.public_key(),
+            client.node.public_key(),
             HashSet::default(),
             HashSet::default(),
             clock.now,
         )
     });
-    client
-        .span
-        .in_scope(|| client_node.accept_answer(1, server_node.public_key(), answer, clock.now));
+    client.span.in_scope(|| {
+        client
+            .node
+            .accept_answer(1, server.node.public_key(), answer, clock.now)
+    });
 }
 
-fn progress(
-    a1: &mut TestNode,
-    a2: &mut TestNode,
+fn progress<R1, R2>(
+    a1: &mut TestNode<R1>,
+    a2: &mut TestNode<R2>,
     relays: &mut [(u64, TestRelay)],
     firewall: &Firewall,
     clock: &mut Clock,

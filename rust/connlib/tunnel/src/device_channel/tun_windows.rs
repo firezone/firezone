@@ -1,9 +1,9 @@
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Result};
+use connlib_shared::{Callbacks, Result};
 use ip_network::IpNetwork;
 use std::{
     collections::HashSet,
     io,
-    net::{IpAddr, SocketAddrV4, SocketAddrV6},
+    net::{SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
     str::FromStr,
@@ -23,6 +23,7 @@ use windows::Win32::{
 };
 
 // wintun automatically appends " Tunnel" to this
+// TODO: De-dupe
 const TUNNEL_NAME: &str = "Firezone";
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
@@ -39,9 +40,6 @@ pub struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        if let Err(error) = connlib_shared::windows::dns::deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
-        }
         if let Err(e) = self.session.shutdown() {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
         }
@@ -62,7 +60,8 @@ impl Tun {
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
         let path = connlib_shared::windows::wintun_dll_path()?;
         let wintun = unsafe { wintun::load_from_path(path) }?;
-        let uuid = uuid::Uuid::from_str(TUNNEL_UUID).expect("static UUID to parse correctly");
+        let uuid =
+            uuid::Uuid::from_str(TUNNEL_UUID).expect("static UUID should always parse correctly");
         let adapter =
             match wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())) {
                 Ok(x) => x,
@@ -106,52 +105,16 @@ impl Tun {
         })
     }
 
-    pub fn set_config(&self, config: &InterfaceConfig, dns_config: &[IpAddr]) -> Result<()> {
-        tracing::debug!("Setting our IPv4 = {}", config.ipv4);
-        tracing::debug!("Setting our IPv6 = {}", config.ipv6);
-
-        // TODO: See if there's a good Win32 API for this
-        // Using netsh directly instead of wintun's `set_network_addresses_tuple` because their code doesn't work for IPv6
-        Command::new("netsh")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("interface")
-            .arg("ipv4")
-            .arg("set")
-            .arg("address")
-            .arg(format!("name=\"{TUNNEL_NAME}\""))
-            .arg("source=static")
-            .arg(format!("address={}", config.ipv4))
-            .arg("mask=255.255.255.255")
-            .stdout(Stdio::null())
-            .status()?;
-
-        Command::new("netsh")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("interface")
-            .arg("ipv6")
-            .arg("set")
-            .arg("address")
-            .arg(format!("interface=\"{TUNNEL_NAME}\""))
-            .arg(format!("address={}", config.ipv6))
-            .stdout(Stdio::null())
-            .status()?;
-
-        tracing::debug!("Our IPs are {:?}", self.adapter.get_addresses()?);
-
-        let iface_idx = self.adapter.get_adapter_index()?;
-
-        connlib_shared::windows::dns::change(dns_config, iface_idx)
-            .expect("Should be able to control DNS");
-
-        Ok(())
-    }
-
     // It's okay if this blocks until the route is added in the OS.
     pub fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
         _callbacks: &impl Callbacks,
     ) -> Result<()> {
+        if new_routes == self.routes {
+            return Ok(());
+        }
+
         for new_route in new_routes.difference(&self.routes) {
             self.add_route(*new_route)?;
         }
@@ -160,36 +123,9 @@ impl Tun {
             self.remove_route(*old_route)?;
         }
 
-        self.routes = new_routes;
-
         // TODO: Might be calling this more often than it needs
         connlib_shared::windows::dns::flush().expect("Should be able to flush Windows' DNS cache");
-
-        Ok(())
-    }
-
-    // It's okay if this blocks until the route is added in the OS.
-    fn add_route(&self, route: IpNetwork) -> Result<()> {
-        const DUPLICATE_ERR: u32 = 0x80071392;
-        let entry = self.forward_entry(route);
-
-        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
-            Ok(()) => Ok(()),
-            Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
-                tracing::debug!(%route, "Failed to add duplicate route, ignoring");
-                Ok(())
-            }
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    // It's okay if this blocks until the route is removed in the OS.
-    fn remove_route(&self, route: IpNetwork) -> Result<()> {
-        let entry = self.forward_entry(route);
-
-        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
+        self.routes = new_routes;
         Ok(())
     }
 
@@ -245,6 +181,31 @@ impl Tun {
         // space in the ring buffer.
         self.session.send_packet(pkt);
         Ok(bytes.len())
+    }
+
+    // It's okay if this blocks until the route is added in the OS.
+    fn add_route(&self, route: IpNetwork) -> Result<()> {
+        const DUPLICATE_ERR: u32 = 0x80071392;
+        let entry = self.forward_entry(route);
+
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+        match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
+            Ok(()) => Ok(()),
+            Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
+                tracing::debug!(%route, "Failed to add duplicate route, ignoring");
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    // It's okay if this blocks until the route is removed in the OS.
+    fn remove_route(&self, route: IpNetwork) -> Result<()> {
+        let entry = self.forward_entry(route);
+
+        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+        unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
+        Ok(())
     }
 
     fn forward_entry(&self, route: IpNetwork) -> MIB_IPFORWARD_ROW2 {

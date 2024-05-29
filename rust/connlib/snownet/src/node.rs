@@ -393,6 +393,9 @@ where
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
+        for (_, c) in self.connections.iter_initial_mut() {
+            connection_timeout = earliest(connection_timeout, c.poll_timeout());
+        }
         for (_, c) in self.connections.iter_established_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
@@ -469,23 +472,27 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        for binding in self.bindings.values_mut() {
-            if let Some(transmit) = binding.poll_transmit() {
-                self.stats.stun_bytes_to_relays += transmit.payload.len();
+        let binding_transmits = &mut self
+            .bindings
+            .values_mut()
+            .flat_map(StunBinding::poll_transmit);
+        let allocation_transmits = &mut self
+            .allocations
+            .values_mut()
+            .flat_map(Allocation::poll_transmit);
 
-                return Some(transmit);
-            }
+        if let Some(transmit) = binding_transmits.chain(allocation_transmits).next() {
+            self.stats.stun_bytes_to_relays += transmit.payload.len();
+            tracing::trace!(?transmit);
+
+            return Some(transmit);
         }
 
-        for allocation in self.allocations.values_mut() {
-            if let Some(transmit) = allocation.poll_transmit() {
-                self.stats.stun_bytes_to_relays += transmit.payload.len();
+        let transmit = self.buffered_transmits.pop_front()?;
 
-                return Some(transmit);
-            }
-        }
+        tracing::trace!(?transmit);
 
-        self.buffered_transmits.pop_front()
+        Some(transmit)
     }
 
     pub fn update_relays(
@@ -832,6 +839,7 @@ where
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
         agent.set_max_candidate_pairs(300);
+        agent.set_timing_advance(Duration::ZERO);
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -937,6 +945,8 @@ where
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
         });
+        agent.set_timing_advance(Duration::ZERO);
+
         let answer = Answer {
             credentials: Credentials {
                 username: agent.local_credentials().ufrag.clone(),
@@ -1074,6 +1084,10 @@ where
 
     fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
         self.established.get_mut(id)
+    }
+
+    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection)> {
+        self.initial.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
     fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
@@ -1222,7 +1236,7 @@ pub enum Event<TId> {
     ConnectionFailed(TId),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///
@@ -1235,6 +1249,16 @@ pub struct Transmit<'a> {
     pub dst: SocketAddr,
     /// The data that should be sent.
     pub payload: Cow<'a, [u8]>,
+}
+
+impl<'a> fmt::Debug for Transmit<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Transmit")
+            .field("src", &self.src)
+            .field("dst", &self.dst)
+            .field("len", &self.payload.len())
+            .finish()
+    }
 }
 
 impl<'a> Transmit<'a> {
@@ -1269,10 +1293,23 @@ impl InitialConnection {
     where
         TId: fmt::Display,
     {
-        if now.duration_since(self.created_at) >= HANDSHAKE_TIMEOUT {
+        self.agent.handle_timeout(now);
+
+        if now >= self.no_answer_received_timeout() {
             tracing::info!("Connection setup timed out (no answer received)");
             self.is_failed = true;
         }
+    }
+
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        earliest(
+            self.agent.poll_timeout(),
+            Some(self.no_answer_received_timeout()),
+        )
+    }
+
+    fn no_answer_received_timeout(&self) -> Instant {
+        self.created_at + HANDSHAKE_TIMEOUT
     }
 
     fn duration_since_intent(&self, now: Instant) -> Duration {

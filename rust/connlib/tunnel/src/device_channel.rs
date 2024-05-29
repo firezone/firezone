@@ -64,13 +64,30 @@ impl Device {
         }
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[cfg(target_os = "android")]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
         dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
+        self.tun = Some(Tun::new(config, dns_config, callbacks)?);
+
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn set_config(
+        &mut self,
+        config: &Interface,
+        dns_config: Vec<IpAddr>,
+        callbacks: &impl Callbacks,
+    ) -> Result<(), ConnlibError> {
+        // On Android / Linux we recreate the tunnel every time we re-configure it
         self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
 
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
@@ -82,7 +99,7 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
@@ -90,34 +107,12 @@ impl Device {
         callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
         // For macos the filedescriptor is the same throughout its lifetime.
-        // If we reinitialzie tun, we might drop the old tun after the new one is created
+        // If we reinitialize tun, we might drop the old tun after the new one is created
         // this unregisters the file descriptor with the reactor so we never wake up
         // in case an event is triggered.
         if self.tun.is_none() {
             self.tun = Some(Tun::new()?);
         }
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
-
-        Ok(())
-    }
-
-    #[cfg(target_family = "windows")]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        if self.tun.is_none() {
-            self.tun = Some(Tun::new()?);
-        }
-
-        self.tun.as_ref().unwrap().set_config(config, &dns_config)?;
 
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 

@@ -11,8 +11,6 @@ use crate::client::{
     Failure,
 };
 use anyhow::{bail, Context, Result};
-use connlib_client_shared::callbacks::ResourceDescription;
-use connlib_shared::messages::ResourceId;
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -22,6 +20,7 @@ use url::Url;
 
 use ControllerRequest as Req;
 
+mod ran_before;
 mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
@@ -158,7 +157,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match TrayMenuEvent::from_str(&id) {
+                let event = match serde_json::from_str::<TrayMenuEvent>(&id) {
                     Ok(x) => x,
                     Err(e) => {
                         tracing::error!("{e}");
@@ -267,7 +266,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                         Ok(Ok(_)) => 0,
                     };
 
-                    cleanup();
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
                 });
@@ -308,13 +306,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         }
     });
     Ok(())
-}
-
-/// Best-effort cleanup of things like DNS control before graceful exit
-fn cleanup() {
-    // Do this redundant deactivation because `Tun` will not automatically Drop before
-    // the process exits
-    connlib_shared::deactivate_dns_control().ok();
 }
 
 /// Runs a smoke test and then asks Controller to exit gracefully
@@ -445,7 +436,10 @@ pub(crate) enum ControllerRequest {
     ApplySettings(AdvancedSettings),
     /// Only used for smoke tests
     ClearLogs,
-    Disconnected,
+    Disconnected {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -499,10 +493,7 @@ impl Controller {
         };
 
         let api_url = self.advanced_settings.api_url.clone();
-        tracing::info!(
-            api_url = api_url.to_string(),
-            "Calling connlib Session::connect"
-        );
+        tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
         let mut connlib = ipc::Client::connect(
             api_url.as_str(),
@@ -522,24 +513,7 @@ impl Controller {
         });
         self.refresh_system_tray_menu()?;
 
-        Ok(())
-    }
-
-    fn copy_resource(&self, id: &str) -> Result<()> {
-        let Some(session) = &self.session else {
-            bail!("app is signed out");
-        };
-        let resources = session.callback_handler.resources.load();
-        let id = ResourceId::from_str(id)?;
-        let Some(res) = resources.iter().find(|r| r.id() == id) else {
-            bail!("resource ID is not in the list");
-        };
-        let mut clipboard = arboard::Clipboard::new()?;
-        // TODO: Make this a method on `ResourceDescription`
-        match res {
-            ResourceDescription::Dns(x) => clipboard.set_text(&x.address)?,
-            ResourceDescription::Cidr(x) => clipboard.set_text(&x.address.to_string())?,
-        }
+        ran_before::set().await?;
         Ok(())
     }
 
@@ -569,13 +543,25 @@ impl Controller {
             Req::ClearLogs => logging::clear_logs_inner()
                 .await
                 .context("Failed to clear logs")?,
-            Req::Disconnected => {
-                tracing::info!("Disconnected by connlib");
+            Req::Disconnected {
+                error_msg,
+                is_authentication_error,
+            } => {
                 self.sign_out().await?;
-                os::show_notification(
-                    "Firezone disconnected",
-                    "To access resources, sign in again.",
-                )?;
+                if is_authentication_error {
+                    tracing::info!(?error_msg, "Auth error");
+                    os::show_notification(
+                        "Firezone disconnected",
+                        "To access resources, sign in again.",
+                    )?;
+                } else {
+                    tracing::error!(?error_msg, "Disconnected");
+                    native_dialog::MessageDialog::new()
+                        .set_title("Firezone Error")
+                        .set_text(&error_msg)
+                        .set_type(native_dialog::MessageType::Error)
+                        .show_alert()?;
+                }
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
@@ -599,6 +585,15 @@ impl Controller {
                         .hide()?;
                 }
             }
+            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
+                &self.app.shell_scope(),
+                &self.advanced_settings.auth_base_url,
+                None,
+            )?,
+            Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
+                .context("Couldn't access clipboard")?
+                .set_text(s)
+                .context("Couldn't copy resource URL or other text to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 if self.session.is_some() {
                     if self.tunnel_ready {
@@ -626,12 +621,12 @@ impl Controller {
                     "Uptime info"
                 );
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Resource { id }) => self
-                .copy_resource(&id)
-                .context("Couldn't copy resource to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
+                tauri::api::shell::open(&self.app.shell_scope(), url, None)?
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
@@ -741,21 +736,9 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
-    let session_dir =
-        firezone_headless_client::known_dirs::session().context("Couldn't find session dir")?;
-    let ran_before_path = session_dir.join("ran_before.txt");
-    if !tokio::fs::try_exists(&ran_before_path).await? {
-        let win = app
-            .get_window("welcome")
-            .context("Couldn't get handle to Welcome window")?;
-        win.show()?;
-        tokio::fs::create_dir_all(&session_dir).await?;
-        tokio::fs::write(&ran_before_path, &[]).await?;
-    }
-
     let mut controller = Controller {
         advanced_settings,
-        app,
+        app: app.clone(),
         auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
@@ -776,6 +759,13 @@ async fn run_controller(
             .context("Failed to restart session during app start")?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
+    }
+
+    if !ran_before::get().await? {
+        let win = app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?;
+        win.show()?;
     }
 
     let mut have_internet =

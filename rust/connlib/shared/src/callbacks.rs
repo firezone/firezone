@@ -42,6 +42,20 @@ impl From<Ipv6Network> for Cidrv6 {
     }
 }
 
+impl From<Cidrv4> for Ipv4Network {
+    fn from(x: Cidrv4) -> Self {
+        Self::new(x.address, x.prefix)
+            .expect("A Cidrv4 should always translate to a valid Ipv4Network")
+    }
+}
+
+impl From<Cidrv6> for Ipv6Network {
+    fn from(x: Cidrv6) -> Self {
+        Self::new(x.address, x.prefix)
+            .expect("A Cidrv6 should always translate to a valid Ipv6Network")
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Status {
     Unknown,
@@ -57,6 +71,13 @@ pub enum ResourceDescription {
 }
 
 impl ResourceDescription {
+    pub fn address_description(&self) -> &str {
+        match self {
+            ResourceDescription::Dns(r) => &r.address_description,
+            ResourceDescription::Cidr(r) => &r.address_description,
+        }
+    }
+
     pub fn name(&self) -> &str {
         match self {
             ResourceDescription::Dns(r) => &r.name,
@@ -83,6 +104,13 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => Cow::from(&r.address),
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+        }
+    }
+
+    pub fn sites(&self) -> &[Site] {
+        match self {
+            ResourceDescription::Dns(r) => &r.sites,
+            ResourceDescription::Cidr(r) => &r.sites,
         }
     }
 }

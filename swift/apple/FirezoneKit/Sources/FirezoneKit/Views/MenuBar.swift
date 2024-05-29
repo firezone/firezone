@@ -56,7 +56,9 @@ public final class MenuBar: NSObject {
 
         if status == .connected {
           model.store.beginUpdatingResources { data in
-            if let newResources = try? JSONDecoder().decode([Resource].self, from: data) {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            if let newResources = try? decoder.decode([Resource].self, from: data) {
               // Handle resource changes
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
@@ -125,12 +127,45 @@ public final class MenuBar: NSObject {
     }
     return menuItem
   }()
+  private lazy var adminPortalMenuItem: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Admin Portal...",
+      action: #selector(adminPortalButtonTapped),
+      target: self
+    )
+    return menuItem
+  }()
+  private lazy var documentationMenuItem: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Documentation...",
+      action: #selector(documentationButtonTapped),
+      target: self
+    )
+    return menuItem
+  }()
+  private lazy var supportMenuItem = createMenuItem(
+    menu,
+    title: "Support...",
+    action: #selector(supportButtonTapped),
+    target: self
+  )
+  private lazy var helpMenuItem: NSMenuItem = {
+    let menuItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
+    let subMenu = NSMenu()
+    subMenu.addItem(documentationMenuItem)
+    subMenu.addItem(supportMenuItem)
+    menuItem.submenu = subMenu
+    return menuItem
+  }()
 
   private lazy var settingsMenuItem = createMenuItem(
     menu,
     title: "Settings",
     action: #selector(settingsButtonTapped),
-    target: nil
+    key: ",",
+    target: self
   )
   private lazy var quitMenuItem: NSMenuItem = {
     let menuItem = createMenuItem(
@@ -157,11 +192,13 @@ public final class MenuBar: NSObject {
     menu.addItem(resourcesSeparatorMenuItem)
 
     menu.addItem(aboutMenuItem)
+    menu.addItem(adminPortalMenuItem)
+    menu.addItem(helpMenuItem)
     menu.addItem(settingsMenuItem)
+    menu.addItem(NSMenuItem.separator())
     menu.addItem(quitMenuItem)
 
     menu.delegate = self
-
     statusItem.menu = menu
   }
 
@@ -183,6 +220,7 @@ public final class MenuBar: NSObject {
   }
 
   @objc private func signInButtonTapped() {
+    NSApp.activate(ignoringOtherApps: true)
     Task { await WebAuthSession.signIn(store: model.store) }
   }
 
@@ -194,6 +232,21 @@ public final class MenuBar: NSObject {
 
   @objc private func settingsButtonTapped() {
     AppViewModel.WindowDefinition.settings.openWindow()
+  }
+
+  @objc private func adminPortalButtonTapped() {
+    let url = URL(string: model.store.settings.authBaseURL)!
+    NSWorkspace.shared.open(url)
+  }
+
+  @objc private func documentationButtonTapped() {
+    let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
+    NSWorkspace.shared.open(url)
+  }
+
+  @objc private func supportButtonTapped() {
+    let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
+    NSWorkspace.shared.open(url)
   }
 
   @objc private func aboutButtonTapped() {
@@ -344,13 +397,13 @@ public final class MenuBar: NSObject {
     // the menu contains other things besides resources, so update it in-place
     let diff = (newResources ?? []).difference(
       from: resources ?? [],
-      by: { $0.name == $1.name && $0.address == $1.address }
+      by: { $0 == $1 }
     )
     let index = menu.index(of: resourcesTitleMenuItem) + 1
     for change in diff {
       switch change {
       case .insert(let offset, let element, associatedWith: _):
-        let menuItem = createResourceMenuItem(title: element.name, submenuTitle: element.address)
+        let menuItem = createResourceMenuItem(resource: element)
         menu.insertItem(menuItem, at: index + offset)
       case .remove(let offset, element: _, associatedWith: _):
         menu.removeItem(at: index + offset)
@@ -358,21 +411,109 @@ public final class MenuBar: NSObject {
     }
   }
 
-  private func createResourceMenuItem(title: String, submenuTitle: String) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-
-    let subMenu = NSMenu()
-    let subMenuItem = NSMenuItem(
-      title: submenuTitle, action: #selector(resourceValueTapped(_:)), keyEquivalent: ""
-    )
-    subMenuItem.isEnabled = true
-    subMenuItem.target = self
-    subMenu.addItem(subMenuItem)
+  private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
+    let item = NSMenuItem(title: resource.name, action: nil, keyEquivalent: "")
 
     item.isHidden = false
-    item.submenu = subMenu
+    item.submenu = createSubMenu(resource: resource)
 
     return item
+  }
+
+  private func createSubMenu(resource: Resource) -> NSMenu {
+    let subMenu = NSMenu()
+    let resourceAddressDescriptionItem = NSMenuItem()
+    let resourceSectionItem = NSMenuItem()
+    let resourceNameItem = NSMenuItem()
+    let resourceAddressItem = NSMenuItem()
+    let siteSectionItem = NSMenuItem()
+    let siteNameItem = NSMenuItem()
+    let siteStatusItem = NSMenuItem()
+
+
+    // AddressDescription first -- will be most common action
+    if let addressDescription = resource.addressDescription {
+      resourceAddressDescriptionItem.title = addressDescription
+
+      if let url = URL(string: addressDescription),
+         let _ = url.host {
+        // Looks like a URL, so allow opening it
+        resourceAddressDescriptionItem.action = #selector(resourceURLTapped(_:))
+        resourceAddressDescriptionItem.toolTip = "Click to open"
+
+        // TODO: Expose markdown support? Blocked by Tauri clients.
+        // Using Markdown here only to highlight the URL
+        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "**[\(addressDescription)](\(addressDescription))**")
+      } else {
+        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "**\(addressDescription)**")
+        resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
+        resourceAddressDescriptionItem.toolTip = "Click to copy"
+      }
+    } else {
+      // Show Address first if addressDescription is missing
+      resourceAddressDescriptionItem.title = resource.address
+      resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
+    }
+    resourceAddressDescriptionItem.isEnabled = true
+    resourceAddressDescriptionItem.target = self
+    subMenu.addItem(resourceAddressDescriptionItem)
+
+    subMenu.addItem(NSMenuItem.separator())
+
+    resourceSectionItem.title = "Resource"
+    resourceSectionItem.isEnabled = false
+    subMenu.addItem(resourceSectionItem)
+
+    // Resource name
+    resourceNameItem.action = #selector(resourceValueTapped(_:))
+    resourceNameItem.title = resource.name
+    resourceNameItem.toolTip = "Resource name (click to copy)"
+    resourceNameItem.isEnabled = true
+    resourceNameItem.target = self
+    subMenu.addItem(resourceNameItem)
+
+    // Resource address
+    resourceAddressItem.action = #selector(resourceValueTapped(_:))
+    resourceAddressItem.title = resource.address
+    resourceAddressItem.toolTip = "Resource address (click to copy)"
+    resourceAddressItem.isEnabled = true
+    resourceAddressItem.target = self
+    subMenu.addItem(resourceAddressItem)
+
+    // Site details
+    if let site = resource.sites.first {
+      subMenu.addItem(NSMenuItem.separator())
+
+      siteSectionItem.title = "Site"
+      siteSectionItem.isEnabled = false
+      subMenu.addItem(siteSectionItem)
+
+      // Site name
+      siteNameItem.title = site.name
+      siteNameItem.action = #selector(resourceValueTapped(_:))
+      siteNameItem.toolTip = "Site name (click to copy)"
+      siteNameItem.isEnabled = true
+      siteNameItem.target = self
+      subMenu.addItem(siteNameItem)
+
+      // Site status
+      siteStatusItem.action = #selector(resourceValueTapped(_:))
+      siteStatusItem.title = resource.status.toSiteStatus()
+      siteStatusItem.toolTip = "\(resource.status.toSiteStatusTooltip()) (click to copy)"
+      siteStatusItem.state = statusToState(status: resource.status)
+      siteStatusItem.isEnabled = true
+      siteStatusItem.target = self
+      if let onImage = NSImage(named: NSImage.statusAvailableName),
+         let offImage = NSImage(named: NSImage.statusUnavailableName),
+         let mixedImage = NSImage(named: NSImage.statusNoneName) {
+        siteStatusItem.onStateImage = onImage
+        siteStatusItem.offStateImage = offImage
+        siteStatusItem.mixedStateImage = mixedImage
+      }
+      subMenu.addItem(siteStatusItem)
+    }
+
+    return subMenu
   }
 
   @objc private func resourceValueTapped(_ sender: AnyObject?) {
@@ -381,13 +522,42 @@ public final class MenuBar: NSObject {
     }
   }
 
+  @objc private func resourceURLTapped(_ sender: AnyObject?) {
+    if let value = (sender as? NSMenuItem)?.title {
+      // URL has already been validated
+      NSWorkspace.shared.open(URL(string: value)!)
+    }
+  }
+
   private func copyToClipboard(_ string: String) {
     let pasteBoard = NSPasteboard.general
     pasteBoard.clearContents()
     pasteBoard.writeObjects([string as NSString])
   }
+
+  private func statusToState(status: ResourceStatus) -> NSControl.StateValue {
+    switch status {
+    case .offline:
+      return .off
+    case .online:
+      return .on
+    case .unknown:
+      return .mixed
+    }
+  }
 }
 
 extension MenuBar: NSMenuDelegate {
+}
+
+extension NSImage {
+  func resized(to newSize: NSSize) -> NSImage {
+    let newImage = NSImage(size: newSize)
+    newImage.lockFocus()
+    self.draw(in: NSRect(origin: .zero, size: newSize), from: NSRect(origin: .zero, size: self.size), operation: .copy, fraction: 1.0)
+    newImage.unlockFocus()
+    newImage.size = newSize
+    return newImage
+  }
 }
 #endif

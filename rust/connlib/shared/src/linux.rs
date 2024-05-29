@@ -4,8 +4,15 @@ const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
 
 pub mod etc_resolv_conf;
 
-#[derive(Clone, Debug)]
+pub const IPC_SERVICE_DNS_CONTROL: DnsControlMethod = DnsControlMethod::Systemd;
+
+#[derive(Clone, Copy, Debug)]
 pub enum DnsControlMethod {
+    /// The user explicitly doesn't want DNS Resources
+    ///
+    /// This is not implemented with `Option<DnsControlMethod>` because `None` might read as
+    /// "Use the default control method", not "Don't control DNS".
+    DontControl,
     /// Back up `/etc/resolv.conf` and replace it with our own
     ///
     /// Only suitable for the Alpine CI containers and maybe something like an

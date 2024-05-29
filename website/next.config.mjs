@@ -20,6 +20,7 @@ import langJson from "highlight.js/lib/languages/json";
 import langBash from "highlight.js/lib/languages/bash";
 import langRust from "highlight.js/lib/languages/rust";
 import langRuby from "highlight.js/lib/languages/ruby";
+import langPowerShell from "highlight.js/lib/languages/powershell";
 
 const highlightLanguages = {
   elixir: langElixir,
@@ -28,12 +29,26 @@ const highlightLanguages = {
   bash: langBash,
   rust: langRust,
   ruby: langRuby,
+  powershell: langPowerShell,
 };
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
     typedRoutes: true,
+  },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "browsing-topics=()",
+          },
+        ],
+      },
+    ];
   },
   async redirects() {
     return redirects;
@@ -51,18 +66,11 @@ const nextConfig = {
   images: {
     dangerouslyAllowSVG: true,
     remotePatterns: [
-      {
-        hostname: "api.star-history.com",
-      },
-      {
-        hostname: "github.com",
-      },
-      {
-        hostname: "avatars.githubusercontent.com",
-      },
-      {
-        hostname: "www.gravatar.com",
-      },
+      { hostname: "runacap.com" },
+      { hostname: "api.star-history.com" },
+      { hostname: "github.com" },
+      { hostname: "avatars.githubusercontent.com" },
+      { hostname: "www.gravatar.com" },
     ],
   },
 };

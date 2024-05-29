@@ -1,7 +1,7 @@
 [package]
 name = "firezone-tunnel"
 # mark:automatic-version
-version = "1.0.5"
+version = "1.0.6"
 edition = "2021"
 
 [dependencies]
@@ -43,6 +43,8 @@ test-strategy = "0.3.1"
 proptest-state-machine = "0.3"
 tracing-subscriber = {version = "0.3", features = ["env-filter"]}
 pretty_assertions = "1.4.0"
+firezone-relay = { workspace = true, features = ["proptest"] }
+rand = "0.8"
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
@@ -52,7 +54,6 @@ proptest = ["dep:proptest", "connlib-shared/proptest"]
 netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
-sd-notify = "0.4.1"
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]

@@ -58,7 +58,8 @@ function smoke_test() {
     bash -c "stat \"${LOGS_PATH}/\"connlib*log"
     stat "$SETTINGS_PATH"
     # stat "$DEVICE_ID_PATH"
-    stat "$RAN_BEFORE_PATH"
+    # `ran_before` is now only written after a successful sign-in
+    stat "$RAN_BEFORE_PATH" && exit 1
 
     # Run the test again and make sure the device ID is not changed
     run_fz_gui --no-deep-links smoke-test
@@ -74,7 +75,7 @@ function smoke_test() {
     rm -rf "$LOGS_PATH"
     rm "$SETTINGS_PATH"
     # rm "$DEVICE_ID_PATH"
-    rm "$RAN_BEFORE_PATH"
+    rm -f "$RAN_BEFORE_PATH"
 }
 
 function crash_test() {

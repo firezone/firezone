@@ -99,7 +99,7 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 /// - Otherwise, a strategy for responding to the query
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
+    dns_resources_internal_ips: &HashMap<IpAddr, DnsResource>,
     dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
@@ -111,6 +111,9 @@ pub(crate) fn parse<'a>(
     }
 
     let question = message.first_question()?;
+
+    tracing::trace!("Parsed packet as DNS query: '{question}'");
+
     // In general we prefer to always have a response NxDomain to deal with with domains we don't expect
     // For systems with splitdns, in theory, we should only see Ptr queries we don't handle(e.g. apple's dns-sd)
     let resource =
@@ -363,7 +366,7 @@ fn get_description(
 /// If we are not connected yet, the Client should defer the response and begin connecting.
 fn resource_from_question<N: ToName>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
+    dns_resources_internal_ips: &HashMap<IpAddr, DnsResource>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<DomainName>, DnsQueryParams, DnsResource>> {
     let name = ToName::to_vec(question.qname());
@@ -377,12 +380,16 @@ fn resource_from_question<N: ToName>(
             };
 
             let description = DnsResource::from_description(&description, name);
-            let Some(ips) = dns_resources_internal_ips.get(&description) else {
+
+            if !dns_resources_internal_ips
+                .iter()
+                .any(|(_, r)| r == &description)
+            {
                 return Some(ResolveStrategy::DeferredResponse(description));
-            };
+            }
+
             Some(ResolveStrategy::LocalResponse(RecordData::A(
-                ips.iter()
-                    .cloned()
+                ips_of_resource(dns_resources_internal_ips, &description)
                     .filter_map(get_v4)
                     .map(domain::rdata::A::new)
                     .collect(),
@@ -393,13 +400,16 @@ fn resource_from_question<N: ToName>(
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
             let description = DnsResource::from_description(&description, name);
-            let Some(ips) = dns_resources_internal_ips.get(&description) else {
+
+            if !dns_resources_internal_ips
+                .iter()
+                .any(|(_, r)| r == &description)
+            {
                 return Some(ResolveStrategy::DeferredResponse(description));
-            };
+            }
 
             Some(ResolveStrategy::LocalResponse(RecordData::Aaaa(
-                ips.iter()
-                    .cloned()
+                ips_of_resource(dns_resources_internal_ips, &description)
                     .filter_map(get_v6)
                     .map(domain::rdata::Aaaa::new)
                     .collect(),
@@ -409,10 +419,7 @@ fn resource_from_question<N: ToName>(
             let Some(ip) = reverse_dns_addr(&name.to_string()) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
-            let Some(resource) = dns_resources_internal_ips
-                .iter()
-                .find_map(|(r, ips)| ips.contains(&ip).then_some(r))
-            else {
+            let Some(resource) = dns_resources_internal_ips.get(&ip) else {
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::Ptr(
@@ -427,6 +434,14 @@ fn resource_from_question<N: ToName>(
             Some(ResolveStrategy::forward(name.to_string(), qtype))
         }
     }
+}
+
+pub(crate) fn ips_of_resource<'a>(
+    ips: &'a HashMap<IpAddr, DnsResource>,
+    resource: &'a DnsResource,
+) -> impl Iterator<Item = IpAddr> + 'a {
+    ips.iter()
+        .filter_map(move |(ip, r)| (r == resource).then_some(*ip))
 }
 
 pub(crate) fn as_dns_message(pkt: &IpPacket) -> Option<TrustDnsMessage> {

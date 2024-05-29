@@ -1,5 +1,6 @@
 //! Factory module for making all kinds of packets.
 
+use crate::{IpPacket, MutableIpPacket};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -7,12 +8,45 @@ use pnet_packet::{
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
 };
-
-use crate::MutableIpPacket;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-pub fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
-    match (source, dst) {
+pub fn icmp_request_packet(
+    src: IpAddr,
+    dst: impl Into<IpAddr>,
+    seq: u16,
+    identifier: u16,
+) -> MutableIpPacket<'static> {
+    icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Request)
+}
+
+pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
+    let icmp = packet
+        .as_icmp()
+        .expect("IP packet should be an ICMP packet");
+    let echo_request = icmp.as_echo_request().expect("to be ICMP echo request");
+
+    icmp_packet(
+        packet.destination(),
+        packet.source(),
+        echo_request.sequence(),
+        echo_request.identifier(),
+        IcmpKind::Response,
+    )
+}
+
+enum IcmpKind {
+    Request,
+    Response,
+}
+
+fn icmp_packet(
+    src: IpAddr,
+    dst: IpAddr,
+    seq: u16,
+    identifier: u16,
+    kind: IcmpKind,
+) -> MutableIpPacket<'static> {
+    match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             use crate::{
                 icmp::{
@@ -28,14 +62,24 @@ pub fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'stat
             ipv4_header(src, dst, IpNextHeaderProtocols::Icmp, &mut buf[..]);
 
             let mut icmp_packet = MutableIcmpPacket::new(&mut buf[20..]).unwrap();
-            icmp_packet.set_icmp_type(IcmpTypes::EchoRequest);
-            icmp_packet.set_icmp_code(IcmpCodes::NoCode);
+
+            match kind {
+                IcmpKind::Request => {
+                    icmp_packet.set_icmp_type(IcmpTypes::EchoRequest);
+                    icmp_packet.set_icmp_code(IcmpCodes::NoCode);
+                }
+                IcmpKind::Response => {
+                    icmp_packet.set_icmp_type(IcmpTypes::EchoReply);
+                    icmp_packet.set_icmp_code(IcmpCodes::NoCode);
+                }
+            }
+
             icmp_packet.set_checksum(0);
 
             let mut echo_request_packet =
                 MutableEchoRequestPacket::new(icmp_packet.payload_mut()).unwrap();
-            echo_request_packet.set_sequence_number(1);
-            echo_request_packet.set_identifier(0);
+            echo_request_packet.set_sequence_number(seq);
+            echo_request_packet.set_identifier(identifier);
             echo_request_packet.set_checksum(crate::util::checksum(
                 echo_request_packet.to_immutable().packet(),
                 2,
@@ -59,13 +103,21 @@ pub fn icmp_request_packet(source: IpAddr, dst: IpAddr) -> MutableIpPacket<'stat
 
             let mut icmp_packet = MutableIcmpv6Packet::new(&mut buf[40..]).unwrap();
 
-            icmp_packet.set_icmpv6_type(Icmpv6Types::EchoRequest);
-            icmp_packet.set_icmpv6_code(Icmpv6Code::new(0)); // No code for echo request
+            match kind {
+                IcmpKind::Request => {
+                    icmp_packet.set_icmpv6_type(Icmpv6Types::EchoRequest);
+                    icmp_packet.set_icmpv6_code(Icmpv6Code::new(0));
+                }
+                IcmpKind::Response => {
+                    icmp_packet.set_icmpv6_type(Icmpv6Types::EchoReply);
+                    icmp_packet.set_icmpv6_code(Icmpv6Code::new(0));
+                }
+            }
 
             let mut echo_request_packet =
                 MutableEchoRequestPacket::new(icmp_packet.payload_mut()).unwrap();
-            echo_request_packet.set_identifier(0);
-            echo_request_packet.set_sequence_number(1);
+            echo_request_packet.set_identifier(identifier);
+            echo_request_packet.set_sequence_number(seq);
             echo_request_packet.set_checksum(0);
 
             let checksum = crate::icmpv6::checksum(&icmp_packet.to_immutable(), &src, &dst);

@@ -4,6 +4,20 @@ use crate::Error;
 use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::PathBuf;
 
+pub const IPC_SERVICE_DNS_CONTROL: DnsControlMethod = DnsControlMethod::Windows;
+
+// Needed to match signatures for Linux. Windows only has one DNS control method at this time.
+#[derive(Clone, Copy, Debug)]
+pub enum DnsControlMethod {
+    /// Don't control DNS, the user explicitly doesn't want DNS Resources
+    ///
+    /// This is not implemented with `Option<DnsControlMethod>` because `None` might read as
+    /// "Use the default control method", not "Don't control DNS".
+    DontControl,
+    /// Control DNS
+    Windows,
+}
+
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
 ///
 /// This is where we can save config, logs, crash dumps, etc.
@@ -45,11 +59,14 @@ pub mod dns {
     // Copied from the deep link schema
     const FZ_MAGIC: &str = "firezone-fd0020211111";
 
+    // TODO: De-dupe
+    const TUNNEL_NAME: &str = "Firezone";
+
     /// Tells Windows to send all DNS queries to our sentinels
     ///
     /// Parameters:
     /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
-    pub fn activate(dns_config: &[IpAddr], iface_idx: u32) -> Result<()> {
+    pub fn activate(dns_config: &[IpAddr]) -> Result<()> {
         let dns_config_string = dns_config
             .iter()
             .map(|ip| format!("\"{ip}\""))
@@ -65,7 +82,9 @@ pub mod dns {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .arg("-Command")
-            .arg(format!("Set-DnsClientServerAddress -InterfaceIndex {iface_idx} -ServerAddresses({dns_config_string})"))
+            .arg(format!(
+                "Set-DnsClientServerAddress {TUNNEL_NAME} -ServerAddresses({dns_config_string})"
+            ))
             .status()?;
 
         tracing::info!("Activating DNS control");
@@ -93,9 +112,9 @@ pub mod dns {
     ///
     /// Parameters:
     /// - `dns_config_string` - Passed verbatim to [`activate`]
-    pub fn change(dns_config: &[IpAddr], iface_idx: u32) -> Result<()> {
+    pub fn change(dns_config: &[IpAddr]) -> Result<()> {
         deactivate()?;
-        activate(dns_config, iface_idx)?;
+        activate(dns_config)?;
         Ok(())
     }
 

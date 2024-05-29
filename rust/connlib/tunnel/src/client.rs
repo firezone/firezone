@@ -190,14 +190,11 @@ where
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
         self.role_state
-            .node
-            .add_remote_candidate(conn_id, ice_candidate, Instant::now());
+            .add_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state
-            .node
-            .remove_remote_candidate(conn_id, ice_candidate);
+        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
     }
 
     pub fn create_or_reuse_connection(
@@ -223,8 +220,18 @@ where
         domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> connlib_shared::Result<()> {
-        self.role_state
-            .accept_answer(answer, resource_id, gateway_public_key, domain_response)?;
+        self.role_state.accept_answer(
+            snownet::Answer {
+                credentials: snownet::Credentials {
+                    username: answer.username,
+                    password: answer.password,
+                },
+            },
+            resource_id,
+            gateway_public_key,
+            domain_response,
+            Instant::now(),
+        )?;
 
         Ok(())
     }
@@ -248,6 +255,15 @@ pub enum Request {
     ReuseConnection(ReuseConnection),
 }
 
+impl Request {
+    pub fn resource_id(&self) -> ResourceId {
+        match self {
+            Request::NewConnection(i) => i.resource_id,
+            Request::ReuseConnection(i) => i.resource_id,
+        }
+    }
+}
+
 fn send_dns_answer(
     role_state: &mut ClientState,
     qtype: Rtype,
@@ -261,41 +277,66 @@ fn send_dns_answer(
         let Some(packet) = dns::create_local_answer(addrs, packet) else {
             return;
         };
+
+        tracing::debug!(domain = %resource_description.address, ips = ?addrs, "Resolved DNS query");
+
         role_state.buffered_packets.push_back(packet);
     }
 }
 
+/// A sans-IO implementation of a Client's functionality.
+///
+/// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
+/// Clients differ from gateways in that they also implement a DNS resolver for DNS resources.
+/// They also initiate connections to Gateways based on packets sent to Resources. Gateways only accept incoming connections.
 pub struct ClientState {
-    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
-    resources_gateways: HashMap<ResourceId, GatewayId>,
-
-    pub dns_resources_internal_ips: HashMap<DnsResource, HashSet<IpAddr>>,
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
-    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    pub resource_ids: HashMap<ResourceId, ResourceDescription>,
-    pub deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
-
-    peers: PeerStore<GatewayId, GatewayOnClient>,
-
+    /// Manages wireguard tunnels to gateways.
     node: ClientNode<GatewayId, RelayId>,
+    /// All gateways we are connected to and the associated, connection-specific state.
+    peers: PeerStore<GatewayId, GatewayOnClient>,
+    /// Which Resources we are trying to connect to.
+    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
 
-    pub ip_provider: IpProvider,
+    /// Tracks which gateway to use for a particular Resource.
+    resources_gateways: HashMap<ResourceId, GatewayId>,
+    /// The site a gateway belongs to.
+    gateways_site: HashMap<GatewayId, SiteId>,
+    /// The online/offline status of a site.
+    sites_status: HashMap<SiteId, Status>,
 
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
+    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// All resources indexed by their ID.
+    resource_ids: HashMap<ResourceId, ResourceDescription>,
 
-    buffered_events: VecDeque<ClientEvent>,
-    interface_config: Option<InterfaceConfig>,
-    buffered_packets: VecDeque<IpPacket<'static>>,
+    /// The DNS resolvers configured on the system outside of connlib.
+    system_resolvers: Vec<IpAddr>,
 
     /// DNS queries that we need to forward to the system resolver.
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
 
+    /// The (internal) IPs we have assigned for a certain DNS resource.
+    dns_resources_internal_ips: HashMap<IpAddr, DnsResource>,
+    /// DNS queries we can only answer once we have connected to the resource.
+    ///
+    /// See [`dns::ResolveStrategy`] for details.
+    deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
+    /// Hands out IPs for DNS resources.
+    ip_provider: IpProvider,
+    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
+    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// When to next refresh DNS resources.
+    ///
+    /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
     next_dns_refresh: Option<Instant>,
 
-    system_resolvers: Vec<IpAddr>,
+    /// Configuration of the TUN device, when it is up.
+    interface_config: Option<InterfaceConfig>,
 
-    gateways_site: HashMap<GatewayId, SiteId>,
-    sites_status: HashMap<SiteId, Status>,
+    buffered_events: VecDeque<ClientEvent>,
+    buffered_packets: VecDeque<IpPacket<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -372,6 +413,12 @@ impl ClientState {
         }
     }
 
+    #[cfg(all(feature = "proptest", test))]
+    pub(crate) fn public_key(&self) -> PublicKey {
+        self.node.public_key()
+    }
+
+    #[tracing::instrument(level = "trace", skip_all, fields(dest))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -385,18 +432,38 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
-        let Some(peer) = self.peers.peer_by_ip_mut(dest) else {
-            self.on_connection_intent_ip(dest, now);
+        tracing::Span::current().record("dest", tracing::field::display(dest));
+
+        if is_definitely_not_a_resource(dest) {
+            return None;
+        }
+
+        let Some(resource) = self.get_resource_by_destination(dest) else {
+            tracing::trace!("Unknown resource");
+            return None;
+        };
+
+        let Some(peer) = self.peer_by_resource_mut(resource) else {
+            // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
+            let domain = self
+                .dns_resources_internal_ips
+                .values()
+                .find_map(|r| (r.id == resource).then_some(r.address.clone()));
+
+            self.on_connection_intent_to_resource(resource, domain, now);
             return None;
         };
 
         let packet = peer.transform_tun_to_network(packet);
+        let gateway_id = peer.id();
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), Instant::now())
+            .encapsulate(gateway_id, packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
+
+        tracing::trace!("Encapsulated packet");
 
         Some(transmit)
     }
@@ -437,29 +504,28 @@ impl ClientState {
         Some(packet.into_immutable())
     }
 
+    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
+        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    }
+
+    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
+        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    }
+
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
-    fn accept_answer(
+    pub fn accept_answer(
         &mut self,
-        answer: Answer,
+        answer: snownet::Answer,
         resource_id: ResourceId,
         gateway: PublicKey,
         domain_response: Option<DomainResponse>,
+        now: Instant,
     ) -> connlib_shared::Result<()> {
         let gateway_id = self
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        self.node.accept_answer(
-            gateway_id,
-            gateway,
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: answer.username,
-                    password: answer.password,
-                },
-            },
-            Instant::now(),
-        );
+        self.node.accept_answer(gateway_id, gateway, answer, now);
 
         let desc = self
             .resource_ids
@@ -489,7 +555,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
-    fn create_or_reuse_connection(
+    pub fn create_or_reuse_connection(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
@@ -506,17 +572,8 @@ impl ClientState {
             .get(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
-        let domain = self.get_awaiting_connection(&resource_id)?.domain.clone();
-
-        if self.is_connected_to(resource_id, &domain) {
-            return Err(Error::UnexpectedConnectionDetails);
-        }
-
-        let awaiting_connection = self
-            .awaiting_connection
-            .get(&resource_id)
-            .ok_or(Error::UnexpectedConnectionDetails)?
-            .clone();
+        let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
+        let domain = awaiting_connection.domain.clone();
 
         self.resources_gateways.insert(resource_id, gateway_id);
 
@@ -557,12 +614,12 @@ impl ClientState {
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain: awaiting_connection.domain,
+                domain,
             },
         }));
     }
 
-    fn received_domain_parameters(
+    pub fn received_domain_parameters(
         &mut self,
         resource_id: ResourceId,
         domain_response: DomainResponse,
@@ -612,8 +669,10 @@ impl ClientState {
             })
             .collect();
 
-        self.dns_resources_internal_ips
-            .insert(resource_description.clone(), addrs.clone());
+        for addr in addrs.clone() {
+            self.dns_resources_internal_ips
+                .insert(addr, resource_description.clone());
+        }
 
         send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
         send_dns_answer(self, Rtype::A, &resource_description, &addrs);
@@ -656,10 +715,14 @@ impl ClientState {
 
                 Ok(None)
             }
-            Some(dns::ResolveStrategy::DeferredResponse(resource)) => {
-                self.on_connection_intent_dns(&resource.0, now);
+            Some(dns::ResolveStrategy::DeferredResponse((resource, r_type))) => {
+                self.on_connection_intent_to_resource(
+                    resource.id,
+                    Some(resource.address.clone()),
+                    now,
+                );
                 self.deferred_dns_queries
-                    .insert(resource, packet.as_immutable().to_owned());
+                    .insert((resource, r_type), packet.as_immutable().to_owned());
 
                 Ok(None)
             }
@@ -684,37 +747,7 @@ impl ClientState {
         self.resources_gateways.remove(&resource);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(resource_address = %resource.address, resource_id = %resource.id))]
-    fn on_connection_intent_dns(&mut self, resource: &DnsResource, now: Instant) {
-        self.on_connection_intent_to_resource(resource.id, Some(resource.address.clone()), now)
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(resource_ip = %destination, resource_id))]
-    fn on_connection_intent_ip(&mut self, destination: IpAddr, now: Instant) {
-        if is_definitely_not_a_resource(destination) {
-            return;
-        }
-
-        let Some(resource_id) = self.get_cidr_resource_by_destination(destination) else {
-            if let Some(resource) = self
-                .dns_resources_internal_ips
-                .iter()
-                .find_map(|(r, i)| i.contains(&destination).then_some(r))
-                .cloned()
-            {
-                self.on_connection_intent_dns(&resource, now);
-            }
-
-            tracing::trace!("Unknown resource");
-
-            return;
-        };
-
-        tracing::Span::current().record("resource_id", tracing::field::display(&resource_id));
-
-        self.on_connection_intent_to_resource(resource_id, None, now)
-    }
-
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource, ?domain))]
     fn on_connection_intent_to_resource(
         &mut self,
         resource: ResourceId,
@@ -774,15 +807,6 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    fn is_connected_to(&self, resource: ResourceId, domain: &Option<DomainName>) -> bool {
-        let Some(resource) = self.resource_ids.get(&resource) else {
-            return false;
-        };
-
-        let ips = self.get_resource_ip(resource, domain);
-        ips.iter().any(|ip| self.peers.exact_match(*ip).is_some())
-    }
-
     fn get_resource_ip(
         &self,
         resource: &ResourceDescription,
@@ -795,11 +819,7 @@ impl ClientState {
                 };
 
                 let description = DnsResource::from_description(dns_resource, domain.clone());
-                self.dns_resources_internal_ips
-                    .get(&description)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
+                dns::ips_of_resource(&self.dns_resources_internal_ips, &description)
                     .map(Into::into)
                     .collect()
             }
@@ -810,7 +830,7 @@ impl ClientState {
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
         self.update_site_status_by_gateway(gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
-        self.dns_resources_internal_ips.retain(|resource, _| {
+        self.dns_resources_internal_ips.retain(|_, resource| {
             !self
                 .resources_gateways
                 .get(&resource.id)
@@ -827,21 +847,29 @@ impl ClientState {
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
-    fn get_cidr_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
-        self.cidr_resources
+    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
+        let maybe_cidr_resource_id = self
+            .cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| res.id)
+            .map(|(_, r)| r.id);
+
+        let maybe_dns_resource_id = self
+            .dns_resources_internal_ips
+            .get(&destination)
+            .map(|r| r.id);
+
+        maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
 
     #[must_use]
-    fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
     #[must_use]
-    fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
+    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
         self.interface_config = Some(config);
 
         self.update_dns_mapping()
@@ -868,18 +896,15 @@ impl ClientState {
 
                 self.peers.iter_mut().for_each(|p| p.expire_dns_track());
 
-                for resource in self.dns_resources_internal_ips.keys() {
-                    let Some(gateway_id) = self.resources_gateways.get(&resource.id) else {
+                for resource in self.dns_resources_internal_ips.values() {
+                    let Some(peer) = self.peer_by_resource(resource.id) else {
+                        // filter inactive connections
                         continue;
                     };
-                    // filter inactive connections
-                    if self.peers.get(gateway_id).is_none() {
-                        continue;
-                    }
 
                     connections.push(ReuseConnection {
                         resource_id: resource.id,
-                        gateway_id: *gateway_id,
+                        gateway_id: peer.id(),
                         payload: Some(resource.address.clone()),
                     });
                 }
@@ -951,7 +976,7 @@ impl ClientState {
         self.node.reconnect(now)
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'_>> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
         self.node.poll_transmit()
     }
 
@@ -1010,21 +1035,17 @@ impl ClientState {
     fn remove_resources(&mut self, ids: &[ResourceId]) {
         for id in ids {
             self.awaiting_connection.remove(id);
-            self.dns_resources_internal_ips.retain(|r, _| r.id != *id);
+            self.dns_resources_internal_ips.retain(|_, r| r.id != *id);
             self.dns_resources.retain(|_, r| r.id != *id);
             self.cidr_resources.retain(|_, r| r.id != *id);
             self.deferred_dns_queries.retain(|(r, _), _| r.id != *id);
 
             self.resource_ids.remove(id);
 
-            let Some(gateway_id) = self.resources_gateways.remove(id) else {
-                tracing::debug!("No gateway associated with resource");
+            let Some(peer) = self.peer_by_resource_mut(*id) else {
                 continue;
             };
-
-            let Some(peer) = self.peers.get_mut(&gateway_id) else {
-                continue;
-            };
+            let gateway_id = peer.id();
 
             // First we remove the id from all allowed ips
             for (network, resources) in peer
@@ -1082,16 +1103,39 @@ impl ClientState {
 
         self.set_dns_mapping(dns_mapping);
 
+        self.buffered_events
+            .push_back(ClientEvent::DnsServersChanged {
+                dns_by_sentinel: self
+                    .dns_mapping
+                    .iter()
+                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
+                    .collect(),
+            });
+
         true
     }
 
-    fn update_relays(
+    pub fn update_relays(
         &mut self,
         to_remove: HashSet<RelayId>,
         to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+    }
+
+    fn peer_by_resource(&self, resource: ResourceId) -> Option<&GatewayOnClient> {
+        let gateway_id = self.resources_gateways.get(&resource)?;
+        let peer = self.peers.get(gateway_id)?;
+
+        Some(peer)
+    }
+
+    fn peer_by_resource_mut(&mut self, resource: ResourceId) -> Option<&mut GatewayOnClient> {
+        let gateway_id = self.resources_gateways.get(&resource)?;
+        let peer = self.peers.get_mut(gateway_id)?;
+
+        Some(peer)
     }
 }
 

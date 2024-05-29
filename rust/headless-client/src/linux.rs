@@ -1,30 +1,22 @@
 //! Implementation, Linux-specific
 
-use super::{Cli, IpcClientMsg, IpcServerMsg, FIREZONE_GROUP, TOKEN_ENV_KEY};
+use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
-use clap::Parser;
-use connlib_client_shared::{file_logger, Callbacks, Sockets};
-use connlib_shared::{
-    callbacks, keypair,
-    linux::{etc_resolv_conf, get_dns_control_from_env, DnsControlMethod},
-    LoginUrl,
-};
+use connlib_client_shared::file_logger;
+use connlib_shared::linux::{etc_resolv_conf, DnsControlMethod};
 use firezone_cli_utils::setup_global_subscriber;
-use futures::{SinkExt, StreamExt};
+use futures::future::{select, Either};
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::IpAddr,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
+    pin::pin,
     str::FromStr,
-    task::{Context, Poll},
 };
 use tokio::{
     net::{UnixListener, UnixStream},
-    signal::unix::SignalKind as TokioSignalKind,
-    sync::mpsc,
+    signal::unix::{signal, Signal, SignalKind as TokioSignalKind},
 };
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-use url::Url;
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
@@ -32,28 +24,23 @@ const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
 pub(crate) struct Signals {
-    sighup: tokio::signal::unix::Signal,
-    sigint: tokio::signal::unix::Signal,
+    sighup: Signal,
+    sigint: Signal,
 }
 
 impl Signals {
     pub(crate) fn new() -> Result<Self> {
-        let sighup = tokio::signal::unix::signal(TokioSignalKind::hangup())?;
-        let sigint = tokio::signal::unix::signal(TokioSignalKind::interrupt())?;
+        let sighup = signal(TokioSignalKind::hangup())?;
+        let sigint = signal(TokioSignalKind::interrupt())?;
 
         Ok(Self { sighup, sigint })
     }
 
-    pub(crate) fn poll(&mut self, cx: &mut Context) -> Poll<super::SignalKind> {
-        if self.sigint.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Interrupt);
+    pub(crate) async fn recv(&mut self) -> SignalKind {
+        match select(pin!(self.sighup.recv()), pin!(self.sigint.recv())).await {
+            Either::Left((_, _)) => SignalKind::Hangup,
+            Either::Right((_, _)) => SignalKind::Interrupt,
         }
-
-        if self.sighup.poll_recv(cx).is_ready() {
-            return Poll::Ready(super::SignalKind::Hangup);
-        }
-
-        Poll::Pending
     }
 }
 
@@ -61,24 +48,6 @@ pub fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")
         .join(connlib_shared::BUNDLE_ID)
         .join("token")
-}
-
-/// Only called from the GUI Client's build of the IPC service
-///
-/// On Linux this is the same as running with `ipc-service`
-pub(crate) fn run_only_ipc_service() -> Result<()> {
-    let cli = Cli::parse();
-    // systemd supplies this but maybe we should hard-code a better default
-    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
-    setup_global_subscriber(layer);
-    tracing::info!(git_version = crate::GIT_VERSION);
-
-    if !nix::unistd::getuid().is_root() {
-        bail!("This is the IPC service binary, it's not meant to run interactively.");
-    }
-    let rt = tokio::runtime::Runtime::new()?;
-    let (_shutdown_tx, shutdown_rx) = mpsc::channel(1);
-    run_ipc_service(cli, rt, shutdown_rx)
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
@@ -112,8 +81,9 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    match get_dns_control_from_env()? {
+pub(crate) fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
+    match dns_control_method {
+        DnsControlMethod::DontControl => Ok(vec![]),
         DnsControlMethod::EtcResolvConf => get_system_default_resolvers_resolv_conf(),
         DnsControlMethod::NetworkManager => get_system_default_resolvers_network_manager(),
         DnsControlMethod::Systemd => get_system_default_resolvers_systemd_resolved(),
@@ -183,13 +153,21 @@ pub fn sock_path() -> PathBuf {
         .join("ipc.sock")
 }
 
-pub(crate) fn run_ipc_service(
-    cli: Cli,
-    rt: tokio::runtime::Runtime,
-    _shutdown_rx: mpsc::Receiver<()>,
-) -> Result<()> {
+/// Cross-platform entry point for systemd / Windows services
+///
+/// Linux uses the CLI args from here, Windows does not
+pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     tracing::info!("run_ipc_service");
-    rt.block_on(async { ipc_listen(cli).await })
+    // systemd supplies this but maybe we should hard-code a better default
+    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
+    setup_global_subscriber(layer);
+    tracing::info!(git_version = crate::GIT_VERSION);
+
+    if !nix::unistd::getuid().is_root() {
+        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+    }
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async { crate::ipc_listen().await })
 }
 
 pub fn firezone_group() -> Result<nix::unistd::Group> {
@@ -199,130 +177,45 @@ pub fn firezone_group() -> Result<nix::unistd::Group> {
     Ok(group)
 }
 
-async fn ipc_listen(cli: Cli) -> Result<()> {
-    // Remove the socket if a previous run left it there
-    let sock_path = sock_path();
-    tokio::fs::remove_file(&sock_path).await.ok();
-    let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
-    let perms = std::fs::Permissions::from_mode(0o660);
-    std::fs::set_permissions(sock_path, perms)?;
-    sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
+pub(crate) struct IpcServer {
+    listener: UnixListener,
+}
 
-    loop {
-        connlib_shared::deactivate_dns_control()?;
+/// Opaque wrapper around platform-specific IPC stream
+pub(crate) type IpcStream = UnixStream;
+
+impl IpcServer {
+    /// Platform-specific setup
+    pub(crate) async fn new() -> Result<Self> {
+        // Remove the socket if a previous run left it there
+        let sock_path = sock_path();
+        tokio::fs::remove_file(&sock_path).await.ok();
+        let listener = UnixListener::bind(&sock_path).context("Couldn't bind UDS")?;
+        let perms = std::fs::Permissions::from_mode(0o660);
+        std::fs::set_permissions(sock_path, perms)?;
+        sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
+        Ok(Self { listener })
+    }
+
+    pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
         tracing::info!("Listening for GUI to connect over IPC...");
-        let (stream, _) = listener.accept().await?;
+        let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;
+        // I'm not sure if we can enforce group membership here - Docker
+        // might just be enforcing it with filesystem permissions.
+        // Checking the secondary groups of another user looks complicated.
         tracing::info!(
             uid = cred.uid(),
             gid = cred.gid(),
             pid = cred.pid(),
             "Got an IPC connection"
         );
-
-        // I'm not sure if we can enforce group membership here - Docker
-        // might just be enforcing it with filesystem permissions.
-        // Checking the secondary groups of another user looks complicated.
-        if let Err(error) = handle_ipc_client(&cli, stream).await {
-            tracing::error!(?error, "Error while handling IPC client");
-        }
+        Ok(stream)
     }
 }
 
-#[derive(Clone)]
-struct CallbackHandlerIpc {
-    cb_tx: mpsc::Sender<IpcServerMsg>,
-}
-
-impl Callbacks for CallbackHandlerIpc {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
-        tracing::error!(?error, "Got `on_disconnect` from connlib");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnDisconnect)
-            .expect("should be able to send OnDisconnect");
-    }
-
-    fn on_set_interface_config(
-        &self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-    ) -> Option<i32> {
-        tracing::info!("TunnelReady (on_set_interface_config)");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
-            .expect("Should be able to send TunnelReady");
-        None
-    }
-
-    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
-        tracing::debug!(len = resources.len(), "New resource list");
-        self.cb_tx
-            .try_send(IpcServerMsg::OnUpdateResources(resources))
-            .expect("Should be able to send OnUpdateResources");
-    }
-}
-
-async fn handle_ipc_client(cli: &Cli, stream: UnixStream) -> Result<()> {
-    let (rx, tx) = stream.into_split();
-    let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-    let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
-    let (cb_tx, mut cb_rx) = mpsc::channel(100);
-
-    let send_task = tokio::spawn(async move {
-        while let Some(msg) = cb_rx.recv().await {
-            tx.send(serde_json::to_string(&msg)?.into()).await?;
-        }
-        Ok::<_, anyhow::Error>(())
-    });
-
-    let mut connlib = None;
-    let callback_handler = CallbackHandlerIpc { cb_tx };
-    while let Some(msg) = rx.next().await {
-        let msg = msg?;
-        let msg: super::IpcClientMsg = serde_json::from_slice(&msg)?;
-
-        match msg {
-            IpcClientMsg::Connect { api_url, token } => {
-                let token = secrecy::SecretString::from(token);
-                assert!(connlib.is_none());
-                let device_id = connlib_shared::device_id::get()
-                    .context("Failed to read / create device ID")?;
-                let (private_key, public_key) = keypair();
-
-                let login = LoginUrl::client(
-                    Url::parse(&api_url)?,
-                    &token,
-                    device_id.id,
-                    None,
-                    public_key.to_bytes(),
-                )?;
-
-                connlib = Some(connlib_client_shared::Session::connect(
-                    login,
-                    Sockets::new(),
-                    private_key,
-                    None,
-                    callback_handler.clone(),
-                    cli.max_partition_time
-                        .map(|t| t.into())
-                        .or(Some(std::time::Duration::from_secs(60 * 60 * 24 * 30))),
-                    tokio::runtime::Handle::try_current()?,
-                ));
-            }
-            IpcClientMsg::Disconnect => {
-                if let Some(connlib) = connlib.take() {
-                    connlib.disconnect();
-                }
-            }
-            IpcClientMsg::Reconnect => connlib.as_mut().context("No connlib session")?.reconnect(),
-            IpcClientMsg::SetDns(v) => connlib.as_mut().context("No connlib session")?.set_dns(v),
-        }
-    }
-
-    send_task.abort();
-
-    Ok(())
+pub(crate) fn notify_service_controller() -> Result<()> {
+    Ok(sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?)
 }
 
 /// Platform-specific setup needed for connlib

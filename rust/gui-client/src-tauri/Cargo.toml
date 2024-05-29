@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:automatic-version
-version = "1.0.5"
+version = "1.0.6"
 description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
@@ -12,7 +12,7 @@ anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-arboard = { version = "3.3.2", default-features = false }
+arboard = { version = "3.4.0", default-features = false }
 anyhow = { version = "1.0" }
 arc-swap = "1.7.0"
 chrono = { workspace = true }
@@ -38,7 +38,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
-tauri = { version = "1.6", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.6.7", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }

@@ -32,7 +32,7 @@ public final class SessionViewModel: ObservableObject {
       .store(in: &cancellables)
 
     // MenuBar has its own observer
-    #if os(iOS)
+#if os(iOS)
     store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
@@ -41,7 +41,9 @@ public final class SessionViewModel: ObservableObject {
 
         if status == .connected {
           store.beginUpdatingResources() { data in
-            self.resources = try? JSONDecoder().decode([Resource].self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            self.resources = try? decoder.decode([Resource].self, from: data)
           }
         } else {
           store.endUpdatingResources()
@@ -49,14 +51,9 @@ public final class SessionViewModel: ObservableObject {
 
       })
       .store(in: &cancellables)
-    #endif
+#endif
   }
 
-  func signOutButtonTapped() {
-    Task {
-      try await store.signOut()
-    }
-  }
 }
 
 #if os(iOS)
@@ -65,68 +62,34 @@ struct SessionView: View {
   @ObservedObject var model: SessionViewModel
 
   var body: some View {
-    List {
-      Section(header: Text("Authentication")) {
-        Group {
-          if case .connected = model.status {
-            HStack {
-              Text("Signed in as")
-              Spacer()
-              Text(model.actorName ?? "Unknown user").foregroundColor(.secondary)
-            }
-            HStack {
-              Spacer()
-              Button("Sign Out") {
-                model.signOutButtonTapped()
-              }
-              Spacer()
-            }
-          } else {
-            Text(model.status?.description ?? "")
+    switch model.status {
+    case .connected:
+      if let resources = model.resources {
+        if resources.isEmpty {
+          Text("No Resources. Contact your admin to be granted access.")
+        } else {
+          List(resources) { resource in
+            NavigationLink(resource.name, destination: ResourceView(resource: resource))
+              .navigationTitle("All Resources")
           }
+          .listStyle(GroupedListStyle())
         }
+      } else {
+        Text("Loading Resources...")
       }
-      if case .connected = model.status {
-        Section(header: Text("Resources")) {
-          if let resources = model.resources {
-            if resources.isEmpty {
-              Text("No Resources")
-            } else {
-              ForEach(resources) { resource in
-                Menu(
-                  content: {
-                    Button {
-                      copyResourceTapped(resource)
-                    } label: {
-                      Label("Copy Address", systemImage: "doc.on.doc")
-                    }
-                  },
-                  label: {
-                    HStack {
-                      Text(resource.name)
-                        .foregroundColor(.primary)
-                      Spacer()
-                      Text(resource.address)
-                        .foregroundColor(.secondary)
-                    }
-                  })
-              }
-            }
-          } else {
-            Text("Loading Resources...")
-          }
-        }
-      }
+    case .connecting:
+      Text("Connecting...")
+    case .disconnecting:
+      Text("Disconnecting...")
+    case .reasserting:
+      Text("No internet connection. Resources will be displayed when your internet connection resumes.")
+    case .invalid, .none:
+      Text("VPN permission doesn't seem to be granted.")
+    case .disconnected:
+      Text("Signed out. Please sign in again to connect to Resources.")
+    @unknown default:
+      Text("Unknown status. Please report this and attach your logs.")
     }
-    .listStyle(GroupedListStyle())
-    .navigationBarTitleDisplayMode(.inline)
-    .navigationTitle("Firezone")
-  }
-
-  private func copyResourceTapped(_ resource: Resource) {
-    let pasteboard = UIPasteboard.general
-    pasteboard.string = resource.address
   }
 }
-
 #endif
