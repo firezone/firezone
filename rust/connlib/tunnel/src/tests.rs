@@ -1428,7 +1428,6 @@ impl ReferenceState {
         let dst = dst.into();
 
         tracing::Span::current().record("dst", tracing::field::display(dst));
-
         // Second, if we are not yet connected, check if we have a resource for this IP.
         let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
             tracing::debug!("No resource corresponds to IP");
