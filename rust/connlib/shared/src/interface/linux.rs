@@ -175,11 +175,11 @@ impl InterfaceManager {
             .index;
 
         for route in new_routes.difference(&self.routes) {
-            add_route(route, index, handle).await;
+            add_route(route, index, handle).await?;
         }
 
         for route in self.routes.difference(&new_routes) {
-            delete_route(route, index, handle).await;
+            delete_route(route, index, handle).await?;
         }
 
         self.routes = new_routes;
@@ -231,7 +231,7 @@ fn make_route_v6(idx: u32, handle: &Handle, route: Ipv6Network) -> RouteAddReque
         .destination_prefix(route.network_address(), route.netmask())
 }
 
-async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
     let res = match route {
         IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).execute().await,
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).execute().await,
@@ -244,25 +244,27 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         // if any of the added routes succeeded.
         Err(err) => {
             tracing::error!(%route, "failed to add route: {err}");
+            Err(err).context("Failed to add route")?;
         }
     }
+    Ok(())
 }
 
-async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
     let message = match route {
         IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).message_mut().clone(),
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
     };
 
     if let Err(err) = handle.route().del(message).execute().await {
-        tracing::error!(%route, "failed to add route: {err:#?}");
+        tracing::error!(%route, "failed to delete route: {err:#?}");
+        Err(err).context("Failed to delete route")?;
     }
+    Ok(())
 }
 
 fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
-    Err(anyhow!(
-        "DNS control with NetworkManager is not implemented yet",
-    ))
+    anyhow::bail!("DNS control with NetworkManager is not implemented yet",)
 }
 
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
