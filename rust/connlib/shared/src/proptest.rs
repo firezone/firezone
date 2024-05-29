@@ -14,7 +14,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 // Generate resources sharing 1 site
 pub fn resources_sharing_site() -> impl Strategy<Value = (Vec<ResourceDescription>, Site)> {
-    (collection::vec(sites(10), 1..=100), site()).prop_flat_map(|(sites, site)| {
+    (collection::vec(sites(), 1..=100), site()).prop_flat_map(|(sites, site)| {
         (
             sites
                 .iter()
@@ -31,7 +31,7 @@ pub fn resources_sharing_site() -> impl Strategy<Value = (Vec<ResourceDescriptio
 
 // Generate resources sharing all sites
 pub fn resources_sharing_all_sites() -> impl Strategy<Value = Vec<ResourceDescription>> {
-    sites(10).prop_flat_map(|sites| collection::vec(resource(sites), 1..=100))
+    sites().prop_flat_map(|sites| collection::vec(resource(sites), 1..=100))
 }
 
 pub fn resource(sites: Vec<Site>) -> impl Strategy<Value = ResourceDescription> {
@@ -87,23 +87,20 @@ pub fn cidr_resource_with_sites(
         )
 }
 
-pub fn dns_resource(max_sites: usize) -> impl Strategy<Value = ResourceDescriptionDns> {
-    sites(max_sites).prop_flat_map(dns_resource_with_sites)
+pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
+    sites().prop_flat_map(dns_resource_with_sites)
 }
 
-pub fn cidr_resource(
-    host_mask_bits: usize,
-    max_sites: usize,
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    sites(max_sites).prop_flat_map(move |sites| cidr_resource_with_sites(host_mask_bits, sites))
+pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    sites().prop_flat_map(move |sites| cidr_resource_with_sites(host_mask_bits, sites))
 }
 
 pub fn address_description() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
 
-pub fn sites(max: usize) -> impl Strategy<Value = Vec<Site>> {
-    collection::vec(site(), 1..=max)
+pub fn sites() -> impl Strategy<Value = Vec<Site>> {
+    collection::vec(site(), 1..=10)
 }
 
 pub fn site() -> impl Strategy<Value = Site> {
