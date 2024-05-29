@@ -27,18 +27,18 @@ pub(crate) async fn check() -> Result<Release> {
     // We used to send this to Github, couldn't hurt to send it to our own site, too
     let user_agent = format!("Firezone Client/{:?} ({os}; {arch})", current_version());
 
-    let mut latest_url = url::Url::parse("https://www.firezone.dev")
+    let mut update_url = url::Url::parse("https://www.firezone.dev")
         .context("Impossible: Hard-coded URL should always be parsable")?;
-    latest_url.set_path(&format!("/dl/firezone-client-gui-{os}/latest/{arch}"));
+    update_url.set_path(&format!("/dl/firezone-client-gui-{os}/latest/{arch}"));
 
     let response = client
-        .head(latest_url)
+        .head(update_url.clone())
         .header("User-Agent", user_agent)
         .send()
-        .await?;
+        .await.context("Couldn't fetch from update URL `{update_url}`")?;
     let status = response.status();
     if status != reqwest::StatusCode::TEMPORARY_REDIRECT {
-        anyhow::bail!("HTTP status: {status}");
+        anyhow::bail!("HTTP status: {status} from update URL `{update_url}`");
     }
     let download_url = response
         .headers()
