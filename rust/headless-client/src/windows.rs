@@ -5,17 +5,16 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use crate::{CliCommon, SignalKind};
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
+use futures::future::{select, Either};
 use std::{
     ffi::{c_void, OsString},
-    future::Future,
     net::IpAddr,
     path::{Path, PathBuf},
     pin::pin,
     str::FromStr,
-    task::Poll,
     time::Duration,
 };
 use tokio::{net::windows::named_pipe, sync::mpsc};
@@ -149,35 +148,19 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(super::ipc_listen());
+    let ipc_service = pin!(super::ipc_listen());
     let result = rt.block_on(async {
-        std::future::poll_fn(|cx| {
-            match shutdown_rx.poll_recv(cx) {
-                Poll::Ready(Some(())) => {
-                    tracing::info!("Got shutdown signal");
-                    return Poll::Ready(Ok(()));
-                }
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow!(
+        match select(pin!(shutdown_rx.recv()), ipc_service).await {
+            Either::Left((Some(()), _)) => {
+                tracing::info!("Got shutdown signal");
+                Ok(())
+            },
+            Either::Left((None, _)) => bail!(
                         "shutdown channel unexpectedly dropped, shutting down"
-                    )))
-                }
-                Poll::Pending => {}
-            }
-
-            match ipc_service.as_mut().poll(cx) {
-                Poll::Ready(Ok(())) => {
-                    return Poll::Ready(Err(anyhow!("Impossible, ipc_listen can't return Ok")))
-                }
-                Poll::Ready(Err(error)) => {
-                    return Poll::Ready(Err(error.context("ipc_listen failed")))
-                }
-                Poll::Pending => {}
-            }
-
-            Poll::Pending
-        })
-        .await
+                    ),
+            Either::Right((Ok(()), _)) => bail!("Impossible, ipc_listen can't return Ok"),
+            Either::Right((Err(error), _)) => Err(error.context("ipc_listen failed")),
+        }
     });
 
     // Tell Windows that we're stopping
