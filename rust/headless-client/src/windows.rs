@@ -286,6 +286,14 @@ pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
 
+// Does nothing on Windows. On Linux this notifies systemd that we're ready.
+// When we eventually have a system service for the Windows Headless Client,
+// this could notify the Windows service controller too.
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn notify_service_controller() -> Result<()> {
+    Ok(())
+}
+
 pub(crate) fn setup_before_connlib() -> Result<()> {
     wintun_install::ensure_dll()?;
     Ok(())

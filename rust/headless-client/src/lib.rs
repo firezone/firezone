@@ -276,6 +276,7 @@ pub fn run_only_headless_client() -> Result<()> {
     );
     // TODO: this should be added dynamically
     session.set_dns(platform::system_resolvers().unwrap_or_default());
+    platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
         let mut interface = interface::InterfaceManager::default();

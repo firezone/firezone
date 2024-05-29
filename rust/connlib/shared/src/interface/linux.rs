@@ -149,20 +149,6 @@ impl InterfaceManager {
             tracing::error!("Failed to control DNS: {error}");
             panic!("Failed to control DNS: {error}");
         }
-
-        // TODO: Having this inside the library is definitely wrong. I think `set_iface_config`
-        // needs to return before `new` returns, so that the `on_tunnel_ready` callback
-        // happens after the IP address and DNS are set up. Then we can call `sd_notify`
-        // inside `on_tunnel_ready` in the client.
-        //
-        // `sd_notify::notify` is always safe to call, it silently returns `Ok(())`
-        // if we aren't running as a systemd service.
-        /*
-                if let Err(error) = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]) {
-                    // Nothing we can do about it
-                    tracing::warn!(?error, "Failed to notify systemd that we're ready");
-                }
-        */
         Ok(())
     }
 
