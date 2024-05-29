@@ -7,7 +7,7 @@ use connlib_shared::{get_user_agent, keypair, Callbacks, Cidrv4, Cidrv6, LoginUr
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::{future, TryFutureExt};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::{Secret, SecretString};
 use std::collections::HashSet;
 use std::convert::Infallible;
