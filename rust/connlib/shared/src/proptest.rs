@@ -100,7 +100,7 @@ pub fn address_description() -> impl Strategy<Value = String> {
 }
 
 pub fn sites() -> impl Strategy<Value = Vec<Site>> {
-    collection::vec(site(), 1..=10)
+    collection::vec(site(), 1..=3)
 }
 
 pub fn site() -> impl Strategy<Value = Site> {
@@ -127,7 +127,18 @@ pub fn resource_name() -> impl Strategy<Value = String> {
 }
 
 pub fn dns_resource_address() -> impl Strategy<Value = String> {
-    any_with::<String>("[a-z]{4,10}".into())
+    domain_name().prop_map(|d| d.to_string())
+}
+
+pub fn domain_name() -> impl Strategy<Value = hickory_proto::rr::Name> {
+    let labels = any_with::<String>("[a-z]{3,6}".into());
+
+    collection::vec(labels, 2..4).prop_map(|labels| {
+        let mut name = hickory_proto::rr::Name::from_labels(labels).unwrap();
+        name.set_fqdn(false);
+
+        name
+    })
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.

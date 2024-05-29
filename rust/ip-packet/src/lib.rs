@@ -38,6 +38,24 @@ pub enum IpPacket<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum IcmpPacket<'a> {
+    Ipv4(icmp::IcmpPacket<'a>),
+    Ipv6(icmpv6::Icmpv6Packet<'a>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum IcmpEchoRequest<'a> {
+    Ipv4(icmp::echo_request::EchoRequestPacket<'a>),
+    Ipv6(icmpv6::echo_request::EchoRequestPacket<'a>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum IcmpEchoReply<'a> {
+    Ipv4(icmp::echo_reply::EchoReplyPacket<'a>),
+    Ipv6(icmpv6::echo_reply::EchoReplyPacket<'a>),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum MutableIpPacket<'a> {
     Ipv4(MutableIpv4Packet<'a>),
     Ipv6(MutableIpv6Packet<'a>),
@@ -297,6 +315,20 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
+    pub fn as_icmp(&self) -> Option<IcmpPacket> {
+        match self {
+            IpPacket::Ipv4(v4) if v4.get_next_level_protocol() == IpNextHeaderProtocols::Icmp => {
+                Some(IcmpPacket::Ipv4(pnet_packet::icmp::IcmpPacket::new(
+                    v4.payload(),
+                )?))
+            }
+            IpPacket::Ipv6(v6) if v6.get_next_header() == IpNextHeaderProtocols::Icmpv6 => {
+                Some(IcmpPacket::Ipv6(icmpv6::Icmpv6Packet::new(v6.payload())?))
+            }
+            IpPacket::Ipv4(_) | IpPacket::Ipv6(_) => None,
+        }
+    }
+
     pub fn udp_checksum(&self, dgm: &UdpPacket<'_>) -> u16 {
         match self {
             Self::Ipv4(p) => udp::ipv4_checksum(dgm, &p.get_source(), &p.get_destination()),
@@ -309,6 +341,64 @@ impl<'a> IpPacket<'a> {
             Self::Ipv4(p) => tcp::ipv4_checksum(pkt, &p.get_source(), &p.get_destination()),
             Self::Ipv6(p) => tcp::ipv6_checksum(pkt, &p.get_source(), &p.get_destination()),
         }
+    }
+}
+
+impl<'a> IcmpPacket<'a> {
+    pub fn as_echo_request(&self) -> Option<IcmpEchoRequest> {
+        match self {
+            IcmpPacket::Ipv4(v4) if matches!(v4.get_icmp_type(), icmp::IcmpTypes::EchoRequest) => {
+                Some(IcmpEchoRequest::Ipv4(
+                    icmp::echo_request::EchoRequestPacket::new(v4.payload())?,
+                ))
+            }
+            IcmpPacket::Ipv6(v6)
+                if matches!(v6.get_icmpv6_type(), icmpv6::Icmpv6Types::EchoRequest) =>
+            {
+                Some(IcmpEchoRequest::Ipv6(
+                    icmpv6::echo_request::EchoRequestPacket::new(v6.payload())?,
+                ))
+            }
+            IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,
+        }
+    }
+
+    pub fn as_echo_reply(&self) -> Option<IcmpEchoReply> {
+        match self {
+            IcmpPacket::Ipv4(v4) if matches!(v4.get_icmp_type(), icmp::IcmpTypes::EchoReply) => {
+                Some(IcmpEchoReply::Ipv4(icmp::echo_reply::EchoReplyPacket::new(
+                    v4.payload(),
+                )?))
+            }
+            IcmpPacket::Ipv6(v6)
+                if matches!(v6.get_icmpv6_type(), icmpv6::Icmpv6Types::EchoReply) =>
+            {
+                Some(IcmpEchoReply::Ipv6(
+                    icmpv6::echo_reply::EchoReplyPacket::new(v6.payload())?,
+                ))
+            }
+            IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,
+        }
+    }
+}
+
+impl<'a> IcmpEchoRequest<'a> {
+    pub fn sequence(&self) -> u16 {
+        for_both!(self, |i| i.get_sequence_number())
+    }
+
+    pub fn identifier(&self) -> u16 {
+        for_both!(self, |i| i.get_identifier())
+    }
+}
+
+impl<'a> IcmpEchoReply<'a> {
+    pub fn sequence(&self) -> u16 {
+        for_both!(self, |i| i.get_sequence_number())
+    }
+
+    pub fn identifier(&self) -> u16 {
+        for_both!(self, |i| i.get_identifier())
     }
 }
 
