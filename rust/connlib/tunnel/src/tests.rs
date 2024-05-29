@@ -15,8 +15,8 @@ use ip_network_table::IpNetworkTable;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
-    collection, prop_oneof, sample,
-    strategy::{Just, Strategy},
+    collection, sample,
+    strategy::{Just, Strategy, Union},
     test_runner::Config,
 };
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
@@ -355,20 +355,23 @@ impl ReferenceStateMachine for ReferenceState {
 
         let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
 
-        let weight_ip4 = if num_ip4_resources == 0 { 0 } else { 3 };
-        let weight_ip6 = if num_ip6_resources == 0 { 0 } else { 3 };
+        let mut strategies = vec![
+            (1, add_cidr_resource.boxed()),
+            (1, tick.boxed()),
+            (1, set_system_dns_servers.boxed()),
+            (1, set_upstream_dns_servers.boxed()),
+            (1, icmp_to_random_ip().boxed()),
+        ];
 
-        // Note: We use weighted strategies here to conditionally only include the ICMP strategies if we have a resource.
-        prop_oneof![
-            1 => add_cidr_resource,
-            1 => tick,
-            1 => set_system_dns_servers,
-            1 => set_upstream_dns_servers,
-            1 => icmp_to_random_ip(),
-            weight_ip4 => icmp_to_ipv4_cidr_resource(),
-            weight_ip6 => icmp_to_ipv6_cidr_resource()
-        ]
-        .boxed()
+        if num_ip4_resources > 0 {
+            strategies.push((3, icmp_to_ipv4_cidr_resource().boxed()));
+        }
+
+        if num_ip6_resources > 0 {
+            strategies.push((3, icmp_to_ipv6_cidr_resource().boxed()));
+        }
+
+        Union::new_weighted(strategies).boxed()
     }
 
     /// Apply the transition to our reference state.
