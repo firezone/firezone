@@ -3,7 +3,7 @@ pub mod make;
 pub use pnet_packet::*;
 
 use pnet_packet::{
-    icmpv6::{Icmpv6Packet, MutableIcmpv6Packet},
+    icmpv6::MutableIcmpv6Packet,
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
     ipv4::{Ipv4Packet, MutableIpv4Packet},
     ipv6::{Ipv6Packet, MutableIpv6Packet},

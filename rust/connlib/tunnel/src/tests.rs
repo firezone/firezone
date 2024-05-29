@@ -337,6 +337,11 @@ impl StateMachineTest for TunnelTest {
                 resolved_ip,
             } => {
                 let domain = ref_state.sample_dns_resource_domain(&r_idx);
+                let dns_server = ref_state.sample_dns_server(&dns_server_idx);
+                let dns_server = *state
+                    .dns_by_sentinel
+                    .get_by_right(&dns_server)
+                    .expect("to have a sentinel DNS server for the sampled one");
 
                 // Configure the gateway's "resolver" to return the sampled IP.
                 state
@@ -348,8 +353,13 @@ impl StateMachineTest for TunnelTest {
 
                 let name = domain_to_hickory_name(domain);
 
-                let (src, dns_server) = state.sample_dns_server(dns_server_idx);
-                let packet = ip_packet::make::dns_query(name, r_type, src, dns_server, query_id);
+                let packet = ip_packet::make::dns_query(
+                    name,
+                    r_type,
+                    state.client.sending_socket_for(dns_server).unwrap(),
+                    SocketAddr::new(dns_server, 53),
+                    query_id,
+                );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
@@ -733,12 +743,21 @@ impl ReferenceStateMachine for ReferenceState {
                 true
             }
             Transition::SendQueryToDnsResource {
-                r_idx, resolved_ip, ..
+                r_idx,
+                resolved_ip,
+                dns_server_idx,
+                ..
             } => {
                 let has_dns_resources = !state.client_dns_resources.is_empty();
 
                 if !has_dns_resources {
                     return false;
+                }
+
+                let dns_server = state.sample_dns_server(dns_server_idx);
+
+                if state.client.sending_socket_for(dns_server.ip()).is_none() {
+                    return false; // An operation system wouldn't use a DNS server that it doesn't have a sending socket for, right? RIGHT?
                 }
 
                 // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
@@ -916,27 +935,6 @@ impl TunnelTest {
         Some((transmit, sending_socket))
     }
 
-    /// Samples the DNS server to use for the query.
-    ///
-    /// We filter based on the available socket of the client because can only talk to an IPv4 DNS server if we have an IPv4 socket and same for IPv6.
-    fn sample_dns_server(&mut self, idx: sample::Index) -> (SocketAddr, SocketAddr) {
-        let mut servers = self
-            .dns_by_sentinel
-            .left_values()
-            .filter(|s| self.client.sending_socket_for(**s).is_some()) // Only pick DNS servers that we can talk to. That is what the operating system would do too.
-            .copied()
-            .collect::<Vec<_>>();
-        servers.sort(); // Ensure determinism.
-
-        let dns_server = *idx.get(&servers);
-        let client_src = self
-            .client
-            .sending_socket_for(dns_server)
-            .expect("we filtered above");
-
-        (client_src, SocketAddr::new(dns_server, 53))
-    }
-
     /// Dispatches a [`Transmit`] to the correct component.
     ///
     /// This function is basically the "network layer" of our tests.
@@ -1057,9 +1055,6 @@ impl TunnelTest {
             );
 
             if let Some(transmit) = self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
                 self.gateway
                     .state
                     .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
@@ -1400,6 +1395,16 @@ impl ReferenceState {
         domains.sort();
 
         idx.get(&domains).clone().parse().unwrap()
+    }
+
+    fn sample_dns_server(&self, idx: &sample::Index) -> SocketAddr {
+        if !self.upstream_dns_resolvers.is_empty() {
+            return idx.get(&self.upstream_dns_resolvers).address();
+        }
+
+        let ip = idx.get(&self.system_dns_resolvers);
+
+        SocketAddr::new(*ip, 53)
     }
 
     fn sample_resolved_address(&self, idx: sample::Index) -> (&DomainName, IpAddr) {
