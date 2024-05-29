@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "logo-text-any.svg",
+      "filename" : "welcomeview-light.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -12,7 +12,7 @@
           "value" : "light"
         }
       ],
-      "filename" : "logo-text-light.svg",
+      "filename" : "welcomeview-light 3.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -23,11 +23,12 @@
           "value" : "dark"
         }
       ],
-      "filename" : "logo-text-dark.svg",
+      "filename" : "welcomeview-dark.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
+      "filename" : "welcomeview-light 1.svg",
       "idiom" : "universal",
       "scale" : "2x"
     },
@@ -38,6 +39,7 @@
           "value" : "light"
         }
       ],
+      "filename" : "welcomeview-light 4.svg",
       "idiom" : "universal",
       "scale" : "2x"
     },
@@ -48,10 +50,12 @@
           "value" : "dark"
         }
       ],
+      "filename" : "welcomeview-dark 1.svg",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
+      "filename" : "welcomeview-light 2.svg",
       "idiom" : "universal",
       "scale" : "3x"
     },
@@ -62,6 +66,7 @@
           "value" : "light"
         }
       ],
+      "filename" : "welcomeview-light 5.svg",
       "idiom" : "universal",
       "scale" : "3x"
     },
@@ -72,6 +77,7 @@
           "value" : "dark"
         }
       ],
+      "filename" : "welcomeview-dark 2.svg",
       "idiom" : "universal",
       "scale" : "3x"
     }
