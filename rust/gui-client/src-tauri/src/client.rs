@@ -86,6 +86,7 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
+            // The smoke test does run as root, I can't recall why.
             if !elevation::is_normal_user()? {
                 anyhow::bail!("`smoke-test` failed its elevation check");
             }

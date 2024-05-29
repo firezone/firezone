@@ -10,12 +10,10 @@ mod imp {
     /// Everything that needs root / admin powers happens in the IPC services,
     /// so for security and practicality reasons the GUIs must be non-root.
     /// (In Linux by default a root GUI app barely works at all)
-    #[allow(clippy::print_stderr)]
     pub(crate) fn is_normal_user() -> anyhow::Result<bool, Error> {
         // Must use `eprintln` here because `tracing` won't be initialized yet.
         let user = std::env::var("USER").context("USER env var should be set")?;
         if user == "root" {
-            eprintln!("Firezone must run as a normal user, not with `sudo` or as root");
             return Ok(false);
         }
 
@@ -44,7 +42,7 @@ mod imp {
 
     // Returns true on Windows
     ///
-    /// On Windows we are switching to IPC, and checking for elevation is complicated,
+    /// On Windows, checking for elevation is complicated,
     /// so it just always returns true. The Windows GUI does work correctly even if
     /// elevated, so we should warn users that it doesn't need elevation, but it's
     /// not a show-stopper if they accidentally "Run as admin".
