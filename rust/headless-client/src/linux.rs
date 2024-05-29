@@ -81,7 +81,7 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
+pub fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
     match dns_control_method {
         DnsControlMethod::DontControl => Ok(vec![]),
         DnsControlMethod::EtcResolvConf => get_system_default_resolvers_resolv_conf(),
@@ -114,7 +114,7 @@ fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
-pub fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
+fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //
