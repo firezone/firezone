@@ -18,6 +18,14 @@ pub enum DnsControlMethod {
     Windows,
 }
 
+/// Windows always tries to control DNS using its only control method
+///
+/// Fallible on Linux
+#[allow(clippy::unnecessary_wraps)]
+pub fn get_dns_control_from_env() -> anyhow::Result<DnsControlMethod> {
+    Ok(DnsControlMethod::Windows)
+}
+
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
 ///
 /// This is where we can save config, logs, crash dumps, etc.

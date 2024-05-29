@@ -7,7 +7,7 @@
 use crate::{CliCommon, SignalKind};
 use anyhow::{anyhow, Context as _, Result};
 use connlib_client_shared::file_logger;
-use connlib_shared::BUNDLE_ID;
+use connlib_shared::{platform::DnsControlMethod, BUNDLE_ID};
 use std::{
     ffi::{c_void, OsString},
     future::Future,
@@ -261,7 +261,12 @@ pub fn pipe_path() -> String {
     named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
 }
 
-pub fn system_resolvers() -> Result<Vec<IpAddr>> {
+pub fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
+    match dns_control_method {
+        DnsControlMethod::DontControl => return Ok(vec![]),
+        DnsControlMethod::Windows => {}
+    }
+
     let resolvers = ipconfig::get_adapters()?
         .iter()
         .flat_map(|adapter| adapter.dns_servers())

@@ -1,4 +1,4 @@
-use crate::{Cidrv4, Cidrv6};
+use crate::{platform::DnsControlMethod, Cidrv4, Cidrv6};
 use anyhow::{Context as _, Result};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -25,8 +25,8 @@ impl Drop for InterfaceManager {
 }
 
 impl InterfaceManager {
-    pub fn new() -> Self {
-        Ok(Self {})
+    pub fn new(_: DnsControlMethod) -> Self {
+        Self {}
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
