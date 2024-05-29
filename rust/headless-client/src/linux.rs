@@ -156,7 +156,7 @@ pub fn sock_path() -> PathBuf {
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<std::convert::Infallible> {
+pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     tracing::info!("run_ipc_service");
     // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
@@ -167,7 +167,8 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<std::convert::Infallible
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async { crate::ipc_listen().await })
+    rt.block_on(async { crate::ipc_listen().await })?;
+    Ok(())
 }
 
 pub fn firezone_group() -> Result<nix::unistd::Group> {

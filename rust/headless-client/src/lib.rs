@@ -313,7 +313,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     let cli = CliIpcService::try_parse()?;
     match cli.command {
         CmdIpc::DebugIpcService => run_debug_ipc_service(),
-        CmdIpc::IpcService => match platform::run_ipc_service(cli.common)? {},
+        CmdIpc::IpcService => platform::run_ipc_service(cli.common),
     }
 }
 
