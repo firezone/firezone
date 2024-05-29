@@ -10,7 +10,10 @@ use connlib_shared::{
     DomainName, StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
-use hickory_proto::{rr::RecordType, serialize::binary::BinDecodable};
+use hickory_proto::{
+    rr::{rdata, RData, RecordType},
+    serialize::binary::BinDecodable,
+};
 use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet};
@@ -62,8 +65,6 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    next_dns_id: u16, // TODO: Can we avoid this state?
-
     /// The DNS records created on the client as a result of received DNS responses.
     client_dns_records: HashMap<DomainName, IpAddr>,
 
@@ -73,6 +74,7 @@ struct TunnelTest {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
+    client_sent_dns_queries: HashMap<QueryId, DomainName>,
     client_sent_icmp_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
     client_received_icmp_replies: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
     gateway_received_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
@@ -110,6 +112,8 @@ struct ReferenceState {
     expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16)>,
 }
 
+type QueryId = u16;
+
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
 enum Transition {
@@ -142,6 +146,8 @@ enum Transition {
         r_idx: sample::Index,
         /// The type of DNS query we should send.
         r_type: RecordType,
+        /// The DNS query ID.
+        query_id: u16,
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
         /// The IP we resolve the domain to.
@@ -238,10 +244,10 @@ impl StateMachineTest for TunnelTest {
             client_dns_records: Default::default(),
             gateway_dns_resolver: Default::default(),
             dns_by_sentinel: Default::default(),
-            next_dns_id: 0,
             client_sent_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
+            client_sent_dns_queries: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -326,6 +332,7 @@ impl StateMachineTest for TunnelTest {
             Transition::SendQueryToDnsResource {
                 r_idx,
                 r_type,
+                query_id,
                 dns_server_idx,
                 resolved_ip,
             } => {
@@ -335,13 +342,14 @@ impl StateMachineTest for TunnelTest {
                 state
                     .gateway_dns_resolver
                     .insert(domain.clone(), resolved_ip);
+                state
+                    .client_sent_dns_queries
+                    .insert(query_id, domain.clone());
 
                 let name = domain_to_hickory_name(domain);
 
                 let (src, dns_server) = state.sample_dns_server(dns_server_idx);
-                let packet =
-                    ip_packet::make::dns_query(name, r_type, src, dns_server, state.next_dns_id);
-                state.next_dns_id += 1;
+                let packet = ip_packet::make::dns_query(name, r_type, src, dns_server, query_id);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
@@ -1233,17 +1241,24 @@ impl TunnelTest {
             if udp.get_source() == 53 {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload()).unwrap();
 
+                let requested_domain_name = self
+                    .client_sent_dns_queries
+                    .remove(&message.id())
+                    .expect("DNS message to be response to previously sent request");
+
                 for record in message.take_answers() {
                     match &record.data() {
-                        Some(hickory_proto::rr::RData::A(a)) => {
-                            self.client_dns_records
-                                .insert(hickory_name_to_domain(record.name().clone()), a.0.into());
+                        Some(RData::A(rdata::A(ip4))) => {
+                            let domain = hickory_name_to_domain(record.name().clone());
+                            debug_assert_eq!(domain, requested_domain_name);
+
+                            self.client_dns_records.insert(domain, IpAddr::from(*ip4));
                         }
-                        Some(hickory_proto::rr::RData::AAAA(aaaa)) => {
-                            self.client_dns_records.insert(
-                                hickory_name_to_domain(record.name().clone()),
-                                aaaa.0.into(),
-                            );
+                        Some(RData::AAAA(rdata::AAAA(ip6))) => {
+                            let domain = hickory_name_to_domain(record.name().clone());
+                            debug_assert_eq!(domain, requested_domain_name);
+
+                            self.client_dns_records.insert(domain, IpAddr::from(*ip6));
                         }
                         unhandled => {
                             panic!("Unexpected record data: {unhandled:?}")
@@ -1796,12 +1811,14 @@ fn a_query_to_dns_resource() -> impl Strategy<Value = Transition> {
     (
         any::<sample::Index>(),
         any::<sample::Index>(),
+        any::<u16>(),
         any::<Ipv4Addr>(),
     )
-        .prop_map(move |(r_idx, dns_server_idx, resolved_ip)| {
+        .prop_map(move |(r_idx, dns_server_idx, query_id, resolved_ip)| {
             Transition::SendQueryToDnsResource {
                 r_idx,
                 r_type: RecordType::A,
+                query_id,
                 dns_server_idx,
                 resolved_ip: resolved_ip.into(), // TODO: In the future, we should also test that the actual IP might be a different IP version than what we requested.
             }
@@ -1812,12 +1829,14 @@ fn aaaa_query_to_dns_resource() -> impl Strategy<Value = Transition> {
     (
         any::<sample::Index>(),
         any::<sample::Index>(),
+        any::<u16>(),
         any::<Ipv6Addr>(),
     )
-        .prop_map(move |(r_idx, dns_server_idx, resolved_ip)| {
+        .prop_map(move |(r_idx, dns_server_idx, query_id, resolved_ip)| {
             Transition::SendQueryToDnsResource {
                 r_idx,
                 r_type: RecordType::AAAA,
+                query_id,
                 dns_server_idx,
                 resolved_ip: resolved_ip.into(), // TODO: In the future, we should also test that the actual IP might be a different IP version than what we requested.
             }
