@@ -161,7 +161,7 @@ impl InterfaceManager {
             return Ok(());
         }
         tracing::info!(?new_routes, "on_update_routes");
-        let handle = &self.connection.as_ref().ok_or_else(|| anyhow!("on_update_routes should only be called after at least one call to on_set_interface_config"))?.handle;
+        let handle = &self.connection.as_ref().context("on_update_routes should only be called after at least one call to on_set_interface_config")?.handle;
 
         let index = handle
             .link()
