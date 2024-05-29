@@ -69,7 +69,7 @@ struct TunnelTest {
     client_dns_records: HashMap<DomainName, IpAddr>,
 
     /// Stub for the gateway's DNS resolver.
-    gateway_dns_resolver: HashMap<DomainName, IpAddr>,
+    gateway_dns_resolver: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -346,7 +346,7 @@ impl StateMachineTest for TunnelTest {
                 // Configure the gateway's "resolver" to return the sampled IP.
                 state
                     .gateway_dns_resolver
-                    .insert(domain.clone(), resolved_ip);
+                    .insert(domain.clone(), vec![resolved_ip]);
                 state
                     .client_sent_dns_queries
                     .insert(query_id, domain.clone());
@@ -1120,13 +1120,15 @@ impl TunnelTest {
                 // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
                 let resolved_ips = request
                     .domain_name()
-                    .and_then(|domain| self.gateway_dns_resolver.get(&domain).copied())
-                    .map(IpNetwork::from);
+                    .into_iter()
+                    .flat_map(|domain| self.gateway_dns_resolver.get(&domain).cloned().into_iter())
+                    .flat_map(|ips| ips.into_iter().map(IpNetwork::from))
+                    .collect();
 
                 let resource = map_client_resource_to_gateway_resource(
                     client_cidr_resources,
                     client_dns_resource,
-                    resolved_ips.into_iter().collect(),
+                    resolved_ips,
                     resource_id,
                 );
 
