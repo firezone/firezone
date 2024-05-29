@@ -603,13 +603,17 @@ impl ReferenceStateMachine for ReferenceState {
                 state.client_dns_resources.insert(r.clone());
             }
             Transition::SendQueryToDnsResource {
-                r_idx, resolved_ip, ..
+                r_idx,
+                resolved_ip,
+                dns_server_idx,
+                ..
             } => {
                 let domain = state.sample_dns_resource_domain(r_idx);
+                let server = state.sample_dns_server(dns_server_idx);
 
-                // TODO: What if we don't have any upstream resolvers?
-
-                state.resolved_domain_names.insert(domain, *resolved_ip);
+                if state.client.sending_socket_for(server.ip()).is_some() {
+                    state.resolved_domain_names.insert(domain, *resolved_ip);
+                }
             }
             Transition::SendICMPPacketToRandomIp {
                 dst,
