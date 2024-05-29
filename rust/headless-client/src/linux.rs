@@ -197,7 +197,7 @@ impl IpcServer {
     #[cfg(test)]
     pub(crate) async fn new_for_test() -> Result<Self> {
         let dir = crate::known_dirs::runtime().context("Can't find runtime dir")?;
-        // On a CI runner, this might not exist yet
+        // On a CI runner, the dir might not exist yet
         tokio::fs::create_dir_all(&dir).await?;
         let sock_path = dir.join("ipc_test.sock");
         Self::new_with_path(&sock_path).await

@@ -587,6 +587,11 @@ mod tests {
         Ok(())
     }
 
+    /// Replicate #5143
+    ///
+    /// When the IPC service has disconnected from a GUI and loops over, sometimes
+    /// the named pipe is not ready. If our IPC code doesn't handle this right,
+    /// this test will fail.
     #[tokio::test]
     async fn ipc_server() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
