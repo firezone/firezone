@@ -111,6 +111,9 @@ pub(crate) fn parse<'a>(
     }
 
     let question = message.first_question()?;
+
+    tracing::trace!("Parsed packet as DNS query: '{question}'");
+
     // In general we prefer to always have a response NxDomain to deal with with domains we don't expect
     // For systems with splitdns, in theory, we should only see Ptr queries we don't handle(e.g. apple's dns-sd)
     let resource =
