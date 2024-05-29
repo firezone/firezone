@@ -7,7 +7,9 @@ mod imp {
 
     /// Returns true if we're running without root privileges
     ///
-    /// On Linux we've already switched to IPC, so the process must NOT be elevated
+    /// Everything that needs root / admin powers happens in the IPC services,
+    /// so for security and practicality reasons the GUIs must be non-root.
+    /// (In Linux by default a root GUI app barely works at all)
     #[allow(clippy::print_stderr)]
     pub(crate) fn is_normal_user() -> anyhow::Result<bool, Error> {
         // Must use `eprintln` here because `tracing` won't be initialized yet.
