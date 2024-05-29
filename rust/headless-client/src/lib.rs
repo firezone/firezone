@@ -552,7 +552,7 @@ pub fn debug_command_setup() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{Cli, CliIpcService, CmdIpc};
-    use anyhow::bail;
+    use anyhow::Context as _;
     use clap::Parser;
     use std::{path::PathBuf, time::Duration};
     use tokio::time::timeout;
@@ -589,10 +589,14 @@ mod tests {
 
     #[tokio::test]
     async fn ipc_server() -> anyhow::Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+
         let mut server = crate::platform::IpcServer::new_for_test().await?;
         for i in 0..5 {
-            if let Ok(Err(_)) = timeout(Duration::from_secs(2), server.next_client()).await {
-                bail!("Couldn't listen for next IPC client, iteration {i}");
+            if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
+                Err(err).with_context(|| {
+                    format!("Couldn't listen for next IPC client, iteration {i}")
+                })?;
             }
         }
         Ok(())

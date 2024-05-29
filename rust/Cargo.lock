@@ -1985,6 +1985,7 @@ name = "firezone-headless-client"
 version = "1.0.6"
 dependencies = [
  "anyhow",
+ "backoff",
  "clap",
  "connlib-client-shared",
  "connlib-shared",

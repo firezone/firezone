@@ -228,7 +228,25 @@ impl IpcServer {
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
-        let server = create_pipe_server(&self.pipe_path)?;
+        // Fixes #5143. In the IPC service, if we close the pipe and immediately re-open
+        // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
+        // this in tests, but `yield_now` doesn't make any such guarantees, so
+        // we also do an exponential backoff.
+        tokio::task::yield_now().await;
+
+        // Even though the closure does not await, the backoff itself must be async so
+        // that Tokio can clean up the named pipe without us blocking its executor thread
+        let server = backoff::future::retry(backoff::ExponentialBackoff::default(), || async {
+            match create_pipe_server(&self.pipe_path) {
+                Ok(x) => Ok(x),
+                Err(PipeError::AccessDenied) => {
+                    tracing::warn!("PipeError::AccessDenied, backing off...");
+                    Err(PipeError::AccessDenied)?
+                }
+                Err(error) => Err(backoff::Error::Permanent(error)),
+            }
+        })
+        .await?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()
@@ -238,7 +256,15 @@ impl IpcServer {
     }
 }
 
-fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer> {
+#[derive(Debug, thiserror::Error)]
+enum PipeError {
+    #[error("Access denied - Is another process using this pipe path?")]
+    AccessDenied,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, PipeError> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
@@ -268,9 +294,16 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer> {
 
     let sa_ptr = &mut sa as *mut _ as *mut c_void;
     // SAFETY: Unsafe needed to call Win32 API. We only pass pointers to local vars, and Win32 shouldn't store them, so there shouldn't be any threading of lifetime problems.
-    let server = unsafe { server_options.create_with_security_attributes_raw(pipe_path, sa_ptr) }
-        .context("Failed to listen on named pipe")?;
-    Ok(server)
+    match unsafe { server_options.create_with_security_attributes_raw(pipe_path, sa_ptr) } {
+        Ok(x) => Ok(x),
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::PermissionDenied {
+                Err(PipeError::AccessDenied)
+            } else {
+                Err(anyhow::Error::from(err).into())
+            }
+        }
+    }
 }
 
 /// Named pipe for IPC between GUI client and IPC service
