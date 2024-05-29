@@ -653,6 +653,14 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 }
 
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+                for dns_resolved_ip in state.resolved_domain_names.values() {
+                    // If the CIDR resource overlaps with an IP that a DNS record resolved to, we have problems ...
+                    if r.address.contains(*dns_resolved_ip) {
+                        return false;
+                    }
+                }
+
                 true
             }
             Transition::Tick { .. } => true,
