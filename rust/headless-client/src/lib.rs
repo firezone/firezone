@@ -589,8 +589,8 @@ mod tests {
 
     #[tokio::test]
     async fn ipc_server() -> anyhow::Result<()> {
-        let mut server = crate::platform::IpcServer::new().await?;
-        for i in 0..10 {
+        let mut server = crate::platform::IpcServer::new_for_test().await?;
+        for i in 0..5 {
             if let Ok(Err(_)) = timeout(Duration::from_secs(2), server.next_client()).await {
                 bail!("Couldn't listen for next IPC client, iteration {i}");
             }

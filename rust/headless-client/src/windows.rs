@@ -206,12 +206,29 @@ impl IpcServer {
     /// This is async on Linux
     #[allow(clippy::unused_async)]
     pub(crate) async fn new() -> Result<Self> {
+        Self::new_with_path(pipe_path())
+    }
+
+    /// Uses a test path instead of what prod uses
+    ///
+    /// The test path doesn't run admin powers and won't conflict with the prod
+    /// IPC service on a dev machine.
+    ///
+    /// This is async on Linux
+    #[allow(clippy::unused_async)]
+    #[cfg(test)]
+    pub(crate) async fn new_for_test() -> Result<Self> {
+        let pipe_path = named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"));
+        Self::new_with_path(pipe_path())
+    }
+
+    pub(crate) fn new_with_path(pipe_path: PathBuf) -> Result<Self> {
         setup_before_connlib()?;
-        Ok(Self {})
+        Ok(Self { pipe_path })
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
-        let server = create_pipe_server()?;
+        let server = create_pipe_server(&self.pipe_path)?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()
@@ -251,7 +268,7 @@ fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
 
     let sa_ptr = &mut sa as *mut _ as *mut c_void;
     // SAFETY: Unsafe needed to call Win32 API. We only pass pointers to local vars, and Win32 shouldn't store them, so there shouldn't be any threading of lifetime problems.
-    let server = unsafe { server_options.create_with_security_attributes_raw(pipe_path(), sa_ptr) }
+    let server = unsafe { server_options.create_with_security_attributes_raw(pipe_path, sa_ptr) }
         .context("Failed to listen on named pipe")?;
     Ok(server)
 }
