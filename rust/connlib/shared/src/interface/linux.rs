@@ -137,19 +137,14 @@ impl InterfaceManager {
         Ok(())
     }
 
-    // Fallible on Windows
-    #[allow(clippy::unnecessary_wraps)]
     pub async fn control_dns(&self, dns_config: Vec<IpAddr>) -> Result<()> {
-        if let Err(error) = match self.dns_control_method {
+        match self.dns_control_method {
             None => Ok(()),
             Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config).await,
             Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config),
             Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await,
-        } {
-            tracing::error!("Failed to control DNS: {error}");
-            panic!("Failed to control DNS: {error}");
         }
-        Ok(())
+        .context("Failed to control DNS")
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
