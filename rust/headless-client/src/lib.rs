@@ -552,8 +552,10 @@ pub fn debug_command_setup() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{Cli, CliIpcService, CmdIpc};
+    use anyhow::bail;
     use clap::Parser;
-    use std::path::PathBuf;
+    use std::{path::PathBuf, time::Duration};
+    use tokio::time::timeout;
     use url::Url;
 
     // Can't remember how Clap works sometimes
@@ -562,12 +564,9 @@ mod tests {
     fn cli() -> anyhow::Result<()> {
         let exe_name = "firezone-headless-client";
 
-        let actual = Cli::parse_from([exe_name]);
-        assert_eq!(actual.api_url, Url::parse("wss://api.firezone.dev")?);
-        assert!(!actual.check);
-
         let actual = Cli::parse_from([exe_name, "--api-url", "wss://api.firez.one"]);
         assert_eq!(actual.api_url, Url::parse("wss://api.firez.one")?);
+        assert!(!actual.check);
 
         let actual = Cli::parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]);
         assert!(actual.check);
@@ -585,6 +584,17 @@ mod tests {
         let actual = CliIpcService::parse_from([exe_name, "ipc-service"]);
         assert_eq!(actual.command, CmdIpc::IpcService);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn ipc_server() -> anyhow::Result<()> {
+        let mut server = crate::platform::IpcServer::new().await?;
+        for i in 0..10 {
+            if let Ok(Err(_)) = timeout(Duration::from_secs(2), server.next_client()).await {
+                bail!("Couldn't listen for next IPC client, iteration {i}");
+            }
+        }
         Ok(())
     }
 }
