@@ -1,5 +1,6 @@
 //! Factory module for making all kinds of packets.
 
+use crate::{IpPacket, MutableIpPacket};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -7,16 +8,30 @@ use pnet_packet::{
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
 };
-
-use crate::MutableIpPacket;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-pub fn icmp_request_packet(src: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
-    icmp_packet(src, dst, 1, 0, IcmpKind::Request)
+pub fn icmp_request_packet(
+    src: IpAddr,
+    dst: impl Into<IpAddr>,
+    seq: u16,
+    identifier: u16,
+) -> MutableIpPacket<'static> {
+    icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Request)
 }
 
-pub fn icmp_response_packet(src: IpAddr, dst: IpAddr) -> MutableIpPacket<'static> {
-    icmp_packet(src, dst, 1, 0, IcmpKind::Response)
+pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
+    let icmp = packet
+        .as_icmp()
+        .expect("IP packet should be an ICMP packet");
+    let echo_request = icmp.as_echo_request().expect("to be ICMP echo request");
+
+    icmp_packet(
+        packet.destination(),
+        packet.source(),
+        echo_request.sequence(),
+        echo_request.identifier(),
+        IcmpKind::Response,
+    )
 }
 
 enum IcmpKind {

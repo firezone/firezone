@@ -736,7 +736,7 @@ impl<R> TestNode<R> {
             .in_scope(|| {
                 self.node.encapsulate(
                     id,
-                    ip_packet::make::icmp_request_packet(src, dst).to_immutable(),
+                    ip_packet::make::icmp_request_packet(src, dst, 1, 0).to_immutable(),
                     now,
                 )
             })
