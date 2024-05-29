@@ -156,7 +156,7 @@ pub fn sock_path() -> PathBuf {
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
+pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<std::convert::Infallible> {
     tracing::info!("run_ipc_service");
     // systemd supplies this but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
