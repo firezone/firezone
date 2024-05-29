@@ -298,6 +298,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
         Ok(x) => Ok(x),
         Err(err) => {
             if err.kind() == std::io::ErrorKind::PermissionDenied {
+                tracing::warn!(?pipe_path, "Named pipe `PermissionDenied`");
                 Err(PipeError::AccessDenied)
             } else {
                 Err(anyhow::Error::from(err).into())
