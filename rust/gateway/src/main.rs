@@ -118,7 +118,12 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     interface
         .on_set_interface_config(init.interface.ipv4, init.interface.ipv6)
         .await?;
-    interface.on_update_routes(vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())], vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())]).await?;
+    interface
+        .on_update_routes(
+            vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
+            vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
+        )
+        .await?;
     tunnel.update_relays(HashSet::default(), init.relays);
 
     let mut eventloop = Eventloop::new(tunnel, portal);
