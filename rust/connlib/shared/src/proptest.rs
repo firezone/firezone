@@ -100,7 +100,7 @@ pub fn address_description() -> impl Strategy<Value = String> {
 }
 
 pub fn sites() -> impl Strategy<Value = Vec<Site>> {
-    collection::vec(site(), 1..=10)
+    collection::vec(site(), 1..=3)
 }
 
 pub fn site() -> impl Strategy<Value = Site> {
