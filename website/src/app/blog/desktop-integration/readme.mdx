@@ -1,0 +1,79 @@
+Blog ideas and brainstorming and outlining
+
+# Ideas
+
+- Tauri
+- DNS control
+- Desktop integration as a whole
+
+# Tauri
+
+- Other GUI frameworks we considered
+- How I expect GUIs to work, based on experience with Qt and FLTK
+- Good stuff
+  - We still control `main`
+  - Small packages
+  - Pre-made deb and MSI bundlers
+  - Easy to write almost everything in Rust and use TypeScript for the UI
+  - Generally easy to work with and not restrictive
+- Snags (For each one, explain how we worked around it, whether it was really a
+  problem with Tauri, which it rarely is)
+  - Required directory layout is a little weird
+  - Admin / sudo working on Windows but not Linux
+  - Deb bundler not as customizable as we need
+  - Can't left-click on the tray menu in Windows
+  - Tray menu and notifications generally short of features
+    - The GNOME menu is just wacky
+    - Clicking a notification in GNOME opens another instance of your app
+  - Impossible to exit the event loop gracefully
+  - Web views seem to occupy RAM even when the window is closed
+  - Depending on Ubuntu's webkit package means forwards and backwards compat is
+    hard
+  - Setting the name of binaries and the bundle is tricky
+  - Bug #3972, unknown flaky smoke test resolved by initializing Tauri sooner
+  - WebView2 is flaky in CI #4981
+
+# DNS control
+
+- Windows NRPT
+- Windows, Shelling out vs. using the API
+  - APIs are poorly documented and rarely have safe Rust wrappers
+  - Shelling out is slow and opens you to possible shell injection attacks
+- That Windows DNS bug we had a while back
+- Known gaps in our DNS control
+- Linux methods
+- Why `/etc/resolv.conf` is weird inside Docker
+- How this would all work if we were a NetworkManager / Windows VPN plugin but
+  that's hard to do
+
+# Desktop integration as a whole
+
+Title ideas:
+
+- "Making desktop apps"
+
+A little bit of everything I've worked on in my first 6 months:
+
+- Invoke Cunningham's Law
+- Tauri
+- Crash handling
+- DNS control
+- The credential keyring
+  - On Linux
+  - On Windows
+  - Why it makes some sense for OSes to have "app" as a first-class object, even
+    though I don't love that
+  - I still wish that the parameters that are ignored on specific OSes were
+    treated as compile-time or run-time errors and not as just prose in the docs
+- IPC on Linux and Windows
+  - Deep links
+    - Alternatives
+  - Windows bug #5143 with named pipes
+  - Unix domain socket ownership
+- DNS change / network change listening
+- Auto-starting the IPC service and the GUI
+  - Systemd sandboxing
+- Well-known directories
+- Things we haven't gotten to
+  - Internationalization / localization
+  - End-to-end automated tests
