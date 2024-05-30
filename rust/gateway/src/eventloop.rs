@@ -219,14 +219,13 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
             .unwrap_or_default();
 
-        let ips = req.client.peer.ips();
-
         match self.tunnel.accept(
             req.client.id,
             req.client.peer.preshared_key,
             req.client.payload.ice_parameters,
             PublicKey::from(req.client.peer.public_key.0),
-            ips,
+            req.client.peer.ipv4,
+            req.client.peer.ipv6,
             req.relays,
             req.client.payload.domain,
             req.expires_at,
