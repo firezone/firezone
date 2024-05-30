@@ -10,7 +10,7 @@ use connlib_shared::{
     StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
-use ip_network::Ipv4Network;
+use ip_network::{Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::MutableIpPacket;
 use pretty_assertions::assert_eq;
@@ -1466,9 +1466,10 @@ fn gateway_id() -> impl Strategy<Value = GatewayId> {
 /// Generates an IPv4 address for the tunnel interface.
 ///
 /// We use the CG-NAT range for IPv4.
+/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
 fn tunnel_ip4() -> impl Strategy<Value = Ipv4Addr> {
     any::<sample::Index>().prop_map(|idx| {
-        let cgnat_block = Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10).unwrap();
+        let cgnat_block = Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap();
 
         let mut hosts = cgnat_block.hosts();
 
@@ -1478,9 +1479,19 @@ fn tunnel_ip4() -> impl Strategy<Value = Ipv4Addr> {
 
 /// Generates an IPv6 address for the tunnel interface.
 ///
-/// TODO: Which subnet do we use here?
+/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
-    any::<Ipv6Addr>()
+    any::<sample::Index>().prop_map(|idx| {
+        let cgnat_block =
+            Ipv6Network::new(Ipv6Addr::new(64_768, 8_225, 4_369, 0, 0, 0, 0, 0), 107).unwrap();
+
+        let mut subnets = cgnat_block.subnets_with_prefix(128);
+
+        subnets
+            .nth(idx.index(subnets.len()))
+            .unwrap()
+            .network_address()
+    })
 }
 
 fn sim_node_prototype<ID>(
