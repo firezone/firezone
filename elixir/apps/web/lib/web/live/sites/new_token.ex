@@ -150,18 +150,6 @@ defmodule Web.Sites.NewToken do
               ><%= manual_command(@env) %></.code_block>
 
               <p class="p-4">
-                See
-                <.link
-                  href="https://www.firezone.dev/kb/deploy/gateways#environment_variables"
-                  target="_blank"
-                  class={link_style()}
-                >
-                  the Gateway docs
-                </.link>
-                for a full list of environment variables.
-              </p>
-
-              <p class="p-4">
                 <strong>Important:</strong>
                 You'll need to make sure that the <code>iptables</code>
                 and <code>ip6tables</code>
