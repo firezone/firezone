@@ -70,14 +70,11 @@ struct TunnelTest {
 
     /// Mapping of proxy IPs to real resource destinations.
     ///
-    /// As the client, we don't know how connlib attempts this mapping but we care about it being stable.
+    /// As the client, we don't know how connlib achieves this mapping but we care about it being stable.
     client_proxy_ip_mapping: HashMap<IpAddr, IpAddr>,
 
-    /// Stub for the gateway's DNS resolver.
-    gateway_dns_resolver: HashMap<DomainName, HashSet<IpAddr>>,
-
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
-    dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
     client_sent_dns_queries: HashMap<QueryId, DomainName>,
     client_sent_icmp_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
@@ -123,11 +120,10 @@ struct ReferenceState {
     /// The CIDR resources the client is connected to.
     client_connected_cidr_resources: HashSet<ResourceId>,
 
-    /// The IPs we have resolved for a particular domain.
+    /// All IP addresses a domain resolves to in our test.
     ///
-    /// These are the "real" IPs the domain resolved to at the time of first access.
-    /// We need to keep this around because connlib also (re)-uses the response of the first DNS access.
-    resolved_domain_names: HashMap<DomainName, HashSet<IpAddr>>,
+    /// This is used to e.g. mock DNS resolution on the gateway.
+    global_dns_records: HashMap<DomainName, HashSet<IpAddr>>,
 
     /// The expected ICMP handshakes.
     expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
@@ -273,8 +269,7 @@ impl StateMachineTest for TunnelTest {
             logger,
             relay,
             client_dns_records: Default::default(),
-            gateway_dns_resolver: Default::default(),
-            dns_by_sentinel: Default::default(),
+            client_dns_by_sentinel: Default::default(),
             client_sent_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
@@ -311,22 +306,12 @@ impl StateMachineTest for TunnelTest {
                         .add_resources(&[ResourceDescription::Cidr(r)]);
                 });
             }
-            Transition::AddDnsResource {
-                resource,
-                resolved_ips,
-            } => {
-                // Configure the gateway's "resolver" to return the sampled IP.
+            Transition::AddDnsResource { resource, .. } => state.client.span.in_scope(|| {
                 state
-                    .gateway_dns_resolver
-                    .insert(resource.address_as_domain().unwrap(), resolved_ips);
-
-                state.client.span.in_scope(|| {
-                    state
-                        .client
-                        .state
-                        .add_resources(&[ResourceDescription::Dns(resource)]);
-                })
-            }
+                    .client
+                    .state
+                    .add_resources(&[ResourceDescription::Dns(resource)]);
+            }),
             Transition::SendICMPPacketToRandomIp {
                 dst,
                 seq,
@@ -366,7 +351,7 @@ impl StateMachineTest for TunnelTest {
                 let domain = ref_state.sample_dns_resource_domain(&r_idx);
                 let dns_server = ref_state.sample_dns_server(&dns_server_idx);
                 let dns_server = *state
-                    .dns_by_sentinel
+                    .client_dns_by_sentinel
                     .get_by_right(&dns_server)
                     .expect("to have a sentinel DNS server for the sampled one");
 
@@ -615,7 +600,7 @@ impl ReferenceStateMachine for ReferenceState {
                     client_connected_cidr_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
-                    resolved_domain_names: Default::default(),
+                    global_dns_records: Default::default(),
                     client_dns_records: Default::default(),
                 },
             )
@@ -684,7 +669,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .client_dns_resources
                     .insert(new_resource.id, new_resource.clone());
 
-                state.resolved_domain_names.insert(
+                state.global_dns_records.insert(
                     new_resource.address_as_domain().unwrap(),
                     resolved_ips.clone(),
                 );
@@ -695,7 +680,7 @@ impl ReferenceStateMachine for ReferenceState {
                         state.client_connected_cidr_resources.remove(&resource.id);
 
                         let name = resource.address_as_domain().unwrap();
-                        state.resolved_domain_names.remove(&name);
+                        state.global_dns_records.remove(&name);
 
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
@@ -708,7 +693,7 @@ impl ReferenceStateMachine for ReferenceState {
                 let domain = state.sample_dns_resource_domain(r_idx);
 
                 let resolved_ips = state
-                    .resolved_domain_names
+                    .global_dns_records
                     .get(&domain)
                     .expect("DNS queries should only be sent for known resources")
                     .iter()
@@ -794,11 +779,7 @@ impl ReferenceStateMachine for ReferenceState {
                 }
 
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-                for dns_resolved_ip in state
-                    .resolved_domain_names
-                    .values()
-                    .flat_map(|ip| ip.iter())
-                {
+                for dns_resolved_ip in state.global_dns_records.values().flat_map(|ip| ip.iter()) {
                     // If the CIDR resource overlaps with an IP that a DNS record resolved to, we have problems ...
                     if r.address.contains(*dns_resolved_ip) {
                         return false;
@@ -816,7 +797,7 @@ impl ReferenceStateMachine for ReferenceState {
                 // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
                 // Connlib cannot know, when a DNS record expires, thus we currently don't allow to add DNS resources where the same domain resolves to different IPs
                 let domain = resource.address_as_domain().unwrap();
-                let has_resolved_domain_already = state.resolved_domain_names.contains_key(&domain);
+                let has_resolved_domain_already = state.global_dns_records.contains_key(&domain);
 
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
                 let any_real_ip_overlaps_with_cidr_resource =
@@ -922,6 +903,7 @@ impl TunnelTest {
                     event,
                     &ref_state.client_cidr_resources,
                     &ref_state.client_dns_resources,
+                    &ref_state.global_dns_records,
                 );
                 continue;
             }
@@ -982,7 +964,10 @@ impl TunnelTest {
 
     /// Returns the _effective_ DNS servers that connlib is using.
     fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
-        self.dns_by_sentinel.right_values().copied().collect()
+        self.client_dns_by_sentinel
+            .right_values()
+            .copied()
+            .collect()
     }
 
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
@@ -1183,6 +1168,7 @@ impl TunnelTest {
         event: ClientEvent,
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
         client_dns_resource: &HashMap<ResourceId, ResourceDescriptionDns>,
+        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
             ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
@@ -1225,7 +1211,7 @@ impl TunnelTest {
                 let resolved_ips = request
                     .domain_name()
                     .into_iter()
-                    .flat_map(|domain| self.gateway_dns_resolver.get(&domain).cloned().into_iter())
+                    .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
                     .flat_map(|ips| ips.into_iter().map(IpNetwork::from))
                     .collect();
 
@@ -1322,7 +1308,7 @@ impl TunnelTest {
                 tracing::warn!("Unimplemented");
             }
             ClientEvent::DnsServersChanged { dns_by_sentinel } => {
-                self.dns_by_sentinel = dns_by_sentinel;
+                self.client_dns_by_sentinel = dns_by_sentinel;
             }
         }
     }
