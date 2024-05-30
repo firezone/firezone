@@ -66,9 +66,6 @@ struct TunnelTest {
     portal: SimPortal,
 
     /// The DNS records created on the client as a result of received DNS responses.
-    ///
-    /// Per domain, we keep a [`HashMap`] of the resources' real IP to the connlib assigned proxy IP.
-    /// We need this to deterministically pick to the correct IP when we attempt to talk to a resource.
     client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Mapping of proxy IPs to real resource destinations.
@@ -107,15 +104,10 @@ struct ReferenceState {
     /// The upstream DNS resolvers configured in the portal.
     upstream_dns_resolvers: Vec<DnsServer>,
 
-    /// Which resources the clients is aware of.
+    /// The CIDR resources the client is aware of.
     client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// The DNS resources the client is aware of.
     client_dns_resources: HashMap<ResourceId, ResourceDescriptionDns>,
-
-    /// The IPs we have resolved for a particular domain.
-    ///
-    /// These are the "real" IPs the domain resolved to at the time of first access.
-    /// We need to keep this around because connlib also (re)-uses the response of the first DNS access.
-    resolved_domain_names: HashMap<DomainName, Vec<IpAddr>>,
 
     /// The IPs the client knows about.
     ///
@@ -126,10 +118,16 @@ struct ReferenceState {
     /// On a repeated query, we will access those previously resolved IPs.
     ///
     /// Essentially, the client's DNS cache represents the addresses a client application (like a browser) would _actually_ know about.
-    client_dns_cache: HashMap<DomainName, Vec<IpAddr>>,
+    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
-    /// The CIDR resources we have connected to.
-    connected_cidr_resources: HashSet<ResourceId>,
+    /// The CIDR resources the client is connected to.
+    client_connected_cidr_resources: HashSet<ResourceId>,
+
+    /// The IPs we have resolved for a particular domain.
+    ///
+    /// These are the "real" IPs the domain resolved to at the time of first access.
+    /// We need to keep this around because connlib also (re)-uses the response of the first DNS access.
+    resolved_domain_names: HashMap<DomainName, Vec<IpAddr>>,
 
     /// The expected ICMP handshakes (resource dst IP, seq, identifier)
     expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16, ResourceKind)>,
@@ -610,11 +608,11 @@ impl ReferenceStateMachine for ReferenceState {
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     client_cidr_resources: IpNetworkTable::new(),
-                    connected_cidr_resources: Default::default(),
+                    client_connected_cidr_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
                     resolved_domain_names: Default::default(),
-                    client_dns_cache: Default::default(),
+                    client_dns_records: Default::default(),
                 },
             )
             .boxed()
@@ -677,7 +675,7 @@ impl ReferenceStateMachine for ReferenceState {
                 // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
                 if let Some(resource) = existing_resource {
                     if resource.address != r.address {
-                        state.connected_cidr_resources.remove(&resource.id);
+                        state.client_connected_cidr_resources.remove(&resource.id);
 
                         let name = resource
                             .address
@@ -688,7 +686,7 @@ impl ReferenceStateMachine for ReferenceState {
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
                         // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state.client_dns_cache.remove(&name);
+                        state.client_dns_records.remove(&name);
                     }
                 }
             }
@@ -730,7 +728,7 @@ impl ReferenceStateMachine for ReferenceState {
                                 .collect::<Vec<_>>();
 
                             if !ips.is_empty() {
-                                let entry = state.client_dns_cache.entry(domain).or_default();
+                                let entry = state.client_dns_records.entry(domain).or_default();
                                 entry.extend(ips);
                                 entry.sort();
                             }
@@ -742,7 +740,7 @@ impl ReferenceStateMachine for ReferenceState {
                                 .collect::<Vec<_>>();
 
                             if !ips.is_empty() {
-                                let entry = state.client_dns_cache.entry(domain).or_default();
+                                let entry = state.client_dns_records.entry(domain).or_default();
                                 entry.extend(ips);
                                 entry.sort();
                             }
@@ -924,7 +922,7 @@ impl ReferenceStateMachine for ReferenceState {
                 !has_resolved_domain_already && !any_real_ip_overlaps_with_cidr_resource
             }
             Transition::SendICMPPacketToResolvedAddress { .. } => {
-                !state.client_dns_cache.is_empty()
+                !state.client_dns_records.is_empty()
             }
         }
     }
@@ -1433,7 +1431,7 @@ impl ReferenceState {
             return;
         };
 
-        if self.connected_cidr_resources.contains(&resource.id) {
+        if self.client_connected_cidr_resources.contains(&resource.id) {
             tracing::debug!("Connected to resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .push_back((dst, seq, identifier, ResourceKind::Cidr));
@@ -1442,7 +1440,7 @@ impl ReferenceState {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_cidr_resources.insert(resource.id);
+        self.client_connected_cidr_resources.insert(resource.id);
     }
 
     /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
@@ -1559,7 +1557,7 @@ impl ReferenceState {
     }
 
     fn sample_resolved_address(&self, idx: sample::Index) -> (DomainName, IpAddr) {
-        let mut client_dns_cache = Vec::from_iter(self.client_dns_cache.clone());
+        let mut client_dns_cache = Vec::from_iter(self.client_dns_records.clone());
         client_dns_cache.sort();
 
         let (name, addr) = idx.get(&client_dns_cache);
