@@ -175,6 +175,7 @@ impl GatewayState {
         Some(transmit)
     }
 
+    #[tracing::instrument(level = "trace", skip_all, fields(src, dst))]
     pub(crate) fn decapsulate<'b>(
         &mut self,
         local: SocketAddr,
@@ -193,6 +194,9 @@ impl GatewayState {
         .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
+        tracing::Span::current().record("src", tracing::field::display(packet.source()));
+        tracing::Span::current().record("dst", tracing::field::display(packet.destination()));
+
         let Some(peer) = self.peers.get_mut(&conn_id) else {
             tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
 
@@ -206,6 +210,8 @@ impl GatewayState {
 
             return None;
         }
+
+        tracing::trace!("Decapsulated packet");
 
         Some(packet.into_immutable())
     }

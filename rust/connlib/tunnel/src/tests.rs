@@ -106,17 +106,17 @@ enum Transition {
         seq: u16,
         identifier: u16,
     },
-    /// Send a ICMP packet to an IPv4 resource.
-    SendICMPPacketToIp4Resource {
+    /// Send an ICMP packet to a CIDR resource.
+    SendICMPPacketToCidrResource {
         r_idx: sample::Index,
         seq: u16,
         identifier: u16,
-    },
-    /// Send a ICMP packet to an IPv6 resource.
-    SendICMPPacketToIp6Resource {
-        r_idx: sample::Index,
-        seq: u16,
-        identifier: u16,
+
+        /// An optional source address.
+        ///
+        /// Packets are only allowed to come from the IP assigned by the portal.
+        /// All others MUST be dropped by the gateway.
+        src: Option<IpAddr>,
     },
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -245,35 +245,21 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToIp4Resource {
+            Transition::SendICMPPacketToCidrResource {
                 r_idx,
                 seq,
                 identifier,
+                src,
             } => {
-                let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
+                let dst = ref_state.sample_cidr_resource_dst(&r_idx);
                 let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
+                    src.unwrap_or(state.client.tunnel_ip(dst)),
                     dst,
                     seq,
                     identifier,
                 );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
-            }
-            Transition::SendICMPPacketToIp6Resource {
-                r_idx,
-                seq,
-                identifier,
-            } => {
-                let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
-
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
@@ -290,20 +276,21 @@ impl StateMachineTest for TunnelTest {
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
+        assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
         for (resource_dst, seq, identifier) in ref_state.expected_icmp_handshakes.iter() {
             let client_sent_request = &state
                 .client_sent_icmp_requests
-                .get(&(*seq, *identifier))
+                .remove(&(*seq, *identifier))
                 .unwrap();
             let client_received_reply = &state
                 .client_received_icmp_replies
-                .get(&(*seq, *identifier))
+                .remove(&(*seq, *identifier))
                 .unwrap();
             let gateway_received_request = &state
                 .gateway_received_requests
-                .get(&(*seq, *identifier))
+                .remove(&(*seq, *identifier))
                 .unwrap();
 
             assert_eq!(
@@ -330,12 +317,21 @@ impl StateMachineTest for TunnelTest {
             );
         }
         assert_eq!(
+            state.gateway_received_requests,
+            HashMap::new(),
+            "Unexpected ICMP requests on gateway"
+        );
+        assert_eq!(
+            state.client_received_icmp_replies,
+            HashMap::new(),
+            "Unexpected ICMP replies on client"
+        );
+
+        assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
-
-        assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         state
     }
@@ -422,8 +418,6 @@ impl ReferenceStateMachine for ReferenceState {
         let set_upstream_dns_servers = upstream_dns_servers()
             .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers });
 
-        let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
-
         let mut strategies = vec![
             (1, add_cidr_resource.boxed()),
             (1, tick.boxed()),
@@ -432,12 +426,12 @@ impl ReferenceStateMachine for ReferenceState {
             (1, icmp_to_random_ip().boxed()),
         ];
 
-        if num_ip4_resources > 0 {
-            strategies.push((3, icmp_to_ipv4_cidr_resource().boxed()));
-        }
+        if !state.client_cidr_resources.is_empty() {
+            strategies.push((10, icmp_to_cidr_resource_from_client().boxed()));
 
-        if num_ip6_resources > 0 {
-            strategies.push((3, icmp_to_ipv6_cidr_resource().boxed()));
+            // Packets from random source addresses are tested less frequently.
+            // Those are dropped by the gateway so this transition only ensures we have this safe-guard.
+            strategies.push((1, icmp_to_cidr_resource_from_random_src().boxed()));
         }
 
         Union::new_weighted(strategies).boxed()
@@ -447,6 +441,8 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+        state.expected_icmp_handshakes.clear();
+
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_cidr_resources.insert(r.address, r.clone());
@@ -456,23 +452,16 @@ impl ReferenceStateMachine for ReferenceState {
                 seq,
                 identifier,
             } => {
-                state.on_icmp_packet(*dst, *seq, *identifier);
+                state.on_icmp_packet(None, *dst, *seq, *identifier);
             }
-            Transition::SendICMPPacketToIp4Resource {
+            Transition::SendICMPPacketToCidrResource {
                 r_idx,
                 seq,
                 identifier,
+                src,
             } => {
-                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(dst, *seq, *identifier);
-            }
-            Transition::SendICMPPacketToIp6Resource {
-                r_idx,
-                seq,
-                identifier,
-            } => {
-                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(dst, *seq, *identifier);
+                let dst = state.sample_cidr_resource_dst(r_idx);
+                state.on_icmp_packet(*src, dst, *seq, *identifier);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
@@ -508,31 +497,21 @@ impl ReferenceStateMachine for ReferenceState {
                 seq,
                 identifier,
             } => state.is_valid_icmp_packet(dst, seq, identifier),
-            Transition::SendICMPPacketToIp4Resource {
+            Transition::SendICMPPacketToCidrResource {
                 r_idx,
                 seq,
                 identifier,
+                src,
             } => {
-                if state.client_cidr_resources.len().0 == 0 {
+                if state.client_cidr_resources.is_empty() {
                     return false;
                 }
 
-                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
+                let dst = state.sample_cidr_resource_dst(r_idx);
+                let is_valid_icmp_packet = state.is_valid_icmp_packet(&dst, seq, identifier);
 
-                state.is_valid_icmp_packet(&dst.into(), seq, identifier)
-            }
-            Transition::SendICMPPacketToIp6Resource {
-                r_idx,
-                seq,
-                identifier,
-            } => {
-                if state.client_cidr_resources.len().1 == 0 {
-                    return false;
-                }
-
-                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-
-                state.is_valid_icmp_packet(&dst.into(), seq, identifier)
+                is_valid_icmp_packet
+                    && (src.is_none() || src.is_some_and(|s| s.is_ipv4() == dst.is_ipv4()))
             }
             Transition::UpdateSystemDnsServers { .. } => true,
             Transition::UpdateUpstreamDnsServers { .. } => true,
@@ -972,8 +951,16 @@ impl TunnelTest {
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet(&mut self, dst: impl Into<IpAddr>, seq: u16, identifier: u16) {
+    fn on_icmp_packet(
+        &mut self,
+        src: Option<IpAddr>,
+        dst: impl Into<IpAddr>,
+        seq: u16,
+        identifier: u16,
+    ) {
         let dst = dst.into();
+        let packet_originates_from_client =
+            src.is_none() || src.is_some_and(|src| src == self.client.tunnel_ip(src)); // Packets from IPs other than the client's are dropped by the gateway. We still create connections for them though.
 
         tracing::Span::current().record("dst", tracing::field::display(dst));
         // Second, if we are not yet connected, check if we have a resource for this IP.
@@ -982,7 +969,7 @@ impl ReferenceState {
             return;
         };
 
-        if self.connected_resources.contains(&resource.id) {
+        if self.connected_resources.contains(&resource.id) && packet_originates_from_client {
             tracing::debug!("Connected to resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .push_back((dst, seq, identifier));
@@ -992,6 +979,22 @@ impl ReferenceState {
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
         self.connected_resources.insert(resource.id);
+    }
+
+    fn sample_cidr_resource_dst(&self, idx: &sample::Index) -> IpAddr {
+        let (num_ip4_resources, num_ip6_resources) = self.client_cidr_resources.len();
+
+        let mut ips = Vec::new();
+
+        if num_ip4_resources > 0 {
+            ips.push(self.sample_ipv4_cidr_resource_dst(idx).into())
+        }
+
+        if num_ip6_resources > 0 {
+            ips.push(self.sample_ipv6_cidr_resource_dst(idx).into())
+        }
+
+        *idx.get(&ips)
     }
 
     /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
@@ -1435,24 +1438,32 @@ fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
     })
 }
 
-fn icmp_to_ipv4_cidr_resource() -> impl Strategy<Value = Transition> {
+fn icmp_to_cidr_resource_from_client() -> impl Strategy<Value = Transition> {
     (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
-        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToIp4Resource {
+        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToCidrResource {
             r_idx,
             seq,
             identifier,
+            src: None,
         },
     )
 }
 
-fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
-    (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
-        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToIp6Resource {
-            r_idx,
-            seq,
-            identifier,
-        },
+fn icmp_to_cidr_resource_from_random_src() -> impl Strategy<Value = Transition> {
+    (
+        any::<sample::Index>(),
+        any::<u16>(),
+        any::<u16>(),
+        any::<IpAddr>(),
     )
+        .prop_map(move |(r_idx, seq, identifier, src)| {
+            Transition::SendICMPPacketToCidrResource {
+                r_idx,
+                seq,
+                identifier,
+                src: Some(src),
+            }
+        })
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
