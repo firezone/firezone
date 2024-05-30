@@ -682,7 +682,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .extend(ips_resolved_by_query);
             }
             Transition::SendICMPPacketToNoneResourceIp { .. } => {
-                // Packets to non resources are dropped, no state change required.
+                // Packets to none-resources are dropped, no state change required.
             }
             Transition::SendICMPPacketToResource {
                 idx,
