@@ -127,7 +127,7 @@ struct ReferenceState {
     ///
     /// These are the "real" IPs the domain resolved to at the time of first access.
     /// We need to keep this around because connlib also (re)-uses the response of the first DNS access.
-    resolved_domain_names: HashMap<DomainName, Vec<IpAddr>>,
+    resolved_domain_names: HashMap<DomainName, HashSet<IpAddr>>,
 
     /// The expected ICMP handshakes.
     expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
@@ -168,7 +168,11 @@ enum Transition {
     },
 
     /// Add a new DNS resource to the client.
-    AddDnsResource(ResourceDescriptionDns),
+    AddDnsResource {
+        resource: ResourceDescriptionDns,
+        /// The IP we resolve the domain to.
+        resolved_ips: HashSet<IpAddr>,
+    },
     /// Send a DNS query for one of our DNS resources.
     SendQueryToDnsResource {
         /// The index into our list of DNS resources.
@@ -179,8 +183,6 @@ enum Transition {
         query_id: u16,
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
-        /// The IP we resolve the domain to.
-        resolved_ips: HashSet<IpAddr>,
     },
     // TODO: Add a transition for sending another DNS query for an already resolved domain.
     /// Send a ICMP packet to a DNS resolved address.
@@ -310,12 +312,22 @@ impl StateMachineTest for TunnelTest {
                         .add_resources(&[ResourceDescription::Cidr(r)]);
                 });
             }
-            Transition::AddDnsResource(r) => state.client.span.in_scope(|| {
+            Transition::AddDnsResource {
+                resource,
+                resolved_ips,
+            } => {
+                // Configure the gateway's "resolver" to return the sampled IP.
                 state
-                    .client
-                    .state
-                    .add_resources(&[ResourceDescription::Dns(r)]);
-            }),
+                    .gateway_dns_resolver
+                    .insert(resource.address_as_domain().unwrap(), resolved_ips);
+
+                state.client.span.in_scope(|| {
+                    state
+                        .client
+                        .state
+                        .add_resources(&[ResourceDescription::Dns(resource)]);
+                })
+            }
             Transition::SendICMPPacketToRandomIp {
                 dst,
                 seq,
@@ -365,7 +377,6 @@ impl StateMachineTest for TunnelTest {
                 r_type,
                 query_id,
                 dns_server_idx,
-                resolved_ips,
             } => {
                 let domain = ref_state.sample_dns_resource_domain(&r_idx);
                 let dns_server = ref_state.sample_dns_server(&dns_server_idx);
@@ -374,10 +385,6 @@ impl StateMachineTest for TunnelTest {
                     .get_by_right(&dns_server)
                     .expect("to have a sentinel DNS server for the sampled one");
 
-                // Configure the gateway's "resolver" to return the sampled IP.
-                state
-                    .gateway_dns_resolver
-                    .insert(domain.clone(), resolved_ips);
                 state
                     .client_sent_dns_queries
                     .insert(query_id, domain.clone());
@@ -626,7 +633,11 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
-        let add_dns_resource = dns_resource().prop_map(Transition::AddDnsResource);
+        let add_dns_resource = (dns_resource(), collection::hash_set(any::<IpAddr>(), 1..4))
+            .prop_map(|(resource, resolved_ips)| Transition::AddDnsResource {
+                resource,
+                resolved_ips,
+            });
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
         let set_system_dns_servers =
             system_dns_servers().prop_map(|servers| Transition::UpdateSystemDnsServers { servers });
@@ -671,18 +682,25 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::AddCidrResource(r) => {
                 state.client_cidr_resources.insert(r.address, r.clone());
             }
-            Transition::AddDnsResource(r) => {
-                let existing_resource = state.client_dns_resources.insert(r.id, r.clone());
+            Transition::AddDnsResource {
+                resource: new_resource,
+                resolved_ips,
+            } => {
+                let existing_resource = state
+                    .client_dns_resources
+                    .insert(new_resource.id, new_resource.clone());
+
+                state.resolved_domain_names.insert(
+                    new_resource.address_as_domain().unwrap(),
+                    resolved_ips.clone(),
+                );
 
                 // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
                 if let Some(resource) = existing_resource {
-                    if resource.address != r.address {
+                    if new_resource.address != resource.address {
                         state.client_connected_cidr_resources.remove(&resource.id);
 
-                        let name = resource
-                            .address
-                            .parse::<DomainName>()
-                            .expect("resource address to parse as domain name");
+                        let name = resource.address_as_domain().unwrap();
                         state.resolved_domain_names.remove(&name);
 
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
@@ -694,7 +712,6 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::SendQueryToDnsResource {
                 r_idx,
-                resolved_ips,
                 dns_server_idx,
                 r_type,
                 ..
@@ -703,13 +720,6 @@ impl ReferenceStateMachine for ReferenceState {
                 let server = state.sample_dns_server(dns_server_idx);
 
                 if state.client.sending_socket_for(server.ip()).is_some() {
-                    // We remember all DNS responses, regardless of the original query.
-                    state
-                        .resolved_domain_names
-                        .entry(domain.clone())
-                        .or_default()
-                        .extend(resolved_ips);
-
                     // Add all previously or newly resolved addresses to the client's DNS cache.
                     // This mimics a crucial functionality of connlib:
                     // Upon any DNS query, connlib will issue A and AAAA queries.
@@ -828,10 +838,27 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::AddDnsResource(_) => {
+            Transition::AddDnsResource {
+                resource,
+                resolved_ips,
+            } => {
                 // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
 
-                true
+                // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
+                // Connlib cannot know, when a DNS record expires, thus we currently don't allow to add DNS resources where the same domain resolves to different IPs
+                let domain = resource.address_as_domain().unwrap();
+                let has_resolved_domain_already = state.resolved_domain_names.contains_key(&domain);
+
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
+                let any_real_ip_overlaps_with_cidr_resource =
+                    resolved_ips.iter().any(|resolved_ip| {
+                        state
+                            .client_cidr_resources
+                            .longest_match(*resolved_ip)
+                            .is_some()
+                    });
+
+                !has_resolved_domain_already && !any_real_ip_overlaps_with_cidr_resource
             }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToRandomIp {
@@ -889,12 +916,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::SendQueryToDnsResource {
-                r_idx,
-                resolved_ips,
-                dns_server_idx,
-                ..
-            } => {
+            Transition::SendQueryToDnsResource { dns_server_idx, .. } => {
                 let has_dns_resources = !state.client_dns_resources.is_empty();
 
                 if !has_dns_resources {
@@ -907,21 +929,7 @@ impl ReferenceStateMachine for ReferenceState {
                     return false; // An operation system wouldn't use a DNS server that it doesn't have a sending socket for, right? RIGHT?
                 }
 
-                // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
-                // Connlib cannot know, when a DNS record expires, thus we currently don't allow DNS resources to change their IPs using this pre-condition.
-                let domain = state.sample_dns_resource_domain(r_idx);
-                let has_resolved_domain_already = state.resolved_domain_names.contains_key(&domain);
-
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
-                let any_real_ip_overlaps_with_cidr_resource =
-                    resolved_ips.iter().any(|resolved_ip| {
-                        state
-                            .client_cidr_resources
-                            .longest_match(*resolved_ip)
-                            .is_some()
-                    });
-
-                !has_resolved_domain_already && !any_real_ip_overlaps_with_cidr_resource
+                true
             }
             Transition::SendICMPPacketToResolvedAddress { .. } => {
                 !state.client_dns_records.is_empty()
@@ -1537,18 +1545,11 @@ impl ReferenceState {
         let mut domains = self
             .client_dns_resources
             .values()
-            .map(|r| r.address.clone())
+            .map(|r| r.address_as_domain().unwrap())
             .collect::<Vec<_>>();
         domains.sort();
 
-        // We first parse as a hickory name because we can remove the erreneous FQDN `.` from it then ...
-        let name = idx
-            .get(&domains)
-            .clone()
-            .parse::<hickory_proto::rr::Name>()
-            .expect("resource addresses to parse as domain names");
-
-        hickory_name_to_domain(name)
+        idx.get(&domains).clone()
     }
 
     fn sample_dns_server(&self, idx: &sample::Index) -> SocketAddr {
@@ -1977,19 +1978,15 @@ fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
         any::<sample::Index>(),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
-        collection::hash_set(any::<IpAddr>(), 1..4),
     )
-        .prop_map(
-            move |(r_idx, dns_server_idx, r_type, query_id, resolved_ips)| {
-                Transition::SendQueryToDnsResource {
-                    r_idx,
-                    r_type,
-                    query_id,
-                    dns_server_idx,
-                    resolved_ips,
-                }
-            },
-        )
+        .prop_map(move |(r_idx, dns_server_idx, r_type, query_id)| {
+            Transition::SendQueryToDnsResource {
+                r_idx,
+                r_type,
+                query_id,
+                dns_server_idx,
+            }
+        })
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
