@@ -426,7 +426,7 @@ impl ClientState {
         self.node.public_key()
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(dest))]
+    #[tracing::instrument(level = "trace", skip_all, fields(dst))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -440,7 +440,7 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
-        tracing::Span::current().record("dest", tracing::field::display(dest));
+        tracing::Span::current().record("dst", tracing::field::display(dest));
 
         if is_definitely_not_a_resource(dest) {
             return None;
