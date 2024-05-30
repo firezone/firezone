@@ -337,7 +337,7 @@ defmodule Web.NavigationComponents do
   def website_link(assigns) do
     ~H"""
     <.link
-      navigate={"https://www.firezone.dev#{@href}?utm_source=product"}
+      navigate={"https://www.firezone.dev?utm_source=product#{@href}"}
       class={link_style()}
       target="_blank"
       {@rest}
