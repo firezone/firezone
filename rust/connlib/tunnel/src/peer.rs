@@ -179,6 +179,13 @@ impl ClientOnGateway {
         }
     }
 
+    /// A client is only allowed to send packets from their (portal-assigned) tunnel IPs.
+    ///
+    /// Failure to enforce this would allow one client to send traffic masquarading as a different client.
+    fn allowed_ips(&self) -> [IpAddr; 2] {
+        [IpAddr::from(self.ipv4), IpAddr::from(self.ipv6)]
+    }
+
     pub(crate) fn is_emptied(&self) -> bool {
         self.resources.is_empty()
     }
@@ -264,11 +271,10 @@ impl ClientOnGateway {
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
-        if packet.source() != IpAddr::from(self.ipv4) && packet.source() != IpAddr::from(self.ipv6)
-        {
+        if !self.allowed_ips().contains(&packet.source()) {
             return Err(connlib_shared::Error::UnallowedPacket {
                 src: packet.source(),
-                allowed_ips: HashSet::from_iter([self.ipv4.into(), self.ipv6.into()]),
+                allowed_ips: HashSet::from(self.allowed_ips()),
             });
         }
 
