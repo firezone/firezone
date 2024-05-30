@@ -709,55 +709,37 @@ impl ReferenceStateMachine for ReferenceState {
                     }
                 }
             }
-            Transition::SendQueryToDnsResource {
-                r_idx,
-                dns_server_idx,
-                r_type,
-                ..
-            } => {
+            Transition::SendQueryToDnsResource { r_idx, r_type, .. } => {
                 let domain = state.sample_dns_resource_domain(r_idx);
-                let server = state.sample_dns_server(dns_server_idx);
 
-                if state.client.sending_socket_for(server.ip()).is_some() {
-                    // Add all previously or newly resolved addresses to the client's DNS cache.
-                    // This mimics a crucial functionality of connlib:
-                    // Upon any DNS query, connlib will issue A and AAAA queries.
-                    // We then remember the results of both but only answer what the client asked for.
-                    // Upon a repeated DNS query, we use those earlier results.
-                    let cached_ips = state
-                        .resolved_domain_names
-                        .iter()
-                        .filter_map(|(c, ips)| (c == &domain).then_some(ips))
-                        .flatten();
-
-                    #[allow(clippy::wildcard_enum_match_arm)]
-                    match r_type {
-                        RecordType::A => {
-                            let ips = cached_ips
-                                .filter(|ip| ip.is_ipv4())
-                                .copied()
-                                .collect::<Vec<_>>();
-
-                            if !ips.is_empty() {
-                                let entry = state.client_dns_records.entry(domain).or_default();
-                                entry.extend(ips);
-                                entry.sort();
+                let resolved_ips = state
+                    .resolved_domain_names
+                    .get(&domain)
+                    .expect("DNS queries should only be sent for known resources")
+                    .iter()
+                    .copied()
+                    .filter({
+                        // Depending on the DNS query type, we filter the resolved addresses.
+                        #[allow(clippy::wildcard_enum_match_arm)]
+                        match r_type {
+                            RecordType::A => {
+                                &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool
                             }
-                        }
-                        RecordType::AAAA => {
-                            let ips = cached_ips
-                                .filter(|ip| ip.is_ipv6())
-                                .copied()
-                                .collect::<Vec<_>>();
-
-                            if !ips.is_empty() {
-                                let entry = state.client_dns_records.entry(domain).or_default();
-                                entry.extend(ips);
-                                entry.sort();
+                            RecordType::AAAA => {
+                                &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
                             }
+                            _ => unimplemented!(),
                         }
-                        _ => unimplemented!(),
-                    }
+                    })
+                    .collect::<Vec<_>>();
+
+                // We want to avoid empty lists in `client_dns_records`.
+                if !resolved_ips.is_empty() {
+                    state
+                        .client_dns_records
+                        .entry(domain)
+                        .or_default()
+                        .extend(resolved_ips)
                 }
             }
             Transition::SendICMPPacketToRandomIp {
