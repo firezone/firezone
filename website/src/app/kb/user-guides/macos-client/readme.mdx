@@ -14,8 +14,8 @@ Firezone supports macOS with a native client available in the macOS App Store.
 1. [Download the Client](https://apps.apple.com/us/app/firezone/id6443661826)
    from the Apple App Store.
 1. Click `Open` in the App Store. The `Welcome to Firezone` window will open.
-1. Click `Grant VPN Permission`. macOS will show a dialog,
-   `"Firezone" Would Like to Add VPN Configurations`
+1. Click `Grant VPN Permission`. macOS will show a dialog saying,
+   `"Firezone" Would Like to Add VPN Configurations`.
 1. Click `Allow`.
 
 ## Usage
@@ -23,7 +23,7 @@ Firezone supports macOS with a native client available in the macOS App Store.
 ### Signing in
 
 1. In the menu bar, click the crossed-out Firezone icon and click `Sign In`.
-   macOS will show a dialog,
+   macOS will show a dialog saying,
    `“Firezone” Wants to Use “firezone.dev” to Sign In`.
 1. Click `Continue`. Firezone will open a sign-in page.
 1. Select your account and sign in. The Firezone icon should no longer be
@@ -34,31 +34,30 @@ Firezone supports macOS with a native client available in the macOS App Store.
 When Firezone is signed in, web browsers and other programs will automatically
 use it to securely connect to Resources.
 
-To copy-paste the address of a Resource you have access to:
+To copy-paste the address of a Resource:
 
 1. In the menu bar, click the Firezone icon to open the status menu.
 1. Open a Resource's submenu and click on its address to copy it.
-1. Paste the address into your browser's URL bar and press Enter.
+1. Paste the address into your browser's URL bar and press Return.
 
 ### Quitting
 
 1. In the menu bar, click on the Firezone icon to open the status menu.
 1. Click `Disconnect and Quit` or `Quit`.
 
-The tunnel is now stopped. If you were signed in, the tunnel will restart
-automatically next time you open Firezone.
+When Firezone is not running, you can't access private Resources, and the
+computer will use its normal DNS and Internet behavior.
 
-The tunnel will be stopped until you sign in again.
+If you were signed in, then you will still be signed in the next time you start
+Firezone.
 
 ### Signing out
 
 1. In the menu bar, Click on the Firezone icon to open the status menu.
 1. Click `Sign out`.
 
-The tunnel is now stopped.
-
-When you're signed out, Resources will be inaccessible and your system will use
-its normal DNS and Internet behavior.
+When you're signed out, you can't access private Resources, and the computer
+will use its normal DNS and Internet behavior.
 
 ## Upgrading
 
@@ -69,14 +68,14 @@ for more information.
 ## Diagnostic logs
 
 Firezone writes log files to disk. These logs stay on your computer and are not
-transmitted anywhere. If you encounter a bug, sending us an `.aar` archive of
-your logs may help us fix the bug.
+transmitted anywhere. If you find a bug, you can send us a `.aar` archive of
+your logs to help us fix the bug.
 
-To export your logs as an `.aar` archive, or clear your log directory:
+To export or clear your logs:
 
 1. In the menu bar, click on the Firezone icon to open the status menu.
-1. Click "Settings".
-1. Click "Diagnostic Logs".
+1. Click `Settings`.
+1. Click `Diagnostic Logs`.
 1. Click `Export Logs` or `Clear Log Directory`.
 
 ## Uninstalling
@@ -94,7 +93,7 @@ information.
 
 ### Check if Firezone is controlling DNS
 
-1. Open the `Terminal` app.
+1. Open the Terminal app.
 1. Run `dig firezone.dev` and look for a line starting with `;; SERVER:`.
 
 If the Firezone is controlling the system's DNS, then the server will be
