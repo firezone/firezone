@@ -23,7 +23,7 @@ defmodule Web.Policies.New do
         form: form
       )
 
-    {:ok, socket}
+    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
 
   def render(assigns) do
