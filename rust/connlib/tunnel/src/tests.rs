@@ -184,7 +184,6 @@ enum Transition {
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
     },
-    // TODO: Add a transition for sending another DNS query for an already resolved domain.
     /// Send a ICMP packet to a DNS resolved address.
     SendICMPPacketToResolvedAddress {
         a_idx: sample::Index,
@@ -919,17 +918,11 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::SendQueryToDnsResource { dns_server_idx, .. } => {
                 let has_dns_resources = !state.client_dns_resources.is_empty();
 
-                if !has_dns_resources {
-                    return false;
-                }
-
                 let dns_server = state.sample_dns_server(dns_server_idx);
+                let can_contact_dns_server =
+                    state.client.sending_socket_for(dns_server.ip()).is_some();
 
-                if state.client.sending_socket_for(dns_server.ip()).is_none() {
-                    return false; // An operation system wouldn't use a DNS server that it doesn't have a sending socket for, right? RIGHT?
-                }
-
-                true
+                has_dns_resources && can_contact_dns_server
             }
             Transition::SendICMPPacketToResolvedAddress { .. } => {
                 !state.client_dns_records.is_empty()
