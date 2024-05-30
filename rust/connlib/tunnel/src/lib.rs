@@ -39,6 +39,8 @@ mod tests;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
+const MTU: usize = 1280;
+
 const REALM: &str = "firezone";
 
 #[cfg(target_os = "linux")]
@@ -62,10 +64,15 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     /// Handles all side-effects.
     io: Io,
 
-    write_buf: Box<[u8; MAX_UDP_SIZE]>,
+    // TODO: could we make these buffers smaller? Since all the valid packets will be at most
+    // MTU + Wireguard Header + optionally Data Channel + UDP header + IPV4/IPV6 header (1280 + 32 + 4 + 8 + 40 = 1364)
+    // or STUN control messages which afaik are smaller than that
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
-    device_read_buf: Box<[u8; MAX_UDP_SIZE]>,
+
+    // We need an extra 16 bytes on top of the MTU for write_buf since boringtun copies the extra AEAD tag before decrypting it
+    write_buf: Box<[u8; MTU + 16]>,
+    device_read_buf: Box<[u8; MTU]>,
 }
 
 impl<CB> ClientTunnel<CB>
@@ -81,10 +88,10 @@ where
             io: Io::new(sockets)?,
             callbacks,
             role_state: ClientState::new(private_key),
-            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            write_buf: Box::new([0u8; MTU + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MTU]),
         })
     }
 
@@ -177,10 +184,10 @@ where
             io: Io::new(sockets)?,
             callbacks,
             role_state: GatewayState::new(private_key),
-            write_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            write_buf: Box::new([0u8; MTU + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            device_read_buf: Box::new([0u8; MTU]),
         })
     }
 
