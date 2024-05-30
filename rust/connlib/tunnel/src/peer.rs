@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Instant;
 
 use bimap::BiMap;
@@ -169,15 +169,11 @@ impl GatewayOnClient {
 }
 
 impl ClientOnGateway {
-    pub(crate) fn new(id: ClientId, ips: &[IpNetwork]) -> ClientOnGateway {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(*ip, ());
-        }
-
+    pub(crate) fn new(id: ClientId, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> ClientOnGateway {
         ClientOnGateway {
             id,
-            allowed_ips,
+            ipv4,
+            ipv6,
             resources: HashMap::new(),
             filters: IpNetworkTable::new(),
         }
@@ -268,14 +264,11 @@ impl ClientOnGateway {
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
-        if self.allowed_ips.longest_match(packet.source()).is_none() {
+        if packet.source() != IpAddr::from(self.ipv4) && packet.source() != IpAddr::from(self.ipv6)
+        {
             return Err(connlib_shared::Error::UnallowedPacket {
                 src: packet.source(),
-                allowed_ips: self
-                    .allowed_ips
-                    .iter()
-                    .map(|(ip, &())| ip.network_address())
-                    .collect(),
+                allowed_ips: HashSet::from_iter([self.ipv4.into(), self.ipv6.into()]),
             });
         }
 
@@ -379,14 +372,18 @@ struct ResourceOnGateway {
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
-    allowed_ips: IpNetworkTable<()>,
+    ipv4: Ipv4Addr,
+    ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, Vec<ResourceOnGateway>>,
     filters: IpNetworkTable<FilterEngine>,
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{net::IpAddr, time::Duration};
+    use std::{
+        net::{Ipv4Addr, Ipv6Addr},
+        time::Duration,
+    };
 
     use chrono::Utc;
     use connlib_shared::messages::{
@@ -399,7 +396,7 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(client_id(), &[source_v4_addr().into()]);
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
         let now = Utc::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -424,7 +421,7 @@ mod tests {
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
-            source_v4_addr(),
+            source_v4_addr().into(),
             cidr_v4_resource().hosts().next().unwrap().into(),
             5401,
             80,
@@ -432,7 +429,7 @@ mod tests {
         );
 
         let udp_packet = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            source_v4_addr().into(),
             cidr_v4_resource().hosts().next().unwrap().into(),
             5401,
             80,
@@ -464,8 +461,12 @@ mod tests {
         ));
     }
 
-    fn source_v4_addr() -> IpAddr {
+    fn source_v4_addr() -> Ipv4Addr {
         "100.64.0.1".parse().unwrap()
+    }
+
+    fn source_v6_addr() -> Ipv6Addr {
+        "fd00:2021:1111::1".parse().unwrap()
     }
 
     fn cidr_v4_resource() -> Ipv4Network {
@@ -509,17 +510,24 @@ mod proptests {
     fn gateway_accepts_allowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(vec![resource_id(); 5])] resources_id: Vec<ResourceId>,
-        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=5))] protocol_config: Vec<
             (Filters, Protocol),
         >,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (src, resource_addr, dest) = config;
+        let (resource_addr, dest) = config;
+        let src = if dest.is_ipv4() {
+            src_v4.into()
+        } else {
+            src_v6.into()
+        };
         let mut filters = protocol_config.iter();
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
         let mut resource_addr = Some(resource_addr);
         let mut resources = 0;
 
@@ -549,39 +557,31 @@ mod proptests {
     fn gateway_accepts_allowed_packet_multiple_ips_resource(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
-        #[strategy(collection::vec(source_resource_and_host_within(), 1..=5))] config: Vec<(
-            IpAddr,
-            IpNetwork,
-            IpAddr,
-        )>,
+        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(collection::vec(cidr_with_host(), 1..=5))] config: Vec<(IpNetwork, IpAddr)>,
         #[strategy(filters_with_allowed_protocol())] protocol_config: (Filters, Protocol),
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (src, resource_addr, dest): (Vec<_>, Vec<_>, Vec<_>) = config.into_iter().multiunzip();
+        let (resource_addr, dest): (Vec<_>, Vec<_>) = config.into_iter().unzip();
         let (filters, protocol) = protocol_config;
-        let mut peer = ClientOnGateway::new(
-            client_id,
-            &src.clone().into_iter().map(Into::into).collect_vec(),
-        );
+        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
 
         peer.add_resource(resource_addr, resource_id, filters, None);
 
         for dest in dest {
-            for src in &src {
-                if dest.is_ipv4() == src.is_ipv4() {
-                    let packet = match protocol {
-                        Protocol::Tcp { dport } => {
-                            tcp_packet(*src, dest, sport, dport, payload.clone())
-                        }
-                        Protocol::Udp { dport } => {
-                            udp_packet(*src, dest, sport, dport, payload.clone())
-                        }
-                        Protocol::Icmp => icmp_request_packet(*src, dest, 1, 0),
-                    };
-                    assert!(peer.ensure_allowed(&packet).is_ok());
-                }
-            }
+            let src = if dest.is_ipv4() {
+                src_v4.into()
+            } else {
+                src_v6.into()
+            };
+            let packet = match protocol {
+                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+            };
+            assert!(peer.ensure_allowed(&packet).is_ok());
         }
     }
 
@@ -589,13 +589,13 @@ mod proptests {
     fn gateway_accepts_allowed_packet_multiple_ips_resource_multiple_adds(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
-        #[strategy(collection::vec(source_resource_and_host_within(), 1..=5))] config_res_1: Vec<(
-            IpAddr,
+        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(collection::vec(cidr_with_host(), 1..=5))] config_res_1: Vec<(
             IpNetwork,
             IpAddr,
         )>,
-        #[strategy(collection::vec(source_resource_and_host_within(), 1..=5))] config_res_2: Vec<(
-            IpAddr,
+        #[strategy(collection::vec(cidr_with_host(), 1..=5))] config_res_2: Vec<(
             IpNetwork,
             IpAddr,
         )>,
@@ -603,54 +603,40 @@ mod proptests {
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (src_1, resource_addr_1, dest_1): (Vec<_>, Vec<_>, Vec<_>) =
-            config_res_1.into_iter().multiunzip();
-        let (src_2, resource_addr_2, dest_2): (Vec<_>, Vec<_>, Vec<_>) =
-            config_res_2.into_iter().multiunzip();
+        let (resource_addr_1, dest_1): (Vec<_>, Vec<_>) = config_res_1.into_iter().unzip();
+        let (resource_addr_2, dest_2): (Vec<_>, Vec<_>) = config_res_2.into_iter().unzip();
         let (filters, protocol) = protocol_config;
-        let mut src = Vec::new();
-        src.extend(src_1);
-        src.extend(src_2);
-        let mut peer = ClientOnGateway::new(
-            client_id,
-            &src.clone().into_iter().map(Into::into).collect_vec(),
-        );
+        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
 
         peer.add_resource(resource_addr_1, resource_id, filters.clone(), None);
         peer.add_resource(resource_addr_2, resource_id, filters, None);
 
         for dest in dest_1 {
-            for src in &src {
-                if dest.is_ipv4() == src.is_ipv4() {
-                    let packet = match protocol {
-                        Protocol::Tcp { dport } => {
-                            tcp_packet(*src, dest, sport, dport, payload.clone())
-                        }
-                        Protocol::Udp { dport } => {
-                            udp_packet(*src, dest, sport, dport, payload.clone())
-                        }
-                        Protocol::Icmp => icmp_request_packet(*src, dest, 1, 0),
-                    };
-                    assert!(peer.ensure_allowed(&packet).is_ok());
-                }
-            }
+            let src = if dest.is_ipv4() {
+                src_v4.into()
+            } else {
+                src_v6.into()
+            };
+            let packet = match protocol {
+                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+            };
+            assert!(peer.ensure_allowed(&packet).is_ok());
         }
 
         for dest in dest_2 {
-            for src in &src {
-                if dest.is_ipv4() == src.is_ipv4() {
-                    let packet = match protocol {
-                        Protocol::Tcp { dport } => {
-                            tcp_packet(*src, dest, sport, dport, payload.clone())
-                        }
-                        Protocol::Udp { dport } => {
-                            udp_packet(*src, dest, sport, dport, payload.clone())
-                        }
-                        Protocol::Icmp => icmp_request_packet(*src, dest, 1, 0),
-                    };
-                    assert!(peer.ensure_allowed(&packet).is_ok());
-                }
-            }
+            let src = if dest.is_ipv4() {
+                src_v4.into()
+            } else {
+                src_v6.into()
+            };
+            let packet = match protocol {
+                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+            };
+            assert!(peer.ensure_allowed(&packet).is_ok());
         }
     }
 
@@ -658,15 +644,22 @@ mod proptests {
     fn gateway_accepts_different_resources_with_same_ip_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(vec![resource_id(); 10])] resources_ids: Vec<ResourceId>,
-        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=10))] protocol_config: Vec<
             (Filters, Protocol),
         >,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (src, resource_addr, dest) = config;
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let (resource_addr, dest) = config;
+        let src = if dest.is_ipv4() {
+            src_v4.into()
+        } else {
+            src_v6.into()
+        };
+        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
         let mut resources_ids = resources_ids.iter();
         for (filters, _) in &protocol_config {
             // This test could be extended to test multiple src
@@ -693,15 +686,22 @@ mod proptests {
     fn gateway_reject_unallowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
-        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(filters_with_rejected_protocol())] protocol_config: (Filters, Protocol),
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (src, resource_addr, dest) = config;
+        let (resource_addr, dest) = config;
+        let src = if dest.is_ipv4() {
+            src_v4.into()
+        } else {
+            src_v6.into()
+        };
         let (filters, protocol) = protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
         let packet = match protocol {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
@@ -721,7 +721,9 @@ mod proptests {
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id_allowed: ResourceId,
         #[strategy(resource_id())] resource_id_removed: ResourceId,
-        #[strategy(source_resource_and_host_within())] config: (IpAddr, IpNetwork, IpAddr),
+        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(non_overlapping_non_empty_filters_with_allowed_protocol())] protocol_config: (
             (Filters, Protocol),
             (Filters, Protocol),
@@ -729,11 +731,16 @@ mod proptests {
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (src, resource_addr, dest) = config;
+        let (resource_addr, dest) = config;
+        let src = if dest.is_ipv4() {
+            src_v4.into()
+        } else {
+            src_v6.into()
+        };
         let ((filters_allowed, protocol_allowed), (filters_removed, protocol_removed)) =
             protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, &[src.into()]);
+        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
 
         let packet_allowed = match protocol_allowed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
@@ -801,36 +808,22 @@ mod proptests {
         })
     }
 
-    fn source_resource_and_host_within() -> impl Strategy<Value = (IpAddr, IpNetwork, IpAddr)> {
-        any::<bool>().prop_flat_map(|is_v4| {
-            if is_v4 {
-                cidrv4_with_host()
-                    .prop_flat_map(|(net, dst)| {
-                        any::<Ipv4Addr>().prop_map(move |src| (src.into(), net.into(), dst.into()))
-                    })
-                    .boxed()
-            } else {
-                cidrv6_with_host()
-                    .prop_flat_map(|(net, dst)| {
-                        any::<Ipv6Addr>().prop_map(move |src| (src.into(), net.into(), dst.into()))
-                    })
-                    .boxed()
-            }
-        })
+    fn cidr_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
+        prop_oneof![cidrv4_with_host(), cidrv6_with_host()]
     }
 
     // max netmask here picked arbitrarily since using max size made the tests run for too long
-    fn cidrv6_with_host() -> impl Strategy<Value = (Ipv6Network, Ipv6Addr)> {
+    fn cidrv6_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
         (1usize..=8).prop_flat_map(|host_mask| {
             ip6_network(host_mask)
-                .prop_flat_map(|net| host_v6(net).prop_map(move |host| (net, host)))
+                .prop_flat_map(|net| host_v6(net).prop_map(move |host| (net.into(), host.into())))
         })
     }
 
-    fn cidrv4_with_host() -> impl Strategy<Value = (Ipv4Network, Ipv4Addr)> {
+    fn cidrv4_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
         (1usize..=8).prop_flat_map(|host_mask| {
             ip4_network(host_mask)
-                .prop_flat_map(|net| host_v4(net).prop_map(move |host| (net, host)))
+                .prop_flat_map(|net| host_v4(net).prop_map(move |host| (net.into(), host.into())))
         })
     }
 

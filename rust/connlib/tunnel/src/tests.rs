@@ -889,10 +889,8 @@ impl TunnelTest {
                                         },
                                     },
                                     self.client.state.public_key(),
-                                    vec![
-                                        self.client.tunnel_ip4.into(),
-                                        self.client.tunnel_ip6.into(),
-                                    ],
+                                    self.client.tunnel_ip4,
+                                    self.client.tunnel_ip6,
                                     HashSet::default(),
                                     HashSet::default(),
                                     new_connection.client_payload.domain,
