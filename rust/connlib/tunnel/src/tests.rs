@@ -129,8 +129,8 @@ struct ReferenceState {
     /// We need to keep this around because connlib also (re)-uses the response of the first DNS access.
     resolved_domain_names: HashMap<DomainName, Vec<IpAddr>>,
 
-    /// The expected ICMP handshakes (resource dst IP, seq, identifier)
-    expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16, ResourceKind)>,
+    /// The expected ICMP handshakes.
+    expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -140,6 +140,8 @@ enum ResourceKind {
 }
 
 type QueryId = u16;
+type IcmpSeq = u16;
+type IcmpIdentifier = u16;
 
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
