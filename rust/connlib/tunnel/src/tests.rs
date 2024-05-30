@@ -909,9 +909,8 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
                 // Connlib cannot know, when a DNS record expires, thus we currently don't allow DNS resources to change their IPs using this pre-condition.
-                let dns_resource = state.sample_dns_resource_domain(r_idx);
-                let has_resolved_domain_already =
-                    state.resolved_domain_names.get(&dns_resource).is_some();
+                let domain = state.sample_dns_resource_domain(r_idx);
+                let has_resolved_domain_already = state.resolved_domain_names.contains_key(&domain);
 
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
                 let any_real_ip_overlaps_with_cidr_resource =
