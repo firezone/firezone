@@ -145,7 +145,7 @@ type IcmpIdentifier = u16;
 enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
-    /// Send a ICMP packet to random IP.
+    /// Send an ICMP packet to none-resource IP.
     SendICMPPacketToNoneResourceIp {
         dst: IpAddr,
         seq: u16,
