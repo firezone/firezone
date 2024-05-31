@@ -13,7 +13,6 @@ mod gui;
 mod ipc;
 mod logging;
 mod network_changes;
-mod resolvers;
 mod settings;
 mod updates;
 mod uptime;

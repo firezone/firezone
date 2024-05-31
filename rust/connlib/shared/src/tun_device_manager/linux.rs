@@ -2,10 +2,9 @@
 
 use crate::{
     callbacks::{Cidrv4, Cidrv6},
-    linux::{etc_resolv_conf, DnsControlMethod},
     DEFAULT_MTU,
 };
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{anyhow, Context as _, Result};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -13,7 +12,7 @@ use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
 use std::{
     collections::HashSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr},
 };
 
 pub const FIREZONE_MARK: u32 = 0xfd002021;
@@ -24,7 +23,6 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 /// For lack of a better name
 pub struct TunDeviceManager {
     connection: Connection,
-    dns_control_method: Option<DnsControlMethod>,
     routes: HashSet<IpNetwork>,
 }
 
@@ -36,11 +34,6 @@ struct Connection {
 impl Drop for TunDeviceManager {
     fn drop(&mut self) {
         self.connection.task.abort();
-        tracing::debug!("Reverting DNS control...");
-        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
-            // TODO: Check that nobody else modified the file while we were running.
-            etc_resolv_conf::revert().ok();
-        }
     }
 }
 
@@ -49,17 +42,12 @@ impl TunDeviceManager {
     ///
     /// Panics if called without a Tokio runtime.
     pub fn new() -> Result<Self> {
-        // We'll remove `get_dns_control_from_env` in #5068
-        let dns_control_method = crate::linux::get_dns_control_from_env();
-        tracing::info!(?dns_control_method);
-
         let (cxn, handle, _) = new_connection()?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
 
         Ok(Self {
             connection,
-            dns_control_method,
             routes: Default::default(),
         })
     }
@@ -127,16 +115,6 @@ impl TunDeviceManager {
         res_v4.or(res_v6)?;
 
         Ok(())
-    }
-
-    pub async fn control_dns(&self, dns_config: Vec<IpAddr>) -> Result<()> {
-        match self.dns_control_method {
-            None => Ok(()),
-            Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config).await,
-            Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config),
-            Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await,
-        }
-        .context("Failed to control DNS")
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -248,37 +226,5 @@ async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()
         .execute()
         .await
         .context("Failed to delete route")?;
-    Ok(())
-}
-
-fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
-    anyhow::bail!("DNS control with NetworkManager is not implemented yet",)
-}
-
-async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("dns")
-        .arg(IFACE_NAME)
-        .args(dns_config.iter().map(ToString::to_string))
-        .status()
-        .await
-        .context("`resolvectl dns` didn't run")?;
-    if !status.success() {
-        bail!("`resolvectl dns` returned non-zero");
-    }
-
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("domain")
-        .arg(IFACE_NAME)
-        .arg("~.")
-        .status()
-        .await
-        .context("`resolvectl domain` didn't run")?;
-    if !status.success() {
-        bail!("`resolvectl domain` returned non-zero");
-    }
-
-    tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
-
     Ok(())
 }

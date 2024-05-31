@@ -242,7 +242,7 @@ pub fn pipe_path() -> String {
     named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
 }
 
-pub fn system_resolvers() -> Result<Vec<IpAddr>> {
+pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
         .flat_map(|adapter| adapter.dns_servers())

@@ -9,6 +9,7 @@ authors = ["Firezone, Inc."]
 
 [dependencies]
 anyhow = { version = "1.0" }
+atomicwrites = "0.4.3" # Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
 clap = { version = "4.5", features = ["derive",  "env", "string"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
@@ -27,11 +28,17 @@ tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.3.1", default-features = false }
+uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
+
+[dev-dependencies]
+mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
+tempfile = "3.10.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 nix = { version =  "0.28.0", features = ["fs", "user"] }
 resolv-conf = "0.7.0"
+rtnetlink = { workspace = true }
 sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 
 [target.'cfg(target_os = "macos")'.dependencies]

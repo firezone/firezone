@@ -8,15 +8,6 @@ pub mod error;
 pub mod messages;
 pub mod tun_device_manager;
 
-/// Module to generate and store a persistent device ID on disk
-///
-/// Only properly implemented on Linux and Windows (platforms with Tauri and headless client)
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod device_id;
-
-#[cfg(target_os = "linux")]
-pub mod linux;
-
 #[cfg(target_os = "windows")]
 pub mod windows;
 
