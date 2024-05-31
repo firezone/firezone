@@ -78,7 +78,7 @@ fn icmp_packet(
             icmp_packet.set_checksum(0);
 
             let mut echo_request_packet =
-                MutableEchoRequestPacket::new(icmp_packet.payload_mut()).unwrap();
+                MutableEchoRequestPacket::new(icmp_packet.packet_mut()).unwrap();
             echo_request_packet.set_sequence_number(seq);
             echo_request_packet.set_identifier(identifier);
             echo_request_packet.set_checksum(crate::util::checksum(
@@ -116,13 +116,13 @@ fn icmp_packet(
             }
 
             let mut echo_request_packet =
-                MutableEchoRequestPacket::new(icmp_packet.payload_mut()).unwrap();
+                MutableEchoRequestPacket::new(icmp_packet.packet_mut()).unwrap();
             echo_request_packet.set_identifier(identifier);
             echo_request_packet.set_sequence_number(seq);
             echo_request_packet.set_checksum(0);
 
             let checksum = crate::icmpv6::checksum(&icmp_packet.to_immutable(), &src, &dst);
-            MutableEchoRequestPacket::new(icmp_packet.payload_mut())
+            MutableEchoRequestPacket::new(icmp_packet.packet_mut())
                 .unwrap()
                 .set_checksum(checksum);
 
