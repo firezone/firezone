@@ -167,7 +167,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async { crate::ipc_listen().await })?;
+    rt.block_on(crate::ipc_listen())?;
     Ok(())
 }
 

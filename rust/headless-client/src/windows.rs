@@ -149,14 +149,13 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     })?;
 
     let result = match rt.block_on(ipc_task) {
+        Err(join_error) if join_error.is_cancelled() => {
+            // We cancelled because Windows asked us to shut down.
+            Ok(())
+        }
         Err(join_error) => {
-            if join_error.is_cancelled() {
-                // We cancelled because Windows asked us to shut down.
-                Ok(())
-            } else {
-                // The IPC task may have panicked
-                Err(join_error.into())
-            }
+            // The IPC task may have panicked
+            Err(join_error.into())
         }
         Ok(Err(error)) => Err(error.context("ipc_listen failed")),
         Ok(Ok(impossible)) => match impossible {},
