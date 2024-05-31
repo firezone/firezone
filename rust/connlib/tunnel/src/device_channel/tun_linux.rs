@@ -1,6 +1,9 @@
 use super::utils;
 use crate::device_channel::ioctl;
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
+use connlib_shared::{
+    interface::platform::IFACE_NAME, messages::Interface as InterfaceConfig, Callbacks, Error,
+    Result,
+};
 use ip_network::IpNetwork;
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
@@ -20,7 +23,6 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 
-const IFACE_NAME: &str = "tun-firezone";
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;

@@ -2,7 +2,6 @@
 
 use crate::{
     callbacks::{Cidrv4, Cidrv6},
-    interface::platform::{FIREZONE_MARK, IFACE_NAME},
     linux::{etc_resolv_conf, DnsControlMethod},
     DEFAULT_MTU,
 };

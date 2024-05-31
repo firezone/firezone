@@ -339,7 +339,7 @@ fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
 
     #[cfg(target_os = "linux")]
     {
-        socket.set_mark(crate::FIREZONE_MARK)?;
+        socket.set_mark(connlib_shared::interface::platform::FIREZONE_MARK)?;
     }
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
