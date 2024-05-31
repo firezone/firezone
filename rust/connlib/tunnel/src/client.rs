@@ -738,12 +738,12 @@ impl ClientState {
                 // Assuming a single upstream dns until #3123 lands
                 if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
                 {
-                    if self
-                        .cidr_resources
-                        .longest_match(upstream_dns.ip())
-                        .is_some()
-                    {
-                        return Err((packet, upstream_dns.ip()));
+                    let ip = upstream_dns.ip();
+
+                    if self.cidr_resources.longest_match(ip).is_some() {
+                        tracing::debug!(%ip, "DNS server is a CIDR resource");
+
+                        return Err((packet, ip));
                     }
                 }
 

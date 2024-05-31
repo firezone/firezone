@@ -81,7 +81,8 @@ struct TunnelTest {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
-    client_sent_dns_queries: HashMap<QueryId, DomainName>,
+    client_received_dns_replies: HashSet<QueryId>,
+
     client_sent_icmp_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
     client_received_icmp_replies: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
     gateway_received_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
@@ -132,6 +133,8 @@ struct ReferenceState {
 
     /// The expected ICMP handshakes.
     expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
+    /// The DNS query IDs we expect replies for.
+    expected_dns_query_replies: HashSet<QueryId>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -278,7 +281,7 @@ impl StateMachineTest for TunnelTest {
             client_sent_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
-            client_sent_dns_queries: Default::default(),
+            client_received_dns_replies: Default::default(),
             client_proxy_ip_mapping: Default::default(),
         };
 
@@ -372,15 +375,6 @@ impl StateMachineTest for TunnelTest {
             } => {
                 let (domain, _) = ref_state.sample_domain(&r_idx);
                 let dns_server = ref_state.sample_dns_server(&dns_server_idx);
-
-                // Only remember the sent DNS query if the DNS server isn't a resource.
-                // We assert that we answer all DNS queries which isn't true in this case.
-                // When the DNS server is a resource, the query itself acts as the connection intent and thus gets dropped as part of the connection setup.
-                if ref_state.cidr_resource_by_ip(dns_server.ip()).is_none() {
-                    state
-                        .client_sent_dns_queries
-                        .insert(query_id, domain.clone());
-                }
 
                 let transmit = state.send_dns_query_for(domain, r_type, query_id, dns_server);
 
@@ -483,8 +477,7 @@ impl StateMachineTest for TunnelTest {
             "Unexpected ICMP replies on client"
         );
         assert_eq!(
-            state.client_sent_dns_queries,
-            HashMap::new(),
+            state.client_received_dns_replies, ref_state.expected_dns_query_replies,
             "Unanswered DNS queries on the client"
         );
 
@@ -593,6 +586,7 @@ impl ReferenceStateMachine for ReferenceState {
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
                     client_dns_records: Default::default(),
+                    expected_dns_query_replies: Default::default(),
                 },
             )
             .boxed()
@@ -689,35 +683,40 @@ impl ReferenceStateMachine for ReferenceState {
                 r_idx,
                 r_type,
                 dns_server_idx,
+                query_id,
                 ..
             } => {
-                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection but the packet will be dropped.
+                let (domain, all_ips) = state.sample_domain(r_idx);
                 let dns_server = state.sample_dns_server(dns_server_idx);
 
-                if let Some(resource) = state.cidr_resource_by_ip(dns_server.ip()) {
-                    state.client_connected_cidr_resources.insert(resource);
-                } else {
-                    let (domain, all_ips) = state.sample_domain(r_idx);
-
-                    // Depending on the DNS query type, we filter the resolved addresses.
-                    let ips_resolved_by_query = all_ips.iter().copied().filter({
-                        #[allow(clippy::wildcard_enum_match_arm)]
-                        match r_type {
-                            RecordType::A => {
-                                &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool
+                match state.dns_query_via_cidr_resource(dns_server.ip(), &domain) {
+                    Some(resource)
+                        if !state.client_connected_cidr_resources.contains(&resource) =>
+                    {
+                        state.client_connected_cidr_resources.insert(resource);
+                    }
+                    Some(_) | None => {
+                        // Depending on the DNS query type, we filter the resolved addresses.
+                        let ips_resolved_by_query = all_ips.iter().copied().filter({
+                            #[allow(clippy::wildcard_enum_match_arm)]
+                            match r_type {
+                                RecordType::A => {
+                                    &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool
+                                }
+                                RecordType::AAAA => {
+                                    &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
+                                }
+                                _ => unimplemented!(),
                             }
-                            RecordType::AAAA => {
-                                &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
-                            }
-                            _ => unimplemented!(),
-                        }
-                    });
+                        });
 
-                    state
-                        .client_dns_records
-                        .entry(domain)
-                        .or_default()
-                        .extend(ips_resolved_by_query);
+                        state
+                            .client_dns_records
+                            .entry(domain.clone())
+                            .or_default()
+                            .extend(ips_resolved_by_query);
+                        state.expected_dns_query_replies.insert(*query_id);
+                    }
                 }
             }
             Transition::SendICMPPacketToNonResourceIp { .. }
@@ -858,15 +857,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::SendDnsQuery { dns_server_idx, .. } => {
-                let has_dns_records = !state.global_dns_records.is_empty();
-
-                let dns_server = state.sample_dns_server(dns_server_idx);
-                let can_contact_dns_server =
-                    state.client.sending_socket_for(dns_server.ip()).is_some();
-
-                has_dns_records && can_contact_dns_server
-            }
+            Transition::SendDnsQuery { .. } => !state.global_dns_records.is_empty(),
         }
     }
 }
@@ -1142,24 +1133,36 @@ impl TunnelTest {
         }) {
             let packet = packet.to_owned();
 
-            let icmp = packet.as_icmp().expect("to be ICMP packet");
-            let echo_request = icmp.as_echo_request().expect("to be echo request");
+            if let Some(icmp) = packet.as_icmp() {
+                let echo_request = icmp.as_echo_request().expect("to be echo request");
 
-            self.gateway_received_requests.insert(
-                (echo_request.sequence(), echo_request.identifier()),
-                packet.clone(),
-            );
+                self.gateway_received_requests.insert(
+                    (echo_request.sequence(), echo_request.identifier()),
+                    packet.clone(),
+                );
 
-            if let Some(transmit) = self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
-            }) {
-                let transmit = transmit.into_owned();
-                let dst = transmit.dst;
+                if let Some(transmit) = self.gateway.span.in_scope(|| {
+                    self.gateway
+                        .state
+                        .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
+                }) {
+                    let transmit = transmit.into_owned();
+                    let dst = transmit.dst;
 
-                buffered_transmits.push_back((transmit, self.gateway.sending_socket_for(dst.ip())));
-            };
+                    buffered_transmits
+                        .push_back((transmit, self.gateway.sending_socket_for(dst.ip())));
+                };
+
+                return ControlFlow::Break(());
+            }
+
+            if let Some(udp) = packet.as_udp() {
+                // TODO: We need to generate a DNS reply here.
+
+                return ControlFlow::Break(());
+            }
+
+            panic!("Unhandled packet")
         };
 
         ControlFlow::Break(())
@@ -1337,28 +1340,21 @@ impl TunnelTest {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
-                let requested_domain = self
-                    .client_sent_dns_queries
-                    .remove(&message.id())
-                    .expect("DNS message to be response to previously sent request");
+                self.client_received_dns_replies.insert(message.id());
 
-                let resolved_ips = message.take_answers().into_iter().map(|r| {
-                    let domain = hickory_name_to_domain(r.name().clone());
-                    debug_assert_eq!(domain, requested_domain);
+                for record in message.take_answers().into_iter() {
+                    let domain = hickory_name_to_domain(record.name().clone());
 
-                    match &r.data() {
+                    let ip = match record.data() {
                         Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
                         Some(RData::AAAA(rdata::AAAA(ip6))) => IpAddr::from(*ip6),
                         unhandled => {
                             panic!("Unexpected record data: {unhandled:?}")
                         }
-                    }
-                });
+                    };
 
-                self.client_dns_records
-                    .entry(requested_domain.clone())
-                    .or_default()
-                    .extend(resolved_ips);
+                    self.client_dns_records.entry(domain).or_default().push(ip);
+                }
 
                 return;
             }
@@ -1381,15 +1377,12 @@ impl TunnelTest {
 
         let name = domain_to_hickory_name(domain);
 
-        let src = self
-            .client
-            .sending_socket_for(dns_server)
-            .expect("to only sample DNS server compatible with client socket");
+        let src = self.client.tunnel_ip(dns_server);
 
         let packet = ip_packet::make::dns_query(
             name,
             r_type,
-            src,
+            SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
             SocketAddr::new(dns_server, 53),
             query_id,
         );
@@ -1688,6 +1681,22 @@ impl ReferenceState {
             .flatten()
             .copied()
             .collect()
+    }
+
+    /// Returns the CIDR resource we will forward the DNS query for the given name to.
+    ///
+    /// DNS servers may be resources, in which case queries that need to be forwarded actually need to be encapsulated.
+    fn dns_query_via_cidr_resource(
+        &self,
+        dns_server: IpAddr,
+        domain: &DomainName,
+    ) -> Option<ResourceId> {
+        // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
+        if self.dns_resource_by_domain(domain).is_some() {
+            return None;
+        }
+
+        self.cidr_resource_by_ip(dns_server)
     }
 }
 
