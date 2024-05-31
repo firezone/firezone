@@ -6,7 +6,7 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::callbacks::Status;
+use crate::{callbacks::Status, DomainName};
 
 use super::ResourceId;
 
@@ -28,6 +28,10 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
+    pub fn address_as_domain(&self) -> Result<DomainName, domain::base::name::FromStrError> {
+        self.address.parse()
+    }
+
     fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
         crate::callbacks::ResourceDescriptionDns {
             id: self.id,
