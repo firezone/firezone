@@ -373,6 +373,15 @@ impl StateMachineTest for TunnelTest {
                 let (domain, _) = ref_state.sample_domain(&r_idx);
                 let dns_server = ref_state.sample_dns_server(&dns_server_idx);
 
+                // Only remember the sent DNS query if the DNS server isn't a resource.
+                // We assert that we answer all DNS queries which isn't true in this case.
+                // When the DNS server is a resource, the query itself acts as the connection intent and thus gets dropped as part of the connection setup.
+                if ref_state.cidr_resource_by_ip(dns_server.ip()).is_none() {
+                    state
+                        .client_sent_dns_queries
+                        .insert(query_id, domain.clone());
+                }
+
                 let transmit = state.send_dns_query_for(domain, r_type, query_id, dns_server);
 
                 buffered_transmits.extend(transmit)
@@ -472,6 +481,11 @@ impl StateMachineTest for TunnelTest {
             state.client_received_icmp_replies,
             HashMap::new(),
             "Unexpected ICMP replies on client"
+        );
+        assert_eq!(
+            state.client_sent_dns_queries,
+            HashMap::new(),
+            "Unanswered DNS queries on the client"
         );
 
         assert_eq!(
@@ -677,33 +691,34 @@ impl ReferenceStateMachine for ReferenceState {
                 dns_server_idx,
                 ..
             } => {
-                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
+                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection but the packet will be dropped.
                 let dns_server = state.sample_dns_server(dns_server_idx);
-                let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
 
-                if let Some((_, resource)) = maybe_resource {
-                    state.client_connected_cidr_resources.insert(resource.id);
-                }
+                if let Some(resource) = state.cidr_resource_by_ip(dns_server.ip()) {
+                    state.client_connected_cidr_resources.insert(resource);
+                } else {
+                    let (domain, all_ips) = state.sample_domain(r_idx);
 
-                let (domain, all_ips) = state.sample_domain(r_idx);
-
-                // Depending on the DNS query type, we filter the resolved addresses.
-                let ips_resolved_by_query = all_ips.iter().copied().filter({
-                    #[allow(clippy::wildcard_enum_match_arm)]
-                    match r_type {
-                        RecordType::A => &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool,
-                        RecordType::AAAA => {
-                            &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
+                    // Depending on the DNS query type, we filter the resolved addresses.
+                    let ips_resolved_by_query = all_ips.iter().copied().filter({
+                        #[allow(clippy::wildcard_enum_match_arm)]
+                        match r_type {
+                            RecordType::A => {
+                                &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool
+                            }
+                            RecordType::AAAA => {
+                                &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
+                            }
+                            _ => unimplemented!(),
                         }
-                        _ => unimplemented!(),
-                    }
-                });
+                    });
 
-                state
-                    .client_dns_records
-                    .entry(domain)
-                    .or_default()
-                    .extend(ips_resolved_by_query);
+                    state
+                        .client_dns_records
+                        .entry(domain)
+                        .or_default()
+                        .extend(ips_resolved_by_query);
+                }
             }
             Transition::SendICMPPacketToNonResourceIp { .. }
             | Transition::SendICMPPacketToResolvedNonResourceIp { .. } => {
@@ -891,12 +906,12 @@ impl TunnelTest {
                 );
                 continue;
             }
-            if let Some(packet) = self.client.state.poll_packets() {
-                self.on_client_buffered_packet(packet);
-                continue;
-            }
             if let Some(query) = self.client.state.poll_dns_queries() {
                 self.on_forwarded_dns_query(query, ref_state);
+                continue;
+            }
+            if let Some(packet) = self.client.state.poll_packets() {
+                self.on_client_buffered_packet(packet);
                 continue;
             }
 
@@ -1364,9 +1379,6 @@ impl TunnelTest {
             .get_by_right(&dns_server)
             .expect("to have a sentinel DNS server for the sampled one");
 
-        self.client_sent_dns_queries
-            .insert(query_id, domain.clone());
-
         let name = domain_to_hickory_name(domain);
 
         let src = self
@@ -1659,6 +1671,12 @@ impl ReferenceState {
             .find_map(|(domain, ips)| ips.contains(&ip).then_some(domain))?;
 
         self.dns_resource_by_domain(domain)
+    }
+
+    fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
+        self.client_cidr_resources
+            .longest_match(ip)
+            .map(|(_, r)| r.id)
     }
 
     fn resolved_ips_for_non_resources(&self) -> Vec<IpAddr> {
