@@ -57,7 +57,7 @@ defmodule Web.Sites.NewToken do
         Gateways require egress connectivity to the control plane API and relay servers.
         <strong>No ingress firewall rules</strong>
         are required or recommended. See our
-        <.website_link href="/kb/deploy/gateways#firewall-considerations">
+        <.website_link href="/kb/deploy/gateways#firewall-ports">
           deploy guide
         </.website_link>
         for more information.
@@ -148,18 +148,6 @@ defmodule Web.Sites.NewToken do
                 phx-no-format
                 phx-update="ignore"
               ><%= manual_command(@env) %></.code_block>
-
-              <p class="p-4">
-                See
-                <.link
-                  href="https://www.firezone.dev/kb/deploy/gateways#environment_variables"
-                  target="_blank"
-                  class={link_style()}
-                >
-                  the Gateway docs
-                </.link>
-                for a full list of environment variables.
-              </p>
 
               <p class="p-4">
                 <strong>Important:</strong>
