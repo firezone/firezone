@@ -357,9 +357,7 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
                 tracing::info!("Caught Interrupt signal");
                 Ok(())
             }
-            future::Either::Right((Ok(()), _)) => {
-                bail!("Impossible, ipc_listen can't return Ok");
-            }
+            future::Either::Right((Ok(impossible), _)) => match impossible {},
             future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
         }
     })
@@ -416,7 +414,7 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-async fn ipc_listen() -> Result<()> {
+async fn ipc_listen() -> Result<std::convert::Infallible> {
     let mut server = platform::IpcServer::new().await?;
     loop {
         connlib_shared::deactivate_dns_control()?;
