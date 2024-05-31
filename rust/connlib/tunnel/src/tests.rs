@@ -371,8 +371,9 @@ impl StateMachineTest for TunnelTest {
                 dns_server_idx,
             } => {
                 let (domain, _) = ref_state.sample_domain(&r_idx);
-                let transmit =
-                    state.send_dns_query_for(domain, r_type, query_id, ref_state, dns_server_idx);
+                let dns_server = dbg!(ref_state.sample_dns_server(&dns_server_idx));
+
+                let transmit = state.send_dns_query_for(domain, r_type, query_id, dns_server);
 
                 buffered_transmits.extend(transmit)
             }
@@ -677,7 +678,7 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
-                let dns_server = state.sample_dns_server(dns_server_idx);
+                let dns_server = dbg!(state.sample_dns_server(dns_server_idx));
                 let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
 
                 if let Some((_, resource)) = maybe_resource {
@@ -1356,12 +1357,9 @@ impl TunnelTest {
         domain: DomainName,
         r_type: RecordType,
         query_id: u16,
-        ref_state: &ReferenceState,
-        dns_server_idx: sample::Index,
+        dns_server: SocketAddr,
     ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
-        let dns_server = ref_state.sample_dns_server(&dns_server_idx);
-        let dns_server = *self
-            .client_dns_by_sentinel
+        let dns_server = *dbg!(&self.client_dns_by_sentinel)
             .get_by_right(&dns_server)
             .expect("to have a sentinel DNS server for the sampled one");
 
@@ -1626,10 +1624,19 @@ impl ReferenceState {
             return None;
         }
 
-        let mut client_dns_cache = Vec::from_iter(self.client_dns_records.clone());
-        client_dns_cache.sort();
+        let mut resource_records = self
+            .client_dns_records
+            .iter()
+            .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
+            .map(|(domain, ips)| (domain.clone(), ips.clone()))
+            .collect::<Vec<_>>();
+        if resource_records.is_empty() {
+            return None;
+        }
 
-        let (name, addr) = idx.get(&client_dns_cache);
+        resource_records.sort();
+
+        let (name, addr) = idx.get(&resource_records);
 
         if addr.is_empty() {
             return None;
