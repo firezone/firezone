@@ -70,7 +70,7 @@ struct TunnelTest {
 
     /// The DNS records created on the client as a result of received DNS responses.
     ///
-    /// This contains results from both, queries to DNS resources and none-resources.
+    /// This contains results from both, queries to DNS resources and non-resources.
     client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Mapping of proxy IPs to real resource destinations.
@@ -156,7 +156,7 @@ enum Transition {
         identifier: u16,
     },
     /// Send an ICMP packet to an IP we resolved via DNS but is not a resource.
-    SendICMPPacketToResolvedNoneResourceIp {
+    SendICMPPacketToResolvedNonResourceIp {
         idx: sample::Index,
         seq: u16,
         identifier: u16,
@@ -192,7 +192,7 @@ enum Transition {
         dns_server_idx: sample::Index,
     },
     /// Send a DNS query for one of our DNS resources.
-    SendQueryToNoneDnsResource {
+    SendQueryToNonDnsResource {
         /// The domain name to query.
         domain: DomainName,
         /// The type of DNS query we should send.
@@ -344,13 +344,13 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToResolvedNoneResourceIp {
+            Transition::SendICMPPacketToResolvedNonResourceIp {
                 idx,
                 seq,
                 identifier,
             } => {
                 let dst = ref_state
-                    .sample_resolved_none_resource_dst(&idx)
+                    .sample_resolved_non_resource_dst(&idx)
                     .expect("Transition to only be sampled if we have at least one non-resource resolved domain");
                 let packet = ip_packet::make::icmp_request_packet(
                     state.client.tunnel_ip(dst),
@@ -389,7 +389,7 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(transmit)
             }
-            Transition::SendQueryToNoneDnsResource {
+            Transition::SendQueryToNonDnsResource {
                 domain,
                 r_type,
                 query_id,
@@ -644,11 +644,11 @@ impl ReferenceStateMachine for ReferenceState {
 
         if !state.client_dns_resources.is_empty() {
             strategies.extend([(3, query_to_dns_resource().boxed())]);
-            strategies.extend([(1, query_to_none_dns_resource().boxed())]);
+            strategies.extend([(1, query_to_non_dns_resource().boxed())]);
         }
 
-        if !state.resolved_ips_for_none_resources().is_empty() {
-            strategies.push((1, icmp_to_resolved_none_resource().boxed()));
+        if !state.resolved_ips_for_non_resources().is_empty() {
+            strategies.push((1, icmp_to_resolved_non_resource().boxed()));
         }
 
         Union::new_weighted(strategies).boxed()
@@ -719,7 +719,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .extend(ips_resolved_by_query);
             }
             Transition::SendICMPPacketToNonResourceIp { .. }
-            | Transition::SendICMPPacketToResolvedNoneResourceIp { .. } => {
+            | Transition::SendICMPPacketToResolvedNonResourceIp { .. } => {
                 // Packets to non-resources are dropped, no state change required.
             }
             Transition::SendICMPPacketToResource {
@@ -742,7 +742,7 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
-            Transition::SendQueryToNoneDnsResource {
+            Transition::SendQueryToNonDnsResource {
                 domain,
                 resolved_ips,
                 r_type,
@@ -826,12 +826,12 @@ impl ReferenceStateMachine for ReferenceState {
 
                 is_valid_icmp_packet && !is_cidr_resource && !is_dns_resource
             }
-            Transition::SendICMPPacketToResolvedNoneResourceIp {
+            Transition::SendICMPPacketToResolvedNonResourceIp {
                 idx,
                 seq,
                 identifier,
             } => {
-                let Some(dst) = state.sample_resolved_none_resource_dst(idx) else {
+                let Some(dst) = state.sample_resolved_non_resource_dst(idx) else {
                     return false;
                 };
 
@@ -886,7 +886,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 has_dns_resources && can_contact_dns_server
             }
-            Transition::SendQueryToNoneDnsResource {
+            Transition::SendQueryToNonDnsResource {
                 domain,
                 dns_server_idx,
                 ..
@@ -1513,14 +1513,14 @@ impl ReferenceState {
         self.client_connected_cidr_resources.insert(resource.id);
     }
 
-    fn sample_resolved_none_resource_dst(&self, idx: &sample::Index) -> Option<IpAddr> {
+    fn sample_resolved_non_resource_dst(&self, idx: &sample::Index) -> Option<IpAddr> {
         if self.client_dns_records.is_empty()
             || self.client_dns_records.values().all(|ips| ips.is_empty())
         {
             return None;
         }
 
-        let mut dsts = self.resolved_ips_for_none_resources();
+        let mut dsts = self.resolved_ips_for_non_resources();
         dsts.sort();
 
         Some(*idx.get(&dsts))
@@ -1702,7 +1702,7 @@ impl ReferenceState {
         self.dns_resource_by_domain(domain)
     }
 
-    fn resolved_ips_for_none_resources(&self) -> Vec<IpAddr> {
+    fn resolved_ips_for_non_resources(&self) -> Vec<IpAddr> {
         self.client_dns_records
             .iter()
             .filter_map(|(domain, ips)| {
@@ -2152,9 +2152,9 @@ fn icmp_to_cidr_resource_from_random_src() -> impl Strategy<Value = Transition> 
         )
 }
 
-fn icmp_to_resolved_none_resource() -> impl Strategy<Value = Transition> {
+fn icmp_to_resolved_non_resource() -> impl Strategy<Value = Transition> {
     (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(move |(idx, seq, identifier)| {
-        Transition::SendICMPPacketToResolvedNoneResourceIp {
+        Transition::SendICMPPacketToResolvedNonResourceIp {
             idx,
             seq,
             identifier,
@@ -2183,7 +2183,7 @@ fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
         })
 }
 
-fn query_to_none_dns_resource() -> impl Strategy<Value = Transition> {
+fn query_to_non_dns_resource() -> impl Strategy<Value = Transition> {
     (
         domain_name(),
         any::<sample::Index>(),
@@ -2193,7 +2193,7 @@ fn query_to_none_dns_resource() -> impl Strategy<Value = Transition> {
     )
         .prop_map(
             move |(domain, dns_server_idx, r_type, query_id, resolved_ips)| {
-                Transition::SendQueryToNoneDnsResource {
+                Transition::SendQueryToNonDnsResource {
                     domain: hickory_name_to_domain(domain),
                     r_type,
                     query_id,
