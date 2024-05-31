@@ -180,21 +180,10 @@ enum Transition {
         /// The IPs we resolve the domain to.
         resolved_ips: HashSet<IpAddr>,
     },
-    /// Send a DNS query for one of our DNS resources.
-    SendQueryToDnsResource {
-        /// The index into our list of DNS resources.
+    /// Send a DNS query.
+    SendDnsQuery {
+        /// The index into the list of global DNS names (includes all DNS resources).
         r_idx: sample::Index,
-        /// The type of DNS query we should send.
-        r_type: RecordType,
-        /// The DNS query ID.
-        query_id: u16,
-        /// The index into our list of DNS servers.
-        dns_server_idx: sample::Index,
-    },
-    /// Send a DNS query for one of our DNS resources.
-    SendQueryToNonDnsResource {
-        /// The domain name to query.
-        domain: DomainName,
         /// The type of DNS query we should send.
         r_type: RecordType,
         /// The DNS query ID.
@@ -379,25 +368,13 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendQueryToDnsResource {
+            Transition::SendDnsQuery {
                 r_idx,
                 r_type,
                 query_id,
                 dns_server_idx,
             } => {
-                let domain = ref_state.sample_dns_resource_domain(&r_idx);
-                let transmit =
-                    state.send_dns_query_for(domain, r_type, query_id, ref_state, dns_server_idx);
-
-                buffered_transmits.extend(transmit)
-            }
-            Transition::SendQueryToNonDnsResource {
-                domain,
-                r_type,
-                query_id,
-                dns_server_idx,
-                ..
-            } => {
+                let (domain, _) = ref_state.sample_domain(&r_idx);
                 let transmit =
                     state.send_dns_query_for(domain, r_type, query_id, ref_state, dns_server_idx);
 
@@ -647,8 +624,7 @@ impl ReferenceStateMachine for ReferenceState {
         }
 
         if !state.client_dns_resources.is_empty() {
-            strategies.extend([(3, query_to_dns_resource().boxed())]);
-            strategies.extend([(1, query_to_non_dns_resource().boxed())]);
+            strategies.extend([(3, dns_query().boxed())]);
         }
 
         if !state.resolved_ips_for_non_resources().is_empty() {
@@ -676,6 +652,8 @@ impl ReferenceStateMachine for ReferenceState {
                     .client_dns_resources
                     .insert(new_resource.id, new_resource.clone());
 
+                // For the client, there is no difference between a DNS resource and a truly global DNS name.
+                // We store all records in the same map to follow the same model.
                 state.global_dns_records.insert(
                     new_resource.address_as_domain().unwrap(),
                     resolved_ips.clone(),
@@ -696,13 +674,21 @@ impl ReferenceStateMachine for ReferenceState {
                     }
                 }
             }
-            Transition::SendQueryToDnsResource { r_idx, r_type, .. } => {
-                let domain = state.sample_dns_resource_domain(r_idx);
+            Transition::SendDnsQuery {
+                r_idx,
+                r_type,
+                dns_server_idx,
+                ..
+            } => {
+                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
+                let dns_server = state.sample_dns_server(dns_server_idx);
+                let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
 
-                let all_ips = state
-                    .global_dns_records
-                    .get(&domain)
-                    .expect("DNS queries should only be sent for known resources");
+                if let Some((_, resource)) = maybe_resource {
+                    state.client_connected_cidr_resources.insert(resource.id);
+                }
+
+                let (domain, all_ips) = state.sample_domain(r_idx);
 
                 // Depending on the DNS query type, we filter the resolved addresses.
                 let ips_resolved_by_query = all_ips.iter().copied().filter({
@@ -721,15 +707,6 @@ impl ReferenceStateMachine for ReferenceState {
                     .entry(domain)
                     .or_default()
                     .extend(ips_resolved_by_query);
-            }
-            Transition::SendQueryToNonDnsResource { dns_server_idx, .. } => {
-                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
-                let dns_server = state.sample_dns_server(dns_server_idx);
-                let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
-
-                if let Some((_, resource)) = maybe_resource {
-                    state.client_connected_cidr_resources.insert(resource.id);
-                }
             }
             Transition::SendICMPPacketToNonResourceIp { .. }
             | Transition::SendICMPPacketToResolvedNonResourceIp { .. } => {
@@ -869,28 +846,14 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::SendQueryToDnsResource { dns_server_idx, .. } => {
-                let has_dns_resources = !state.client_dns_resources.is_empty();
+            Transition::SendDnsQuery { dns_server_idx, .. } => {
+                let has_dns_records = !state.global_dns_records.is_empty();
 
                 let dns_server = state.sample_dns_server(dns_server_idx);
                 let can_contact_dns_server =
                     state.client.sending_socket_for(dns_server.ip()).is_some();
 
-                has_dns_resources && can_contact_dns_server
-            }
-            Transition::SendQueryToNonDnsResource {
-                domain,
-                dns_server_idx,
-                ..
-            } => {
-                let domain_matches_dns_resource = state.dns_resource_by_domain(domain).is_some();
-                let domain_exists = state.global_dns_records.contains_key(domain);
-
-                let dns_server = state.sample_dns_server(dns_server_idx);
-                let can_contact_dns_server =
-                    state.client.sending_socket_for(dns_server.ip()).is_some();
-
-                !domain_matches_dns_resource && domain_exists && can_contact_dns_server
+                has_dns_records && can_contact_dns_server
             }
         }
     }
@@ -1644,13 +1607,13 @@ impl ReferenceState {
             .collect()
     }
 
-    fn sample_dns_resource_domain(&self, idx: &sample::Index) -> DomainName {
+    fn sample_domain(&self, idx: &sample::Index) -> (DomainName, HashSet<IpAddr>) {
         let mut domains = self
-            .client_dns_resources
-            .values()
-            .map(|r| r.address_as_domain().unwrap())
+            .global_dns_records
+            .clone()
+            .into_iter()
             .collect::<Vec<_>>();
-        domains.sort();
+        domains.sort_by_key(|(domain, _)| domain.clone());
 
         idx.get(&domains).clone()
     }
@@ -2158,38 +2121,21 @@ fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
     collection::hash_set(any::<IpAddr>(), 1..4)
 }
 
-fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
+fn dns_query() -> impl Strategy<Value = Transition> {
     (
         any::<sample::Index>(),
         any::<sample::Index>(),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
     )
-        .prop_map(move |(r_idx, dns_server_idx, r_type, query_id)| {
-            Transition::SendQueryToDnsResource {
+        .prop_map(
+            move |(r_idx, dns_server_idx, r_type, query_id)| Transition::SendDnsQuery {
                 r_idx,
                 r_type,
                 query_id,
                 dns_server_idx,
-            }
-        })
-}
-
-fn query_to_non_dns_resource() -> impl Strategy<Value = Transition> {
-    (
-        domain_name(),
-        any::<sample::Index>(),
-        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
-        any::<u16>(),
-    )
-        .prop_map(move |(domain, dns_server_idx, r_type, query_id)| {
-            Transition::SendQueryToNonDnsResource {
-                domain: hickory_name_to_domain(domain),
-                r_type,
-                query_id,
-                dns_server_idx,
-            }
-        })
+            },
+        )
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
