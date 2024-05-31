@@ -246,7 +246,8 @@ impl IpcServer {
                 Err(error) => Err(backoff::Error::Permanent(error)),
             }
         })
-        .await.context("Couldn't listen on named pipe")?;
+        .await
+        .context("Couldn't listen on named pipe")?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()

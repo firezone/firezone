@@ -387,7 +387,10 @@ async fn ipc_listen() -> Result<()> {
     let mut server = platform::IpcServer::new().await?;
     loop {
         connlib_shared::deactivate_dns_control()?;
-        let stream = server.next_client().await.context("Failed to wait for incoming IPC connection from a GUI")?;
+        let stream = server
+            .next_client()
+            .await
+            .context("Failed to wait for incoming IPC connection from a GUI")?;
         if let Err(error) = handle_ipc_client(stream).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
