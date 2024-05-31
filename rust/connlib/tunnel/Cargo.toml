@@ -45,6 +45,7 @@ tracing-subscriber = {version = "0.3", features = ["env-filter"]}
 pretty_assertions = "1.4.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 rand = "0.8"
+hickory-proto = { workspace = true }
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
