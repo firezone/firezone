@@ -145,8 +145,8 @@ type IcmpIdentifier = u16;
 enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
-    /// Send an ICMP packet to none-resource IP.
-    SendICMPPacketToNoneResourceIp {
+    /// Send an ICMP packet to non-resource IP.
+    SendICMPPacketToNonResourceIp {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
@@ -307,7 +307,7 @@ impl StateMachineTest for TunnelTest {
                     .state
                     .add_resources(&[ResourceDescription::Dns(resource)]);
             }),
-            Transition::SendICMPPacketToNoneResourceIp {
+            Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
                 identifier,
@@ -681,8 +681,8 @@ impl ReferenceStateMachine for ReferenceState {
                     .or_default()
                     .extend(ips_resolved_by_query);
             }
-            Transition::SendICMPPacketToNoneResourceIp { .. } => {
-                // Packets to none-resources are dropped, no state change required.
+            Transition::SendICMPPacketToNonResourceIp { .. } => {
+                // Packets to non-resources are dropped, no state change required.
             }
             Transition::SendICMPPacketToResource {
                 idx,
@@ -756,7 +756,7 @@ impl ReferenceStateMachine for ReferenceState {
                 !has_resolved_domain_already && !any_real_ip_overlaps_with_cidr_resource
             }
             Transition::Tick { .. } => true,
-            Transition::SendICMPPacketToNoneResourceIp {
+            Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
                 identifier,
@@ -1925,7 +1925,7 @@ impl fmt::Debug for PrivateKey {
 /// That is okay as our reference state machine checks separately whether we are pinging a resource here.
 fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
     (any::<IpAddr>(), any::<u16>(), any::<u16>()).prop_map(|(dst, seq, identifier)| {
-        Transition::SendICMPPacketToNoneResourceIp {
+        Transition::SendICMPPacketToNonResourceIp {
             dst,
             seq,
             identifier,
