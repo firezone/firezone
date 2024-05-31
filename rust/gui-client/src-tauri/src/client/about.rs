@@ -19,7 +19,7 @@ mod tests {
         let git = super::get_git_version();
 
         assert!(cargo != "Unknown", "{}", cargo);
-        assert!(cargo.starts_with("1"));
+        assert!(cargo.starts_with('1'));
         assert!(git != "Unknown", "{}", git);
         assert!(cargo.len() >= 2, "{}", cargo);
         assert!(git.len() >= 6, "{}", git);
