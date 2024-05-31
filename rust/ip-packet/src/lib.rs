@@ -349,14 +349,14 @@ impl<'a> IcmpPacket<'a> {
         match self {
             IcmpPacket::Ipv4(v4) if matches!(v4.get_icmp_type(), icmp::IcmpTypes::EchoRequest) => {
                 Some(IcmpEchoRequest::Ipv4(
-                    icmp::echo_request::EchoRequestPacket::new(v4.payload())?,
+                    icmp::echo_request::EchoRequestPacket::new(v4.packet())?,
                 ))
             }
             IcmpPacket::Ipv6(v6)
                 if matches!(v6.get_icmpv6_type(), icmpv6::Icmpv6Types::EchoRequest) =>
             {
                 Some(IcmpEchoRequest::Ipv6(
-                    icmpv6::echo_request::EchoRequestPacket::new(v6.payload())?,
+                    icmpv6::echo_request::EchoRequestPacket::new(v6.packet())?,
                 ))
             }
             IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,
@@ -367,14 +367,14 @@ impl<'a> IcmpPacket<'a> {
         match self {
             IcmpPacket::Ipv4(v4) if matches!(v4.get_icmp_type(), icmp::IcmpTypes::EchoReply) => {
                 Some(IcmpEchoReply::Ipv4(icmp::echo_reply::EchoReplyPacket::new(
-                    v4.payload(),
+                    v4.packet(),
                 )?))
             }
             IcmpPacket::Ipv6(v6)
                 if matches!(v6.get_icmpv6_type(), icmpv6::Icmpv6Types::EchoReply) =>
             {
                 Some(IcmpEchoReply::Ipv6(
-                    icmpv6::echo_reply::EchoReplyPacket::new(v6.payload())?,
+                    icmpv6::echo_reply::EchoReplyPacket::new(v6.packet())?,
                 ))
             }
             IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,

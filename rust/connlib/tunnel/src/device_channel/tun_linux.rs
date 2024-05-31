@@ -12,7 +12,7 @@ use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
     ffi::CStr,
-    fmt, fs, io,
+    fs, io,
     os::{
         fd::{AsRawFd, RawFd},
         unix::fs::PermissionsExt,
@@ -28,16 +28,9 @@ const TUN_DEV_MINOR: u32 = 200;
 // Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
 
+#[derive(Debug)]
 pub struct Tun {
     fd: AsyncFd<RawFd>,
-}
-
-impl fmt::Debug for Tun {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Tun")
-            .field("fd", &self.fd)
-            .finish_non_exhaustive()
-    }
 }
 
 impl Drop for Tun {

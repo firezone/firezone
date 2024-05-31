@@ -14,9 +14,9 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 // TODO: De-dupe
 const TUNNEL_NAME: &str = "Firezone";
 
-pub struct InterfaceManager {}
+pub struct TunDeviceManager {}
 
-impl Drop for InterfaceManager {
+impl Drop for TunDeviceManager {
     fn drop(&mut self) {
         if let Err(error) = crate::windows::dns::deactivate() {
             tracing::error!(?error, "Failed to deactivate DNS control");
@@ -24,13 +24,13 @@ impl Drop for InterfaceManager {
     }
 }
 
-impl InterfaceManager {
+impl TunDeviceManager {
     pub fn new(_: DnsControlMethod) -> Self {
         Self {}
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn on_set_interface_config(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);
         tracing::debug!("Setting our IPv6 = {}", ipv6);
 
@@ -71,7 +71,7 @@ impl InterfaceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn on_update_routes(&mut self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Result<()> {
+    pub async fn set_routes(&mut self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Result<()> {
         // TODO: Windows still does route updates in `tun_windows.rs`. I can move it up
         // here, but since the Client and Gateway don't know the index of the WinTun
         // interface, I'd have to use the Windows API

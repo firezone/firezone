@@ -10,12 +10,11 @@ use connlib_shared::messages::{
     ResourceId,
 };
 use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
-use ip_network::IpNetwork;
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
 use std::collections::{HashSet, VecDeque};
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 const PEERS_IPV4: &str = "100.64.0.0/11";
@@ -54,7 +53,8 @@ where
         key: Secret<Key>,
         offer: Offer,
         client: PublicKey,
-        ips: Vec<IpNetwork>,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
         relays: Vec<Relay>,
         domain: Option<DomainName>,
         expires_at: Option<DateTime<Utc>>,
@@ -70,7 +70,8 @@ where
                 },
             },
             client,
-            ips,
+            ipv4,
+            ipv6,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays),
             domain,
@@ -175,6 +176,7 @@ impl GatewayState {
         Some(transmit)
     }
 
+    #[tracing::instrument(level = "trace", skip_all, fields(src, dst))]
     pub(crate) fn decapsulate<'b>(
         &mut self,
         local: SocketAddr,
@@ -193,6 +195,9 @@ impl GatewayState {
         .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
+        tracing::Span::current().record("src", tracing::field::display(packet.source()));
+        tracing::Span::current().record("dst", tracing::field::display(packet.destination()));
+
         let Some(peer) = self.peers.get_mut(&conn_id) else {
             tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
 
@@ -206,6 +211,8 @@ impl GatewayState {
 
             return None;
         }
+
+        tracing::trace!("Decapsulated packet");
 
         Some(packet.into_immutable())
     }
@@ -225,7 +232,8 @@ impl GatewayState {
         client_id: ClientId,
         offer: snownet::Offer,
         client: PublicKey,
-        ips: Vec<IpNetwork>,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
         stun_servers: HashSet<SocketAddr>,
         turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
         domain: Option<DomainName>,
@@ -247,7 +255,7 @@ impl GatewayState {
             self.node
                 .accept_connection(client_id, offer, client, stun_servers, turn_servers, now);
 
-        let mut peer = ClientOnGateway::new(client_id, &ips);
+        let mut peer = ClientOnGateway::new(client_id, ipv4, ipv6);
 
         peer.add_resource(
             resource.addresses(),
@@ -256,7 +264,7 @@ impl GatewayState {
             expires_at,
         );
 
-        self.peers.insert(peer, &ips);
+        self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
 
         Ok(ConnectionAccepted {
             ice_parameters: Answer {

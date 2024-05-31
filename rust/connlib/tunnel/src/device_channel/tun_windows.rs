@@ -28,7 +28,6 @@ const TUNNEL_NAME: &str = "Firezone";
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
-    adapter: Arc<wintun::Adapter>,
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
@@ -96,7 +95,6 @@ impl Tun {
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
 
         Ok(Self {
-            adapter,
             iface_idx,
             _recv_thread: recv_thread,
             packet_rx,

@@ -1,6 +1,3 @@
-#![allow(clippy::module_inception)]
-#![cfg_attr(target_family = "windows", allow(dead_code))] // TODO: Remove when windows is fully implemented.
-
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod tun_darwin;
 #[cfg(any(target_os = "macos", target_os = "ios"))]

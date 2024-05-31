@@ -118,12 +118,12 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
         .set_interface(&init.interface)
         .context("Failed to set interface")?;
     let mut interface =
-        connlib_shared::interface::InterfaceManager::new(DnsControlMethod::DontControl);
+        connlib_shared::interface::TunDeviceManager::new(DnsControlMethod::DontControl);
     interface
-        .on_set_interface_config(init.interface.ipv4, init.interface.ipv6)
+        .set_ips(init.interface.ipv4, init.interface.ipv6)
         .await?;
     interface
-        .on_update_routes(
+        .set_routes(
             vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
             vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
         )

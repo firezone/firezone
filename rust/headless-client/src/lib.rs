@@ -284,7 +284,7 @@ pub fn run_only_headless_client() -> Result<()> {
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
-        let mut interface = interface::InterfaceManager::new(dns_control_method);
+        let mut interface = interface::TunDeviceManager::new(dns_control_method);
         let mut signals = Signals::new()?;
 
         loop {
@@ -309,11 +309,11 @@ pub fn run_only_headless_client() -> Result<()> {
                     | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
                     InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        interface.on_set_interface_config(ipv4, ipv6).await?;
+                        interface.set_ips(ipv4, ipv6).await?;
                         interface.control_dns(dns).await?;
                     }
                     InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                        interface.on_update_routes(ipv4, ipv6).await?
+                        interface.set_routes(ipv4, ipv6).await?
                     }
                 },
             }
@@ -439,19 +439,19 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (cb_tx, mut cb_rx) = mpsc::channel(10);
 
     let send_task = tokio::spawn(async move {
-        let mut interface = interface::InterfaceManager::new(IPC_SERVICE_DNS_CONTROL);
+        let mut interface = interface::TunDeviceManager::new(IPC_SERVICE_DNS_CONTROL);
 
         while let Some(msg) = cb_rx.recv().await {
             match msg {
                 InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    interface.on_set_interface_config(ipv4, ipv6).await?;
+                    interface.set_ips(ipv4, ipv6).await?;
                     interface.control_dns(dns).await?;
                     tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
                         .await?;
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    interface.on_update_routes(ipv4, ipv6).await?
+                    interface.set_routes(ipv4, ipv6).await?
                 }
             }
         }
