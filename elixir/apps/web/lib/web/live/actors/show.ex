@@ -406,9 +406,9 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
-      <:title>Activity</:title>
+      <:title>Authorized Activity</:title>
       <:help>
-        Attempts to access resources by this actor.
+        Authorized attempts by actors to access the resource governed by this policy.
       </:help>
       <:content>
         <.live_table

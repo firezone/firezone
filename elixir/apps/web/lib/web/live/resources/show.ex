@@ -252,11 +252,9 @@ defmodule Web.Resources.Show do
     </.section>
 
     <.section>
-      <:title>
-        Activity
-      </:title>
+      <:title>Authorized Activity</:title>
       <:help>
-        Attempts by actors to access this resource.
+        Authorized attempts by actors to access the resource governed by this policy.
       </:help>
       <:content>
         <.live_table
