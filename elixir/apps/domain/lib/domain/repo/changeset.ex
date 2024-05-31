@@ -158,22 +158,24 @@ defmodule Domain.Repo.Changeset do
         true ->
           value
           |> Enum.with_index()
-          |> Enum.flat_map(fn {value, index} ->
-            {%{}, %{value: element_type}}
-            |> Ecto.Changeset.cast(%{value: value}, [:value])
-            |> fun.(:value)
-            |> Ecto.Changeset.apply_action(:insert)
-            |> case do
-              {:ok, _} ->
-                []
-
-              {:error, %{errors: errors}} ->
-                {error, meta} = errors[:value]
-                [{field, {error, meta ++ [validated_as: :list, at: index]}}]
-            end
-          end)
+          |> Enum.flat_map(&validate_list_element(field, fun, element_type, &1))
       end
     end)
+  end
+
+  defp validate_list_element(field, fun, element_type, {value, index}) do
+    {%{}, %{value: element_type}}
+    |> Ecto.Changeset.cast(%{value: value}, [:value])
+    |> fun.(:value)
+    |> Ecto.Changeset.apply_action(:insert)
+    |> case do
+      {:ok, _} ->
+        []
+
+      {:error, %{errors: errors}} ->
+        {error, meta} = errors[:value]
+        [{field, {error, meta ++ [validated_as: :list, at: index]}}]
+    end
   end
 
   def validate_email(%Ecto.Changeset{} = changeset, field) do

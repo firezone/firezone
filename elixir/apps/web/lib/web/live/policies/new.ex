@@ -176,8 +176,7 @@ defmodule Web.Policies.New do
 
   defp map_condition_values(%{"values" => values} = condition_attrs) do
     values
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.reject(&is_nil/1)
+    |> Enum.reject(fn value -> is_nil(value) or value == "" end)
     |> case do
       [] -> nil
       _other -> condition_attrs
