@@ -312,6 +312,10 @@ impl StateMachineTest for TunnelTest {
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
+        state.client_sent_icmp_requests.clear();
+        state.gateway_received_requests.clear();
+        state.client_received_icmp_replies.clear();
+
         let mut buffered_transmits = VecDeque::new();
 
         // Act: Apply the transition
@@ -746,6 +750,7 @@ impl ReferenceStateMachine for ReferenceState {
                 domain,
                 resolved_ips,
                 r_type,
+                dns_server_idx,
                 ..
             } => {
                 let records = resolved_ips
@@ -762,6 +767,14 @@ impl ReferenceStateMachine for ReferenceState {
                     .collect();
 
                 state.global_dns_records.insert(domain.clone(), records);
+
+                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
+                let dns_server = state.sample_dns_server(dns_server_idx);
+                let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
+
+                if let Some((_, resource)) = maybe_resource {
+                    state.client_connected_cidr_resources.insert(resource.id);
+                }
             }
         };
 
