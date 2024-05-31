@@ -7,17 +7,95 @@ iOS app also works for iPad.
 
 ## Prerequisites
 
-- iOS 15 or higher
+- **iOS 15** or higher
 
 ## Installation
 
-[Download the client](https://apps.apple.com/us/app/firezone/id6443661826) from
-the Apple App Store.
+1. [Download the client](https://apps.apple.com/us/app/firezone/id6443661826)
+   from the Apple App Store.
+1. Tap `Open`. The Firezone welcome screen will appear.
+1. Tap `Grant VPN Permission`. iOS will show a dialog saying,
+   `"Firezone" Would Like to Add VPN Configurations`.
+1. Tap `Allow` and allow the permission using your passcode, FaceID, or TouchID.
+   Firezone will then ask for notification permission.
+1. Tap `Grant Notification Permission`. iOS will show a dialog saying,
+   `"Firezone" Would Like to Send You Notifications`.
+1. Tap `Allow`. Firezone will show a `Sign in` button.
 
-### Upgrading
+## Usage
+
+### Signing in
+
+1. Tap `Sign in`. iOS will show a dialog saying,
+   `"Firezone" Wants to Use "firezone.dev" to Sign In`.
+1. Tap `Continue`. Firezone will open a sign-in page.
+1. Select your account and sign in. Firezone will show your username and
+   Resources.
+
+### Accessing a Resource
+
+When Firezone is signed in, web browsers and other programs will automatically
+use it to securely connect to Resources.
+
+To copy-paste the address of a Resource:
+
+1. Tap on the Resource.
+1. Tap `Copy Address`.
+1. Long-press your browser's URL bar and tap `Paste and Go`
+
+### Quitting
+
+1. Open the `Settings` app.
+1. Tap `VPN` to turn the VPN switch off.
+
+When Firezone is not running, you can't access private Resources, and the phone
+will use its normal DNS and Internet behavior.
+
+If you were signed in, then you will still be signed in the next time you start
+Firezone.
+
+### Signing out
+
+1. Open the Firezone app.
+1. At the top, under `AUTHENTICATION`, tap `Sign Out`.
+
+When you're signed out, you can't access private Resources, and the phone will
+use its normal DNS and Internet behavior.
+
+## Upgrading
 
 Updates for the Apple clients are handled through the Apple App Store. Consult
 [Apple's documentation](https://support.apple.com/guide/iphone/update-apps-iph98709f167/17.0/ios/17.0)
 for more information on how to update apps on your device.
+
+## Diagnostic logs
+
+Firezone writes log files to the phone's memory. These logs stay on the phone
+and are not transmitted anywhere. If you find a bug, you can send us an `.aar`
+archive of your logs to help us fix the bug.
+
+To export or clear your logs:
+
+1. Open the Firezone app.
+1. In the upper-right corner, tap the gear icon.
+1. In the bottom-right corner, tap `Diagnostic Logs`.
+1. Tap `Export Logs` or `Clear Log Directory`.
+
+## Uninstalling
+
+1. On the phone's home screen, long-press the Firezone app icon.
+1. Tap `Remove App`.
+1. Tap `Delete App`. iOS will show a dialog saying,
+   `Delete "Firezone"? Deleting this app will also delete its data`.
+1. Tap `Delete`.
+
+## Troubleshooting
+
+We will add troubleshooting steps here in the future.
+
+## Known issues
+
+- If another VPN app is running on the system, Firezone will not work.
+  [#4733](https://github.com/firezone/firezone/issues/4733)
 
 <SupportOptions />

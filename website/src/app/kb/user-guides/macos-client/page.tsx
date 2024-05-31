@@ -4,7 +4,7 @@ import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "macOS Client • Firezone Docs",
-  description: "Firezone Documentation",
+  description: "How to install and use the Firezone macOS Client.",
 };
 
 export default function Page() {
