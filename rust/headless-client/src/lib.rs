@@ -304,11 +304,11 @@ pub fn run_only_headless_client() -> Result<()> {
                     | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
                     InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        interface.on_set_interface_config(ipv4, ipv6).await?;
+                        interface.set_ips(ipv4, ipv6).await?;
                         interface.control_dns(dns).await?;
                     }
                     InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                        interface.on_update_routes(ipv4, ipv6).await?
+                        interface.set_routes(ipv4, ipv6).await?
                     }
                 },
             }
@@ -440,13 +440,13 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
             match msg {
                 InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    interface.on_set_interface_config(ipv4, ipv6).await?;
+                    interface.set_ips(ipv4, ipv6).await?;
                     interface.control_dns(dns).await?;
                     tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
                         .await?;
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    interface.on_update_routes(ipv4, ipv6).await?
+                    interface.set_routes(ipv4, ipv6).await?
                 }
             }
         }

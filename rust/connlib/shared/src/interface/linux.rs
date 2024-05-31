@@ -64,7 +64,7 @@ impl Default for TunDeviceManager {
 
 impl TunDeviceManager {
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn on_set_interface_config(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         let connection = match self.connection.as_mut() {
             None => {
                 let (cxn, handle, _) = new_connection()?;
@@ -149,7 +149,7 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn on_update_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
+    pub async fn set_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
             .map(IpNetwork::from)
@@ -158,8 +158,8 @@ impl TunDeviceManager {
         if new_routes == self.routes {
             return Ok(());
         }
-        tracing::info!(?new_routes, "on_update_routes");
-        let handle = &self.connection.as_ref().context("on_update_routes should only be called after at least one call to on_set_interface_config")?.handle;
+        tracing::info!(?new_routes, "set_routes");
+        let handle = &self.connection.as_ref().context("set_routes should only be called after at least one call to on_set_interface_config")?.handle;
 
         let index = handle
             .link()
