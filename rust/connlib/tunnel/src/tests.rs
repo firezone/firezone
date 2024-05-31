@@ -68,10 +68,10 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    /// The DNS records created on the client as a result of received DNS responses to DNS resources.
-    client_dns_resource_records: HashMap<DomainName, Vec<IpAddr>>,
-    /// The DNS records created on the client as a result of DNS responses to domains that aren't DNS resources.
-    client_dns_none_resource_records: HashMap<DomainName, Vec<IpAddr>>,
+    /// The DNS records created on the client as a result of received DNS responses.
+    ///
+    /// This contains results from both, queries to DNS resources and none-resources.
+    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Mapping of proxy IPs to real resource destinations.
     ///
@@ -120,9 +120,7 @@ struct ReferenceState {
     /// On a repeated query, we will access those previously resolved IPs.
     ///
     /// Essentially, the client's DNS records represents the addresses a client application (like a browser) would _actually_ know about.
-    client_dns_resource_records: HashMap<DomainName, Vec<IpAddr>>,
-
-    client_dns_none_resource_records: HashMap<DomainName, Vec<IpAddr>>,
+    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// The CIDR resources the client is connected to.
     client_connected_cidr_resources: HashSet<ResourceId>,
@@ -154,6 +152,12 @@ enum Transition {
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         dst: IpAddr,
+        seq: u16,
+        identifier: u16,
+    },
+    /// Send an ICMP packet to an IP we resolved via DNS but is not a resource.
+    SendICMPPacketToResolvedNoneResourceIp {
+        idx: sample::Index,
         seq: u16,
         identifier: u16,
     },
@@ -282,14 +286,13 @@ impl StateMachineTest for TunnelTest {
             portal,
             logger,
             relay,
-            client_dns_resource_records: Default::default(),
+            client_dns_records: Default::default(),
             client_dns_by_sentinel: Default::default(),
             client_sent_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
             client_sent_dns_queries: Default::default(),
             client_proxy_ip_mapping: Default::default(),
-            client_dns_none_resource_records: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -341,6 +344,23 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
+            Transition::SendICMPPacketToResolvedNoneResourceIp {
+                idx,
+                seq,
+                identifier,
+            } => {
+                let dst = ref_state
+                    .sample_resolved_none_resource_dst(&idx)
+                    .expect("Transition to only be sampled if we have at least one non-resource resolved domain");
+                let packet = ip_packet::make::icmp_request_packet(
+                    state.client.tunnel_ip(dst),
+                    dst,
+                    seq,
+                    identifier,
+                );
+
+                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
+            }
             Transition::SendICMPPacketToResource {
                 idx,
                 seq,
@@ -350,7 +370,7 @@ impl StateMachineTest for TunnelTest {
                 let dst = ref_state
                     .sample_resource_dst(&idx)
                     .expect("Transition to only be sampled if we have at least one resource");
-                let dst = dst.into_actual_packet_dst(idx, &state.client_dns_resource_records);
+                let dst = dst.into_actual_packet_dst(idx, &state.client_dns_records);
                 let src = src.unwrap_or(state.client.tunnel_ip(dst));
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
@@ -477,10 +497,6 @@ impl StateMachineTest for TunnelTest {
             HashMap::new(),
             "Unexpected ICMP replies on client"
         );
-        assert_eq!(
-            state.client_dns_none_resource_records, ref_state.client_dns_none_resource_records,
-            "DNS responses for none-resources to match"
-        );
 
         assert_eq!(
             state.effective_dns_servers(),
@@ -584,8 +600,7 @@ impl ReferenceStateMachine for ReferenceState {
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
                     global_dns_records: Default::default(),
-                    client_dns_resource_records: Default::default(),
-                    client_dns_none_resource_records: Default::default(),
+                    client_dns_records: Default::default(),
                 },
             )
             .boxed()
@@ -632,6 +647,10 @@ impl ReferenceStateMachine for ReferenceState {
             strategies.extend([(1, query_to_none_dns_resource().boxed())]);
         }
 
+        if !state.resolved_ips_for_none_resources().is_empty() {
+            strategies.push((1, icmp_to_resolved_none_resource().boxed()));
+        }
+
         Union::new_weighted(strategies).boxed()
     }
 
@@ -669,7 +688,7 @@ impl ReferenceStateMachine for ReferenceState {
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
                         // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state.client_dns_resource_records.remove(&name);
+                        state.client_dns_records.remove(&name);
                     }
                 }
             }
@@ -694,12 +713,13 @@ impl ReferenceStateMachine for ReferenceState {
                 });
 
                 state
-                    .client_dns_resource_records
+                    .client_dns_records
                     .entry(domain)
                     .or_default()
                     .extend(ips_resolved_by_query);
             }
-            Transition::SendICMPPacketToNonResourceIp { .. } => {
+            Transition::SendICMPPacketToNonResourceIp { .. }
+            | Transition::SendICMPPacketToResolvedNoneResourceIp { .. } => {
                 // Packets to non-resources are dropped, no state change required.
             }
             Transition::SendICMPPacketToResource {
@@ -728,20 +748,17 @@ impl ReferenceStateMachine for ReferenceState {
                 r_type,
                 ..
             } => {
-                let records = Vec::from_iter(
-                    resolved_ips
-                        .iter()
-                        .filter(|ip| match r_type {
-                            RecordType::A => ip.is_ipv4(),
-                            RecordType::AAAA => ip.is_ipv6(),
-                            _ => todo!(),
-                        })
-                        .copied(),
-                );
+                let records = resolved_ips
+                    .iter()
+                    .filter(|ip| match r_type {
+                        RecordType::A => ip.is_ipv4(),
+                        RecordType::AAAA => ip.is_ipv6(),
+                        _ => todo!(),
+                    })
+                    .copied()
+                    .collect();
 
-                state
-                    .client_dns_none_resource_records
-                    .insert(domain.clone(), records);
+                state.global_dns_records.insert(domain.clone(), records);
             }
         };
 
@@ -806,6 +823,17 @@ impl ReferenceStateMachine for ReferenceState {
 
                 is_valid_icmp_packet && !is_cidr_resource && !is_dns_resource
             }
+            Transition::SendICMPPacketToResolvedNoneResourceIp {
+                idx,
+                seq,
+                identifier,
+            } => {
+                let Some(dst) = state.sample_resolved_none_resource_dst(idx) else {
+                    return false;
+                };
+
+                state.is_valid_icmp_packet(&dst, seq, identifier)
+            }
             Transition::SendICMPPacketToResource {
                 idx,
                 seq,
@@ -818,8 +846,6 @@ impl ReferenceStateMachine for ReferenceState {
                 let dst = dst.into_reference_packet_dst();
 
                 let is_valid_icmp_packet = state.is_valid_icmp_packet(&dst, seq, identifier);
-
-                // TODO: Also consider DNS resources here.
 
                 is_valid_icmp_packet
                     && (src.is_none() || src.is_some_and(|s| s.is_ipv4() == dst.is_ipv4()))
@@ -911,7 +937,7 @@ impl TunnelTest {
                 continue;
             }
             if let Some(packet) = self.client.state.poll_packets() {
-                self.on_client_buffered_packet(packet, ref_state);
+                self.on_client_buffered_packet(packet);
                 continue;
             }
             if let Some(query) = self.client.state.poll_dns_queries() {
@@ -1335,7 +1361,7 @@ impl TunnelTest {
     /// Process a buffered IP packet from the client.
     ///
     /// Currently, we rely on the implementation detail here that these are only ever DNS responses.
-    fn on_client_buffered_packet(&mut self, packet: IpPacket<'_>, ref_state: &ReferenceState) {
+    fn on_client_buffered_packet(&mut self, packet: IpPacket<'_>) {
         if let Some(udp) = packet.as_udp() {
             if udp.get_source() == 53 {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
@@ -1359,16 +1385,7 @@ impl TunnelTest {
                     }
                 });
 
-                let record_map = if ref_state
-                    .dns_resource_by_domain(&requested_domain)
-                    .is_some()
-                {
-                    &mut self.client_dns_resource_records
-                } else {
-                    &mut self.client_dns_none_resource_records
-                };
-
-                record_map
+                self.client_dns_records
                     .entry(requested_domain.clone())
                     .or_default()
                     .extend(resolved_ips);
@@ -1422,8 +1439,8 @@ impl TunnelTest {
     fn on_forwarded_dns_query(&mut self, query: DnsQuery<'static>, ref_state: &ReferenceState) {
         let name = query.name.parse::<DomainName>().unwrap(); // TODO: Could `DnsQuery` hold a `DomainName` directly?
 
-        let resolved_ips = ref_state
-            .client_dns_none_resource_records
+        let resolved_ips = &ref_state
+            .global_dns_records
             .get(&name)
             .expect("Deferred DNS query to be for known domain");
 
@@ -1493,13 +1510,23 @@ impl ReferenceState {
         self.client_connected_cidr_resources.insert(resource.id);
     }
 
+    fn sample_resolved_none_resource_dst(&self, idx: &sample::Index) -> Option<IpAddr> {
+        if self.client_dns_records.is_empty()
+            || self.client_dns_records.values().all(|ips| ips.is_empty())
+        {
+            return None;
+        }
+
+        let mut dsts = self.resolved_ips_for_none_resources();
+        dsts.sort();
+
+        Some(*idx.get(&dsts))
+    }
+
     fn sample_resource_dst(&self, idx: &sample::Index) -> Option<ResourceDst> {
         if self.client_cidr_resources.is_empty()
-            && (self.client_dns_resource_records.is_empty()
-                || self
-                    .client_dns_resource_records
-                    .values()
-                    .all(|ips| ips.is_empty()))
+            && (self.client_dns_records.is_empty()
+                || self.client_dns_records.values().all(|ips| ips.is_empty()))
         {
             return None;
         }
@@ -1641,11 +1668,11 @@ impl ReferenceState {
     }
 
     fn sample_resolved_address(&self, idx: &sample::Index) -> Option<(DomainName, IpAddr)> {
-        if self.client_dns_resource_records.is_empty() {
+        if self.client_dns_records.is_empty() {
             return None;
         }
 
-        let mut client_dns_cache = Vec::from_iter(self.client_dns_resource_records.clone());
+        let mut client_dns_cache = Vec::from_iter(self.client_dns_records.clone());
         client_dns_cache.sort();
 
         let (name, addr) = idx.get(&client_dns_cache);
@@ -1665,11 +1692,24 @@ impl ReferenceState {
 
     fn dns_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
         let domain = self
-            .client_dns_resource_records
+            .client_dns_records
             .iter()
             .find_map(|(domain, ips)| ips.contains(&ip).then_some(domain))?;
 
         self.dns_resource_by_domain(domain)
+    }
+
+    fn resolved_ips_for_none_resources(&self) -> Vec<IpAddr> {
+        self.client_dns_records
+            .iter()
+            .filter_map(|(domain, ips)| {
+                self.dns_resource_by_domain(&domain)
+                    .is_none()
+                    .then_some(ips)
+            })
+            .flatten()
+            .copied()
+            .collect()
     }
 }
 
@@ -2109,6 +2149,16 @@ fn icmp_to_cidr_resource_from_random_src() -> impl Strategy<Value = Transition> 
                 src: Some(src),
             },
         )
+}
+
+fn icmp_to_resolved_none_resource() -> impl Strategy<Value = Transition> {
+    (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(move |(idx, seq, identifier)| {
+        Transition::SendICMPPacketToResolvedNoneResourceIp {
+            idx,
+            seq,
+            identifier,
+        }
+    })
 }
 
 fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
