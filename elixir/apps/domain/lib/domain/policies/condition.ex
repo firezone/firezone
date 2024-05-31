@@ -1,4 +1,4 @@
-defmodule Domain.Policies.Constraint do
+defmodule Domain.Policies.Condition do
   use Domain, :schema
 
   @primary_key false

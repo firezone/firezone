@@ -1,7 +1,7 @@
 defmodule Domain.Policies do
   alias Domain.{Repo, PubSub}
   alias Domain.{Auth, Accounts, Actors, Clients, Resources, Flows}
-  alias Domain.Policies.{Authorizer, Policy, Constraint}
+  alias Domain.Policies.{Authorizer, Policy, Condition}
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -165,8 +165,8 @@ defmodule Domain.Policies do
     {:ok, policies}
   end
 
-  def ensure_client_conforms_policy_constraints(%Clients.Client{} = client, %Policy{} = policy) do
-    case Constraint.Evaluator.ensure_conforms(policy.constraints, client) do
+  def ensure_client_conforms_policy_conditions(%Clients.Client{} = client, %Policy{} = policy) do
+    case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
       :ok ->
         :ok
 

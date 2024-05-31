@@ -157,7 +157,8 @@ defmodule Domain.Repo.Changeset do
 
         true ->
           value
-          |> Enum.flat_map(fn value ->
+          |> Enum.with_index()
+          |> Enum.flat_map(fn {value, index} ->
             {%{}, %{value: element_type}}
             |> Ecto.Changeset.cast(%{value: value}, [:value])
             |> fun.(:value)
@@ -167,7 +168,8 @@ defmodule Domain.Repo.Changeset do
                 []
 
               {:error, %{errors: errors}} ->
-                [{field, errors[:value]}]
+                {error, meta} = errors[:value]
+                [{field, {error, meta ++ [validated_as: :list, at: index]}}]
             end
           end)
       end

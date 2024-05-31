@@ -1,13 +1,15 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Accounts, Policies, Flows}
+  alias Domain.{Accounts, Policies, Flows, Auth}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [actor_group: [:provider], resource: [], created_by_identity: :actor]
            ) do
+      providers = Auth.all_active_providers_for_account!(socket.assigns.account)
+
       if connected?(socket) do
         :ok = Policies.subscribe_to_events_for_policy(policy)
       end
@@ -16,6 +18,7 @@ defmodule Web.Policies.Show do
         assign(socket,
           page_title: "Policy #{policy.id}",
           policy: policy,
+          providers: providers,
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account)
         )
         |> assign_live_table("flows",
@@ -127,15 +130,15 @@ defmodule Web.Policies.Show do
               </span>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={@policy.conditions != []}>
             <:label>
-              Constraints
+              Conditions
             </:label>
             <:value>
-              <.constraints constraints={@policy.constraints} />
+              <.conditions providers={@providers} conditions={@policy.conditions} />
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={@policy.description}>
             <:label>
               Description
             </:label>

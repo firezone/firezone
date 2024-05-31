@@ -38,7 +38,7 @@ defmodule Web.Policies.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Define a Policy</h2>
           <div
             :if={@actor_groups == []}
             class={[
@@ -90,54 +90,20 @@ defmodule Web.Policies.New do
                 />
               </fieldset>
 
-              <fieldset class="flex flex-col gap-2">
-                <div class="mb-1 flex items-center justify-between">
-                  <legend>Constraints</legend>
-                </div>
+              <.condition_form form={@form} providers={@providers} />
 
-                <p class="text-sm text-neutral-500">
-                  Restrict access to the Resource based on Client IP address, location region, or other.
-                </p>
+              <div>
+                <h2 class="mb-4 text-xl text-neutral-900">
+                  Description
+                </h2>
 
-                <.inputs_for :let={constraint} field={@form[:constraints]}>
-                  <input type="hidden" name="policy[constraints_order][]" value={constraint.index} />
-
-                  <div class="flex flex-initial space-x-2">
-                    <.constraint_form providers={@providers} constraint={constraint} />
-
-                    <div class="block mt-2 ml-2">
-                      <label class="cursor-pointer">
-                        <input
-                          type="checkbox"
-                          name="policy[constraints_delete][]"
-                          value={constraint.index}
-                          class="hidden"
-                        /> <.icon name="hero-x-mark" />
-                      </label>
-                    </div>
-                  </div>
-                </.inputs_for>
-
-                <div>
-                  <label class={[
-                    button_style("info"),
-                    button_size("md"),
-                    "w-1/4",
-                    "cursor-pointer"
-                  ]}>
-                    <input type="checkbox" name="policy[constraints_order][]" class="hidden" />
-                    <.icon name="hero-plus" class={icon_size("md")} /> Add Constraint
-                  </label>
-                </div>
-              </fieldset>
-
-              <.input
-                field={@form[:description]}
-                type="textarea"
-                label="Description"
-                placeholder="Optionally, enter a reason for creating a policy here."
-                phx-debounce="300"
-              />
+                <.input
+                  field={@form[:description]}
+                  type="textarea"
+                  placeholder="Optionally, enter a reason for creating a policy here."
+                  phx-debounce="300"
+                />
+              </div>
             </div>
 
             <.submit_button phx-disable-with="Creating Policy..." class="w-full">
@@ -150,13 +116,13 @@ defmodule Web.Policies.New do
     """
   end
 
-  def handle_event("validate", %{"_target" => target, "policy" => params}, socket) do
+  def handle_event("validate", %{"policy" => params}, socket) do
     form =
       params
       |> put_default_params(socket)
-      |> map_constraint_params()
+      |> map_condition_params()
       |> Policies.new_policy(socket.assigns.subject)
-      |> to_form(form_opts(target))
+      |> to_form(action: :validate)
 
     {:noreply, assign(socket, form: form)}
   end
@@ -165,7 +131,7 @@ defmodule Web.Policies.New do
     params =
       params
       |> put_default_params(socket)
-      |> map_constraint_params()
+      |> map_condition_params()
 
     with {:ok, policy} <- Policies.create_policy(params, socket.assigns.subject) do
       if site_id = socket.assigns.params["site_id"] do
@@ -176,12 +142,9 @@ defmodule Web.Policies.New do
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset, action: :save))}
+        {:noreply, assign(socket, form: to_form(changeset, action: :insert))}
     end
   end
-
-  defp form_opts(["policy", "constraints_order"]), do: []
-  defp form_opts(_), do: [action: :validate]
 
   defp put_default_params(attrs, socket) do
     if resource_id = socket.assigns.resource_id do
@@ -191,32 +154,33 @@ defmodule Web.Policies.New do
     end
   end
 
-  defp map_constraint_params(attrs) do
-    Map.update(attrs, "constraints", nil, fn constraints ->
-      for {index, constraint_attrs} <- constraints, into: %{} do
-        {index, map_constraint_values(constraint_attrs)}
+  defp map_condition_params(attrs) do
+    Map.update(attrs, "conditions", %{}, fn conditions ->
+      for {property, condition_attrs} <- conditions,
+          condition_attrs = map_condition_values(condition_attrs),
+          into: %{} do
+        {property, condition_attrs}
       end
     end)
   end
 
-  defp map_constraint_values(%{"operator" => "is_in_day_of_week_time_ranges"} = constraint_attrs) do
-    Map.update(constraint_attrs, "values", [], fn values ->
-      Enum.map(values, fn {dow, time_ranges} ->
+  defp map_condition_values(%{"operator" => "is_in_day_of_week_time_ranges"} = condition_attrs) do
+    Map.update(condition_attrs, "values", [], fn values ->
+      values
+      |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
+      |> Enum.map(fn {dow, time_ranges} ->
         "#{dow}/#{time_ranges}"
       end)
     end)
   end
 
-  defp map_constraint_values(constraint_attrs) do
-    Map.update(constraint_attrs, "values", [], fn
-      values when is_list(values) ->
-        values
-
-      values when is_map(values) ->
-        values |> Enum.sort_by(&elem(&1, 0)) |> Enum.map(&elem(&1, 1))
-
-      values ->
-        String.split(values, ",")
-    end)
+  defp map_condition_values(%{"values" => values} = condition_attrs) do
+    values
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      _other -> condition_attrs
+    end
   end
 end

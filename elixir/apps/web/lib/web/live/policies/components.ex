@@ -2,307 +2,473 @@ defmodule Web.Policies.Components do
   use Web, :component_library
   alias Domain.Policies
 
+  @days_of_week [
+    {"M", "Monday"},
+    {"T", "Tuesday"},
+    {"W", "Wednesday"},
+    {"R", "Thursday"},
+    {"F", "Friday"},
+    {"S", "Saturday"},
+    {"U", "Sunday"}
+  ]
+
   attr :policy, :map, required: true
 
   def policy_name(assigns) do
     ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
   end
 
-  def constraints(assigns) do
+  def conditions(assigns) do
     ~H"""
-    <.constraint
-      :for={constraint <- @constraints}
-      property={constraint.property}
-      operator={constraint.operator}
-      values={constraint.values}
-    />
+    <span :if={@conditions == []} class="text-neutral-500">
+      There are no conditions defined for this policy.
+    </span>
+    <span :if={@conditions != []} class="flex flex-wrap">
+      <span class="mr-1">This policy can be used</span>
+      <.condition
+        :for={condition <- @conditions}
+        providers={@providers}
+        property={condition.property}
+        operator={condition.operator}
+        values={condition.values}
+      />
+    </span>
     """
   end
 
-  def constraint(%{property: :remote_ip_location_region} = assigns) do
+  defp condition(%{property: :remote_ip_location_region} = assigns) do
     ~H"""
-    <div>
-      Client <%= constraint_operator_option_name(@operator) %>
-      <%= for value <- @values do %>
-        <%= Domain.Geo.country_common_name!(value) %>
-      <% end %>
-    </div>
+    <span class="mr-1">
+      <span :if={@operator == :is_in}>from</span>
+      <span :if={@operator == :is_not_in}>from any counties except</span>
+      <span class="font-medium">
+        <%= @values |> Enum.map(&Domain.Geo.country_common_name!/1) |> Enum.join(", ") %>
+      </span>
+    </span>
     """
   end
 
-  def constraint(%{property: :remote_ip} = assigns) do
+  defp condition(%{property: :remote_ip} = assigns) do
     ~H"""
-    <div>
-      Client IP Address <%= constraint_operator_option_name(@operator) %>
-      <%= Enum.join(@values, ", ") %>
-    </div>
+    <span class="mr-1">
+      <span>from IP addresses that are</span> <span :if={@operator == :is_in_cidr}>within</span>
+      <span :if={@operator == :is_not_in_cidr}>not within</span>
+      <span class="font-medium"><%= Enum.join(@values, ", ") %></span>
+    </span>
     """
   end
 
-  def constraint(%{property: :provider_id} = assigns) do
+  defp condition(%{property: :provider_id} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :providers,
+        assigns.values
+        |> Enum.map(fn provider_id ->
+          Enum.find(assigns.providers, fn provider ->
+            provider.id == provider_id
+          end)
+        end)
+        |> Enum.reject(&is_nil/1)
+      )
+
     ~H"""
-    <div>
-      Provider <%= constraint_operator_option_name(@operator) %>
-      <%= Enum.join(@values, ", ") %>
-    </div>
+    <span class="flex flex-wrap space-x-1 mr-1">
+      <span>when signed in</span>
+      <span :if={@operator == :is_in}>with</span>
+      <span :if={@operator == :is_not_in}>not with</span>
+      <.intersperse_blocks>
+        <:separator>,</:separator>
+
+        <:item :for={provider <- @providers}>
+          <.link navigate={"/providers/#{provider.id}"} class={[link_style(), "font-medium"]}>
+            <%= provider.name %>
+          </.link>
+        </:item>
+      </.intersperse_blocks>
+      <span>provider(s)</span>
+    </span>
     """
   end
 
-  def constraint(%{property: :current_utc_datetime, values: values} = assigns) do
+  defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
       assign_new(assigns, :ranges, fn ->
-        {:ok, ranges} = Policies.Constraint.Evaluator.parse_days_of_week_time_ranges(values)
+        {:ok, ranges} = Policies.Condition.Evaluator.parse_days_of_week_time_ranges(values)
+
         ranges
+        |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
+        |> Enum.sort_by(fn {dow, _time_ranges} -> day_of_week_index(dow) end)
       end)
 
     ~H"""
-    <div>
-      Current time
-      <div :for={{day_of_week, ranges} <- @ranges}>
-        <%= unless Enum.empty?(ranges) do %>
-          <%= day_of_week_name(day_of_week) <> "s: " %>
-          <%= Enum.map_join(
-            ranges,
-            ", ",
-            fn {from, to} ->
-              "#{from} - #{to}"
-            end
-          ) %>
+    <span class="flex flex-wrap space-x-1 mr-1">
+      on
+      <.intersperse_blocks>
+        <:separator>,</:separator>
+
+        <:item :for={{day_of_week, ranges} <- @ranges}>
+          <span class="ml-1 font-medium">
+            <%= day_of_week_name(day_of_week) <> "s" %>
+            <span :if={is_list(ranges) and ranges != []}>
+              <%= "(" <>
+                Enum.map_join(ranges, ", ", fn {from, to} ->
+                  "#{from} - #{to}"
+                end) <> ")" %>
+            </span>
+          </span>
+        </:item>
+      </.intersperse_blocks>
+    </span>
+    """
+  end
+
+  for {code, name} <- @days_of_week do
+    defp day_of_week_name(unquote(code)), do: unquote(name)
+  end
+
+  for {{code, _name}, index} <- Enum.with_index(@days_of_week) do
+    def day_of_week_index(unquote(code)), do: unquote(index)
+  end
+
+  defp condition_operator_option_name(:contains), do: "contains"
+  defp condition_operator_option_name(:does_not_contain), do: "does not contain"
+  defp condition_operator_option_name(:is_in), do: "is in"
+  defp condition_operator_option_name(:is_not_in), do: "is not in"
+  defp condition_operator_option_name(:is_in_day_of_week_time_ranges), do: ""
+  defp condition_operator_option_name(:is_in_cidr), do: "is in"
+  defp condition_operator_option_name(:is_not_in_cidr), do: "is not in"
+
+  def condition_form(assigns) do
+    ~H"""
+    <fieldset class="flex flex-col gap-2">
+      <legend class="text-lg mb-4">Conditions</legend>
+
+      <.remote_ip_location_region_condition_form form={@form} />
+      <.remote_ip_condition_form form={@form} />
+      <.provider_id_condition_form form={@form} providers={@providers} />
+      <.current_utc_datetime_condition_form form={@form} />
+    </fieldset>
+    """
+  end
+
+  defp remote_ip_location_region_condition_form(assigns) do
+    ~H"""
+    <fieldset class="mb-2">
+      <% condition_form = find_condition_form(@form[:conditions], :remote_ip_location_region) %>
+
+      <.input
+        type="hidden"
+        field={condition_form[:property]}
+        name="policy[conditions][remote_ip_location_region][property]"
+        id="policy_conditions_remote_ip_location_region_property"
+        value="remote_ip_location_region"
+      />
+
+      <div
+        class="cursor-pointer"
+        phx-click={
+          JS.toggle_class("hidden",
+            to: "#policy_conditions_remote_ip_location_region_condition"
+          )
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_remote_ip_location_region_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_remote_ip_location_region_chevron"
+          )
+        }
+      >
+        <legend>
+          <.icon id="policy_conditions_remote_ip_location_region_chevron" name="hero-chevron-down" />
+          Client location
+        </legend>
+
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the location of the client.
+        </p>
+      </div>
+
+      <div
+        id="policy_conditions_remote_ip_location_region_condition"
+        class="grid gap-2 sm:grid-cols-5 sm:gap-4 hidden"
+      >
+        <.input
+          type="select"
+          name="policy[conditions][remote_ip_location_region][operator]"
+          id="policy_conditions_remote_ip_location_region_operator"
+          field={condition_form[:operator]}
+          placeholder="Operator"
+          options={condition_operator_options(:remote_ip_location_region)}
+          value={condition_form && condition_form[:operator].value}
+        />
+
+        <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
+          <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
+            or
+          </div>
+
+          <div class="col-span-4">
+            <.input
+              type="select"
+              field={condition_form[:values]}
+              name="policy[conditions][remote_ip_location_region][values][]"
+              id={"policy_conditions_remote_ip_location_region_values_#{index}"}
+              options={[{"Select Country", nil}] ++ Domain.Geo.all_country_options!()}
+              value_index={index}
+              value={value}
+            />
+          </div>
         <% end %>
       </div>
-    </div>
+    </fieldset>
     """
   end
 
-  def day_of_week_name("M"), do: "Monday"
-  def day_of_week_name("T"), do: "Tuesday"
-  def day_of_week_name("W"), do: "Wednesday"
-  def day_of_week_name("R"), do: "Thursday"
-  def day_of_week_name("F"), do: "Friday"
-  def day_of_week_name("S"), do: "Saturday"
-  def day_of_week_name("U"), do: "Sunday"
-
-  def constraint_property_option_name(:remote_ip_location_region), do: "Client Location Country"
-  def constraint_property_option_name(:remote_ip), do: "Client IP Address"
-  def constraint_property_option_name(:provider_id), do: "Provider"
-  def constraint_property_option_name(:current_utc_datetime), do: "Current UTC Datetime"
-  def constraint_property_option_name(other), do: to_string(other)
-
-  def constraint_operator_option_name(:contains), do: "contains"
-  def constraint_operator_option_name(:does_not_contain), do: "does not contain"
-  def constraint_operator_option_name(:is_in), do: "is in"
-  def constraint_operator_option_name(:is_not_in), do: "is not in"
-  def constraint_operator_option_name(:is_in_day_of_week_time_ranges), do: ""
-  def constraint_operator_option_name(:is_in_cidr), do: "is in"
-  def constraint_operator_option_name(:is_not_in_cidr), do: "is not in"
-
-  attr :constraint, :any, required: true, doc: "the constraint form element"
-  attr :providers, :list, required: true, doc: "providers for the provider_id constraint"
-
-  def constraint_form(assigns) do
+  defp remote_ip_condition_form(assigns) do
     ~H"""
-    <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
-      <div class="col-span-2">
+    <fieldset class="mb-2">
+      <% condition_form = find_condition_form(@form[:conditions], :remote_ip) %>
+
+      <.input
+        type="hidden"
+        field={condition_form[:property]}
+        name="policy[conditions][remote_ip][property]"
+        id="policy_conditions_remote_ip_property"
+        value="remote_ip"
+      />
+
+      <div
+        class="cursor-pointer"
+        phx-click={
+          JS.toggle_class("hidden",
+            to: "#policy_conditions_remote_ip_condition"
+          )
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_remote_ip_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_remote_ip_chevron"
+          )
+        }
+      >
+        <legend>
+          <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
+          IP address
+        </legend>
+
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the client's IP address.
+        </p>
+      </div>
+
+      <div
+        id="policy_conditions_remote_ip_condition"
+        class="grid gap-2 sm:grid-cols-5 sm:gap-4 hidden"
+      >
         <.input
           type="select"
-          field={@constraint[:property]}
-          placeholder="Property"
-          options={constraint_property_options()}
-          value={@constraint[:property].value}
+          name="policy[conditions][remote_ip][operator]"
+          id="policy_conditions_remote_ip_operator"
+          field={condition_form[:operator]}
+          placeholder="Operator"
+          options={condition_operator_options(:remote_ip)}
+          value={condition_form && condition_form[:operator].value}
         />
-      </div>
 
-      <.constraint_condition_form
-        providers={@providers}
-        property={@constraint[:property].value}
-        constraint={@constraint}
-      />
-    </div>
+        <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
+          <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
+            or
+          </div>
+
+          <div class="col-span-4">
+            <.input
+              type="text"
+              field={condition_form[:values]}
+              name="policy[conditions][remote_ip][values][]"
+              id={"policy_conditions_remote_ip_values_#{index}"}
+              placeholder="189.172.0.0/24"
+              value_index={index}
+              value={value}
+            />
+          </div>
+        <% end %>
+      </div>
+    </fieldset>
     """
   end
 
-  defp constraint_condition_form(%{property: :remote_ip_location_region} = assigns) do
+  defp provider_id_condition_form(assigns) do
     ~H"""
-    <.input
-      type="select"
-      field={@constraint[:operator]}
-      placeholder="Operator"
-      options={constraint_operator_options(@property)}
-    />
+    <fieldset class="mb-2">
+      <% condition_form = find_condition_form(@form[:conditions], :provider_id) %>
 
-    <%= for {value, index} <- Enum.with_index((@constraint[:values].value || []) ++ [nil]) do %>
-      <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900 col-span-3">or</div>
+      <.input
+        type="hidden"
+        field={condition_form[:property]}
+        name="policy[conditions][provider_id][property]"
+        id="policy_conditions_provider_id_property"
+        value="provider_id"
+      />
 
-      <div class="col-span-2">
+      <div
+        class="cursor-pointer"
+        phx-click={
+          JS.toggle_class("hidden",
+            to: "#policy_conditions_provider_id_condition"
+          )
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_provider_id_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_provider_id_chevron"
+          )
+        }
+      >
+        <legend>
+          <.icon id="policy_conditions_provider_id_chevron" name="hero-chevron-down" class="w-5 h-5" />
+          Authentication Provider
+        </legend>
+
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the authentication provider that was used to sign in.
+        </p>
+      </div>
+
+      <div
+        id="policy_conditions_provider_id_condition"
+        class="grid gap-2 sm:grid-cols-5 sm:gap-4 hidden"
+      >
         <.input
           type="select"
-          field={@constraint[:values]}
-          id={@constraint[:values].name <> "[#{index}]"}
-          name={@constraint[:values].name <> "[#{index}]"}
-          options={[{"Select Country", nil}] ++ Domain.Geo.all_country_options!()}
-          value={value}
+          name="policy[conditions][provider_id][operator]"
+          id="policy_conditions_provider_id_operator"
+          field={condition_form[:operator]}
+          placeholder="Operator"
+          options={condition_operator_options(:provider_id)}
+          value={condition_form && condition_form[:operator].value}
         />
+
+        <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
+          <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
+            or
+          </div>
+
+          <div class="col-span-4">
+            <.input
+              type="select"
+              field={condition_form[:values]}
+              name="policy[conditions][provider_id][values][]"
+              id={"policy_conditions_provider_id_values_#{index}"}
+              options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
+              value_index={index}
+              value={value}
+            />
+          </div>
+        <% end %>
       </div>
-    <% end %>
+    </fieldset>
     """
   end
 
-  defp constraint_condition_form(%{property: :remote_ip} = assigns) do
+  defp current_utc_datetime_condition_form(assigns) do
+    assigns = assign_new(assigns, :days_of_week, fn -> @days_of_week end)
+
+    ~H"""
+    <fieldset>
+      <% condition_form = find_condition_form(@form[:conditions], :current_utc_datetime) %>
+
+      <.input
+        type="hidden"
+        field={condition_form[:property]}
+        name="policy[conditions][current_utc_datetime][property]"
+        id="policy_conditions_current_utc_datetime_property"
+        value="current_utc_datetime"
+      />
+
+      <.input
+        type="hidden"
+        name="policy[conditions][current_utc_datetime][operator]"
+        id="policy_conditions_current_utc_datetime_operator"
+        field={condition_form[:operator]}
+        placeholder="Operator"
+        value={:is_in_day_of_week_time_ranges}
+      />
+
+      <div
+        class="cursor-pointer"
+        phx-click={
+          JS.toggle_class("hidden",
+            to: "#policy_conditions_current_utc_datetime_condition"
+          )
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_current_utc_datetime_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_current_utc_datetime_chevron"
+          )
+        }
+      >
+        <legend>
+          <.icon
+            id="policy_conditions_current_utc_datetime_chevron"
+            name="hero-chevron-down"
+            class="w-5 h-5"
+          /> Current time
+        </legend>
+
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the current time of the day in UTC timezone.
+        </p>
+      </div>
+
+      <div id="policy_conditions_current_utc_datetime_condition" class="space-y-2 hidden">
+        <.current_utc_datetime_condition_day_input
+          :for={{code, _name} <- @days_of_week}
+          condition_form={condition_form}
+          day={code}
+        />
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp find_condition_form(form_field, property) do
+    condition_form =
+      form_field.value
+      |> Enum.find_value(fn condition ->
+        if Ecto.Changeset.get_field(condition, :property) == property do
+          to_form(condition)
+        end
+      end)
+
+    condition_form || to_form(%{})
+  end
+
+  defp current_utc_datetime_condition_day_input(assigns) do
     ~H"""
     <.input
-      type="select"
-      field={@constraint[:operator]}
-      placeholder="Operator"
-      options={constraint_operator_options(@property)}
+      type="text"
+      label={day_of_week_name(@day)}
+      field={@condition_form[:values]}
+      name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
+      id={"policy_conditions_current_utc_datetime_values_#{@day}"}
+      placeholder="9:00-12:00,13:00-17:00"
+      value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
+      value_index={day_of_week_index(@day)}
     />
-
-    <%= for {value, index} <- Enum.with_index((@constraint[:values].value || []) ++ [nil]) do %>
-      <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900 col-span-3">or</div>
-
-      <div class="col-span-2">
-        <.input
-          type="text"
-          field={@constraint[:values]}
-          id={@constraint[:values].name <> "[#{index}]"}
-          name={@constraint[:values].name <> "[#{index}]"}
-          placeholder="172.16.0.0/24"
-          value={value}
-        />
-      </div>
-    <% end %>
-    """
-  end
-
-  defp constraint_condition_form(%{property: :provider_id} = assigns) do
-    ~H"""
-    <.input
-      type="select"
-      field={@constraint[:operator]}
-      placeholder="Operator"
-      options={constraint_operator_options(@property)}
-    />
-
-    <%= for {value, index} <- Enum.with_index((@constraint[:values].value || []) ++ [nil]) do %>
-      <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900 col-span-3">or</div>
-
-      <div class="col-span-2">
-        <.input
-          type="select"
-          field={@constraint[:values]}
-          id={@constraint[:values].name <> "[#{index}]"}
-          name={@constraint[:values].name <> "[#{index}]"}
-          options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
-          value={value}
-        />
-      </div>
-    <% end %>
-    """
-  end
-
-  defp constraint_condition_form(%{property: :current_utc_datetime} = assigns) do
-    ~H"""
-    <.input type="hidden" field={@constraint[:operator]} value="is_in_day_of_week_time_ranges" />
-
-    <div class="text-right mt-3 text-sm text-neutral-900">Monday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[M]"}
-        name={@constraint[:values].name <> "[M]"}
-        placeholder="9:00-17:00"
-        value={get_datetime_range_for_day_of_week("M", @constraint[:values])}
-      />
-    </div>
-
-    <div class="text-right mt-3 text-sm text-neutral-900 col-span-3">Tuesday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[T]"}
-        name={@constraint[:values].name <> "[T]"}
-        placeholder="9:00-17:00, 23:00-23:59"
-        value={get_datetime_range_for_day_of_week("T", @constraint[:values])}
-      />
-    </div>
-
-    <div class="text-right mt-3 text-sm text-neutral-900 col-span-3">Wednesday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[W]"}
-        name={@constraint[:values].name <> "[W]"}
-        placeholder="9:00-17:00"
-        value={get_datetime_range_for_day_of_week("W", @constraint[:values])}
-      />
-    </div>
-
-    <div class="text-right mt-3 text-sm text-neutral-900 col-span-3">Thursday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[R]"}
-        name={@constraint[:values].name <> "[R]"}
-        placeholder="9:00-17:00"
-        value={get_datetime_range_for_day_of_week("R", @constraint[:values])}
-      />
-    </div>
-
-    <div class="text-right mt-3 text-sm text-neutral-900 col-span-3">Friday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[F]"}
-        name={@constraint[:values].name <> "[F]"}
-        placeholder="9:00-17:00"
-        value={get_datetime_range_for_day_of_week("F", @constraint[:values])}
-      />
-    </div>
-
-    <div class="text-right mt-3 text-sm text-neutral-900 col-span-3">Saturday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[S]"}
-        name={@constraint[:values].name <> "[S]"}
-        placeholder="9:00-17:00"
-        value={get_datetime_range_for_day_of_week("S", @constraint[:values])}
-      />
-    </div>
-
-    <div class="text-right mt-3 text-sm text-neutral-900 col-span-3">Sunday</div>
-    <div class="col-span-2">
-      <.input
-        type="text"
-        field={@constraint[:values]}
-        id={@constraint[:values].name <> "[U]"}
-        name={@constraint[:values].name <> "[U]"}
-        placeholder="9:00-17:00"
-        value={get_datetime_range_for_day_of_week("U", @constraint[:values])}
-      />
-    </div>
     """
   end
 
   defp get_datetime_range_for_day_of_week(day, form_field) do
-    Enum.find_value(form_field.value, fn
+    Enum.find_value(form_field.value || [], fn
       ^day <> "/" <> ranges -> ranges
       _ -> nil
     end)
   end
 
-  defp constraint_property_options do
-    Ecto.Enum.values(Domain.Policies.Constraint, :property)
-    |> Enum.map(&{constraint_property_option_name(&1), &1})
-  end
-
-  defp constraint_operator_options(property) do
-    Domain.Policies.Constraint.Changeset.valid_operators_for_property(property)
-    |> Enum.map(&{constraint_operator_option_name(&1), &1})
+  defp condition_operator_options(property) do
+    Domain.Policies.Condition.Changeset.valid_operators_for_property(property)
+    |> Enum.map(&{condition_operator_option_name(&1), &1})
   end
 end

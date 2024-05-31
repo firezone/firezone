@@ -54,7 +54,7 @@ defmodule Domain.Flows do
 
   defp fetch_conforming_policy(%Resources.Resource{} = resource, client) do
     Enum.reduce_while(resource.authorized_by_policies, {:error, []}, fn policy, {:error, acc} ->
-      case Policies.ensure_client_conforms_policy_constraints(client, policy) do
+      case Policies.ensure_client_conforms_policy_conditions(client, policy) do
         :ok ->
           {:halt, {:ok, policy}}
 

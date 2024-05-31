@@ -241,7 +241,7 @@ defmodule Domain.PoliciesTest do
       attrs = %{
         actor_group_id: actor_group.id,
         resource_id: resource.id,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip,
             operator: :is_in_cidr,
@@ -271,23 +271,23 @@ defmodule Domain.PoliciesTest do
 
       assert {:ok, policy} = create_policy(attrs, subject)
 
-      assert policy.constraints == [
-               %Policies.Constraint{
+      assert policy.conditions == [
+               %Policies.Condition{
                  property: :remote_ip,
                  operator: :is_in_cidr,
                  values: ["10.10.0.0/24"]
                },
-               %Policies.Constraint{
+               %Policies.Condition{
                  property: :remote_ip_location_region,
                  operator: :is_in,
                  values: ["US"]
                },
-               %Policies.Constraint{
+               %Policies.Condition{
                  property: :provider_id,
                  operator: :is_not_in,
                  values: ["3c712b5d-b1af-4b5a-9f33-aa3d1a4dc296"]
                },
-               %Policies.Constraint{
+               %Policies.Condition{
                  property: :current_utc_datetime,
                  operator: :is_in_day_of_week_time_ranges,
                  values: [
@@ -963,15 +963,15 @@ defmodule Domain.PoliciesTest do
     end
   end
 
-  describe "ensure_client_conforms_policy_constraints/2" do
-    test "returns :ok when client conforms to policy constraints", %{} do
+  describe "ensure_client_conforms_policy_conditions/2" do
+    test "returns :ok when client conforms to policy conditions", %{} do
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "US"
       }
 
       policy = %Policies.Policy{
-        constraints: [
-          %Policies.Constraint{
+        conditions: [
+          %Policies.Condition{
             property: :remote_ip_location_region,
             operator: :is_in,
             values: ["US"]
@@ -979,17 +979,17 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert ensure_client_conforms_policy_constraints(client, policy) == :ok
+      assert ensure_client_conforms_policy_conditions(client, policy) == :ok
     end
 
-    test "returns error when client conforms to policy constraints", %{} do
+    test "returns error when client conforms to policy conditions", %{} do
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "US"
       }
 
       policy = %Policies.Policy{
-        constraints: [
-          %Policies.Constraint{
+        conditions: [
+          %Policies.Condition{
             property: :remote_ip_location_region,
             operator: :is_in,
             values: ["CA"]
@@ -997,7 +997,7 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert ensure_client_conforms_policy_constraints(client, policy) ==
+      assert ensure_client_conforms_policy_conditions(client, policy) ==
                {:error, {:forbidden, [violated_properties: [:remote_ip_location_region]]}}
     end
   end

@@ -40,6 +40,7 @@ defmodule Web.FormComponents do
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
 
   attr :errors, :list, default: []
+  attr :value_index, :integer, default: nil
 
   attr :inline_errors, :boolean,
     default: false,
@@ -59,9 +60,20 @@ defmodule Web.FormComponents do
   slot :inner_block
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+    errors =
+      if assigns.value_index do
+        Enum.filter(field.errors, fn {_error, meta} ->
+          Keyword.get(meta, :validated_as) == :list and
+            Keyword.get(meta, :at) == assigns.value_index
+        end)
+      else
+        field.errors
+      end
+      |> Enum.map(&translate_error(&1))
+
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
-    |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
+    |> assign(:errors, errors)
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
       if assigns.value_id do

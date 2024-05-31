@@ -900,7 +900,7 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :offline}
     end
 
-    test "returns error when flow is not authorized due to failing constraints", %{
+    test "returns error when flow is not authorized due to failing conditions", %{
       account: account,
       client: client,
       actor_group: actor_group,
@@ -918,7 +918,7 @@ defmodule API.Client.ChannelTest do
         account: account,
         actor_group: actor_group,
         resource: resource,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip_location_region,
             operator: :is_not_in,
@@ -1124,7 +1124,7 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when flow is not authorized due to failing constraints", %{
+    test "returns error when flow is not authorized due to failing conditions", %{
       account: account,
       client: client,
       actor_group: actor_group,
@@ -1142,7 +1142,7 @@ defmodule API.Client.ChannelTest do
         account: account,
         actor_group: actor_group,
         resource: resource,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip_location_region,
             operator: :is_not_in,

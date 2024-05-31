@@ -1,9 +1,9 @@
-defmodule Domain.Policies.Constraint.Changeset do
+defmodule Domain.Policies.Condition.Changeset do
   use Domain, :changeset
-  alias Domain.Policies.Constraint
+  alias Domain.Policies.Condition
 
-  def changeset(%Constraint{} = constraint, attrs, _position) do
-    constraint
+  def changeset(%Condition{} = condition, attrs, _position) do
+    condition
     |> cast(attrs, [:property, :operator, :values])
     |> put_default_value(:property, :remote_ip_location_region)
     |> put_default_value(:operator, :is_in)
@@ -42,15 +42,7 @@ defmodule Domain.Policies.Constraint.Changeset do
         |> validate_required(:operator)
         |> validate_inclusion(:operator, valid_operators_for_property(:current_utc_datetime))
         |> validate_list(:values, :string, fn changeset, field ->
-          validate_change(changeset, field, fn field, value ->
-            case Constraint.Evaluator.parse_day_of_week_time_ranges(value) do
-              {:ok, _dow_time_ranges} ->
-                []
-
-              {:error, reason} ->
-                [{field, reason}]
-            end
-          end)
+          validate_day_of_week_time_ranges(changeset, field)
         end)
 
       {_data_or_changes, nil} ->
@@ -59,5 +51,17 @@ defmodule Domain.Policies.Constraint.Changeset do
       :error ->
         add_error(changeset, :property, "is not supported")
     end
+  end
+
+  def validate_day_of_week_time_ranges(changeset, field) do
+    validate_change(changeset, field, fn field, value ->
+      case Condition.Evaluator.parse_day_of_week_time_ranges(value) do
+        {:ok, _dow_time_ranges} ->
+          []
+
+        {:error, reason} ->
+          [{field, reason}]
+      end
+    end)
   end
 end

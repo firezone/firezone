@@ -1,7 +1,7 @@
-defmodule Domain.Policies.Constraint.Evaluator do
+defmodule Domain.Policies.Condition.Evaluator do
   alias Domain.Repo
   alias Domain.Clients
-  alias Domain.Policies.Constraint
+  alias Domain.Policies.Condition
 
   @days_of_week ~w[M T W R F S U]
 
@@ -9,15 +9,15 @@ defmodule Domain.Policies.Constraint.Evaluator do
     :ok
   end
 
-  def ensure_conforms(constraints, %Clients.Client{} = client) when is_list(constraints) do
+  def ensure_conforms(conditions, %Clients.Client{} = client) when is_list(conditions) do
     client = Repo.preload(client, :identity)
 
-    constraints
-    |> Enum.reduce([], fn constraint, violated_properties ->
+    conditions
+    |> Enum.reduce([], fn condition, violated_properties ->
       cond do
-        conforms?(constraint, client) -> violated_properties
-        constraint.property in violated_properties -> violated_properties
-        true -> [constraint.property | violated_properties]
+        conforms?(condition, client) -> violated_properties
+        condition.property in violated_properties -> violated_properties
+        true -> [condition.property | violated_properties]
       end
     end)
     |> case do
@@ -27,21 +27,21 @@ defmodule Domain.Policies.Constraint.Evaluator do
   end
 
   def conforms?(
-        %Constraint{property: :remote_ip_location_region, operator: :is_in, values: values},
+        %Condition{property: :remote_ip_location_region, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
     client.last_seen_remote_ip_location_region in values
   end
 
   def conforms?(
-        %Constraint{property: :remote_ip_location_region, operator: :is_not_in, values: values},
+        %Condition{property: :remote_ip_location_region, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
     client.last_seen_remote_ip_location_region not in values
   end
 
   def conforms?(
-        %Constraint{property: :remote_ip, operator: :is_in_cidr, values: values},
+        %Condition{property: :remote_ip, operator: :is_in_cidr, values: values},
         %Clients.Client{} = client
       ) do
     Enum.any?(values, fn cidr ->
@@ -51,7 +51,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
   end
 
   def conforms?(
-        %Constraint{property: :remote_ip, operator: :is_not_in_cidr, values: values},
+        %Condition{property: :remote_ip, operator: :is_not_in_cidr, values: values},
         %Clients.Client{} = client
       ) do
     Enum.all?(values, fn cidr ->
@@ -61,7 +61,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
   end
 
   def conforms?(
-        %Constraint{property: :provider_id, operator: :is_in, values: values},
+        %Condition{property: :provider_id, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
     client = Repo.preload(client, :identity)
@@ -69,7 +69,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
   end
 
   def conforms?(
-        %Constraint{property: :provider_id, operator: :is_not_in, values: values},
+        %Condition{property: :provider_id, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
     client = Repo.preload(client, :identity)
@@ -77,7 +77,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
   end
 
   def conforms?(
-        %Constraint{
+        %Condition{
           property: :current_utc_datetime,
           operator: :is_in_day_of_week_time_ranges,
           values: values
@@ -149,7 +149,7 @@ defmodule Domain.Policies.Constraint.Evaluator do
   end
 
   defp merge_time_ranges(true, _time_ranges), do: true
-  defp merge_time_ranges(_time_ranges, true), do: true
+  # defp merge_time_ranges(_time_ranges, true), do: true
 
   defp merge_time_ranges(left_time_ranges, right_time_ranges) do
     cond do

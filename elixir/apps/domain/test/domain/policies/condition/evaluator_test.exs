@@ -1,85 +1,85 @@
-defmodule Domain.Policies.Constraint.EvaluatorTest do
+defmodule Domain.Policies.Condition.EvaluatorTest do
   use Domain.DataCase, async: true
-  import Domain.Policies.Constraint.Evaluator
+  import Domain.Policies.Condition.Evaluator
 
   describe "ensure_conforms/2" do
-    test "returns ok when there are no constraints" do
+    test "returns ok when there are no conditions" do
       client = %Domain.Clients.Client{}
       assert ensure_conforms([], client) == :ok
     end
 
-    test "returns ok when all constraints are met" do
+    test "returns ok when all conditions are met" do
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "US",
         last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
       }
 
-      constraints = [
-        %Domain.Policies.Constraint{
+      conditions = [
+        %Domain.Policies.Condition{
           property: :remote_ip_location_region,
           operator: :is_in,
           values: ["US"]
         },
-        %Domain.Policies.Constraint{
+        %Domain.Policies.Condition{
           property: :remote_ip,
           operator: :is_in_cidr,
           values: ["192.168.0.1/24"]
         }
       ]
 
-      assert ensure_conforms(constraints, client) == :ok
+      assert ensure_conforms(conditions, client) == :ok
     end
 
-    test "returns error when all constraints are not met" do
+    test "returns error when all conditions are not met" do
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "US",
         last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
       }
 
-      constraints = [
-        %Domain.Policies.Constraint{
+      conditions = [
+        %Domain.Policies.Condition{
           property: :remote_ip_location_region,
           operator: :is_in,
           values: ["CN"]
         },
-        %Domain.Policies.Constraint{
+        %Domain.Policies.Condition{
           property: :remote_ip,
           operator: :is_in_cidr,
           values: ["10.10.0.1/24"]
         }
       ]
 
-      assert ensure_conforms(constraints, client) ==
+      assert ensure_conforms(conditions, client) ==
                {:error, [:remote_ip_location_region, :remote_ip]}
     end
 
-    test "returns error when one of the constraints is not met" do
+    test "returns error when one of the conditions is not met" do
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "US",
         last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
       }
 
-      constraints = [
-        %Domain.Policies.Constraint{
+      conditions = [
+        %Domain.Policies.Condition{
           property: :remote_ip_location_region,
           operator: :is_in,
           values: ["CN"]
         },
-        %Domain.Policies.Constraint{
+        %Domain.Policies.Condition{
           property: :remote_ip,
           operator: :is_in_cidr,
           values: ["192.168.0.1/24"]
         }
       ]
 
-      assert ensure_conforms(constraints, client) ==
+      assert ensure_conforms(conditions, client) ==
                {:error, [:remote_ip_location_region]}
     end
   end
 
   describe "conforms?/2" do
     test "when client last seen remote ip location region is in or not in the values" do
-      constraint = %Domain.Policies.Constraint{
+      condition = %Domain.Policies.Condition{
         property: :remote_ip_location_region,
         values: ["US"]
       }
@@ -88,19 +88,19 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
         last_seen_remote_ip_location_region: "US"
       }
 
-      assert conforms?(%{constraint | operator: :is_in}, client) == true
-      assert conforms?(%{constraint | operator: :is_not_in}, client) == false
+      assert conforms?(%{condition | operator: :is_in}, client) == true
+      assert conforms?(%{condition | operator: :is_not_in}, client) == false
 
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "CA"
       }
 
-      assert conforms?(%{constraint | operator: :is_in}, client) == false
-      assert conforms?(%{constraint | operator: :is_not_in}, client) == true
+      assert conforms?(%{condition | operator: :is_in}, client) == false
+      assert conforms?(%{condition | operator: :is_not_in}, client) == true
     end
 
     test "when client last seen remote ip is in or not in the CIDR values" do
-      constraint = %Domain.Policies.Constraint{
+      condition = %Domain.Policies.Condition{
         property: :remote_ip,
         values: ["192.168.0.1/24"]
       }
@@ -109,19 +109,19 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
         last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
       }
 
-      assert conforms?(%{constraint | operator: :is_in_cidr}, client) == true
-      assert conforms?(%{constraint | operator: :is_not_in_cidr}, client) == false
+      assert conforms?(%{condition | operator: :is_in_cidr}, client) == true
+      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == false
 
       client = %Domain.Clients.Client{
         last_seen_remote_ip: %Postgrex.INET{address: {10, 168, 0, 1}}
       }
 
-      assert conforms?(%{constraint | operator: :is_in_cidr}, client) == false
-      assert conforms?(%{constraint | operator: :is_not_in_cidr}, client) == true
+      assert conforms?(%{condition | operator: :is_in_cidr}, client) == false
+      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == true
     end
 
     test "when client identity provider id is in or not in the values" do
-      constraint = %Domain.Policies.Constraint{
+      condition = %Domain.Policies.Condition{
         property: :provider_id,
         values: ["00000000-0000-0000-0000-000000000000"]
       }
@@ -132,8 +132,8 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
         }
       }
 
-      assert conforms?(%{constraint | operator: :is_in}, client) == true
-      assert conforms?(%{constraint | operator: :is_not_in}, client) == false
+      assert conforms?(%{condition | operator: :is_in}, client) == true
+      assert conforms?(%{condition | operator: :is_not_in}, client) == false
 
       client = %Domain.Clients.Client{
         identity: %Domain.Auth.Identity{
@@ -141,20 +141,20 @@ defmodule Domain.Policies.Constraint.EvaluatorTest do
         }
       }
 
-      assert conforms?(%{constraint | operator: :is_in}, client) == false
-      assert conforms?(%{constraint | operator: :is_not_in}, client) == true
+      assert conforms?(%{condition | operator: :is_in}, client) == false
+      assert conforms?(%{condition | operator: :is_not_in}, client) == true
     end
 
     test "when client current UTC datetime is in the day of the week time ranges" do
       # this is tested separately in datetime_in_day_of_the_week_time_ranges?/2
-      constraint = %Domain.Policies.Constraint{
+      condition = %Domain.Policies.Condition{
         property: :current_utc_datetime,
         values: []
       }
 
       client = %Domain.Clients.Client{}
 
-      assert conforms?(%{constraint | operator: :is_in_day_of_week_time_ranges}, client) == false
+      assert conforms?(%{condition | operator: :is_in_day_of_week_time_ranges}, client) == false
     end
   end
 

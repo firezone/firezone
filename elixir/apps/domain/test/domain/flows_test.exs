@@ -83,7 +83,7 @@ defmodule Domain.FlowsTest do
       assert hd(fetched_resource.authorized_by_policies).id == policy.id
     end
 
-    test "returns error when some constraints are not satisfied", %{
+    test "returns error when some conditions are not satisfied", %{
       account: account,
       actor_group: actor_group,
       client: client,
@@ -101,7 +101,7 @@ defmodule Domain.FlowsTest do
         account: account,
         actor_group: actor_group,
         resource: resource,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip_location_region,
             operator: :is_in,
@@ -124,7 +124,7 @@ defmodule Domain.FlowsTest do
                {:error, {:forbidden, violated_properties: [:remote_ip_location_region]}}
     end
 
-    test "returns error when all constraints are not satisfied", %{
+    test "returns error when all conditions are not satisfied", %{
       account: account,
       actor_group: actor_group,
       client: client,
@@ -142,7 +142,7 @@ defmodule Domain.FlowsTest do
         account: account,
         actor_group: actor_group,
         resource: resource,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip_location_region,
             operator: :is_in,
@@ -160,7 +160,7 @@ defmodule Domain.FlowsTest do
                {:error, {:forbidden, violated_properties: [:remote_ip_location_region]}}
     end
 
-    test "creates a flow when the only policy constraints are satisfied", %{
+    test "creates a flow when the only policy conditions are satisfied", %{
       account: account,
       actor: actor,
       resource: resource,
@@ -176,7 +176,7 @@ defmodule Domain.FlowsTest do
         account: account,
         actor_group: actor_group2,
         resource: resource,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip_location_region,
             operator: :is_not_in,
@@ -191,7 +191,7 @@ defmodule Domain.FlowsTest do
       assert flow.policy_id == policy.id
     end
 
-    test "creates a flow when all constraints for at least one of the policies are satisfied", %{
+    test "creates a flow when all conditions for at least one of the policies are satisfied", %{
       account: account,
       actor_group: actor_group,
       client: client,
@@ -209,7 +209,7 @@ defmodule Domain.FlowsTest do
         account: account,
         actor_group: actor_group,
         resource: resource,
-        constraints: [
+        conditions: [
           %{
             property: :remote_ip_location_region,
             operator: :is_in,
