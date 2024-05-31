@@ -2,26 +2,18 @@ use crate::{
     windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
     Cidrv4, Cidrv6,
 };
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
 };
 
 pub struct TunDeviceManager {}
 
-impl Drop for TunDeviceManager {
-    fn drop(&mut self) {
-        if let Err(error) = crate::windows::dns::deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
-        }
-    }
-}
-
 impl TunDeviceManager {
     // Fallible on Linux
-    #[allow(unnecessary_wraps)]
+    #[allow(clippy::unnecessary_wraps)]
     pub fn new() -> Result<Self> {
         Ok(Self {})
     }
@@ -57,13 +49,6 @@ impl TunDeviceManager {
             .stdout(Stdio::null())
             .status()?;
 
-        Ok(())
-    }
-
-    // async on Linux
-    #[allow(clippy::unused_async)]
-    pub async fn control_dns(&self, dns_config: Vec<IpAddr>) -> Result<()> {
-        crate::windows::dns::change(&dns_config).context("Should be able to control DNS")?;
         Ok(())
     }
 

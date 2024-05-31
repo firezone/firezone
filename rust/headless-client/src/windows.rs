@@ -10,7 +10,6 @@ use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
 use std::{
     ffi::{c_void, OsString},
-    net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -102,7 +101,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
 
     // Fixes <https://github.com/firezone/firezone/issues/4899>,
     // DNS rules persisting after reboot
-    connlib_shared::deactivate_dns_control().ok();
+    crate::dns_control::deactivate().ok();
 
     let ipc_task = rt.spawn(super::ipc_listen());
     let ipc_task_ah = ipc_task.abort_handle();
@@ -240,22 +239,6 @@ fn create_pipe_server() -> Result<named_pipe::NamedPipeServer> {
 /// Named pipe for IPC between GUI client and IPC service
 pub fn pipe_path() -> String {
     named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
-}
-
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    let resolvers = ipconfig::get_adapters()?
-        .iter()
-        .flat_map(|adapter| adapter.dns_servers())
-        .filter(|ip| match ip {
-            IpAddr::V4(_) => true,
-            // Filter out bogus DNS resolvers on my dev laptop that start with fec0:
-            IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
-        })
-        .copied()
-        .collect();
-    // This is private, so keep it at `debug` or `trace`
-    tracing::debug!(?resolvers);
-    Ok(resolvers)
 }
 
 /// Returns a valid name for a Windows named pipe

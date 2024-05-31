@@ -45,7 +45,7 @@ pub mod linux;
 pub use linux as platform;
 
 #[cfg(target_os = "windows")]
-pub(crate) mod windows;
+pub mod windows;
 #[cfg(target_os = "windows")]
 pub(crate) use windows as platform;
 
@@ -309,7 +309,7 @@ pub fn run_only_headless_client() -> Result<()> {
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
                     InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                         tun_device.set_ips(ipv4, ipv6).await?;
-                        dns_controller.set_dns(dns).await?;
+                        dns_controller.set_dns(&dns).await?;
                     }
                     InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                         tun_device.set_routes(ipv4, ipv6).await?
@@ -421,7 +421,7 @@ impl Callbacks for CallbackHandler {
 async fn ipc_listen() -> Result<std::convert::Infallible> {
     let mut server = platform::IpcServer::new().await?;
     loop {
-        connlib_shared::deactivate_dns_control()?;
+        dns_control::deactivate()?;
         let stream = server.next_client().await?;
         if let Err(error) = handle_ipc_client(stream).await {
             tracing::error!(?error, "Error while handling IPC client");
@@ -444,7 +444,7 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
                 InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
-                    dns_controller.set_dns(dns).await?;
+                    dns_controller.set_dns(&dns).await?;
                     tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
                         .await?;
                 }

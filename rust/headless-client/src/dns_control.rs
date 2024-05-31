@@ -8,7 +8,7 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
-pub(crate) use platform::{system_resolvers, DnsController};
+pub(crate) use platform::{deactivate, system_resolvers, DnsController};
 
 // TODO: Move DNS and network change listening to the IPC service, so this won't
 // need to be public.

@@ -52,12 +52,12 @@ impl DnsController {
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
-    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         match self.dns_control_method {
             None => Ok(()),
-            Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(&dns_config).await,
-            Some(DnsControlMethod::NetworkManager) => configure_network_manager(&dns_config),
-            Some(DnsControlMethod::Systemd) => configure_systemd_resolved(&dns_config).await,
+            Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(dns_config).await,
+            Some(DnsControlMethod::NetworkManager) => configure_network_manager(dns_config),
+            Some(DnsControlMethod::Systemd) => configure_systemd_resolved(dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -162,6 +162,12 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .flat_map(|line| line.split(' '))
         .filter_map(|word| IpAddr::from_str(word).ok())
         .collect()
+}
+
+// Does nothing on Linux, needed to match the Windows interface
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn deactivate() -> Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]
