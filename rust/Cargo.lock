@@ -1192,7 +1192,6 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "resolv-conf",
  "ring",
  "rtnetlink",
  "secrecy",
