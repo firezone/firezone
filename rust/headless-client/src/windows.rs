@@ -5,20 +5,17 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use crate::{CliCommon, SignalKind};
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
 use std::{
     ffi::{c_void, OsString},
-    future::Future,
     net::IpAddr,
     path::{Path, PathBuf},
-    pin::pin,
     str::FromStr,
-    task::Poll,
     time::Duration,
 };
-use tokio::{net::windows::named_pipe, sync::mpsc};
+use tokio::net::windows::named_pipe;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 use windows::Win32::Security as WinSec;
@@ -102,7 +99,13 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
+
+    // Fixes <https://github.com/firezone/firezone/issues/4899>,
+    // DNS rules persisting after reboot
+    connlib_shared::deactivate_dns_control().ok();
+
+    let ipc_task = rt.spawn(super::ipc_listen());
+    let ipc_task_ah = ipc_task.abort_handle();
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
@@ -111,7 +114,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
             ServiceControl::Stop => {
                 tracing::info!("Got stop signal from service controller");
-                shutdown_tx.blocking_send(()).unwrap();
+                ipc_task_ah.abort();
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::UserEvent(_) => ServiceControlHandlerResult::NoError,
@@ -133,10 +136,6 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         }
     };
 
-    // Fixes <https://github.com/firezone/firezone/issues/4899>,
-    // DNS rules persisting after reboot
-    connlib_shared::deactivate_dns_control().ok();
-
     // Tell Windows that we're running (equivalent to sd_notify in systemd)
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
     status_handle.set_service_status(ServiceStatus {
@@ -149,36 +148,18 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         process_id: None,
     })?;
 
-    let mut ipc_service = pin!(super::ipc_listen());
-    let result = rt.block_on(async {
-        std::future::poll_fn(|cx| {
-            match shutdown_rx.poll_recv(cx) {
-                Poll::Ready(Some(())) => {
-                    tracing::info!("Got shutdown signal");
-                    return Poll::Ready(Ok(()));
-                }
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow!(
-                        "shutdown channel unexpectedly dropped, shutting down"
-                    )))
-                }
-                Poll::Pending => {}
-            }
-
-            match ipc_service.as_mut().poll(cx) {
-                Poll::Ready(Ok(())) => {
-                    return Poll::Ready(Err(anyhow!("Impossible, ipc_listen can't return Ok")))
-                }
-                Poll::Ready(Err(error)) => {
-                    return Poll::Ready(Err(error.context("ipc_listen failed")))
-                }
-                Poll::Pending => {}
-            }
-
-            Poll::Pending
-        })
-        .await
-    });
+    let result = match rt.block_on(ipc_task) {
+        Err(join_error) if join_error.is_cancelled() => {
+            // We cancelled because Windows asked us to shut down.
+            Ok(())
+        }
+        Err(join_error) => {
+            // The IPC task may have panicked
+            Err(join_error.into())
+        }
+        Ok(Err(error)) => Err(error.context("ipc_listen failed")),
+        Ok(Ok(impossible)) => match impossible {},
+    };
 
     // Tell Windows that we're stopping
     status_handle.set_service_status(ServiceStatus {
