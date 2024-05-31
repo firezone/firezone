@@ -722,6 +722,15 @@ impl ReferenceStateMachine for ReferenceState {
                     .or_default()
                     .extend(ips_resolved_by_query);
             }
+            Transition::SendQueryToNonDnsResource { dns_server_idx, .. } => {
+                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
+                let dns_server = state.sample_dns_server(dns_server_idx);
+                let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
+
+                if let Some((_, resource)) = maybe_resource {
+                    state.client_connected_cidr_resources.insert(resource.id);
+                }
+            }
             Transition::SendICMPPacketToNonResourceIp { .. }
             | Transition::SendICMPPacketToResolvedNonResourceIp { .. } => {
                 // Packets to non-resources are dropped, no state change required.
@@ -745,15 +754,6 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
-            }
-            Transition::SendQueryToNonDnsResource { dns_server_idx, .. } => {
-                // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
-                let dns_server = state.sample_dns_server(dns_server_idx);
-                let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
-
-                if let Some((_, resource)) = maybe_resource {
-                    state.client_connected_cidr_resources.insert(resource.id);
-                }
             }
         };
 
