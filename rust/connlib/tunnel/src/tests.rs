@@ -299,10 +299,6 @@ impl StateMachineTest for TunnelTest {
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
-        state.client_sent_icmp_requests.clear();
-        state.gateway_received_requests.clear();
-        state.client_received_icmp_replies.clear();
-
         let mut buffered_transmits = VecDeque::new();
 
         // Act: Apply the transition
