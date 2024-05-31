@@ -19,7 +19,6 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet};
-use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -803,11 +802,7 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let is_valid_icmp_packet = state.is_valid_icmp_packet(dst, seq, identifier);
                 let is_cidr_resource = state.client_cidr_resources.longest_match(*dst).is_some();
-                let is_dns_resource = state
-                    .client_dns_resource_records
-                    .values()
-                    .flatten()
-                    .contains(dst);
+                let is_dns_resource = state.dns_resource_by_ip(*dst).is_some();
 
                 is_valid_icmp_packet && !is_cidr_resource && !is_dns_resource
             }
@@ -867,7 +862,7 @@ impl ReferenceStateMachine for ReferenceState {
                 dns_server_idx,
                 ..
             } => {
-                let domain_matches_dns_resource = state.is_dns_resource(domain);
+                let domain_matches_dns_resource = state.dns_resource_by_domain(domain).is_some();
                 let domain_already_resolved = state.global_dns_records.contains_key(domain);
 
                 let dns_server = state.sample_dns_server(dns_server_idx);
@@ -1364,7 +1359,10 @@ impl TunnelTest {
                     }
                 });
 
-                let record_map = if ref_state.is_dns_resource(&requested_domain) {
+                let record_map = if ref_state
+                    .dns_resource_by_domain(&requested_domain)
+                    .is_some()
+                {
                     &mut self.client_dns_resource_records
                 } else {
                     &mut self.client_dns_none_resource_records
@@ -1468,13 +1466,7 @@ impl ReferenceState {
             src.is_none() || src.is_some_and(|src| src == self.client.tunnel_ip(src)); // Packets from IPs other than the client's are dropped by the gateway. We still create connections for them though.
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
-        if self
-            .client_dns_resource_records
-            .values()
-            .flatten()
-            .contains(&dst)
-            && packet_originates_from_client
-        {
+        if self.dns_resource_by_ip(dst).is_some() && packet_originates_from_client {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .push_back((dst, seq, identifier, ResourceKind::Dns));
@@ -1665,10 +1657,19 @@ impl ReferenceState {
         Some((name.clone(), *idx.get(addr)))
     }
 
-    fn is_dns_resource(&self, domain: &DomainName) -> bool {
+    fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
         self.client_dns_resources
             .values()
-            .any(|r| r.address_as_domain().unwrap() == domain)
+            .find_map(|r| (r.address_as_domain().unwrap() == domain).then_some(r.id))
+    }
+
+    fn dns_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
+        let domain = self
+            .client_dns_resource_records
+            .iter()
+            .find_map(|(domain, ips)| ips.contains(&ip).then_some(domain))?;
+
+        self.dns_resource_by_domain(domain)
     }
 }
 
