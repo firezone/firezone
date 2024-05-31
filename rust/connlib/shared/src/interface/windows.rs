@@ -15,9 +15,9 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const TUNNEL_NAME: &str = "Firezone";
 
 #[derive(Default)]
-pub struct InterfaceManager {}
+pub struct TunDeviceManager {}
 
-impl Drop for InterfaceManager {
+impl Drop for TunDeviceManager {
     fn drop(&mut self) {
         if let Err(error) = crate::windows::dns::deactivate() {
             tracing::error!(?error, "Failed to deactivate DNS control");
@@ -25,7 +25,7 @@ impl Drop for InterfaceManager {
     }
 }
 
-impl InterfaceManager {
+impl TunDeviceManager {
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn on_set_interface_config(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);

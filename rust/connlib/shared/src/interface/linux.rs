@@ -23,7 +23,7 @@ const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
-pub struct InterfaceManager {
+pub struct TunDeviceManager {
     // This gets lazy-initialized when the interface is first configured
     connection: Option<Connection>,
     dns_control_method: Option<DnsControlMethod>,
@@ -35,7 +35,7 @@ struct Connection {
     task: tokio::task::JoinHandle<()>,
 }
 
-impl Drop for InterfaceManager {
+impl Drop for TunDeviceManager {
     fn drop(&mut self) {
         if let Some(connection) = self.connection.take() {
             connection.task.abort();
@@ -48,8 +48,9 @@ impl Drop for InterfaceManager {
     }
 }
 
-impl Default for InterfaceManager {
+impl Default for TunDeviceManager {
     fn default() -> Self {
+        // TODO: This looks wrong
         let dns_control_method = crate::linux::get_dns_control_from_env();
         tracing::info!(?dns_control_method);
 
@@ -61,7 +62,7 @@ impl Default for InterfaceManager {
     }
 }
 
-impl InterfaceManager {
+impl TunDeviceManager {
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn on_set_interface_config(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         let connection = match self.connection.as_mut() {
@@ -151,11 +152,8 @@ impl InterfaceManager {
     pub async fn on_update_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
-            .map(|x| Into::<Ipv4Network>::into(x).into())
-            .chain(
-                ipv6.into_iter()
-                    .map(|x| Into::<Ipv6Network>::into(x).into()),
-            )
+            .map(IpNetwork::from)
+            .chain(ipv6.into_iter().map(IpNetwork::from))
             .collect();
         if new_routes == self.routes {
             return Ok(());
@@ -242,10 +240,7 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
         Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => {}
         // TODO: we should be able to surface this error and handle it depending on
         // if any of the added routes succeeded.
-        Err(err) => {
-            tracing::error!(%route, "failed to add route: {err}");
-            Err(err).context("Failed to add route")?;
-        }
+        Err(err) => Err(err).context("Failed to add route")?,
     }
     Ok(())
 }
@@ -256,10 +251,12 @@ async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
     };
 
-    if let Err(err) = handle.route().del(message).execute().await {
-        tracing::error!(%route, "failed to delete route: {err:#?}");
-        Err(err).context("Failed to delete route")?;
-    }
+    handle
+        .route()
+        .del(message)
+        .execute()
+        .await
+        .context("Failed to delete route")?;
     Ok(())
 }
 

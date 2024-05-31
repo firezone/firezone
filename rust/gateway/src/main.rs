@@ -114,7 +114,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     tunnel
         .set_interface(&init.interface)
         .context("Failed to set interface")?;
-    let mut interface = connlib_shared::interface::InterfaceManager::default();
+    let mut interface = connlib_shared::interface::TunDeviceManager::default();
     interface
         .on_set_interface_config(init.interface.ipv4, init.interface.ipv6)
         .await?;

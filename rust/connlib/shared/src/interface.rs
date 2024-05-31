@@ -11,4 +11,4 @@ pub mod windows;
 pub use windows as platform;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use platform::InterfaceManager;
+pub use platform::TunDeviceManager;
