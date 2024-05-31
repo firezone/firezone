@@ -3,20 +3,25 @@ use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
-        client::{ResourceDescription, ResourceDescriptionCidr, SiteId},
+        client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
         gateway, ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
-    proptest::cidr_resource,
-    StaticSecret,
+    proptest::{cidr_resource, dns_resource},
+    DomainName, StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
-use ip_network::Ipv4Network;
+use hickory_proto::{
+    rr::{rdata, RData, RecordType},
+    serialize::binary::BinDecodable,
+};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::MutableIpPacket;
+use ip_packet::{IpPacket, MutableIpPacket, Packet};
+use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
-    collection, sample,
+    collection, prop_oneof, sample,
     strategy::{Just, Strategy, Union},
     test_runner::Config,
 };
@@ -26,10 +31,11 @@ use secrecy::ExposeSecret;
 use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
+    str::FromStr,
     time::{Duration, Instant, SystemTime},
 };
 use tracing::{debug_span, error_span, subscriber::DefaultGuard, Span};
@@ -60,9 +66,18 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
-    dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    /// The DNS records created on the client as a result of received DNS responses.
+    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
+    /// Mapping of proxy IPs to real resource destinations.
+    ///
+    /// As the client, we don't know how connlib achieves this mapping but we care about it being stable.
+    client_proxy_ip_mapping: HashMap<IpAddr, IpAddr>,
+
+    /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
+    client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
+    client_sent_dns_queries: HashMap<QueryId, DomainName>,
     client_sent_icmp_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
     client_received_icmp_replies: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
     gateway_received_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
@@ -87,41 +102,91 @@ struct ReferenceState {
     /// The upstream DNS resolvers configured in the portal.
     upstream_dns_resolvers: Vec<DnsServer>,
 
-    /// Which resources the clients is aware of.
+    /// The CIDR resources the client is aware of.
     client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    /// The resources we have connected to.
-    connected_resources: HashSet<ResourceId>,
+    /// The DNS resources the client is aware of.
+    client_dns_resources: HashMap<ResourceId, ResourceDescriptionDns>,
 
-    /// The expected ICMP handshakes (resource dst IP, seq, identifier)
-    expected_icmp_handshakes: VecDeque<(IpAddr, u16, u16)>,
+    /// The IPs the client knows about.
+    ///
+    /// We resolve A as well as AAAA records at the time of first access.
+    /// Those are stored in `global_dns_records`.
+    ///
+    /// The client's DNS records is a subset of the global DNS records because we remember all results from the DNS queries but only return what was asked for (A or AAAA).
+    /// On a repeated query, we will access those previously resolved IPs.
+    ///
+    /// Essentially, the client's DNS records represents the addresses a client application (like a browser) would _actually_ know about.
+    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+
+    /// The CIDR resources the client is connected to.
+    client_connected_cidr_resources: HashSet<ResourceId>,
+
+    /// All IP addresses a domain resolves to in our test.
+    ///
+    /// This is used to e.g. mock DNS resolution on the gateway.
+    global_dns_records: HashMap<DomainName, HashSet<IpAddr>>,
+
+    /// The expected ICMP handshakes.
+    expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
 }
+
+#[derive(Debug, Clone, Copy)]
+enum ResourceKind {
+    Cidr,
+    Dns,
+}
+
+type QueryId = u16;
+type IcmpSeq = u16;
+type IcmpIdentifier = u16;
 
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
 enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
-    SendICMPPacketToRandomIp {
+    /// Send an ICMP packet to non-resource IP.
+    SendICMPPacketToNonResourceIp {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
     },
-    /// Send a ICMP packet to an IPv4 resource.
-    SendICMPPacketToIp4Resource {
-        r_idx: sample::Index,
+    /// Send an ICMP packet to a resource.
+    SendICMPPacketToResource {
+        idx: sample::Index,
         seq: u16,
         identifier: u16,
+
+        /// An optional source address.
+        ///
+        /// Packets are only allowed to come from the IP assigned by the portal.
+        /// All others MUST be dropped by the gateway.
+        src: Option<IpAddr>,
     },
-    /// Send a ICMP packet to an IPv6 resource.
-    SendICMPPacketToIp6Resource {
+
+    /// Add a new DNS resource to the client.
+    AddDnsResource {
+        resource: ResourceDescriptionDns,
+        /// The IP we resolve the domain to.
+        resolved_ips: HashSet<IpAddr>,
+    },
+    /// Send a DNS query for one of our DNS resources.
+    SendQueryToDnsResource {
+        /// The index into our list of DNS resources.
         r_idx: sample::Index,
-        seq: u16,
-        identifier: u16,
+        /// The type of DNS query we should send.
+        r_type: RecordType,
+        /// The DNS query ID.
+        query_id: u16,
+        /// The index into our list of DNS servers.
+        dns_server_idx: sample::Index,
     },
+
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
     /// The upstream DNS servers changed.
     UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
+
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
 }
@@ -140,6 +205,7 @@ impl StateMachineTest for TunnelTest {
             .finish()
             .set_default();
 
+        // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map_state(
             |key| ClientState::new(StaticSecret::from(key.0)),
             debug_span!("client"),
@@ -161,6 +227,13 @@ impl StateMachineTest for TunnelTest {
             allocations: ref_state.relay.allocations.clone(),
             buffer: ref_state.relay.buffer.clone(),
         };
+        let portal = SimPortal {
+            _client: client.id,
+            gateway: gateway.id,
+            _relay: relay.id,
+        };
+
+        // Configure client and gateway with the relay.
 
         client.state.update_relays(
             HashSet::default(),
@@ -182,12 +255,6 @@ impl StateMachineTest for TunnelTest {
             ref_state.now,
         );
 
-        let portal = SimPortal {
-            _client: client.id,
-            gateway: gateway.id,
-            _relay: relay.id,
-        };
-
         let mut this = Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
@@ -196,10 +263,13 @@ impl StateMachineTest for TunnelTest {
             portal,
             logger,
             relay,
-            dns_by_sentinel: Default::default(),
-            client_received_icmp_replies: Default::default(),
+            client_dns_records: Default::default(),
+            client_dns_by_sentinel: Default::default(),
             client_sent_icmp_requests: Default::default(),
+            client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
+            client_sent_dns_queries: Default::default(),
+            client_proxy_ip_mapping: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -231,7 +301,13 @@ impl StateMachineTest for TunnelTest {
                         .add_resources(&[ResourceDescription::Cidr(r)]);
                 });
             }
-            Transition::SendICMPPacketToRandomIp {
+            Transition::AddDnsResource { resource, .. } => state.client.span.in_scope(|| {
+                state
+                    .client
+                    .state
+                    .add_resources(&[ResourceDescription::Dns(resource)]);
+            }),
+            Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
                 identifier,
@@ -245,32 +321,52 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToIp4Resource {
-                r_idx,
+            Transition::SendICMPPacketToResource {
+                idx,
                 seq,
                 identifier,
+                src,
             } => {
-                let dst = ref_state.sample_ipv4_cidr_resource_dst(&r_idx);
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
+                let dst = ref_state
+                    .sample_resource_dst(&idx)
+                    .expect("Transition to only be sampled if we have at least one resource");
+                let dst = dst.into_actual_packet_dst(idx, &state.client_dns_records);
+                let src = src.unwrap_or(state.client.tunnel_ip(dst));
+
+                let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToIp6Resource {
+            Transition::SendQueryToDnsResource {
                 r_idx,
-                seq,
-                identifier,
+                r_type,
+                query_id,
+                dns_server_idx,
             } => {
-                let dst = ref_state.sample_ipv6_cidr_resource_dst(&r_idx);
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
+                let domain = ref_state.sample_dns_resource_domain(&r_idx);
+                let dns_server = ref_state.sample_dns_server(&dns_server_idx);
+                let dns_server = *state
+                    .client_dns_by_sentinel
+                    .get_by_right(&dns_server)
+                    .expect("to have a sentinel DNS server for the sampled one");
+
+                state
+                    .client_sent_dns_queries
+                    .insert(query_id, domain.clone());
+
+                let name = domain_to_hickory_name(domain);
+
+                let src = state
+                    .client
+                    .sending_socket_for(dns_server)
+                    .expect("to only sample DNS server compatible with client socket");
+
+                let packet = ip_packet::make::dns_query(
+                    name,
+                    r_type,
+                    src,
+                    SocketAddr::new(dns_server, 53),
+                    query_id,
                 );
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
@@ -290,21 +386,22 @@ impl StateMachineTest for TunnelTest {
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
+        assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        for (resource_dst, seq, identifier) in ref_state.expected_icmp_handshakes.iter() {
+        for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
             let client_sent_request = &state
                 .client_sent_icmp_requests
-                .get(&(*seq, *identifier))
-                .unwrap();
+                .remove(&(*seq, *identifier))
+                .expect("to have ICMP request on client");
             let client_received_reply = &state
                 .client_received_icmp_replies
-                .get(&(*seq, *identifier))
-                .unwrap();
+                .remove(&(*seq, *identifier))
+                .expect("to have ICMP reply on client");
             let gateway_received_request = &state
                 .gateway_received_requests
-                .get(&(*seq, *identifier))
-                .unwrap();
+                .remove(&(*seq, *identifier))
+                .expect("to have ICMP request on gateway");
 
             assert_eq!(
                 gateway_received_request.source(),
@@ -312,11 +409,6 @@ impl StateMachineTest for TunnelTest {
                     .client
                     .tunnel_ip(gateway_received_request.source()),
                 "ICMP request on gateway to originate from client"
-            );
-            assert_eq!(
-                gateway_received_request.destination(),
-                *resource_dst,
-                "ICMP request on gateway to target correct resource"
             );
             assert_eq!(
                 client_sent_request.destination(),
@@ -328,14 +420,59 @@ impl StateMachineTest for TunnelTest {
                 client_received_reply.destination(),
                 "ICMP request source == ICMP reply destination"
             );
+
+            match kind {
+                ResourceKind::Cidr => {
+                    // For CIDR resources, the expected dst is always known.
+
+                    assert_eq!(
+                        gateway_received_request.destination(),
+                        *resource_dst,
+                        "ICMP request on gateway to target correct CIDR resource"
+                    );
+                }
+                ResourceKind::Dns => {
+                    // For DNS resources, we need to look up, which proxy IP we used.
+                    // We consider it an implementation detail, how connlib assigns those IPs.
+                    // We do want to assert that the mapping is stable.
+
+                    match state
+                        .client_proxy_ip_mapping
+                        .entry(client_sent_request.destination())
+                    {
+                        Entry::Vacant(v) => {
+                            // We have to gradually discover connlib's mapping ...
+                            // For the first packet, we just save the IP that we ended up talking to.
+                            v.insert(gateway_received_request.source());
+                        }
+                        Entry::Occupied(o) => {
+                            assert_eq!(
+                                gateway_received_request.source(),
+                                *o.get(),
+                                "ICMP request on gateway to target correct DNS resource"
+                            );
+                        }
+                    }
+                }
+            }
         }
+
+        assert_eq!(
+            state.gateway_received_requests,
+            HashMap::new(),
+            "Unexpected ICMP requests on gateway"
+        );
+        assert_eq!(
+            state.client_received_icmp_replies,
+            HashMap::new(),
+            "Unexpected ICMP replies on client"
+        );
+
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
-
-        assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         state
     }
@@ -385,6 +522,32 @@ impl ReferenceStateMachine for ReferenceState {
                     !c4_eq_g4 && !c6_eq_g6 && !c4_eq_r4 && !c6_eq_r6 && !g4_eq_r4 && !g6_eq_r6
                 },
             )
+            .prop_filter(
+                "at least one DNS server needs to be reachable",
+                |(c, _, _, system_dns, upstream_dns, _, _)| {
+                    // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                    if !upstream_dns.is_empty() {
+                        if c.ip4_socket.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv4()) {
+                            return false;
+                        }
+                        if c.ip6_socket.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv6()) {
+                            return false;
+                        }
+
+                        return true;
+                    }
+
+                    if c.ip4_socket.is_none() && system_dns.iter().all(|s| s.is_ipv4()) {
+                        return false;
+                    }
+                    if c.ip6_socket.is_none() && system_dns.iter().all(|s| s.is_ipv6()) {
+                        return false;
+                    }
+
+                    true
+                },
+            )
             .prop_map(
                 |(
                     client,
@@ -403,8 +566,11 @@ impl ReferenceStateMachine for ReferenceState {
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     client_cidr_resources: IpNetworkTable::new(),
-                    connected_resources: Default::default(),
+                    client_connected_cidr_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
+                    client_dns_resources: Default::default(),
+                    global_dns_records: Default::default(),
+                    client_dns_records: Default::default(),
                 },
             )
             .boxed()
@@ -416,28 +582,36 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
+        let add_dns_resource = (dns_resource(), collection::hash_set(any::<IpAddr>(), 1..4))
+            .prop_map(|(resource, resolved_ips)| Transition::AddDnsResource {
+                resource,
+                resolved_ips,
+            });
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
         let set_system_dns_servers =
             system_dns_servers().prop_map(|servers| Transition::UpdateSystemDnsServers { servers });
         let set_upstream_dns_servers = upstream_dns_servers()
             .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers });
 
-        let (num_ip4_resources, num_ip6_resources) = state.client_cidr_resources.len();
-
         let mut strategies = vec![
             (1, add_cidr_resource.boxed()),
+            (1, add_dns_resource.boxed()),
             (1, tick.boxed()),
             (1, set_system_dns_servers.boxed()),
             (1, set_upstream_dns_servers.boxed()),
             (1, icmp_to_random_ip().boxed()),
         ];
 
-        if num_ip4_resources > 0 {
-            strategies.push((3, icmp_to_ipv4_cidr_resource().boxed()));
+        if !state.client_cidr_resources.is_empty() {
+            strategies.push((10, icmp_to_cidr_resource_from_client().boxed()));
+
+            // Packets from random source addresses are tested less frequently.
+            // Those are dropped by the gateway so this transition only ensures we have this safe-guard.
+            strategies.push((1, icmp_to_cidr_resource_from_random_src().boxed()));
         }
 
-        if num_ip6_resources > 0 {
-            strategies.push((3, icmp_to_ipv6_cidr_resource().boxed()));
+        if !state.client_dns_resources.is_empty() {
+            strategies.extend([(3, query_to_dns_resource().boxed())]);
         }
 
         Union::new_weighted(strategies).boxed()
@@ -447,32 +621,81 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+        state.expected_icmp_handshakes.clear();
+
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_cidr_resources.insert(r.address, r.clone());
             }
-            Transition::SendICMPPacketToRandomIp {
-                dst,
-                seq,
-                identifier,
+            Transition::AddDnsResource {
+                resource: new_resource,
+                resolved_ips,
             } => {
-                state.on_icmp_packet(*dst, *seq, *identifier);
+                let existing_resource = state
+                    .client_dns_resources
+                    .insert(new_resource.id, new_resource.clone());
+
+                state.global_dns_records.insert(
+                    new_resource.address_as_domain().unwrap(),
+                    resolved_ips.clone(),
+                );
+
+                // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
+                if let Some(resource) = existing_resource {
+                    if new_resource.address != resource.address {
+                        state.client_connected_cidr_resources.remove(&resource.id);
+
+                        let name = resource.address_as_domain().unwrap();
+                        state.global_dns_records.remove(&name);
+
+                        // TODO: IN PRODUCTION, WE CANNOT DO THIS.
+                        // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
+                        // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
+                        state.client_dns_records.remove(&name);
+                    }
+                }
             }
-            Transition::SendICMPPacketToIp4Resource {
-                r_idx,
-                seq,
-                identifier,
-            } => {
-                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(dst, *seq, *identifier);
+            Transition::SendQueryToDnsResource { r_idx, r_type, .. } => {
+                let domain = state.sample_dns_resource_domain(r_idx);
+
+                let all_ips = &state
+                    .global_dns_records
+                    .get(&domain)
+                    .expect("DNS queries should only be sent for known resources");
+
+                // Depending on the DNS query type, we filter the resolved addresses.
+                let ips_resolved_by_query = all_ips.iter().copied().filter({
+                    #[allow(clippy::wildcard_enum_match_arm)]
+                    match r_type {
+                        RecordType::A => &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool,
+                        RecordType::AAAA => {
+                            &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
+                        }
+                        _ => unimplemented!(),
+                    }
+                });
+
+                state
+                    .client_dns_records
+                    .entry(domain)
+                    .or_default()
+                    .extend(ips_resolved_by_query);
             }
-            Transition::SendICMPPacketToIp6Resource {
-                r_idx,
+            Transition::SendICMPPacketToNonResourceIp { .. } => {
+                // Packets to non-resources are dropped, no state change required.
+            }
+            Transition::SendICMPPacketToResource {
+                idx,
                 seq,
                 identifier,
+                src,
             } => {
-                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-                state.on_icmp_packet(dst, *seq, *identifier);
+                let dst = state
+                    .sample_resource_dst(idx)
+                    .expect("Transition to only be sampled if we have at least one resource");
+                let dst = dst.into_reference_packet_dst();
+
+                state.on_icmp_packet(*src, dst, *seq, *identifier);
             }
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
@@ -500,42 +723,101 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 }
 
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+                for dns_resolved_ip in state.global_dns_records.values().flat_map(|ip| ip.iter()) {
+                    // If the CIDR resource overlaps with an IP that a DNS record resolved to, we have problems ...
+                    if r.address.contains(*dns_resolved_ip) {
+                        return false;
+                    }
+                }
+
                 true
             }
+            Transition::AddDnsResource {
+                resource,
+                resolved_ips,
+            } => {
+                // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
+
+                // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
+                // Connlib cannot know, when a DNS record expires, thus we currently don't allow to add DNS resources where the same domain resolves to different IPs
+                let domain = resource.address_as_domain().unwrap();
+                let has_resolved_domain_already = state.global_dns_records.contains_key(&domain);
+
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
+                let any_real_ip_overlaps_with_cidr_resource =
+                    resolved_ips.iter().any(|resolved_ip| {
+                        state
+                            .client_cidr_resources
+                            .longest_match(*resolved_ip)
+                            .is_some()
+                    });
+
+                !has_resolved_domain_already && !any_real_ip_overlaps_with_cidr_resource
+            }
             Transition::Tick { .. } => true,
-            Transition::SendICMPPacketToRandomIp {
+            Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
                 identifier,
-            } => state.is_valid_icmp_packet(dst, seq, identifier),
-            Transition::SendICMPPacketToIp4Resource {
-                r_idx,
+            } => {
+                let is_valid_icmp_packet = state.is_valid_icmp_packet(dst, seq, identifier);
+                let is_cidr_resource = state.client_cidr_resources.longest_match(*dst).is_some();
+                let is_dns_resource = state.client_dns_records.values().flatten().contains(dst);
+
+                is_valid_icmp_packet && !is_cidr_resource && !is_dns_resource
+            }
+            Transition::SendICMPPacketToResource {
+                idx,
                 seq,
                 identifier,
+                src,
             } => {
-                if state.client_cidr_resources.len().0 == 0 {
+                let Some(dst) = state.sample_resource_dst(idx) else {
+                    return false;
+                };
+                let dst = dst.into_reference_packet_dst();
+
+                let is_valid_icmp_packet = state.is_valid_icmp_packet(&dst, seq, identifier);
+
+                // TODO: Also consider DNS resources here.
+
+                is_valid_icmp_packet
+                    && (src.is_none() || src.is_some_and(|s| s.is_ipv4() == dst.is_ipv4()))
+            }
+            Transition::UpdateSystemDnsServers { servers } => {
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                if state.client.ip4_socket.is_none() && servers.iter().all(|s| s.is_ipv4()) {
+                    return false;
+                }
+                if state.client.ip6_socket.is_none() && servers.iter().all(|s| s.is_ipv6()) {
                     return false;
                 }
 
-                let dst = state.sample_ipv4_cidr_resource_dst(r_idx);
-
-                state.is_valid_icmp_packet(&dst.into(), seq, identifier)
+                true
             }
-            Transition::SendICMPPacketToIp6Resource {
-                r_idx,
-                seq,
-                identifier,
-            } => {
-                if state.client_cidr_resources.len().1 == 0 {
+            Transition::UpdateUpstreamDnsServers { servers } => {
+                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
+
+                if state.client.ip4_socket.is_none() && servers.iter().all(|s| s.ip().is_ipv4()) {
+                    return false;
+                }
+                if state.client.ip6_socket.is_none() && servers.iter().all(|s| s.ip().is_ipv6()) {
                     return false;
                 }
 
-                let dst = state.sample_ipv6_cidr_resource_dst(r_idx);
-
-                state.is_valid_icmp_packet(&dst.into(), seq, identifier)
+                true
             }
-            Transition::UpdateSystemDnsServers { .. } => true,
-            Transition::UpdateUpstreamDnsServers { .. } => true,
+            Transition::SendQueryToDnsResource { dns_server_idx, .. } => {
+                let has_dns_resources = !state.client_dns_resources.is_empty();
+
+                let dns_server = state.sample_dns_server(dns_server_idx);
+                let can_contact_dns_server =
+                    state.client.sending_socket_for(dns_server.ip()).is_some();
+
+                has_dns_resources && can_contact_dns_server
+            }
         }
     }
 }
@@ -560,17 +842,28 @@ impl TunnelTest {
             }
 
             if let Some(transmit) = self.client.state.poll_transmit() {
-                let sending_socket = self.client.sending_socket_for(transmit.dst);
+                let sending_socket = self.client.sending_socket_for(transmit.dst.ip());
 
                 buffered_transmits.push_back((transmit, sending_socket));
                 continue;
             }
             if let Some(event) = self.client.state.poll_event() {
-                self.on_client_event(self.client.id, event, &ref_state.client_cidr_resources);
+                self.on_client_event(
+                    self.client.id,
+                    event,
+                    &ref_state.client_cidr_resources,
+                    &ref_state.client_dns_resources,
+                    &ref_state.global_dns_records,
+                );
                 continue;
             }
+            if let Some(packet) = self.client.state.poll_packets() {
+                self.on_client_buffered_packet(packet);
+                continue;
+            }
+
             if let Some(transmit) = self.gateway.state.poll_transmit() {
-                let sending_socket = self.gateway.sending_socket_for(transmit.dst);
+                let sending_socket = self.gateway.sending_socket_for(transmit.dst.ip());
 
                 buffered_transmits.push_back((transmit, sending_socket));
                 continue;
@@ -621,7 +914,10 @@ impl TunnelTest {
 
     /// Returns the _effective_ DNS servers that connlib is using.
     fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
-        self.dns_by_sentinel.right_values().copied().collect()
+        self.client_dns_by_sentinel
+            .right_values()
+            .copied()
+            .collect()
     }
 
     /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
@@ -677,7 +973,7 @@ impl TunnelTest {
             .span
             .in_scope(|| self.client.state.encapsulate(packet, self.now))?;
         let transmit = transmit.into_owned();
-        let sending_socket = self.client.sending_socket_for(transmit.dst);
+        let sending_socket = self.client.sending_socket_for(transmit.dst.ip());
 
         Some((transmit, sending_socket))
     }
@@ -809,7 +1105,7 @@ impl TunnelTest {
                 let transmit = transmit.into_owned();
                 let dst = transmit.dst;
 
-                buffered_transmits.push_back((transmit, self.gateway.sending_socket_for(dst)));
+                buffered_transmits.push_back((transmit, self.gateway.sending_socket_for(dst.ip())));
             };
         };
 
@@ -821,6 +1117,8 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
+        client_dns_resource: &HashMap<ResourceId, ResourceDescriptionDns>,
+        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
             ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
@@ -840,9 +1138,8 @@ impl TunnelTest {
                     resource,
                     connected_gateway_ids,
                     client_cidr_resources,
+                    client_dns_resource,
                 );
-
-                // TODO: All of the below should be somehow encapsulated in `SimPortal`.
 
                 let request = self
                     .client
@@ -859,9 +1156,21 @@ impl TunnelTest {
                     .unwrap();
 
                 let resource_id = request.resource_id();
-                // TODO: For DNS resources, we need to come up with an IP that our resource resolves to on the other side.
-                let resource =
-                    map_client_resource_to_gateway_resource(client_cidr_resources, resource_id);
+
+                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
+                let resolved_ips = request
+                    .domain_name()
+                    .into_iter()
+                    .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
+                    .flat_map(|ips| ips.into_iter().map(IpNetwork::from))
+                    .collect();
+
+                let resource = map_client_resource_to_gateway_resource(
+                    client_cidr_resources,
+                    client_dns_resource,
+                    resolved_ips,
+                    resource_id,
+                );
 
                 match request {
                     Request::NewConnection(new_connection) => {
@@ -889,10 +1198,8 @@ impl TunnelTest {
                                         },
                                     },
                                     self.client.state.public_key(),
-                                    vec![
-                                        self.client.tunnel_ip4.into(),
-                                        self.client.tunnel_ip6.into(),
-                                    ],
+                                    self.client.tunnel_ip4,
+                                    self.client.tunnel_ip6,
                                     HashSet::default(),
                                     HashSet::default(),
                                     new_connection.client_payload.domain,
@@ -949,7 +1256,7 @@ impl TunnelTest {
                 tracing::warn!("Unimplemented");
             }
             ClientEvent::DnsServersChanged { dns_by_sentinel } => {
-                self.dns_by_sentinel = dns_by_sentinel;
+                self.client_dns_by_sentinel = dns_by_sentinel;
             }
         }
     }
@@ -967,31 +1274,127 @@ impl TunnelTest {
                 .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
         }
     }
+
+    /// Process a buffered IP packet from the client.
+    ///
+    /// Currently, we rely on the implementation detail here that these are only ever DNS responses.
+    fn on_client_buffered_packet(&mut self, packet: IpPacket<'_>) {
+        if let Some(udp) = packet.as_udp() {
+            if udp.get_source() == 53 {
+                let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
+                    .expect("ip packets on port 53 to be DNS packets");
+
+                let requested_domain = self
+                    .client_sent_dns_queries
+                    .remove(&message.id())
+                    .expect("DNS message to be response to previously sent request");
+
+                let proxy_ips = message.take_answers().into_iter().map(|r| {
+                    let domain = hickory_name_to_domain(r.name().clone());
+                    debug_assert_eq!(domain, requested_domain);
+
+                    match &r.data() {
+                        Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
+                        Some(RData::AAAA(rdata::AAAA(ip6))) => IpAddr::from(*ip6),
+                        unhandled => {
+                            panic!("Unexpected record data: {unhandled:?}")
+                        }
+                    }
+                });
+
+                self.client_dns_records
+                    .entry(requested_domain.clone())
+                    .or_default()
+                    .extend(proxy_ips);
+
+                return;
+            }
+        }
+
+        unimplemented!("Unhandled packet")
+    }
 }
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet(&mut self, dst: impl Into<IpAddr>, seq: u16, identifier: u16) {
+    fn on_icmp_packet(
+        &mut self,
+        src: Option<IpAddr>,
+        dst: impl Into<IpAddr>,
+        seq: u16,
+        identifier: u16,
+    ) {
         let dst = dst.into();
-
+        let packet_originates_from_client =
+            src.is_none() || src.is_some_and(|src| src == self.client.tunnel_ip(src)); // Packets from IPs other than the client's are dropped by the gateway. We still create connections for them though.
         tracing::Span::current().record("dst", tracing::field::display(dst));
+
+        if self.client_dns_records.values().flatten().contains(&dst)
+            && packet_originates_from_client
+        {
+            tracing::debug!("Connected to DNS resource, expecting packet to be routed");
+            self.expected_icmp_handshakes
+                .push_back((dst, seq, identifier, ResourceKind::Dns));
+            return;
+        }
+
         // Second, if we are not yet connected, check if we have a resource for this IP.
         let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
             tracing::debug!("No resource corresponds to IP");
             return;
         };
 
-        if self.connected_resources.contains(&resource.id) {
-            tracing::debug!("Connected to resource, expecting packet to be routed");
+        if self.client_connected_cidr_resources.contains(&resource.id)
+            && packet_originates_from_client
+        {
+            tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
-                .push_back((dst, seq, identifier));
+                .push_back((dst, seq, identifier, ResourceKind::Cidr));
             return;
         }
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_resources.insert(resource.id);
+        self.client_connected_cidr_resources.insert(resource.id);
+    }
+
+    fn sample_resource_dst(&self, idx: &sample::Index) -> Option<ResourceDst> {
+        if self.client_cidr_resources.is_empty()
+            && (self.client_dns_records.is_empty()
+                || self.client_dns_records.values().all(|ips| ips.is_empty()))
+        {
+            return None;
+        }
+
+        let mut dsts = Vec::new();
+        dsts.extend(self.sample_cidr_resource_dst(idx).map(ResourceDst::Cidr));
+        dsts.extend(
+            self.sample_resolved_address(idx)
+                .map(|(domain, ip)| ResourceDst::Dns(domain, ip)),
+        );
+
+        Some(idx.get(&dsts).clone())
+    }
+
+    fn sample_cidr_resource_dst(&self, idx: &sample::Index) -> Option<IpAddr> {
+        if self.client_cidr_resources.is_empty() {
+            return None;
+        }
+
+        let (num_ip4_resources, num_ip6_resources) = self.client_cidr_resources.len();
+
+        let mut ips = Vec::new();
+
+        if num_ip4_resources > 0 {
+            ips.push(self.sample_ipv4_cidr_resource_dst(idx).into())
+        }
+
+        if num_ip6_resources > 0 {
+            ips.push(self.sample_ipv6_cidr_resource_dst(idx).into())
+        }
+
+        Some(*idx.get(&ips))
     }
 
     /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
@@ -1056,7 +1459,7 @@ impl ReferenceState {
         let not_existing_icmp =
             self.expected_icmp_handshakes
                 .iter()
-                .all(|(_, existing_seq, existing_identifer)| {
+                .all(|(_, existing_seq, existing_identifer, _)| {
                     existing_seq != seq && existing_identifer != identifier
                 });
 
@@ -1080,6 +1483,78 @@ impl ReferenceState {
             .iter()
             .map(|ip| SocketAddr::new(*ip, 53))
             .collect()
+    }
+
+    fn sample_dns_resource_domain(&self, idx: &sample::Index) -> DomainName {
+        let mut domains = self
+            .client_dns_resources
+            .values()
+            .map(|r| r.address_as_domain().unwrap())
+            .collect::<Vec<_>>();
+        domains.sort();
+
+        idx.get(&domains).clone()
+    }
+
+    fn sample_dns_server(&self, idx: &sample::Index) -> SocketAddr {
+        let mut dns_servers = Vec::from_iter(self.expected_dns_servers());
+        dns_servers.sort();
+
+        *idx.get(&dns_servers)
+    }
+
+    fn sample_resolved_address(&self, idx: &sample::Index) -> Option<(DomainName, IpAddr)> {
+        if self.client_dns_records.is_empty() {
+            return None;
+        }
+
+        let mut client_dns_cache = Vec::from_iter(self.client_dns_records.clone());
+        client_dns_cache.sort();
+
+        let (name, addr) = idx.get(&client_dns_cache);
+
+        if addr.is_empty() {
+            return None;
+        }
+
+        Some((name.clone(), *idx.get(addr)))
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ResourceDst {
+    Cidr(IpAddr),
+    Dns(DomainName, IpAddr),
+}
+
+impl ResourceDst {
+    /// Translates a randomly sampled [`ResourceDst`] into the [`IpAddr`] to be used for the packet.
+    ///
+    /// For CIDR resources, we use the IP directly.
+    /// For DNS resources, we need to pick any of the proxy IPs that connlib gave us for the domain name.
+    fn into_actual_packet_dst(
+        self,
+        idx: sample::Index,
+        client_dns_records: &HashMap<DomainName, Vec<IpAddr>>,
+    ) -> IpAddr {
+        match self {
+            ResourceDst::Cidr(ip) => ip,
+            ResourceDst::Dns(domain, _) => {
+                let ips = client_dns_records
+                    .get(&domain)
+                    .expect("DNS records to contain domain name");
+
+                *idx.get(ips)
+            }
+        }
+    }
+
+    /// Extracts the packet destination to be used in the [`ReferenceState`].
+    fn into_reference_packet_dst(self) -> IpAddr {
+        match self {
+            ResourceDst::Cidr(ip) => ip,
+            ResourceDst::Dns(_, dst) => dst,
+        }
     }
 }
 
@@ -1143,10 +1618,10 @@ impl<ID, S> SimNode<ID, S> {
             || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
     }
 
-    fn sending_socket_for(&self, dst: SocketAddr) -> Option<SocketAddr> {
-        Some(match dst {
-            SocketAddr::V4(_) => self.ip4_socket?.into(),
-            SocketAddr::V6(_) => self.ip6_socket?.into(),
+    fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
+        Some(match dst.into() {
+            IpAddr::V4(_) => self.ip4_socket?.into(),
+            IpAddr::V6(_) => self.ip6_socket?.into(),
         })
     }
 
@@ -1355,16 +1830,25 @@ impl SimPortal {
         resource: ResourceId,
         _connected_gateway_ids: HashSet<GatewayId>,
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
+        client_dns_resources: &HashMap<ResourceId, ResourceDescriptionDns>,
     ) -> (GatewayId, SiteId) {
         // TODO: Should we somehow vary how many gateways we connect to?
         // TODO: Should we somehow pick, which site to use?
 
-        let site = client_cidr_resources
+        let cidr_site = client_cidr_resources
             .iter()
-            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id))
-            .expect("resource to have at least 1 site");
+            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id));
 
-        (self.gateway, site)
+        let dns_site = client_dns_resources
+            .get(&resource)
+            .and_then(|r| Some(r.sites.first()?.id));
+
+        (
+            self.gateway,
+            cidr_site
+                .or(dns_site)
+                .expect("resource to be a known CIDR or DNS resource"),
+        )
     }
 }
 
@@ -1392,22 +1876,34 @@ impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
 }
 
 fn map_client_resource_to_gateway_resource(
-    client_cidr_resource: &IpNetworkTable<ResourceDescriptionCidr>,
+    client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
+    client_dns_resources: &HashMap<ResourceId, ResourceDescriptionDns>,
+    resolved_ips: Vec<IpNetwork>,
     resource_id: ResourceId,
 ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
-    let client_resource = client_cidr_resource
-        .iter()
-        .find_map(|(_, r)| (r.id == resource_id).then_some(r.clone()))
-        .expect("to know about ID");
-
-    gateway::ResourceDescription::<gateway::ResolvedResourceDescriptionDns>::Cidr(
-        gateway::ResourceDescriptionCidr {
-            id: client_resource.id,
-            address: client_resource.address,
-            name: client_resource.name,
+    let cidr_resource = client_cidr_resources.iter().find_map(|(_, r)| {
+        (r.id == resource_id).then_some(gateway::ResourceDescription::Cidr(
+            gateway::ResourceDescriptionCidr {
+                id: r.id,
+                address: r.address,
+                name: r.name.clone(),
+                filters: Vec::new(),
+            },
+        ))
+    });
+    let dns_resource = client_dns_resources.get(&resource_id).map(|r| {
+        gateway::ResourceDescription::Dns(gateway::ResolvedResourceDescriptionDns {
+            id: r.id,
+            name: r.name.clone(),
             filters: Vec::new(),
-        },
-    )
+            domain: r.address.clone(),
+            addresses: resolved_ips.clone(),
+        })
+    });
+
+    cidr_resource
+        .or(dns_resource)
+        .expect("resource to be a known CIDR or DNS resource")
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1427,7 +1923,7 @@ impl fmt::Debug for PrivateKey {
 /// That is okay as our reference state machine checks separately whether we are pinging a resource here.
 fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
     (any::<IpAddr>(), any::<u16>(), any::<u16>()).prop_map(|(dst, seq, identifier)| {
-        Transition::SendICMPPacketToRandomIp {
+        Transition::SendICMPPacketToNonResourceIp {
             dst,
             seq,
             identifier,
@@ -1435,24 +1931,49 @@ fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
     })
 }
 
-fn icmp_to_ipv4_cidr_resource() -> impl Strategy<Value = Transition> {
+fn icmp_to_cidr_resource_from_client() -> impl Strategy<Value = Transition> {
     (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
-        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToIp4Resource {
-            r_idx,
+        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToResource {
+            idx: r_idx,
             seq,
             identifier,
+            src: None,
         },
     )
 }
 
-fn icmp_to_ipv6_cidr_resource() -> impl Strategy<Value = Transition> {
-    (any::<sample::Index>(), any::<u16>(), any::<u16>()).prop_map(
-        move |(r_idx, seq, identifier)| Transition::SendICMPPacketToIp6Resource {
-            r_idx,
-            seq,
-            identifier,
-        },
+fn icmp_to_cidr_resource_from_random_src() -> impl Strategy<Value = Transition> {
+    (
+        any::<sample::Index>(),
+        any::<u16>(),
+        any::<u16>(),
+        any::<IpAddr>(),
     )
+        .prop_map(
+            move |(r_idx, seq, identifier, src)| Transition::SendICMPPacketToResource {
+                idx: r_idx,
+                seq,
+                identifier,
+                src: Some(src),
+            },
+        )
+}
+
+fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
+    (
+        any::<sample::Index>(),
+        any::<sample::Index>(),
+        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
+        any::<u16>(),
+    )
+        .prop_map(move |(r_idx, dns_server_idx, r_type, query_id)| {
+            Transition::SendQueryToDnsResource {
+                r_idx,
+                r_type,
+                query_id,
+                dns_server_idx,
+            }
+        })
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
@@ -1466,9 +1987,10 @@ fn gateway_id() -> impl Strategy<Value = GatewayId> {
 /// Generates an IPv4 address for the tunnel interface.
 ///
 /// We use the CG-NAT range for IPv4.
+/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
 fn tunnel_ip4() -> impl Strategy<Value = Ipv4Addr> {
     any::<sample::Index>().prop_map(|idx| {
-        let cgnat_block = Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 10).unwrap();
+        let cgnat_block = Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap();
 
         let mut hosts = cgnat_block.hosts();
 
@@ -1478,9 +2000,19 @@ fn tunnel_ip4() -> impl Strategy<Value = Ipv4Addr> {
 
 /// Generates an IPv6 address for the tunnel interface.
 ///
-/// TODO: Which subnet do we use here?
+/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
-    any::<Ipv6Addr>()
+    any::<sample::Index>().prop_map(|idx| {
+        let cgnat_block =
+            Ipv6Network::new(Ipv6Addr::new(64_768, 8_225, 4_369, 0, 0, 0, 0, 0), 107).unwrap();
+
+        let mut subnets = cgnat_block.subnets_with_prefix(128);
+
+        subnets
+            .nth(idx.index(subnets.len()))
+            .unwrap()
+            .network_address()
+    })
 }
 
 fn sim_node_prototype<ID>(
@@ -1540,8 +2072,39 @@ fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
         any::<IpAddr>().prop_map(|ip| DnsServer::from((ip, 53))),
         0..4,
     )
+    .prop_filter(
+        "if configured, upstream DNS must contain IPv4 and IPv6 servers",
+        |servers| {
+            if servers.is_empty() {
+                return true;
+            }
+
+            // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
+
+            servers.iter().any(|s| s.ip().is_ipv4()) && servers.iter().any(|s| s.ip().is_ipv6())
+        },
+    )
 }
 
 fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
     collection::vec(any::<IpAddr>(), 1..4) // Always need at least 1 system DNS server. TODO: Should we test what happens if we don't?
+}
+
+fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
+    name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
+    let name = name.to_string();
+
+    let domain = DomainName::from_chars(name.chars()).unwrap();
+    debug_assert_eq!(name, domain.to_string());
+
+    domain
+}
+
+fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
+    let domain = domain.to_string();
+
+    let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
+    debug_assert_eq!(name.to_string(), domain);
+
+    name
 }
