@@ -5,6 +5,10 @@ use crate::{
     linux::{etc_resolv_conf, DnsControlMethod},
 };
 use anyhow::{anyhow, bail, Context as _, Result};
+use connlib_shared::{
+    interface::platform::{FIREZONE_MARK, IFACE_NAME},
+    DEFAULT_MTU,
+};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -15,10 +19,8 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-// TODO: De-dupe before merging
-const FIREZONE_MARK: u32 = 0xfd002021;
-const IFACE_NAME: &str = "tun-firezone";
-const DEFAULT_MTU: u32 = 1280;
+pub const FIREZONE_MARK: u32 = 0xfd002021;
+pub const IFACE_NAME: &str = "tun-firezone";
 const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 

@@ -1,18 +1,13 @@
-use crate::{Cidrv4, Cidrv6};
+use crate::{
+    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
+    Cidrv4, Cidrv6,
+};
 use anyhow::{Context as _, Result};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
 };
-
-// Hides Powershell's console on Windows
-// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-// wintun automatically appends " Tunnel" to this
-// TODO: De-dupe
-const TUNNEL_NAME: &str = "Firezone";
 
 #[derive(Default)]
 pub struct TunDeviceManager {}

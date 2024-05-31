@@ -1,4 +1,7 @@
-use connlib_shared::{Callbacks, Result};
+use connlib_shared::{
+    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
+    Callbacks, Result, DEFAULT_MTU,
+};
 use ip_network::IpNetwork;
 use std::{
     collections::HashSet,
@@ -22,10 +25,6 @@ use windows::Win32::{
     Networking::WinSock::{AF_INET, AF_INET6},
 };
 
-// wintun automatically appends " Tunnel" to this
-// TODO: De-dupe
-const TUNNEL_NAME: &str = "Firezone";
-
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
@@ -44,12 +43,6 @@ impl Drop for Tun {
         }
     }
 }
-
-// Hides Powershell's console on Windows
-// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-// Copied from tun_linux.rs
-const DEFAULT_MTU: u32 = 1280;
 
 impl Tun {
     pub fn new() -> Result<Self> {
