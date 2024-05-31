@@ -201,8 +201,6 @@ enum Transition {
         query_id: u16,
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
-        /// The IPs we resolve the domain to.
-        resolved_ips: HashSet<IpAddr>,
     },
 
     /// The system's DNS servers changed.
@@ -528,16 +526,17 @@ impl ReferenceStateMachine for ReferenceState {
             sim_relay_prototype(),
             system_dns_servers(),
             upstream_dns_servers(),
+            global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             Just(Instant::now()),
             Just(Utc::now()),
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _)| c.state != g.state,
+                |(c, g, _, _, _, _, _, _)| c.state != g.state,
             )
             .prop_filter(
                 "client, gateway and relay ip must be different",
-                |(c, g, r, _, _, _, _)| {
+                |(c, g, r, _, _, _, _, _)| {
                     let c4 = c.ip4_socket.map(|s| *s.ip());
                     let g4 = g.ip4_socket.map(|s| *s.ip());
                     let r4 = r.ip_stack.as_v4().copied();
@@ -558,7 +557,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "at least one DNS server needs to be reachable",
-                |(c, _, _, system_dns, upstream_dns, _, _)| {
+                |(c, _, _, system_dns, upstream_dns, _, _, _)| {
                     // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
                     if !upstream_dns.is_empty() {
@@ -589,6 +588,7 @@ impl ReferenceStateMachine for ReferenceState {
                     relay,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
+                    global_dns_records,
                     now,
                     utc_now,
                 )| Self {
@@ -599,11 +599,11 @@ impl ReferenceStateMachine for ReferenceState {
                     relay,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
+                    global_dns_records,
                     client_cidr_resources: IpNetworkTable::new(),
                     client_connected_cidr_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
-                    global_dns_records: Default::default(),
                     client_dns_records: Default::default(),
                 },
             )
@@ -746,28 +746,7 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
-            Transition::SendQueryToNonDnsResource {
-                domain,
-                resolved_ips,
-                r_type,
-                dns_server_idx,
-                ..
-            } => {
-                let records = resolved_ips
-                    .iter()
-                    .filter(|ip| {
-                        #[allow(clippy::wildcard_enum_match_arm)]
-                        match r_type {
-                            RecordType::A => ip.is_ipv4(),
-                            RecordType::AAAA => ip.is_ipv6(),
-                            _ => todo!(),
-                        }
-                    })
-                    .copied()
-                    .collect();
-
-                state.global_dns_records.insert(domain.clone(), records);
-
+            Transition::SendQueryToNonDnsResource { dns_server_idx, .. } => {
                 // In case the chosen upstream DNS server is a CIDR resource, then the DNS query will setup a connection.
                 let dns_server = state.sample_dns_server(dns_server_idx);
                 let maybe_resource = state.client_cidr_resources.longest_match(dns_server.ip());
@@ -905,13 +884,13 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 let domain_matches_dns_resource = state.dns_resource_by_domain(domain).is_some();
-                let domain_already_resolved = state.global_dns_records.contains_key(domain);
+                let domain_exists = state.global_dns_records.contains_key(domain);
 
                 let dns_server = state.sample_dns_server(dns_server_idx);
                 let can_contact_dns_server =
                     state.client.sending_socket_for(dns_server.ip()).is_some();
 
-                !domain_matches_dns_resource && !domain_already_resolved && can_contact_dns_server
+                !domain_matches_dns_resource && domain_exists && can_contact_dns_server
             }
         }
     }
@@ -2202,19 +2181,15 @@ fn query_to_non_dns_resource() -> impl Strategy<Value = Transition> {
         any::<sample::Index>(),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
-        resolved_ips(),
     )
-        .prop_map(
-            move |(domain, dns_server_idx, r_type, query_id, resolved_ips)| {
-                Transition::SendQueryToNonDnsResource {
-                    domain: hickory_name_to_domain(domain),
-                    r_type,
-                    query_id,
-                    dns_server_idx,
-                    resolved_ips,
-                }
-            },
-        )
+        .prop_map(move |(domain, dns_server_idx, r_type, query_id)| {
+            Transition::SendQueryToNonDnsResource {
+                domain: hickory_name_to_domain(domain),
+                r_type,
+                query_id,
+                dns_server_idx,
+            }
+        })
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
@@ -2329,6 +2304,14 @@ fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
 
 fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
     collection::vec(any::<IpAddr>(), 1..4) // Always need at least 1 system DNS server. TODO: Should we test what happens if we don't?
+}
+
+fn global_dns_records() -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
+    collection::hash_map(
+        domain_name().prop_map(hickory_name_to_domain),
+        collection::hash_set(any::<IpAddr>(), 1..6),
+        0..15,
+    )
 }
 
 fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
