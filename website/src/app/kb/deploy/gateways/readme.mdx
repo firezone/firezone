@@ -21,6 +21,8 @@ responsible for securely routing traffic between Clients and Resources.
 - [Docker Engine](https://docs.docker.com/engine/) or
   [systemd](https://systemd.io/) installed for your distribution
 
+{/* The header `firewall-ports` is referenced in code */}
+
 ### Firewall ports
 
 Gateways implement the industry-standard
@@ -115,8 +117,7 @@ Site.
 <Alert color="warning">
   **Note:** Be sure to set a unique `FIREZONE_ID` for each Gateway you deploy.
   This can be any non-empty string and is used to identify Gateways in the
-  portal. This is generated automatically for you when deploying Gateways from
-  the portal.
+  portal.
 </Alert>
 
 Deploy as many Gateways as you need to handle the load of Client connections to
