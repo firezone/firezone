@@ -1,4 +1,4 @@
-use crate::{ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
+use crate::{dns::DnsQuery, ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
@@ -6,14 +6,16 @@ use connlib_shared::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
         gateway, ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
-    proptest::{cidr_resource, dns_resource},
+    proptest::{cidr_resource, dns_resource, domain_name},
     DomainName, StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use hickory_proto::{
-    rr::{rdata, RData, RecordType},
+    op::Query,
+    rr::{rdata, RData, Record, RecordType},
     serialize::binary::BinDecodable,
 };
+use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet};
@@ -36,6 +38,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
     str::FromStr,
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 use tracing::{debug_span, error_span, subscriber::DefaultGuard, Span};
@@ -66,8 +69,10 @@ struct TunnelTest {
     relay: SimRelay<firezone_relay::Server<StdRng>>,
     portal: SimPortal,
 
-    /// The DNS records created on the client as a result of received DNS responses.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    /// The DNS records created on the client as a result of received DNS responses to DNS resources.
+    client_dns_resource_records: HashMap<DomainName, Vec<IpAddr>>,
+    /// The DNS records created on the client as a result of DNS responses to domains that aren't DNS resources.
+    client_dns_none_resource_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Mapping of proxy IPs to real resource destinations.
     ///
@@ -116,7 +121,9 @@ struct ReferenceState {
     /// On a repeated query, we will access those previously resolved IPs.
     ///
     /// Essentially, the client's DNS records represents the addresses a client application (like a browser) would _actually_ know about.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    client_dns_resource_records: HashMap<DomainName, Vec<IpAddr>>,
+
+    client_dns_none_resource_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// The CIDR resources the client is connected to.
     client_connected_cidr_resources: HashSet<ResourceId>,
@@ -167,7 +174,7 @@ enum Transition {
     /// Add a new DNS resource to the client.
     AddDnsResource {
         resource: ResourceDescriptionDns,
-        /// The IP we resolve the domain to.
+        /// The IPs we resolve the domain to.
         resolved_ips: HashSet<IpAddr>,
     },
     /// Send a DNS query for one of our DNS resources.
@@ -180,6 +187,19 @@ enum Transition {
         query_id: u16,
         /// The index into our list of DNS servers.
         dns_server_idx: sample::Index,
+    },
+    /// Send a DNS query for one of our DNS resources.
+    SendQueryToNoneDnsResource {
+        /// The domain name to query.
+        domain: DomainName,
+        /// The type of DNS query we should send.
+        r_type: RecordType,
+        /// The DNS query ID.
+        query_id: u16,
+        /// The index into our list of DNS servers.
+        dns_server_idx: sample::Index,
+        /// The IPs we resolve the domain to.
+        resolved_ips: HashSet<IpAddr>,
     },
 
     /// The system's DNS servers changed.
@@ -263,13 +283,14 @@ impl StateMachineTest for TunnelTest {
             portal,
             logger,
             relay,
-            client_dns_records: Default::default(),
+            client_dns_resource_records: Default::default(),
             client_dns_by_sentinel: Default::default(),
             client_sent_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
             gateway_received_requests: Default::default(),
             client_sent_dns_queries: Default::default(),
             client_proxy_ip_mapping: Default::default(),
+            client_dns_none_resource_records: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -330,7 +351,7 @@ impl StateMachineTest for TunnelTest {
                 let dst = ref_state
                     .sample_resource_dst(&idx)
                     .expect("Transition to only be sampled if we have at least one resource");
-                let dst = dst.into_actual_packet_dst(idx, &state.client_dns_records);
+                let dst = dst.into_actual_packet_dst(idx, &state.client_dns_resource_records);
                 let src = src.unwrap_or(state.client.tunnel_ip(dst));
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
@@ -344,32 +365,22 @@ impl StateMachineTest for TunnelTest {
                 dns_server_idx,
             } => {
                 let domain = ref_state.sample_dns_resource_domain(&r_idx);
-                let dns_server = ref_state.sample_dns_server(&dns_server_idx);
-                let dns_server = *state
-                    .client_dns_by_sentinel
-                    .get_by_right(&dns_server)
-                    .expect("to have a sentinel DNS server for the sampled one");
+                let transmit =
+                    state.send_dns_query_for(domain, r_type, query_id, ref_state, dns_server_idx);
 
-                state
-                    .client_sent_dns_queries
-                    .insert(query_id, domain.clone());
+                buffered_transmits.extend(transmit)
+            }
+            Transition::SendQueryToNoneDnsResource {
+                domain,
+                r_type,
+                query_id,
+                dns_server_idx,
+                ..
+            } => {
+                let transmit =
+                    state.send_dns_query_for(domain, r_type, query_id, ref_state, dns_server_idx);
 
-                let name = domain_to_hickory_name(domain);
-
-                let src = state
-                    .client
-                    .sending_socket_for(dns_server)
-                    .expect("to only sample DNS server compatible with client socket");
-
-                let packet = ip_packet::make::dns_query(
-                    name,
-                    r_type,
-                    src,
-                    SocketAddr::new(dns_server, 53),
-                    query_id,
-                );
-
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet))
+                buffered_transmits.extend(transmit)
             }
             Transition::Tick { millis } => {
                 state.now += Duration::from_millis(millis);
@@ -466,6 +477,10 @@ impl StateMachineTest for TunnelTest {
             state.client_received_icmp_replies,
             HashMap::new(),
             "Unexpected ICMP replies on client"
+        );
+        assert_eq!(
+            state.client_dns_none_resource_records, ref_state.client_dns_none_resource_records,
+            "DNS responses for none-resources to match"
         );
 
         assert_eq!(
@@ -570,7 +585,8 @@ impl ReferenceStateMachine for ReferenceState {
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
                     global_dns_records: Default::default(),
-                    client_dns_records: Default::default(),
+                    client_dns_resource_records: Default::default(),
+                    client_dns_none_resource_records: Default::default(),
                 },
             )
             .boxed()
@@ -582,10 +598,12 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
-        let add_dns_resource = (dns_resource(), collection::hash_set(any::<IpAddr>(), 1..4))
-            .prop_map(|(resource, resolved_ips)| Transition::AddDnsResource {
-                resource,
-                resolved_ips,
+        let add_dns_resource =
+            (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
+                Transition::AddDnsResource {
+                    resource,
+                    resolved_ips,
+                }
             });
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
         let set_system_dns_servers =
@@ -612,6 +630,7 @@ impl ReferenceStateMachine for ReferenceState {
 
         if !state.client_dns_resources.is_empty() {
             strategies.extend([(3, query_to_dns_resource().boxed())]);
+            strategies.extend([(1, query_to_none_dns_resource().boxed())]);
         }
 
         Union::new_weighted(strategies).boxed()
@@ -651,14 +670,14 @@ impl ReferenceStateMachine for ReferenceState {
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
                         // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state.client_dns_records.remove(&name);
+                        state.client_dns_resource_records.remove(&name);
                     }
                 }
             }
             Transition::SendQueryToDnsResource { r_idx, r_type, .. } => {
                 let domain = state.sample_dns_resource_domain(r_idx);
 
-                let all_ips = &state
+                let all_ips = state
                     .global_dns_records
                     .get(&domain)
                     .expect("DNS queries should only be sent for known resources");
@@ -676,7 +695,7 @@ impl ReferenceStateMachine for ReferenceState {
                 });
 
                 state
-                    .client_dns_records
+                    .client_dns_resource_records
                     .entry(domain)
                     .or_default()
                     .extend(ips_resolved_by_query);
@@ -703,6 +722,27 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
+            }
+            Transition::SendQueryToNoneDnsResource {
+                domain,
+                resolved_ips,
+                r_type,
+                ..
+            } => {
+                let records = Vec::from_iter(
+                    resolved_ips
+                        .iter()
+                        .filter(|ip| match r_type {
+                            RecordType::A => ip.is_ipv4(),
+                            RecordType::AAAA => ip.is_ipv6(),
+                            _ => todo!(),
+                        })
+                        .copied(),
+                );
+
+                state
+                    .client_dns_none_resource_records
+                    .insert(domain.clone(), records);
             }
         };
 
@@ -763,7 +803,11 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let is_valid_icmp_packet = state.is_valid_icmp_packet(dst, seq, identifier);
                 let is_cidr_resource = state.client_cidr_resources.longest_match(*dst).is_some();
-                let is_dns_resource = state.client_dns_records.values().flatten().contains(dst);
+                let is_dns_resource = state
+                    .client_dns_resource_records
+                    .values()
+                    .flatten()
+                    .contains(dst);
 
                 is_valid_icmp_packet && !is_cidr_resource && !is_dns_resource
             }
@@ -818,6 +862,20 @@ impl ReferenceStateMachine for ReferenceState {
 
                 has_dns_resources && can_contact_dns_server
             }
+            Transition::SendQueryToNoneDnsResource {
+                domain,
+                dns_server_idx,
+                ..
+            } => {
+                let domain_matches_dns_resource = state.is_dns_resource(domain);
+                let domain_already_resolved = state.global_dns_records.contains_key(domain);
+
+                let dns_server = state.sample_dns_server(dns_server_idx);
+                let can_contact_dns_server =
+                    state.client.sending_socket_for(dns_server.ip()).is_some();
+
+                !domain_matches_dns_resource && !domain_already_resolved && can_contact_dns_server
+            }
         }
     }
 }
@@ -858,7 +916,11 @@ impl TunnelTest {
                 continue;
             }
             if let Some(packet) = self.client.state.poll_packets() {
-                self.on_client_buffered_packet(packet);
+                self.on_client_buffered_packet(packet, ref_state);
+                continue;
+            }
+            if let Some(query) = self.client.state.poll_dns_queries() {
+                self.on_forwarded_dns_query(query, ref_state);
                 continue;
             }
 
@@ -1278,7 +1340,7 @@ impl TunnelTest {
     /// Process a buffered IP packet from the client.
     ///
     /// Currently, we rely on the implementation detail here that these are only ever DNS responses.
-    fn on_client_buffered_packet(&mut self, packet: IpPacket<'_>) {
+    fn on_client_buffered_packet(&mut self, packet: IpPacket<'_>, ref_state: &ReferenceState) {
         if let Some(udp) = packet.as_udp() {
             if udp.get_source() == 53 {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
@@ -1289,7 +1351,7 @@ impl TunnelTest {
                     .remove(&message.id())
                     .expect("DNS message to be response to previously sent request");
 
-                let proxy_ips = message.take_answers().into_iter().map(|r| {
+                let resolved_ips = message.take_answers().into_iter().map(|r| {
                     let domain = hickory_name_to_domain(r.name().clone());
                     debug_assert_eq!(domain, requested_domain);
 
@@ -1302,16 +1364,92 @@ impl TunnelTest {
                     }
                 });
 
-                self.client_dns_records
+                let record_map = if ref_state.is_dns_resource(&requested_domain) {
+                    &mut self.client_dns_resource_records
+                } else {
+                    &mut self.client_dns_none_resource_records
+                };
+
+                record_map
                     .entry(requested_domain.clone())
                     .or_default()
-                    .extend(proxy_ips);
+                    .extend(resolved_ips);
 
                 return;
             }
         }
 
         unimplemented!("Unhandled packet")
+    }
+
+    fn send_dns_query_for(
+        &mut self,
+        domain: DomainName,
+        r_type: RecordType,
+        query_id: u16,
+        ref_state: &ReferenceState,
+        dns_server_idx: sample::Index,
+    ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
+        let dns_server = ref_state.sample_dns_server(&dns_server_idx);
+        let dns_server = *self
+            .client_dns_by_sentinel
+            .get_by_right(&dns_server)
+            .expect("to have a sentinel DNS server for the sampled one");
+
+        self.client_sent_dns_queries
+            .insert(query_id, domain.clone());
+
+        let name = domain_to_hickory_name(domain);
+
+        let src = self
+            .client
+            .sending_socket_for(dns_server)
+            .expect("to only sample DNS server compatible with client socket");
+
+        let packet = ip_packet::make::dns_query(
+            name,
+            r_type,
+            src,
+            SocketAddr::new(dns_server, 53),
+            query_id,
+        );
+
+        self.send_ip_packet_client_to_gateway(packet)
+    }
+
+    // TODO: Should we vary the following things via proptests?
+    // - Forwarded DNS query timing out?
+    // - hickory error?
+    // - TTL?
+    fn on_forwarded_dns_query(&mut self, query: DnsQuery<'static>, ref_state: &ReferenceState) {
+        let name = query.name.parse::<DomainName>().unwrap(); // TODO: Could `DnsQuery` hold a `DomainName` directly?
+
+        let resolved_ips = ref_state
+            .client_dns_none_resource_records
+            .get(&name)
+            .expect("Deferred DNS query to be for known domain");
+
+        let name = domain_to_hickory_name(name);
+        let record_type = query.record_type;
+
+        let record_data = resolved_ips
+            .iter()
+            .filter_map(|ip| match (record_type, ip) {
+                (RecordType::A, IpAddr::V4(v4)) => Some(RData::A((*v4).into())),
+                (RecordType::AAAA, IpAddr::V6(v6)) => Some(RData::AAAA((*v6).into())),
+                (RecordType::A, IpAddr::V6(_)) | (RecordType::AAAA, IpAddr::V4(_)) => None,
+                _ => unreachable!(),
+            })
+            .map(|rdata| Record::from_rdata(name.clone(), 86400_u32, rdata))
+            .collect::<Arc<_>>();
+
+        self.client.state.on_dns_result(
+            query,
+            Ok(Ok(Lookup::new_with_max_ttl(
+                Query::query(name, record_type),
+                record_data,
+            ))),
+        );
     }
 }
 
@@ -1330,7 +1468,11 @@ impl ReferenceState {
             src.is_none() || src.is_some_and(|src| src == self.client.tunnel_ip(src)); // Packets from IPs other than the client's are dropped by the gateway. We still create connections for them though.
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
-        if self.client_dns_records.values().flatten().contains(&dst)
+        if self
+            .client_dns_resource_records
+            .values()
+            .flatten()
+            .contains(&dst)
             && packet_originates_from_client
         {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
@@ -1361,8 +1503,11 @@ impl ReferenceState {
 
     fn sample_resource_dst(&self, idx: &sample::Index) -> Option<ResourceDst> {
         if self.client_cidr_resources.is_empty()
-            && (self.client_dns_records.is_empty()
-                || self.client_dns_records.values().all(|ips| ips.is_empty()))
+            && (self.client_dns_resource_records.is_empty()
+                || self
+                    .client_dns_resource_records
+                    .values()
+                    .all(|ips| ips.is_empty()))
         {
             return None;
         }
@@ -1504,11 +1649,11 @@ impl ReferenceState {
     }
 
     fn sample_resolved_address(&self, idx: &sample::Index) -> Option<(DomainName, IpAddr)> {
-        if self.client_dns_records.is_empty() {
+        if self.client_dns_resource_records.is_empty() {
             return None;
         }
 
-        let mut client_dns_cache = Vec::from_iter(self.client_dns_records.clone());
+        let mut client_dns_cache = Vec::from_iter(self.client_dns_resource_records.clone());
         client_dns_cache.sort();
 
         let (name, addr) = idx.get(&client_dns_cache);
@@ -1518,6 +1663,12 @@ impl ReferenceState {
         }
 
         Some((name.clone(), *idx.get(addr)))
+    }
+
+    fn is_dns_resource(&self, domain: &DomainName) -> bool {
+        self.client_dns_resources
+            .values()
+            .any(|r| r.address_as_domain().unwrap() == domain)
     }
 }
 
@@ -1959,6 +2110,10 @@ fn icmp_to_cidr_resource_from_random_src() -> impl Strategy<Value = Transition> 
         )
 }
 
+fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
+    collection::hash_set(any::<IpAddr>(), 1..4)
+}
+
 fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
     (
         any::<sample::Index>(),
@@ -1974,6 +2129,27 @@ fn query_to_dns_resource() -> impl Strategy<Value = Transition> {
                 dns_server_idx,
             }
         })
+}
+
+fn query_to_none_dns_resource() -> impl Strategy<Value = Transition> {
+    (
+        domain_name(),
+        any::<sample::Index>(),
+        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
+        any::<u16>(),
+        resolved_ips(),
+    )
+        .prop_map(
+            move |(domain, dns_server_idx, r_type, query_id, resolved_ips)| {
+                Transition::SendQueryToNoneDnsResource {
+                    domain: hickory_name_to_domain(domain),
+                    r_type,
+                    query_id,
+                    dns_server_idx,
+                    resolved_ips,
+                }
+            },
+        )
 }
 
 fn client_id() -> impl Strategy<Value = ClientId> {
