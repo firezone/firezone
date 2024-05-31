@@ -750,10 +750,13 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let records = resolved_ips
                     .iter()
-                    .filter(|ip| match r_type {
-                        RecordType::A => ip.is_ipv4(),
-                        RecordType::AAAA => ip.is_ipv6(),
-                        _ => todo!(),
+                    .filter(|ip| {
+                        #[allow(clippy::wildcard_enum_match_arm)]
+                        match r_type {
+                            RecordType::A => ip.is_ipv4(),
+                            RecordType::AAAA => ip.is_ipv6(),
+                            _ => todo!(),
+                        }
                     })
                     .copied()
                     .collect();
@@ -1703,9 +1706,7 @@ impl ReferenceState {
         self.client_dns_records
             .iter()
             .filter_map(|(domain, ips)| {
-                self.dns_resource_by_domain(&domain)
-                    .is_none()
-                    .then_some(ips)
+                self.dns_resource_by_domain(domain).is_none().then_some(ips)
             })
             .flatten()
             .copied()
