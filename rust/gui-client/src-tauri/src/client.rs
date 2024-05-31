@@ -87,7 +87,7 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::SmokeTest) => {
             if !elevation::is_normal_user()? {
-                anyhow::bail!("`smoke-test` failed its elevation check");
+                anyhow::bail!("`smoke-test` must run as a normal user");
             }
 
             let result = gui::run(cli);
