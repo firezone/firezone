@@ -279,7 +279,7 @@ pub fn run_only_headless_client() -> Result<()> {
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
-        let mut interface = interface::TunDeviceManager::default();
+        let mut interface = interface::TunDeviceManager::new()?;
         let mut signals = Signals::new()?;
 
         loop {
@@ -434,7 +434,7 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (cb_tx, mut cb_rx) = mpsc::channel(10);
 
     let send_task = tokio::spawn(async move {
-        let mut interface = interface::TunDeviceManager::default();
+        let mut interface = interface::TunDeviceManager::new()?;
 
         while let Some(msg) = cb_rx.recv().await {
             match msg {

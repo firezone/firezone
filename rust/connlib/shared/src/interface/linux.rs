@@ -23,8 +23,7 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
 pub struct TunDeviceManager {
-    // This gets lazy-initialized when the interface is first configured
-    connection: Option<Connection>,
+    connection: Connection,
     dns_control_method: Option<DnsControlMethod>,
     routes: HashSet<IpNetwork>,
 }
@@ -36,9 +35,7 @@ struct Connection {
 
 impl Drop for TunDeviceManager {
     fn drop(&mut self) {
-        if let Some(connection) = self.connection.take() {
-            connection.task.abort();
-        }
+        self.connection.task.abort();
         tracing::debug!("Reverting DNS control...");
         if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
@@ -47,34 +44,29 @@ impl Drop for TunDeviceManager {
     }
 }
 
-impl Default for TunDeviceManager {
-    fn default() -> Self {
-        // TODO: This looks wrong
+impl TunDeviceManager {
+    /// Creates a new managed tunnel device.
+    ///
+    /// Panics if called without a Tokio runtime.
+    pub fn new() -> Result<Self> {
+        // We'll remove `get_dns_control_from_env` in #5068
         let dns_control_method = crate::linux::get_dns_control_from_env();
         tracing::info!(?dns_control_method);
 
-        Self {
-            connection: None,
+        let (cxn, handle, _) = new_connection()?;
+        let task = tokio::spawn(cxn);
+        let connection = Connection { handle, task };
+
+        Ok(Self {
+            connection,
             dns_control_method,
             routes: Default::default(),
-        }
+        })
     }
-}
 
-impl TunDeviceManager {
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
-        let connection = match self.connection.as_mut() {
-            None => {
-                let (cxn, handle, _) = new_connection()?;
-                let task = tokio::spawn(cxn);
-                let connection = Connection { handle, task };
-                self.connection.insert(connection)
-            }
-            Some(x) => x,
-        };
-
-        let handle = &connection.handle;
+        let handle = &self.connection.handle;
         let index = handle
             .link()
             .get()
@@ -158,7 +150,7 @@ impl TunDeviceManager {
             return Ok(());
         }
         tracing::info!(?new_routes, "set_routes");
-        let handle = &self.connection.as_ref().context("set_routes should only be called after at least one call to on_set_interface_config")?.handle;
+        let handle = &self.connection.handle;
 
         let index = handle
             .link()

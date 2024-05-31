@@ -9,7 +9,6 @@ use std::{
     process::{Command, Stdio},
 };
 
-#[derive(Default)]
 pub struct TunDeviceManager {}
 
 impl Drop for TunDeviceManager {
@@ -21,6 +20,10 @@ impl Drop for TunDeviceManager {
 }
 
 impl TunDeviceManager {
+    pub fn new() -> Result<Self> {
+        Ok(Self {})
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);
