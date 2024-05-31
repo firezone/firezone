@@ -2,13 +2,11 @@
 
 use crate::{
     callbacks::{Cidrv4, Cidrv6},
-    linux::{etc_resolv_conf, DnsControlMethod},
-};
-use anyhow::{anyhow, bail, Context as _, Result};
-use connlib_shared::{
     interface::platform::{FIREZONE_MARK, IFACE_NAME},
+    linux::{etc_resolv_conf, DnsControlMethod},
     DEFAULT_MTU,
 };
+use anyhow::{anyhow, bail, Context as _, Result};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
