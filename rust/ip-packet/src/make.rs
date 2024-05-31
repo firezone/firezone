@@ -1,6 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, MutableIpPacket};
+use hickory_proto::rr::{Name, RecordType};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
@@ -8,7 +9,7 @@ use pnet_packet::{
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
 };
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 pub fn icmp_request_packet(
     src: IpAddr,
@@ -201,6 +202,29 @@ pub fn udp_packet(
             panic!("IPs must be of the same version")
         }
     }
+}
+
+pub fn dns_query(
+    domain: Name,
+    kind: RecordType,
+    src: SocketAddr,
+    dst: SocketAddr,
+    id: u16,
+) -> MutableIpPacket<'static> {
+    // Create the DNS query message
+    let mut msg = hickory_proto::op::Message::new();
+    msg.set_message_type(hickory_proto::op::MessageType::Query);
+    msg.set_op_code(hickory_proto::op::OpCode::Query);
+    msg.set_recursion_desired(true);
+    msg.set_id(id);
+
+    // Create the query
+    let query = hickory_proto::op::Query::query(domain, kind);
+    msg.add_query(query);
+
+    let payload = msg.to_vec().unwrap();
+
+    udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {

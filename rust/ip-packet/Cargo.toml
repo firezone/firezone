@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 pnet_packet = { version = "0.34" }
+hickory-proto = { workspace = true }
 
 [lints]
 workspace = true

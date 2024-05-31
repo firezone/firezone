@@ -131,9 +131,9 @@ pub(crate) fn parse<'a>(
             None => None,
         };
     let response = build_dns_with_answer(message, question.qname(), &resource)?;
-    Some(ResolveStrategy::LocalResponse(build_response(
-        packet, response,
-    )?))
+    let response = build_response(packet, response)?;
+
+    Some(ResolveStrategy::LocalResponse(response))
 }
 
 pub(crate) fn create_local_answer<'a>(
@@ -255,6 +255,8 @@ where
     );
 
     let Some(resource) = resource else {
+        tracing::debug!("No records for {}, returning NXDOMAIN", qname.to_vec());
+
         return Some(
             msg_builder
                 .start_answer(message, Rcode::NXDOMAIN)
