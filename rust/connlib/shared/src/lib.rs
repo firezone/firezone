@@ -5,8 +5,8 @@
 
 pub mod callbacks;
 pub mod error;
-pub mod interface;
 pub mod messages;
+pub mod tun_device_manager;
 
 /// Module to generate and store a persistent device ID on disk
 ///

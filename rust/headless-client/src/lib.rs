@@ -13,7 +13,7 @@ use clap::Parser;
 use connlib_client_shared::{
     file_logger, keypair, Callbacks, Error as ConnlibError, LoginUrl, Session, Sockets,
 };
-use connlib_shared::{callbacks, interface, Cidrv4, Cidrv6};
+use connlib_shared::{callbacks, tun_device_manager, Cidrv4, Cidrv6};
 use firezone_cli_utils::setup_global_subscriber;
 use futures::{future, SinkExt, StreamExt};
 use secrecy::SecretString;
@@ -279,7 +279,7 @@ pub fn run_only_headless_client() -> Result<()> {
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
-        let mut interface = interface::TunDeviceManager::new()?;
+        let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
         let mut signals = Signals::new()?;
 
         loop {
@@ -304,11 +304,11 @@ pub fn run_only_headless_client() -> Result<()> {
                     | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
                     InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        interface.set_ips(ipv4, ipv6).await?;
-                        interface.control_dns(dns).await?;
+                        tun_device.set_ips(ipv4, ipv6).await?;
+                        tun_device.control_dns(dns).await?;
                     }
                     InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                        interface.set_routes(ipv4, ipv6).await?
+                        tun_device.set_routes(ipv4, ipv6).await?
                     }
                 },
             }
@@ -434,19 +434,19 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
     let (cb_tx, mut cb_rx) = mpsc::channel(10);
 
     let send_task = tokio::spawn(async move {
-        let mut interface = interface::TunDeviceManager::new()?;
+        let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
 
         while let Some(msg) = cb_rx.recv().await {
             match msg {
                 InternalServerMsg::Ipc(msg) => tx.send(serde_json::to_string(&msg)?.into()).await?,
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    interface.set_ips(ipv4, ipv6).await?;
-                    interface.control_dns(dns).await?;
+                    tun_device.set_ips(ipv4, ipv6).await?;
+                    tun_device.control_dns(dns).await?;
                     tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
                         .await?;
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    interface.set_routes(ipv4, ipv6).await?
+                    tun_device.set_routes(ipv4, ipv6).await?
                 }
             }
         }

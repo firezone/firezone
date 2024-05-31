@@ -1,8 +1,8 @@
 use super::utils;
 use crate::device_channel::ioctl;
 use connlib_shared::{
-    interface::platform::IFACE_NAME, messages::Interface as InterfaceConfig, Callbacks, Error,
-    Result,
+    messages::Interface as InterfaceConfig, tun_device_manager::platform::IFACE_NAME, Callbacks,
+    Error, Result,
 };
 use ip_network::IpNetwork;
 use libc::{

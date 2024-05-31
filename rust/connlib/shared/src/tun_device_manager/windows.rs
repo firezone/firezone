@@ -20,6 +20,8 @@ impl Drop for TunDeviceManager {
 }
 
 impl TunDeviceManager {
+    // Fallible on Linux
+    #[allow(unnecessary_wraps)]
     pub fn new() -> Result<Self> {
         Ok(Self {})
     }
