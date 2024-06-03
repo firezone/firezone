@@ -19,7 +19,6 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet};
-use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -2280,36 +2279,27 @@ fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
 }
 
 fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
-    if ref_state.expected_icmp_handshakes.len() != state.client_received_icmp_replies.len() {
-        let unexpected_icmp_replies = state
-            .client_received_icmp_replies
-            .iter()
-            .filter_map(|(k, v)| {
-                ref_state
-                    .expected_icmp_handshakes
-                    .iter()
-                    .all(|(_, seq, id, _)| k != &(*seq, *id))
-                    .then_some(v)
-            })
-            .collect_vec();
+    let unexpected_icmp_replies = find_unexpected_entries(
+        &ref_state.expected_icmp_handshakes,
+        &state.client_received_icmp_replies,
+        |(_, seq_a, id_a, _), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+    );
+    let unexpected_icmp_requests = find_unexpected_entries(
+        &ref_state.expected_icmp_handshakes,
+        &state.gateway_received_icmp_requests,
+        |(_, seq_a, id_a, _), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+    );
 
-        panic!("Unexpected ICMP replies on client: {unexpected_icmp_replies:?}");
-    }
-    if ref_state.expected_icmp_handshakes.len() != state.gateway_received_icmp_requests.len() {
-        let unexpected_icmp_requests = state
-            .gateway_received_icmp_requests
-            .iter()
-            .filter_map(|(k, v)| {
-                ref_state
-                    .expected_icmp_handshakes
-                    .iter()
-                    .all(|(_, seq, id, _)| k != &(*seq, *id))
-                    .then_some(v)
-            })
-            .collect_vec();
-
-        panic!("Unexpected ICMP requests on gateway: {unexpected_icmp_requests:?}");
-    }
+    assert_eq!(
+        unexpected_icmp_replies,
+        Vec::<&IpPacket>::new(),
+        "Unexpected ICMP replies on client"
+    );
+    assert_eq!(
+        unexpected_icmp_requests,
+        Vec::<&IpPacket>::new(),
+        "Unexpected ICMP requests on gateway"
+    );
 
     for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
         let client_sent_request = &state
@@ -2381,10 +2371,16 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
 }
 
 fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
+    let unexpected_icmp_replies = find_unexpected_entries(
+        &ref_state.expected_dns_handshakes,
+        &state.client_received_dns_responses,
+        |id_a, id_b| id_a == id_b,
+    );
+
     assert_eq!(
-        state.client_received_dns_responses.len(),
-        ref_state.expected_dns_handshakes.len(),
-        "Unexpected number of received DNS replies"
+        unexpected_icmp_replies,
+        Vec::<&IpPacket>::new(),
+        "Unexpected DNS replies on client"
     );
 
     for query_id in ref_state.expected_dns_handshakes.iter() {
@@ -2428,4 +2424,16 @@ fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState)
             );
         }
     }
+}
+
+fn find_unexpected_entries<'a, E, K, V>(
+    expected: &VecDeque<E>,
+    actual: &'a HashMap<K, V>,
+    is_equal: impl Fn(&E, &K) -> bool,
+) -> Vec<&'a V> {
+    actual
+        .iter()
+        .filter(|(k, _)| !expected.iter().any(|e| is_equal(e, k)))
+        .map(|(_, v)| v)
+        .collect()
 }
