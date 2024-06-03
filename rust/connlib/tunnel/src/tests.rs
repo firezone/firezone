@@ -400,140 +400,8 @@ impl StateMachineTest for TunnelTest {
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
-            let client_sent_request = &state
-                .client_sent_icmp_requests
-                .remove(&(*seq, *identifier))
-                .expect("to have ICMP request on client");
-            let client_received_reply = &state
-                .client_received_icmp_replies
-                .remove(&(*seq, *identifier))
-                .expect("to have ICMP reply on client");
-            let gateway_received_request = &state
-                .gateway_received_icmp_requests
-                .remove(&(*seq, *identifier))
-                .expect("to have ICMP request on gateway");
-
-            assert_eq!(
-                gateway_received_request.source(),
-                ref_state
-                    .client
-                    .tunnel_ip(gateway_received_request.source()),
-                "ICMP request on gateway to originate from client"
-            );
-            assert_eq!(
-                client_sent_request.destination(),
-                client_received_reply.source(),
-                "ICMP request destination == ICMP reply source"
-            );
-            assert_eq!(
-                client_sent_request.source(),
-                client_received_reply.destination(),
-                "ICMP request source == ICMP reply destination"
-            );
-
-            match kind {
-                ResourceKind::Cidr => {
-                    // For CIDR resources, the expected dst is always known.
-
-                    assert_eq!(
-                        gateway_received_request.destination(),
-                        *resource_dst,
-                        "ICMP request on gateway to target correct CIDR resource"
-                    );
-                }
-                ResourceKind::Dns => {
-                    // For DNS resources, we need to look up, which proxy IP we used.
-                    // We consider it an implementation detail, how connlib assigns those IPs.
-                    // We do want to assert that the mapping is stable.
-
-                    match state
-                        .client_proxy_ip_mapping
-                        .entry(client_sent_request.destination())
-                    {
-                        Entry::Vacant(v) => {
-                            // We have to gradually discover connlib's mapping ...
-                            // For the first packet, we just save the IP that we ended up talking to.
-                            v.insert(gateway_received_request.source());
-                        }
-                        Entry::Occupied(o) => {
-                            assert_eq!(
-                                gateway_received_request.source(),
-                                *o.get(),
-                                "ICMP request on gateway to target correct DNS resource"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        assert_eq!(
-            state.gateway_received_icmp_requests,
-            HashMap::new(),
-            "Unexpected ICMP requests on gateway"
-        );
-        assert_eq!(
-            state.client_received_icmp_replies,
-            HashMap::new(),
-            "Unexpected ICMP replies on client"
-        );
-
-        assert_eq!(
-            state.client_sent_dns_queries.len(),
-            ref_state.expected_dns_handshakes.len(),
-        );
-        assert_eq!(
-            state.client_received_dns_responses.len(),
-            ref_state.expected_dns_handshakes.len(),
-        );
-
-        for query_id in ref_state.expected_dns_handshakes.iter() {
-            let client_sent_query = state
-                .client_sent_dns_queries
-                .remove(query_id)
-                .expect("to have DNS query on client");
-            let client_received_response = state
-                .client_received_dns_responses
-                .remove(query_id)
-                .expect("to have DNS response on client");
-
-            assert_eq!(
-                client_sent_query.destination(),
-                client_received_response.source(),
-                "DNS query dIP == DNS response sIP"
-            );
-            assert_eq!(
-                client_sent_query.source(),
-                client_received_response.destination(),
-                "DNS query sIP == DNS response dIP"
-            );
-
-            {
-                let client_sent_query = client_sent_query
-                    .as_udp()
-                    .expect("DNS query to be UDP packet");
-                let client_received_response = client_received_response
-                    .as_udp()
-                    .expect("DNS response to be UDP packet");
-
-                assert_eq!(
-                    client_sent_query.get_destination(),
-                    client_received_response.get_source(),
-                    "DNS query dport == DNS response sport"
-                );
-                assert_eq!(
-                    client_sent_query.get_source(),
-                    client_received_response.get_destination(),
-                    "DNS query sport == DNS response dport"
-                );
-            }
-        }
-        assert_eq!(
-            state.client_received_dns_responses,
-            HashMap::new(),
-            "Unexpected DNS response on client"
-        );
-
+        assert_icmp_packets_properties(&mut state, ref_state);
+        assert_dns_packets_properties(&mut state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
@@ -2411,4 +2279,142 @@ fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
     debug_assert_eq!(name.to_string(), domain);
 
     name
+}
+
+fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
+    for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
+        let client_sent_request = &state
+            .client_sent_icmp_requests
+            .remove(&(*seq, *identifier))
+            .expect("to have ICMP request on client");
+        let client_received_reply = &state
+            .client_received_icmp_replies
+            .remove(&(*seq, *identifier))
+            .expect("to have ICMP reply on client");
+        let gateway_received_request = &state
+            .gateway_received_icmp_requests
+            .remove(&(*seq, *identifier))
+            .expect("to have ICMP request on gateway");
+
+        assert_eq!(
+            gateway_received_request.source(),
+            ref_state
+                .client
+                .tunnel_ip(gateway_received_request.source()),
+            "ICMP request on gateway to originate from client"
+        );
+        assert_eq!(
+            client_sent_request.destination(),
+            client_received_reply.source(),
+            "ICMP request destination == ICMP reply source"
+        );
+        assert_eq!(
+            client_sent_request.source(),
+            client_received_reply.destination(),
+            "ICMP request source == ICMP reply destination"
+        );
+
+        match kind {
+            ResourceKind::Cidr => {
+                // For CIDR resources, the expected dst is always known.
+
+                assert_eq!(
+                    gateway_received_request.destination(),
+                    *resource_dst,
+                    "ICMP request on gateway to target correct CIDR resource"
+                );
+            }
+            ResourceKind::Dns => {
+                // For DNS resources, we need to look up, which proxy IP we used.
+                // We consider it an implementation detail, how connlib assigns those IPs.
+                // We do want to assert that the mapping is stable.
+
+                match state
+                    .client_proxy_ip_mapping
+                    .entry(client_sent_request.destination())
+                {
+                    Entry::Vacant(v) => {
+                        // We have to gradually discover connlib's mapping ...
+                        // For the first packet, we just save the IP that we ended up talking to.
+                        v.insert(gateway_received_request.source());
+                    }
+                    Entry::Occupied(o) => {
+                        assert_eq!(
+                            gateway_received_request.source(),
+                            *o.get(),
+                            "ICMP request on gateway to target correct DNS resource"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(
+        state.gateway_received_icmp_requests,
+        HashMap::new(),
+        "Unexpected ICMP requests on gateway"
+    );
+    assert_eq!(
+        state.client_received_icmp_replies,
+        HashMap::new(),
+        "Unexpected ICMP replies on client"
+    );
+}
+
+fn assert_dns_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
+    assert_eq!(
+        state.client_sent_dns_queries.len(),
+        ref_state.expected_dns_handshakes.len(),
+    );
+    assert_eq!(
+        state.client_received_dns_responses.len(),
+        ref_state.expected_dns_handshakes.len(),
+    );
+
+    for query_id in ref_state.expected_dns_handshakes.iter() {
+        let client_sent_query = state
+            .client_sent_dns_queries
+            .remove(query_id)
+            .expect("to have DNS query on client");
+        let client_received_response = state
+            .client_received_dns_responses
+            .remove(query_id)
+            .expect("to have DNS response on client");
+
+        assert_eq!(
+            client_sent_query.destination(),
+            client_received_response.source(),
+            "DNS query dIP == DNS response sIP"
+        );
+        assert_eq!(
+            client_sent_query.source(),
+            client_received_response.destination(),
+            "DNS query sIP == DNS response dIP"
+        );
+
+        {
+            let client_sent_query = client_sent_query
+                .as_udp()
+                .expect("DNS query to be UDP packet");
+            let client_received_response = client_received_response
+                .as_udp()
+                .expect("DNS response to be UDP packet");
+
+            assert_eq!(
+                client_sent_query.get_destination(),
+                client_received_response.get_source(),
+                "DNS query dport == DNS response sport"
+            );
+            assert_eq!(
+                client_sent_query.get_source(),
+                client_received_response.get_destination(),
+                "DNS query sport == DNS response dport"
+            );
+        }
+    }
+    assert_eq!(
+        state.client_received_dns_responses,
+        HashMap::new(),
+        "Unexpected DNS response on client"
+    );
 }
