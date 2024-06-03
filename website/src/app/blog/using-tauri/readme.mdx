@@ -2,37 +2,8 @@ import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 import Link from "next/link";
 
-- Other GUI frameworks we considered
-- How I expect GUIs to work, based on experience with Qt and FLTK
-- Good stuff
-  - We still control `main`
-  - Small packages
-  - Pre-made deb and MSI bundlers
-  - Easy to write almost everything in Rust and use TypeScript for the UI
-  - Generally easy to work with and not restrictive
-- Snags (For each one, explain how we worked around it, whether it was really a
-  problem with Tauri, which it rarely is)
-  - Required directory layout is a little weird
-  - Admin / sudo working on Windows but not Linux
-  - Deb bundler not as customizable as we need
-  - Can't left-click on the tray menu in Windows
-  - Tray menu and notifications generally short of features
-    - The GNOME menu is just wacky
-    - Clicking a notification in GNOME opens another instance of your app
-  - Impossible to exit the event loop gracefully
-  - Web views seem to occupy RAM even when the window is closed
-  - Depending on Ubuntu's webkit package means forwards and backwards compat is
-    hard
-  - Setting the name of binaries and the bundle is tricky
-  - Bug #3972, unknown flaky smoke test resolved by initializing Tauri sooner
-  - WebView2 is flaky in CI #4981
-
-# What is Tauri and why do we use it?
-
 [Tauri](https://tauri.app/) is "a framework for building tiny, blazingly fast
-binaries for all major desktop platforms." Similar to Electron, it uses a web
-view to run the GUI. Unlike Electron, it doesn't bundle the web view, resulting
-in smaller downloads, and it has native APIs for Rust instead of C/C++.
+binaries for all major desktop platforms."
 
 We
 [chose Tauri over other frameworks](https://github.com/firezone/firezone/issues/2715)
@@ -51,10 +22,11 @@ might be reconsidered in the future:
   Linux
 - native-windows-gui - Not popular enough / not maintained
 - WinForms / WPF - Binding to C# assumed to be difficult
+- Electron - Huge downloads, quality of Rust bindings unknown
 
 # What is good about Tauri?
 
-## Tauri is easy to use
+## Tauri is easy to learn and use
 
 Using Tauri for the first time, I got the Windows Client to MVP in about 2
 months, and the Linux Client to MVP in another 4 months. Linux took longer
@@ -202,3 +174,97 @@ When asked about these issues, lead Tauri developer Fabian said he also expects
 better from the underlying OSes and this causes him to
 ["cry (himself) to sleep at night 🤷"](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1898328992)
 Me too, Fabian, me too. /s
+
+## Web views use a lot of RAM
+
+This isn't Tauri's fault, it's a direct effect of using web technology.
+
+The GUI process consistently uses about 100 MB of RAM even when idle. This seems
+to be the minimum for keeping web views open. Even if we hide all windows, it
+won't reduce the amount of RAM.
+
+We might be able to fix this in the future by closing the windows instead of
+just hiding them, and at least we're theoretically able to share code pages with
+other web view processes, we're not loading our own copy of Chromium like
+Electron does.
+
+(TODO: Task manager screenshot)
+
+## Ubuntu forwards and backwards compatibility is hard
+
+Not Tauri's fault. Ubuntu 20.04 ships `webkit2gtk` version 4.0. Ubuntu 22.04
+ships version 4.0 and 4.1. Ubuntu 24.04 only ships 4.1.
+
+It's not possible to link with both, so it's theoretically impossible to make
+one exe that runs on all 3 of the Ubuntu versions we'd like to support. For now
+we are not supporting 24.04 yet, and in the future we may give it a separate
+package. This is common in Linux programs that use anything more than the most
+common libraries.
+
+Tauri does offer an AppImage option to bundle the webview, but this increases
+the download size from ~10 MB to ~100 MB, and it seems we can't install our
+background service if we're running from an AppImage, since they're meant to
+work without installation.
+
+Switching to FLTK or GTK+ might fix this, but it's hard to say without
+researching.
+
+## Setting binary names is tricky
+
+On Linux our GUI is named `firezone-client-gui`, and so is our package.
+
+I want:
+
+1. The `.desktop` file to display our name as "Firezone Client", so it's
+   human-friendly,
+1. The package to be `firezone-client-gui`, so that it's distinct from our CLI
+   Client
+1. The GUI binary to be `/usr/bin/firezone-client-gui`,
+1. And the service binary to be
+   `/usr/lib/$ARCH/dev.firezone.client/firezone-client-ipc`, to keep it out of
+   `$PATH`.
+
+But Tauri's default is to name the first 3 the same and to put all binaries in
+`/usr/bin`. I can fix this by tearing apart the `.deb` and rebuilding it, as I
+did for the post-install script, but it will take more work.
+
+This is a case where Tauri doesn't quite meet the "Easy things are simple, hard
+things are possible" principle. In this case easy things are simple and hard
+things require working around Tauri.
+
+## Initializing Tauri is flaky in CI... maybe?
+
+https://github.com/firezone/firezone/issues/3972#issuecomment-2010728424
+
+At first I tried to initialize as much as the program as possible, then start
+Tauri and move objects into the Tauri context. But we hit this issue, which
+appears to be a race in initializing the GTK+ event loop or something. It's
+arcane stuff 3 layers below us (Tauri, then `tao`, then GTK+) in unsafe C code,
+so the workaround for now is to initialize Tauri immediately and do all our own
+setup within the Tauri context.
+
+It may not be Tauri's fault, but it's disappointing because I liked having
+control of `main` for as long as possible before starting up Tauri.
+
+## WebView2 just doesn't install sometimes
+
+https://github.com/firezone/firezone/pull/4981
+
+This is an upstream issue with WebView2 for Windows. Sometimes the installer
+times out in our GitHub CI runners and it isn't clear why. Not Tauri's fault.
+
+TODO: Screenshot or log paste
+
+# Conclusion
+
+So what's the verdict?
+
+**I like Tauri a lot, and I'll use it again.** It saved me a lot of work.
+
+But at times it feels like training wheels. When we need more than the basics,
+we work around it instead of working with it.
+
+The folks at Tauri have been working on a 2.x release for quite a while, and I
+assume it may fix some of these issues. But if the issues that are below Tauri
+or inherent to Tauri's design turn out to be big issues, eventually we might
+replace it.
