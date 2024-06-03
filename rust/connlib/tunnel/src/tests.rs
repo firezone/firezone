@@ -1524,6 +1524,10 @@ impl ReferenceState {
                 .map(|(domain, ip)| ResourceDst::Dns(domain, ip)),
         );
 
+        if dsts.is_empty() {
+            return None;
+        }
+
         Some(idx.get(&dsts).clone())
     }
 
