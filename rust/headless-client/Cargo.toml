@@ -31,8 +31,10 @@ url = { version = "2.3.1", default-features = false }
 uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
-mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 tempfile = "3.10.1"
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
