@@ -6,7 +6,7 @@
     "refresh": "npx ts-node src/refresh.ts"
   },
   "dependencies": {
-    "puppeteer": "^22.7.1",
+    "puppeteer": "^22.10.0",
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
