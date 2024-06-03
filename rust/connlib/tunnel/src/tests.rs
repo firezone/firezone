@@ -11,7 +11,7 @@ use connlib_shared::{
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
 use hickory_proto::{
-    op::Query,
+    op::{MessageType, Query},
     rr::{rdata, RData, Record, RecordType},
     serialize::binary::BinDecodable,
 };
@@ -81,11 +81,12 @@ struct TunnelTest {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
-    client_received_dns_replies: HashSet<QueryId>,
+    client_sent_dns_queries: HashMap<QueryId, IpPacket<'static>>,
+    client_received_dns_responses: HashMap<QueryId, IpPacket<'static>>,
 
-    client_sent_icmp_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
-    client_received_icmp_replies: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
-    gateway_received_requests: HashMap<(u16, u16), ip_packet::IpPacket<'static>>,
+    client_sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
+    client_received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
+    gateway_received_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -133,8 +134,8 @@ struct ReferenceState {
 
     /// The expected ICMP handshakes.
     expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
-    /// The DNS query IDs we expect replies for.
-    expected_dns_query_replies: HashSet<QueryId>,
+    /// The expected DNS handshakes.
+    expected_dns_handshakes: VecDeque<QueryId>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -280,9 +281,10 @@ impl StateMachineTest for TunnelTest {
             client_dns_by_sentinel: Default::default(),
             client_sent_icmp_requests: Default::default(),
             client_received_icmp_replies: Default::default(),
-            gateway_received_requests: Default::default(),
-            client_received_dns_replies: Default::default(),
+            gateway_received_icmp_requests: Default::default(),
+            client_received_dns_responses: Default::default(),
             client_proxy_ip_mapping: Default::default(),
+            client_sent_dns_queries: Default::default(),
         };
 
         let mut buffered_transmits = VecDeque::new();
@@ -408,7 +410,7 @@ impl StateMachineTest for TunnelTest {
                 .remove(&(*seq, *identifier))
                 .expect("to have ICMP reply on client");
             let gateway_received_request = &state
-                .gateway_received_requests
+                .gateway_received_icmp_requests
                 .remove(&(*seq, *identifier))
                 .expect("to have ICMP request on gateway");
 
@@ -465,9 +467,8 @@ impl StateMachineTest for TunnelTest {
                 }
             }
         }
-
         assert_eq!(
-            state.gateway_received_requests,
+            state.gateway_received_icmp_requests,
             HashMap::new(),
             "Unexpected ICMP requests on gateway"
         );
@@ -476,9 +477,61 @@ impl StateMachineTest for TunnelTest {
             HashMap::new(),
             "Unexpected ICMP replies on client"
         );
+
         assert_eq!(
-            state.client_received_dns_replies, ref_state.expected_dns_query_replies,
-            "Unanswered DNS queries on the client"
+            state.client_sent_dns_queries.len(),
+            ref_state.expected_dns_handshakes.len(),
+        );
+        assert_eq!(
+            state.client_received_dns_responses.len(),
+            ref_state.expected_dns_handshakes.len(),
+        );
+
+        for query_id in ref_state.expected_dns_handshakes.iter() {
+            let client_sent_query = state
+                .client_sent_dns_queries
+                .remove(query_id)
+                .expect("to have DNS query on client");
+            let client_received_response = state
+                .client_received_dns_responses
+                .remove(query_id)
+                .expect("to have DNS response on client");
+
+            assert_eq!(
+                client_sent_query.destination(),
+                client_received_response.source(),
+                "DNS query dIP == DNS response sIP"
+            );
+            assert_eq!(
+                client_sent_query.source(),
+                client_received_response.destination(),
+                "DNS query sIP == DNS response dIP"
+            );
+
+            {
+                let client_sent_query = client_sent_query
+                    .as_udp()
+                    .expect("DNS query to be UDP packet");
+                let client_received_response = client_received_response
+                    .as_udp()
+                    .expect("DNS response to be UDP packet");
+
+                assert_eq!(
+                    client_sent_query.get_destination(),
+                    client_received_response.get_source(),
+                    "DNS query dport == DNS response sport"
+                );
+                assert_eq!(
+                    client_sent_query.get_source(),
+                    client_received_response.get_destination(),
+                    "DNS query sport == DNS response dport"
+                );
+            }
+        }
+        assert_eq!(
+            state.client_received_dns_responses,
+            HashMap::new(),
+            "Unexpected DNS response on client"
         );
 
         assert_eq!(
@@ -586,7 +639,7 @@ impl ReferenceStateMachine for ReferenceState {
                     expected_icmp_handshakes: Default::default(),
                     client_dns_resources: Default::default(),
                     client_dns_records: Default::default(),
-                    expected_dns_query_replies: Default::default(),
+                    expected_dns_handshakes: Default::default(),
                 },
             )
             .boxed()
@@ -644,6 +697,7 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
         state.expected_icmp_handshakes.clear();
+        state.expected_dns_handshakes.clear();
 
         match transition {
             Transition::AddCidrResource(r) => {
@@ -715,7 +769,7 @@ impl ReferenceStateMachine for ReferenceState {
                             .entry(domain.clone())
                             .or_default()
                             .extend(ips_resolved_by_query);
-                        state.expected_dns_query_replies.insert(*query_id);
+                        state.expected_dns_handshakes.push_back(*query_id);
                     }
                 }
             }
@@ -1021,6 +1075,22 @@ impl TunnelTest {
             }
         }
 
+        {
+            let packet = packet.to_owned().into_immutable();
+
+            if let Some(udp) = packet.as_udp() {
+                if let Ok(message) = hickory_proto::op::Message::from_bytes(udp.payload()) {
+                    debug_assert_eq!(
+                        message.message_type(),
+                        MessageType::Query,
+                        "every DNS message sent from the client should be a DNS query"
+                    );
+
+                    self.client_sent_dns_queries.insert(message.id(), packet);
+                }
+            }
+        }
+
         let transmit = self
             .client
             .span
@@ -1155,7 +1225,7 @@ impl TunnelTest {
             if let Some(icmp) = packet.as_icmp() {
                 let echo_request = icmp.as_echo_request().expect("to be echo request");
 
-                self.gateway_received_requests.insert(
+                self.gateway_received_icmp_requests.insert(
                     (echo_request.sequence(), echo_request.identifier()),
                     packet.clone(),
                 );
@@ -1368,7 +1438,8 @@ impl TunnelTest {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
-                self.client_received_dns_replies.insert(message.id());
+                self.client_received_dns_responses
+                    .insert(message.id(), packet.to_owned());
 
                 for record in message.take_answers().into_iter() {
                     let domain = hickory_name_to_domain(record.name().clone());
