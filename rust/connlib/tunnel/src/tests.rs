@@ -702,6 +702,11 @@ impl ReferenceStateMachine for ReferenceState {
                 let domain = resource.address_as_domain().unwrap();
                 let has_resolved_domain_already = state.global_dns_records.contains_key(&domain);
 
+                let no_existing_record_overlaps_ip = state
+                    .global_dns_records
+                    .values()
+                    .all(|ips| ips.is_disjoint(resolved_ips));
+
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
                 let any_real_ip_overlaps_with_cidr_resource =
                     resolved_ips.iter().any(|resolved_ip| {
@@ -711,7 +716,9 @@ impl ReferenceStateMachine for ReferenceState {
                             .is_some()
                     });
 
-                !has_resolved_domain_already && !any_real_ip_overlaps_with_cidr_resource
+                !has_resolved_domain_already
+                    && !any_real_ip_overlaps_with_cidr_resource
+                    && no_existing_record_overlaps_ip
             }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
