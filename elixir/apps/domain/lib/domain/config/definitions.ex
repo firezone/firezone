@@ -586,6 +586,7 @@ defmodule Domain.Config.Definitions do
     dump: fn map ->
       Dumper.keyword(map)
       |> Keyword.update(:tls_options, nil, &Dumper.dump_ssl_opts/1)
+      |> Keyword.update(:sockopts, nil, &Dumper.dump_ssl_opts/1)
     end
   )
 

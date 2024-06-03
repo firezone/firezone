@@ -22,6 +22,7 @@ defmodule Domain.Config.Dumper do
   end
 
   defp map_values("verify", v), do: String.to_atom(v)
+  defp map_values("depth", v), do: v
   defp map_values("versions", v), do: Enum.map(v, &String.to_charlist/1)
   defp map_values("cacertfile", v), do: String.to_charlist(v)
   defp map_values("server_name_indication", v), do: String.to_charlist(v)
