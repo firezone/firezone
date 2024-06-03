@@ -69,10 +69,10 @@ has two subdirectories: `src` and `src-tauri`. The entire Rust project is
 contained in `src-tauri`, and the `src` directory contains files for the web
 view. `Cargo.toml` and `tauri.conf.json` are in `src-tauri`. I find this
 confusing. I think Tauri's primary purpose is to wrap up web apps into native
-apps, so the Rust code is sequestered in `src-tauri`, and the project is
+apps, so the Rust code is isolated in `src-tauri`, and the project is
 supposed to be an NPM project that incidentally contains a Rust wrapper.
 
-I think of the Firezone Client as a Rust GUI program that incidentally uses
+I think of the Firezone Client as a Rust program that incidentally uses
 HTML+JS+CSS for the GUI, so this layout is backwards to me. I would have
 expected a top-level `/Cargo.toml`, with the Rust under `/src`, and the web
 files under `/src-web` or similar. Maybe there's a reason for this, but I'm not
@@ -180,7 +180,7 @@ Me too, Fabian, me too. /s
 This isn't Tauri's fault, it's a direct effect of using web technology.
 
 The GUI process consistently uses about 100 MB of RAM even when idle. This seems
-to be the minimum for keeping web views open. Even if we hide all windows, it
+to be the minimum for keeping the web view process alive. Even if we hide all windows, it
 won't reduce the amount of RAM.
 
 We might be able to fix this in the future by closing the windows instead of
