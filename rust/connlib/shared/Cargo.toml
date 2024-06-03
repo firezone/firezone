@@ -21,7 +21,6 @@ ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 os_info = { version = "3", default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
-resolv-conf = "0.7.0"
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
@@ -41,9 +40,7 @@ hickory-proto = { workspace = true, optional = true }
 log = "0.4"
 
 [dev-dependencies]
-tempfile = "3.10.1"
 itertools = "0.12"
-mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 tokio = { version = "1.36", features = ["macros", "rt"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
@@ -52,11 +49,9 @@ swift-bridge = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 tracing-android = "0.2"
 
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-# Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
-atomicwrites = "0.4.3"
-
 [target.'cfg(target_os = "linux")'.dependencies]
+netlink-packet-route = { version = "0.19", default-features = false }
+netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies

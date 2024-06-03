@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use std::{io::Write, net::IpAddr, path::PathBuf};
 
-pub const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
-pub const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
+pub(crate) const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
+pub(crate) const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
 /// Used to figure out whether we crashed on our last run or not.
 ///
 /// If we did crash, we need to restore the system-wide DNS from the backup file.
@@ -11,7 +11,7 @@ const MAGIC_HEADER: &str = "# BEGIN Firezone DNS configuration";
 
 // Wanted these args to have names so they don't get mixed up
 #[derive(Clone)]
-pub struct ResolvPaths {
+pub(crate) struct ResolvPaths {
     resolv: PathBuf,
     backup: PathBuf,
 }
@@ -30,7 +30,7 @@ impl Default for ResolvPaths {
 /// This is async because it's called in a Tokio context and it's nice to use their
 /// `fs` module
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub async fn configure(dns_config: &[IpAddr]) -> Result<()> {
+pub(crate) async fn configure(dns_config: &[IpAddr]) -> Result<()> {
     configure_at_paths(dns_config, &ResolvPaths::default()).await
 }
 
@@ -38,7 +38,7 @@ pub async fn configure(dns_config: &[IpAddr]) -> Result<()> {
 ///
 /// Must be sync because it's called in `Tun::drop`
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub fn revert() -> Result<()> {
+pub(crate) fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default())
 }
 

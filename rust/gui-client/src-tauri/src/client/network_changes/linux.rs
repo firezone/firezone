@@ -1,6 +1,7 @@
 //! Not implemented for Linux yet
 
 use anyhow::Result;
+use firezone_headless_client::dns_control::system_resolvers_for_gui;
 use std::net::IpAddr;
 use tokio::time::Interval;
 
@@ -47,7 +48,7 @@ impl DnsListener {
     pub(crate) fn new() -> Result<Self> {
         Ok(Self {
             interval: create_interval(),
-            last_seen: crate::client::resolvers::get().unwrap_or_default(),
+            last_seen: system_resolvers_for_gui().unwrap_or_default(),
         })
     }
 
@@ -55,7 +56,7 @@ impl DnsListener {
         loop {
             self.interval.tick().await;
             tracing::trace!("Checking for DNS changes");
-            let new = crate::client::resolvers::get().unwrap_or_default();
+            let new = system_resolvers_for_gui().unwrap_or_default();
             if new != self.last_seen {
                 self.last_seen.clone_from(&new);
                 return Ok(new);
