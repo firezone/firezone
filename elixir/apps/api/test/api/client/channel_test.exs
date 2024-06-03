@@ -188,6 +188,12 @@ defmodule API.Client.ChannelTest do
                    id: gateway_group.id,
                    name: gateway_group.name
                  }
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
                ]
              } in resources
 
@@ -202,6 +208,12 @@ defmodule API.Client.ChannelTest do
                    id: gateway_group.id,
                    name: gateway_group.name
                  }
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
                ]
              } in resources
 
@@ -216,6 +228,12 @@ defmodule API.Client.ChannelTest do
                    id: gateway_group.id,
                    name: gateway_group.name
                  }
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
                ]
              } in resources
 
@@ -419,6 +437,12 @@ defmodule API.Client.ChannelTest do
                address_description: resource.address_description,
                gateway_groups: [
                  %{id: gateway_group.id, name: gateway_group.name}
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
                ]
              }
     end
@@ -497,6 +521,12 @@ defmodule API.Client.ChannelTest do
                address_description: resource.address_description,
                gateway_groups: [
                  %{id: gateway_group.id, name: gateway_group.name}
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
                ]
              }
     end
@@ -563,6 +593,12 @@ defmodule API.Client.ChannelTest do
                address_description: resource.address_description,
                gateway_groups: [
                  %{id: gateway_group.id, name: gateway_group.name}
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
                ]
              }
     end
