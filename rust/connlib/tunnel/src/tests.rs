@@ -19,6 +19,7 @@ use hickory_resolver::lookup::Lookup;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet};
+use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use proptest::{
     arbitrary::any,
@@ -401,7 +402,7 @@ impl StateMachineTest for TunnelTest {
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
         assert_icmp_packets_properties(&mut state, ref_state);
-        assert_dns_packets_properties(&mut state, ref_state);
+        assert_dns_packets_properties(&state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
@@ -564,9 +565,6 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
-        state.expected_icmp_handshakes.clear();
-        state.expected_dns_handshakes.clear();
-
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_cidr_resources.insert(r.address, r.clone());
@@ -2282,18 +2280,49 @@ fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
 }
 
 fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
+    if ref_state.expected_icmp_handshakes.len() != state.client_received_icmp_replies.len() {
+        let unexpected_icmp_replies = state
+            .client_received_icmp_replies
+            .iter()
+            .filter_map(|(k, v)| {
+                ref_state
+                    .expected_icmp_handshakes
+                    .iter()
+                    .all(|(_, seq, id, _)| k != &(*seq, *id))
+                    .then_some(v)
+            })
+            .collect_vec();
+
+        panic!("Unexpected ICMP replies on client: {unexpected_icmp_replies:?}");
+    }
+    if ref_state.expected_icmp_handshakes.len() != state.gateway_received_icmp_requests.len() {
+        let unexpected_icmp_requests = state
+            .gateway_received_icmp_requests
+            .iter()
+            .filter_map(|(k, v)| {
+                ref_state
+                    .expected_icmp_handshakes
+                    .iter()
+                    .all(|(_, seq, id, _)| k != &(*seq, *id))
+                    .then_some(v)
+            })
+            .collect_vec();
+
+        panic!("Unexpected ICMP requests on gateway: {unexpected_icmp_requests:?}");
+    }
+
     for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
         let client_sent_request = &state
             .client_sent_icmp_requests
-            .remove(&(*seq, *identifier))
+            .get(&(*seq, *identifier))
             .expect("to have ICMP request on client");
         let client_received_reply = &state
             .client_received_icmp_replies
-            .remove(&(*seq, *identifier))
+            .get(&(*seq, *identifier))
             .expect("to have ICMP reply on client");
         let gateway_received_request = &state
             .gateway_received_icmp_requests
-            .remove(&(*seq, *identifier))
+            .get(&(*seq, *identifier))
             .expect("to have ICMP request on gateway");
 
         assert_eq!(
@@ -2349,36 +2378,23 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             }
         }
     }
-    assert_eq!(
-        state.gateway_received_icmp_requests,
-        HashMap::new(),
-        "Unexpected ICMP requests on gateway"
-    );
-    assert_eq!(
-        state.client_received_icmp_replies,
-        HashMap::new(),
-        "Unexpected ICMP replies on client"
-    );
 }
 
-fn assert_dns_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
-    assert_eq!(
-        state.client_sent_dns_queries.len(),
-        ref_state.expected_dns_handshakes.len(),
-    );
+fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     assert_eq!(
         state.client_received_dns_responses.len(),
         ref_state.expected_dns_handshakes.len(),
+        "Unexpected number of received DNS replies"
     );
 
     for query_id in ref_state.expected_dns_handshakes.iter() {
         let client_sent_query = state
             .client_sent_dns_queries
-            .remove(query_id)
+            .get(query_id)
             .expect("to have DNS query on client");
         let client_received_response = state
             .client_received_dns_responses
-            .remove(query_id)
+            .get(query_id)
             .expect("to have DNS response on client");
 
         assert_eq!(
@@ -2412,9 +2428,4 @@ fn assert_dns_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceSt
             );
         }
     }
-    assert_eq!(
-        state.client_received_dns_responses,
-        HashMap::new(),
-        "Unexpected DNS response on client"
-    );
 }
