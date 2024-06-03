@@ -877,7 +877,12 @@ impl TunnelTest {
     ) {
         loop {
             if let Some((transmit, sending_socket)) = buffered_transmits.pop_front() {
-                self.dispatch_transmit(transmit, sending_socket, buffered_transmits);
+                self.dispatch_transmit(
+                    transmit,
+                    sending_socket,
+                    buffered_transmits,
+                    &ref_state.global_dns_records,
+                );
                 continue;
             }
 
@@ -902,7 +907,7 @@ impl TunnelTest {
                 continue;
             }
             if let Some(packet) = self.client.state.poll_packets() {
-                self.on_client_buffered_packet(packet);
+                self.on_client_received_packet(packet);
                 continue;
             }
 
@@ -929,9 +934,13 @@ impl TunnelTest {
                             continue;
                         }
 
-                        if let ControlFlow::Break(_) =
-                            self.try_handle_gateway(dst, src, &payload, buffered_transmits)
-                        {
+                        if let ControlFlow::Break(_) = self.try_handle_gateway(
+                            dst,
+                            src,
+                            &payload,
+                            buffered_transmits,
+                            &ref_state.global_dns_records,
+                        ) {
                             continue;
                         }
 
@@ -1022,6 +1031,20 @@ impl TunnelTest {
         Some((transmit, sending_socket))
     }
 
+    fn send_ip_packet_gateway_to_client(
+        &mut self,
+        packet: MutableIpPacket<'_>,
+    ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
+        let transmit = self
+            .gateway
+            .span
+            .in_scope(|| self.gateway.state.encapsulate(packet, self.now))?;
+        let transmit = transmit.into_owned();
+        let sending_socket = self.gateway.sending_socket_for(transmit.dst.ip());
+
+        Some((transmit, sending_socket))
+    }
+
     /// Dispatches a [`Transmit`] to the correct component.
     ///
     /// This function is basically the "network layer" of our tests.
@@ -1033,6 +1056,7 @@ impl TunnelTest {
         transmit: Transmit,
         sending_socket: Option<SocketAddr>,
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) {
         let dst = transmit.dst;
         let payload = &transmit.payload;
@@ -1058,7 +1082,7 @@ impl TunnelTest {
         }
 
         if self
-            .try_handle_gateway(dst, src, payload, buffered_transmits)
+            .try_handle_gateway(dst, src, payload, buffered_transmits, global_dns_records)
             .is_break()
         {
             return;
@@ -1101,13 +1125,7 @@ impl TunnelTest {
                 .state
                 .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
-            let icmp = packet.as_icmp().expect("to be ICMP packet");
-            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
-
-            self.client_received_icmp_replies.insert(
-                (echo_reply.sequence(), echo_reply.identifier()),
-                packet.to_owned(),
-            );
+            self.on_client_received_packet(packet);
         };
 
         ControlFlow::Break(())
@@ -1119,6 +1137,7 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
 
@@ -1141,23 +1160,23 @@ impl TunnelTest {
                     packet.clone(),
                 );
 
-                if let Some(transmit) = self.gateway.span.in_scope(|| {
-                    self.gateway
-                        .state
-                        .encapsulate(ip_packet::make::icmp_response_packet(packet), self.now)
-                }) {
-                    let transmit = transmit.into_owned();
-                    let dst = transmit.dst;
+                let echo_response = ip_packet::make::icmp_response_packet(packet);
+                let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
 
-                    buffered_transmits
-                        .push_back((transmit, self.gateway.sending_socket_for(dst.ip())));
-                };
+                buffered_transmits.extend(maybe_transmit);
 
                 return ControlFlow::Break(());
             }
 
-            if let Some(udp) = packet.as_udp() {
-                // TODO: We need to generate a DNS reply here.
+            if let Some(response) = ip_packet::make::dns_response(packet, |name| {
+                global_dns_records
+                    .get(&hickory_name_to_domain(name.clone()))
+                    .cloned()
+                    .into_iter()
+                    .flatten()
+            }) {
+                let maybe_transmit = self.send_ip_packet_gateway_to_client(response);
+                buffered_transmits.extend(maybe_transmit);
 
                 return ControlFlow::Break(());
             }
@@ -1331,10 +1350,19 @@ impl TunnelTest {
         }
     }
 
-    /// Process a buffered IP packet from the client.
-    ///
-    /// Currently, we rely on the implementation detail here that these are only ever DNS responses.
-    fn on_client_buffered_packet(&mut self, packet: IpPacket<'_>) {
+    /// Process an IP packet received on the client.
+    fn on_client_received_packet(&mut self, packet: IpPacket<'_>) {
+        if let Some(icmp) = packet.as_icmp() {
+            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
+
+            self.client_received_icmp_replies.insert(
+                (echo_reply.sequence(), echo_reply.identifier()),
+                packet.to_owned(),
+            );
+
+            return;
+        };
+
         if let Some(udp) = packet.as_udp() {
             if udp.get_source() == 53 {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())

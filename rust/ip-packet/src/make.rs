@@ -1,13 +1,18 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, MutableIpPacket};
-use hickory_proto::rr::{Name, RecordType};
+use hickory_proto::{
+    op::{Message, Query},
+    rr::{Name, RData, Record, RecordType},
+    serialize::binary::BinDecodable as _,
+};
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
     ipv4::MutableIpv4Packet,
     ipv6::MutableIpv6Packet,
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
+    Packet as _,
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -212,19 +217,65 @@ pub fn dns_query(
     id: u16,
 ) -> MutableIpPacket<'static> {
     // Create the DNS query message
-    let mut msg = hickory_proto::op::Message::new();
+    let mut msg = Message::new();
     msg.set_message_type(hickory_proto::op::MessageType::Query);
     msg.set_op_code(hickory_proto::op::OpCode::Query);
     msg.set_recursion_desired(true);
     msg.set_id(id);
 
     // Create the query
-    let query = hickory_proto::op::Query::query(domain, kind);
+    let query = Query::query(domain, kind);
     msg.add_query(query);
 
     let payload = msg.to_vec().unwrap();
 
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
+}
+
+pub fn dns_response<I>(
+    packet: IpPacket<'static>,
+    resolve: impl Fn(&Name) -> I,
+) -> Option<MutableIpPacket<'static>>
+where
+    I: Iterator<Item = IpAddr>,
+{
+    let udp = packet.as_udp()?;
+    let mut query = Message::from_bytes(udp.payload()).ok()?;
+
+    let mut response = Message::new();
+    response.set_id(query.id());
+    response.set_message_type(hickory_proto::op::MessageType::Response);
+
+    for query in query.take_queries() {
+        response.add_query(query.clone());
+
+        let records = resolve(query.name())
+            .filter(|ip| {
+                #[allow(clippy::wildcard_enum_match_arm)]
+                match query.query_type() {
+                    RecordType::A => ip.is_ipv4(),
+                    RecordType::AAAA => ip.is_ipv6(),
+                    _ => todo!(),
+                }
+            })
+            .map(|ip| match ip {
+                IpAddr::V4(v4) => RData::A(v4.into()),
+                IpAddr::V6(v6) => RData::AAAA(v6.into()),
+            })
+            .map(|rdata| Record::from_rdata(query.name().clone(), 86400_u32, rdata));
+
+        response.add_answers(records);
+    }
+
+    let payload = response.to_vec().unwrap();
+
+    Some(udp_packet(
+        packet.destination(),
+        packet.source(),
+        udp.get_destination(),
+        udp.get_source(),
+        payload,
+    ))
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {
