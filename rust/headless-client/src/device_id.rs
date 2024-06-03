@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
 
-pub struct DeviceId {
-    pub id: String,
+pub(crate) struct DeviceId {
+    pub(crate) id: String,
 }
 
 /// Returns the device ID, generating it and saving it to disk if needed.
@@ -14,8 +14,8 @@ pub struct DeviceId {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub fn get() -> Result<DeviceId> {
-    let dir = imp::path().context("Failed to compute path for firezone-id file")?;
+pub(crate) fn get() -> Result<DeviceId> {
+    let dir = platform::path().context("Failed to compute path for firezone-id file")?;
     let path = dir.join("firezone-id.json");
 
     // Try to read it from the disk
@@ -60,14 +60,14 @@ impl DeviceIdJson {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-mod imp {
+mod platform {
     pub(crate) fn path() -> Option<std::path::PathBuf> {
         panic!("This function is only implemented on Linux and Windows since those have pure-Rust clients")
     }
 }
 
 #[cfg(target_os = "linux")]
-mod imp {
+mod platform {
     use std::path::PathBuf;
     /// `/var/lib/$BUNDLE_ID/config/firezone-id`
     ///
@@ -82,14 +82,14 @@ mod imp {
     pub(crate) fn path() -> Option<PathBuf> {
         Some(
             PathBuf::from("/var/lib")
-                .join(crate::BUNDLE_ID)
+                .join(connlib_shared::BUNDLE_ID)
                 .join("config"),
         )
     }
 }
 
 #[cfg(target_os = "windows")]
-mod imp {
+mod platform {
     use known_folders::{get_known_folder_path, KnownFolder};
 
     /// e.g. `C:\ProgramData\dev.firezone.client\config`
@@ -98,7 +98,7 @@ mod imp {
     pub(crate) fn path() -> Option<std::path::PathBuf> {
         Some(
             get_known_folder_path(KnownFolder::ProgramData)?
-                .join(crate::BUNDLE_ID)
+                .join(connlib_shared::BUNDLE_ID)
                 .join("config"),
         )
     }
@@ -108,7 +108,7 @@ mod imp {
 mod tests {
     #[test]
     fn smoke() {
-        let dir = super::imp::path().expect("should have gotten Some(path)");
+        let dir = super::platform::path().expect("should have gotten Some(path)");
         assert!(dir
             .components()
             .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));

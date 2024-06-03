@@ -41,7 +41,7 @@ impl CallbackHandler {
             .expect("controller channel failed");
     }
 
-    fn on_set_interface_config(&self) {
+    fn on_tunnel_ready(&self) {
         self.ctlr_tx
             .try_send(ControllerRequest::TunnelReady)
             .expect("controller channel failed");
@@ -103,14 +103,8 @@ impl Client {
                         error_msg,
                         is_authentication_error,
                     } => callback_handler.on_disconnect(error_msg, is_authentication_error),
+                    IpcServerMsg::OnTunnelReady => callback_handler.on_tunnel_ready(),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
-                    IpcServerMsg::OnSetInterfaceConfig {
-                        ipv4: _,
-                        ipv6: _,
-                        dns: _,
-                    } => {
-                        callback_handler.on_set_interface_config();
-                    }
                 }
             }
             Ok(())

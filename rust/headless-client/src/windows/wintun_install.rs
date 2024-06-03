@@ -41,7 +41,6 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dir = path.parent().ok_or(Error::DllPathInvalid)?;
     std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;
 
-    // TODO: This log never shows up because `tracing` isn't started when we install wintun.dll
     tracing::info!(?path, "wintun.dll path");
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.

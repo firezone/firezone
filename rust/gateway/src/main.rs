@@ -3,10 +3,11 @@ use crate::messages::InitGateway;
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
+use connlib_shared::{get_user_agent, keypair, Callbacks, Cidrv4, Cidrv6, LoginUrl, StaticSecret};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::{future, TryFutureExt};
+use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::{Secret, SecretString};
 use std::collections::HashSet;
 use std::convert::Infallible;
@@ -21,6 +22,8 @@ mod eventloop;
 mod messages;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+const PEERS_IPV4: &str = "100.64.0.0/11";
+const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
 #[tokio::main]
 async fn main() {
@@ -111,6 +114,16 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     tunnel
         .set_interface(&init.interface)
         .context("Failed to set interface")?;
+    let mut tun_device = connlib_shared::tun_device_manager::TunDeviceManager::new()?;
+    tun_device
+        .set_ips(init.interface.ipv4, init.interface.ipv6)
+        .await?;
+    tun_device
+        .set_routes(
+            vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
+            vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
+        )
+        .await?;
     tunnel.update_relays(HashSet::default(), init.relays);
 
     let mut eventloop = Eventloop::new(tunnel, portal);

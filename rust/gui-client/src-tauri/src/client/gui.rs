@@ -191,10 +191,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 
                 if let Some(client::Cmd::SmokeTest) = &cli.command {
                     let ctlr_tx = ctlr_tx.clone();
-                    // Generate the device ID so that the device ID code is covered
-                    // by the smoke test.
-                    // This is redundant since we will also lazily generate it when we boot connlib.
-                    connlib_shared::device_id::get().ok();
                     tokio::spawn(async move {
                         if let Err(error) = smoke_test(ctlr_tx).await {
                             tracing::error!(?error, "Error during smoke test");
@@ -495,17 +491,13 @@ impl Controller {
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
-        let mut connlib = ipc::Client::connect(
+        let connlib = ipc::Client::connect(
             api_url.as_str(),
             token,
             callback_handler.clone(),
             tokio::runtime::Handle::current(),
         )
         .await?;
-
-        connlib
-            .set_dns(client::resolvers::get().unwrap_or_default())
-            .await?;
 
         self.session = Some(Session {
             callback_handler,
