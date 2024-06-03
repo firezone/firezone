@@ -1,0 +1,204 @@
+import Image from "next/image";
+import Alert from "@/components/DocsAlert";
+import Link from "next/link";
+
+- Other GUI frameworks we considered
+- How I expect GUIs to work, based on experience with Qt and FLTK
+- Good stuff
+  - We still control `main`
+  - Small packages
+  - Pre-made deb and MSI bundlers
+  - Easy to write almost everything in Rust and use TypeScript for the UI
+  - Generally easy to work with and not restrictive
+- Snags (For each one, explain how we worked around it, whether it was really a
+  problem with Tauri, which it rarely is)
+  - Required directory layout is a little weird
+  - Admin / sudo working on Windows but not Linux
+  - Deb bundler not as customizable as we need
+  - Can't left-click on the tray menu in Windows
+  - Tray menu and notifications generally short of features
+    - The GNOME menu is just wacky
+    - Clicking a notification in GNOME opens another instance of your app
+  - Impossible to exit the event loop gracefully
+  - Web views seem to occupy RAM even when the window is closed
+  - Depending on Ubuntu's webkit package means forwards and backwards compat is
+    hard
+  - Setting the name of binaries and the bundle is tricky
+  - Bug #3972, unknown flaky smoke test resolved by initializing Tauri sooner
+  - WebView2 is flaky in CI #4981
+
+# What is Tauri and why do we use it?
+
+[Tauri](https://tauri.app/) is "a framework for building tiny, blazingly fast
+binaries for all major desktop platforms." Similar to Electron, it uses a web
+view to run the GUI. Unlike Electron, it doesn't bundle the web view, resulting
+in smaller downloads, and it has native APIs for Rust instead of C/C++.
+
+We
+[chose Tauri over other frameworks](https://github.com/firezone/firezone/issues/2715)
+because it was the fastest way to get the product working on Linux and Windows.
+The team already has experience with HTML/JS/CSS and our cross-platform
+connection library `connlib` is written in Rust.
+
+These other frameworks and libraries were considered and rejected for now. They
+might be reconsidered in the future:
+
+- Qt - Quality of Rust bindings unknown, typically distributed with lots of
+  separate DLL files.
+- FLTK - Difficult to style, very "batteries not included"
+- GTK+ - Quality of Rust bindings unknown, quality of Windows support unknown
+- Win32 API - Verbose, complicated, documentation is confusing, not portable to
+  Linux
+- native-windows-gui - Not popular enough / not maintained
+- WinForms / WPF - Binding to C# assumed to be difficult
+
+# What is good about Tauri?
+
+## Tauri is easy to use
+
+Using Tauri for the first time, I got the Windows Client to MVP in about 2
+months, and the Linux Client to MVP in another 4 months. Linux took longer
+because its security model required us to split the Client into a privileged
+tunnel service and un-privileged GUI.
+
+(TODO: Screenshots of the Windows and Linux MVPs)
+
+Software that is easy for beginners to use ends up attracting beginners and
+turning them into experienced users and contributors. The Rust language
+deliberately took advantage of this, shipping the beginner-friendly Cargo
+package manager from Rust 1.0 and shipping Clippy a few years later in 2018.
+
+Tauri does the same thing, shipping the `tauri-cli` tool for setting up
+boilerplate projects, and package bundlers for Windows `.msi` installers and
+Debian `.deb` packages that Just Work, at least for simple programs.
+
+## It's Rust and TypeScript
+
+Firezone already uses Rust for the data plane (the Gateway, the Relay, and
+`connlib`) and TypeScript for the website and admin portal. I don't know much
+web design, so using TypeScript allowed me to make a rough prototype of the GUI
+and then let other team members polish and style it to match the website
+branding.
+
+JavaScript inside the web view can call into `async` Rust functions (TODO: Code
+example), and from there we can use `tokio`'s mpsc channels to send events to a
+central controller task. (TODO: Code)
+
+# What snags did we hit?
+
+Overall, I like Tauri a lot. This section is longer because there are lots of
+little details. "It's good" is shorter than "We had trouble because..."
+
+## The Tauri directory layout is odd
+
+The root of a Tauri project, such as
+[`/rust/gui-client` in the Firezone repo](https://github.com/firezone/firezone/tree/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client),
+has two subdirectories: `src` and `src-tauri`. The entire Rust project is
+contained in `src-tauri`, and the `src` directory contains files for the web
+view. `Cargo.toml` and `tauri.conf.json` are in `src-tauri`. I find this
+confusing. I think Tauri's primary purpose is to wrap up web apps into native
+apps, so the Rust code is sequestered in `src-tauri`, and the project is
+supposed to be an NPM project that incidentally contains a Rust wrapper.
+
+I think of the Firezone Client as a Rust GUI program that incidentally uses
+HTML+JS+CSS for the GUI, so this layout is backwards to me. I would have
+expected a top-level `/Cargo.toml`, with the Rust under `/src`, and the web
+files under `/src-web` or similar. Maybe there's a reason for this, but I'm not
+aware of it.
+
+## Linux doesn't like running GUIs with root permissions
+
+This isn't Tauri's fault. The Windows Client, at first, ran with admin
+privileges so that it can open the secure tunnel and control the system's DNS.
+
+After Windows was working, I got it to compile on Linux, with the Windows code
+configured out, but almost nothing worked - Blank windows, missing tray icons,
+etc.
+
+It turns out that getting the environment right to run a GUI with sudo was
+difficult. We knew that running a GUI with root powers was risky anyway. Even
+though we're not loading untrusted web pages like a web browser is, we would
+still be running a JIT _somewhere_ due to WebKit, and we would still be mixing
+code for the secure tunnel and code for reading config files in the same
+process. It also meant that ordinary users couldn't run Firezone, which is a
+problem in corporate environments where users may not have sudo on their
+desktops.
+
+So we pushed back the Linux GUI release until it could be split into 2
+processes, then we did the same split on Windows for the same reasons. This
+means we lost the "download and run" property of having a single exe, since they
+both install a background service, but the security and convenience of the GUI
+Clients are both improved.
+
+## Tauri's deb bundler is not very customizable
+
+To install the systemd service on Linux, we need the deb package to have
+[post-install](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/src-tauri/deb_files/postinst)
+and
+[pre-remove](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/src-tauri/deb_files/prerm)
+scripts. `dpkg` doesn't install these in the filesystem, it runs them when
+adding or removing a package, and then it deletes them. Tauri allows us to
+bundle arbitrary files for installation in the filesystem, and we use that to
+install
+[the systemd service and a system group](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/src-tauri/tauri.conf.json#L23-L26),
+but it doesn't have any hook for these special scripts.
+
+So in Firezone's build process, we
+[delete Tauri's deb, add our scripts to the intermediate files Tauri left, and then finish the bundling ourselves.](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/build.sh#L20-L39)
+
+I'm surprised these scripts are not in Tauri's use cases. On Windows, Tauri
+allows us to install and configure our background service by
+[overriding the Wix files](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/src-tauri/tauri.conf.json#L44-L45)
+that generate the MSI.
+
+`cargo-deb`
+[does allow these scripts](https://github.com/kornelski/cargo-deb?tab=readme-ov-file#packagemetadatadeb-options),
+but Tauri's bundler is based on
+[`cargo-bundle`](https://github.com/burtonageo/cargo-bundle) instead, which
+doesn't appear to support the scripts.
+
+## The tray menu works, but it's odd
+
+In Windows, you can't left-click on the tray menu. Tauri doesn't seem to fire
+any event for it. This is not a limitation of Windows, so I'm not sure why Tauri
+only allows right clicks.
+
+On GNOME, if the menu is too long and the screen is too short, you can't open
+submenus. (TODO: Screenshots)
+
+Also in GNOME, clicking on a notification runs another instance of the app. I
+assume this is intended to activate the app, but it doesn't seem to happen on
+Windows. (On Windows, we already worked around Tauri's default notifications
+with
+[tauri-winrt-notification](https://crates.io/crates/tauri-winrt-notification),
+since Tauri's default notifications aren't clickable.) I'm not sure if the
+second instance gets any environment variable or argument to hint that it was
+launched from a notification, so we show a generic "Firezone is already running"
+error instead of doing anything useful.
+
+## Tauri apps can't exit gracefully
+
+Not kidding. From `main` you decide when to start Tauri, but the only way to
+exit Tauri is to let it call `std::process::exit`.
+
+This is implemented down in `tao`, Tauri's windowing library, for both
+[Linux](https://github.com/tauri-apps/tao/blob/f9f81f2fd761c60abb5b46a6469864562a811c6d/src/platform_impl/linux/event_loop.rs#L913)
+and
+[Windows](https://github.com/tauri-apps/tao/blob/f9f81f2fd761c60abb5b46a6469864562a811c6d/src/platform_impl/windows/event_loop.rs#L219).
+
+I first suspected this is due to some platform-specific limitation, such as
+Windows' `WinMain` function or the fact that some OSes require all GUI-related
+function calls to happen on "the main thread", or at least on a single thread.
+
+`tao` is a fork of `winit`, and `winit` is able to return from
+[its run function](https://docs.rs/winit/latest/winit/event_loop/struct.EventLoop.html#method.run_app)
+on desktop.
+
+The
+[`run_iteration` function](https://docs.rs/tauri/1.6.6/tauri/struct.App.html#method.run_iteration)
+should be able to handle this, but instead it busy-loops.
+
+When asked about these issues, lead Tauri developer Fabian said he also expects
+better from the underlying OSes and this causes him to
+["cry (himself) to sleep at night 🤷"](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1898328992)
+Me too, Fabian, me too. /s
