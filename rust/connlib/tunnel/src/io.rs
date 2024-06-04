@@ -1,6 +1,6 @@
 use crate::{
     device_channel::Device,
-    dns::{self, DnsQuery},
+    dns::DnsQuery,
     sockets::{Received, Sockets},
 };
 use bytes::Bytes;
@@ -45,6 +45,13 @@ pub enum Input<'a, I> {
     Timeout(Instant),
     Device(MutableIpPacket<'a>),
     Network(I),
+    DnsResponse(
+        DnsQuery<'static>,
+        Result<
+            Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
+            futures_bounded::Timeout,
+        >,
+    ),
 }
 
 impl Io {
@@ -73,49 +80,27 @@ impl Io {
         ip6_bffer: &'b mut [u8],
         device_buffer: &'b mut [u8],
     ) -> Poll<io::Result<Input<'b, impl Iterator<Item = Received<'b>>>>> {
-        loop {
-            // FIXME: Building the DNS response in here isn't very clean because this should only be the IO component and not do business-logic.
-            // But it also seems weird to pass the DNS result out if we've got the device right here.
-            match self.forwarded_dns_queries.poll_unpin(cx) {
-                Poll::Ready((Ok(response), query)) => {
-                    match dns::build_response_from_resolve_result(query.query, response) {
-                        Ok(Some(packet)) => {
-                            self.device.write(packet)?;
-                        }
-                        Ok(None) => {}
-                        Err(_) => {
-                            // The error might contain sensitive information therefore we ignore it
-                            tracing::debug!("Failed to build DNS response from lookup result");
-                        }
-                    }
-
-                    continue;
-                }
-                Poll::Ready((Err(resolve_timeout), query)) => {
-                    tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            if let Some(timeout) = self.timeout.as_mut() {
-                if timeout.poll_unpin(cx).is_ready() {
-                    return Poll::Ready(Ok(Input::Timeout(timeout.deadline().into())));
-                }
-            }
-
-            if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
-                return Poll::Ready(Ok(Input::Network(network)));
-            }
-
-            ready!(self.sockets.poll_flush(cx))?;
-
-            if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
-                return Poll::Ready(Ok(Input::Device(packet)));
-            }
-
-            return Poll::Pending;
+        if let Poll::Ready((response, query)) = self.forwarded_dns_queries.poll_unpin(cx) {
+            return Poll::Ready(Ok(Input::DnsResponse(query, response)));
         }
+
+        if let Some(timeout) = self.timeout.as_mut() {
+            if timeout.poll_unpin(cx).is_ready() {
+                return Poll::Ready(Ok(Input::Timeout(timeout.deadline().into())));
+            }
+        }
+
+        if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
+            return Poll::Ready(Ok(Input::Network(network)));
+        }
+
+        ready!(self.sockets.poll_flush(cx))?;
+
+        if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
+            return Poll::Ready(Ok(Input::Device(packet)));
+        }
+
+        Poll::Pending
     }
 
     pub fn device_mut(&mut self) -> &mut Device {

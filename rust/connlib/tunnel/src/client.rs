@@ -644,6 +644,34 @@ impl ClientState {
         Ok(())
     }
 
+    pub(crate) fn on_dns_result(
+        &mut self,
+        query: DnsQuery<'static>,
+        response: Result<
+            Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
+            futures_bounded::Timeout,
+        >,
+    ) {
+        let response = match response {
+            Ok(response) => response,
+            Err(resolve_timeout) => {
+                tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
+                return;
+            }
+        };
+
+        match dns::build_response_from_resolve_result(query.query, response) {
+            Ok(Some(packet)) => {
+                self.buffered_packets.push_back(packet);
+            }
+            Ok(None) => {}
+            Err(_) => {
+                // The error might contain sensitive information therefore we ignore it
+                tracing::debug!("Failed to build DNS response from lookup result");
+            }
+        }
+    }
+
     fn dns_response(
         &mut self,
         resource_id: &ResourceId,
@@ -710,12 +738,12 @@ impl ClientState {
                 // Assuming a single upstream dns until #3123 lands
                 if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
                 {
-                    if self
-                        .cidr_resources
-                        .longest_match(upstream_dns.ip())
-                        .is_some()
-                    {
-                        return Err((packet, upstream_dns.ip()));
+                    let ip = upstream_dns.ip();
+
+                    if self.cidr_resources.longest_match(ip).is_some() {
+                        tracing::debug!(%ip, "DNS server is a CIDR resource");
+
+                        return Err((packet, ip));
                     }
                 }
 
