@@ -117,6 +117,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
+    rt.spawn(firezone_headless_client::heartbeat::heartbeat());
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
 

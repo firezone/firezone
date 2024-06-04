@@ -37,6 +37,7 @@ use platform::Signals;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
 pub mod dns_control;
+pub mod heartbeat;
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
@@ -347,6 +348,7 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+    rt.spawn(crate::heartbeat::heartbeat());
     let mut signals = Signals::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented

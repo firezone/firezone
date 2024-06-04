@@ -2010,6 +2010,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uptime_lib",
  "url",
  "uuid",
  "windows 0.56.0",
@@ -7052,6 +7053,17 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "uptime_lib"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4e71ddbefed856d5881821d6ada4e606bbb91fd332296963ed596e2ad2100f3"
+dependencies = [
+ "libc",
+ "thiserror",
+ "windows 0.52.0",
+]
 
 [[package]]
 name = "url"

@@ -10,6 +10,7 @@ use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
 use std::{
     ffi::{c_void, OsString},
+    os::windows::io::AsRawHandle,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -17,7 +18,11 @@ use std::{
 use tokio::net::windows::named_pipe;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
-use windows::Win32::Security as WinSec;
+use windows::Win32::{
+    Foundation::HANDLE,
+    Security as WinSec,
+    System::Pipes::GetNamedPipeClientProcessId,
+};
 use windows_service::{
     service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
@@ -98,6 +103,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
+    rt.spawn(crate::heartbeat::heartbeat());
 
     let ipc_task = rt.spawn(super::ipc_listen());
     let ipc_task_ah = ipc_task.abort_handle();
@@ -193,11 +199,19 @@ impl IpcServer {
 
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
         let server = create_pipe_server()?;
-        tracing::info!("Listening for GUI to connect over IPC...");
+        tracing::info!(server_pid = std::process::id(), "Listening for GUI to connect over IPC...");
         server
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
+        let handle = HANDLE(server.as_raw_handle() as isize);
+        let mut client_pid: u32 = 0;
+        // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
+        // from Tokio, so it should be valid.
+        unsafe {
+            GetNamedPipeClientProcessId(handle, &mut client_pid)
+        }.context("Couldn't get PID of named pipe client")?;
+        tracing::info!(?client_pid, "Accepted IPC connection");
         Ok(server)
     }
 }
