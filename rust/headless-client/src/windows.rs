@@ -99,10 +99,6 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
 
     let rt = tokio::runtime::Runtime::new()?;
 
-    // Fixes <https://github.com/firezone/firezone/issues/4899>,
-    // DNS rules persisting after reboot
-    crate::dns_control::deactivate().ok();
-
     let ipc_task = rt.spawn(super::ipc_listen());
     let ipc_task_ah = ipc_task.abort_handle();
 
@@ -111,8 +107,12 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         match control_event {
             // TODO
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-            ServiceControl::Stop => {
-                tracing::info!("Got stop signal from service controller");
+            ServiceControl::PowerEvent(event) => {
+                tracing::info!(?event, "Power event");
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Shutdown | ServiceControl::Stop => {
+                tracing::info!(?control_event, "Got stop signal from service controller");
                 ipc_task_ah.abort();
                 ServiceControlHandlerResult::NoError
             }
@@ -125,12 +125,13 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             | ServiceControl::ParamChange
             | ServiceControl::Pause
             | ServiceControl::Preshutdown
-            | ServiceControl::Shutdown
             | ServiceControl::HardwareProfileChange(_)
-            | ServiceControl::PowerEvent(_)
             | ServiceControl::SessionChange(_)
             | ServiceControl::TimeChange
-            | ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
+            | ServiceControl::TriggerEvent => {
+                tracing::warn!(?control_event, "Unhandled service control event");
+                ServiceControlHandlerResult::NotImplemented
+            }
             _ => ServiceControlHandlerResult::NotImplemented,
         }
     };
@@ -140,7 +141,7 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Running,
-        controls_accepted: ServiceControlAccept::STOP,
+        controls_accepted: ServiceControlAccept::POWER_EVENT | ServiceControlAccept::SHUTDOWN | ServiceControlAccept::STOP,
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
         wait_hint: Duration::default(),

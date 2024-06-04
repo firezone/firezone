@@ -127,7 +127,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    tracing::debug!("Setting up Tauri app instance...");
+    tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
@@ -171,7 +171,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
             }
         })
         .setup(move |app| {
-            tracing::debug!("Entered Tauri's `setup`");
+            tracing::info!("Entered Tauri's `setup`");
 
             let setup_inner = move || {
                 // Check for updates
@@ -728,6 +728,7 @@ async fn run_controller(
     logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
+    tracing::info!("Entered `run_controller`");
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -808,7 +809,10 @@ async fn run_controller(
                     },
                     Req::Fail(Failure::Error) => bail!("Test error"),
                     Req::Fail(Failure::Panic) => panic!("Test panic"),
-                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
+                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
+                        tracing::info!("User clicked Quit in the menu");
+                        break
+                    }
                     req => if let Err(error) = controller.handle_request(req).await {
                         tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }

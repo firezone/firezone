@@ -119,6 +119,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 }
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
+    tracing::error!("{}", error);
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
     let error_msg = match error {
         // TODO: Update this URL
