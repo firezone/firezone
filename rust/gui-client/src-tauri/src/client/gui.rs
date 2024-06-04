@@ -97,11 +97,13 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
         };
 
     // Start logging
-    // TODO: Try using an Arc to keep the file logger alive even if Tauri bails out
-    // That may fix <https://github.com/firezone/firezone/issues/3567>
     let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
     tracing::info!("started log");
     tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
+    // Purposely leak the file logger handle so it won't
+    // accidentally stop logging if we try to bubble up an error.
+    // See <https://github.com/firezone/firezone/issues/3567>
+    Box::leak(Box::new(logging_handles.logger.clone()));
 
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
