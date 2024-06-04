@@ -17,7 +17,8 @@ defmodule API.Client.Views.Resource do
       address: address,
       address_description: resource.address_description,
       name: resource.name,
-      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups)
+      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
 
@@ -28,7 +29,45 @@ defmodule API.Client.Views.Resource do
       address: resource.address,
       address_description: resource.address_description,
       name: resource.name,
-      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups)
+      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
+  end
+
+  def render_filter(%Resources.Resource.Filter{ports: ports} = filter) when length(ports) > 0 do
+    Enum.map(filter.ports, fn port ->
+      case String.split(port, "-") do
+        [port_start, port_end] ->
+          port_start = port_to_number(port_start)
+          port_end = port_to_number(port_end)
+
+          %{
+            protocol: filter.protocol,
+            port_range_start: port_start,
+            port_range_end: port_end
+          }
+
+        [port] ->
+          port = port_to_number(port)
+
+          %{
+            protocol: filter.protocol,
+            port_range_start: port,
+            port_range_end: port
+          }
+      end
+    end)
+  end
+
+  def render_filter(%Resources.Resource.Filter{} = filter) do
+    [
+      %{
+        protocol: filter.protocol
+      }
+    ]
+  end
+
+  defp port_to_number(port) do
+    port |> String.trim() |> String.to_integer()
   end
 end

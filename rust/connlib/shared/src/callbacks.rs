@@ -42,6 +42,22 @@ impl From<Ipv6Network> for Cidrv6 {
     }
 }
 
+impl From<Cidrv4> for IpNetwork {
+    fn from(x: Cidrv4) -> Self {
+        Ipv4Network::new(x.address, x.prefix)
+            .expect("A Cidrv4 should always translate to a valid Ipv4Network")
+            .into()
+    }
+}
+
+impl From<Cidrv6> for IpNetwork {
+    fn from(x: Cidrv6) -> Self {
+        Ipv6Network::new(x.address, x.prefix)
+            .expect("A Cidrv6 should always translate to a valid Ipv6Network")
+            .into()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Status {
     Unknown,
