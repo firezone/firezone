@@ -5,7 +5,7 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use crate::{CliCommon, SignalKind};
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
 use std::{
@@ -207,33 +207,36 @@ impl IpcServer {
         Ok(Self { pipe_path })
     }
 
+    // `&mut self` needed to match the Linux signature
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
         // Fixes #5143. In the IPC service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
-        // we also do an exponential backoff.
+        // we also do a loop.
         tokio::task::yield_now().await;
 
-        // Even though the closure does not await, the backoff itself must be async so
-        // that Tokio can clean up the named pipe without us blocking its executor thread
-        let server = backoff::future::retry(backoff::ExponentialBackoff::default(), || async {
-            match create_pipe_server(&self.pipe_path) {
-                Ok(x) => Ok(x),
-                Err(PipeError::AccessDenied) => {
-                    tracing::warn!("PipeError::AccessDenied, backing off...");
-                    Err(PipeError::AccessDenied)?
-                }
-                Err(error) => Err(backoff::Error::Permanent(error)),
-            }
-        })
-        .await
-        .context("Couldn't listen on named pipe")?;
+        let server = self.bind_to_pipe().await.context("Couldn't bind to named pipe")?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
         Ok(server)
+    }
+
+    async fn bind_to_pipe(&self) -> Result<IpcStream> {
+        const NUM_ITERS: usize = 10;
+        for i in 0..NUM_ITERS {
+            match create_pipe_server(&self.pipe_path) {
+                Ok(server) => return Ok(server),
+                Err(PipeError::AccessDenied) => {
+                    tracing::warn!("PipeError::AccessDenied, sleeping... (loop {i})");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(error) => Err(error)?,
+            }
+        }
+        bail!("Tried {NUM_ITERS} times to bind the pipe and failed");
     }
 }
 

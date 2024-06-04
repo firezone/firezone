@@ -1984,7 +1984,6 @@ version = "1.0.6"
 dependencies = [
  "anyhow",
  "atomicwrites",
- "backoff",
  "clap",
  "connlib-client-shared",
  "connlib-shared",

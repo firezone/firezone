@@ -47,7 +47,6 @@ sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnera
 dirs = "5.0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-backoff = { version = "0.4", features = ["tokio"] }
 ipconfig = "0.3.2"
 known-folders = "1.1.0"
 ring = "0.17"
