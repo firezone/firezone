@@ -160,6 +160,10 @@ where
 
                     continue;
                 }
+                Poll::Ready(io::Input::DnsResponse(query, response)) => {
+                    self.role_state.on_dns_result(query, response);
+                    continue;
+                }
                 Poll::Pending => {}
             }
 
@@ -246,6 +250,9 @@ where
                     }
 
                     continue;
+                }
+                Poll::Ready(io::Input::DnsResponse(_, _)) => {
+                    unreachable!("Gateway does not (yet) resolve DNS queries via `Io`")
                 }
                 Poll::Pending => {}
             }
