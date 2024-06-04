@@ -81,11 +81,12 @@ pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
 fn windows_service_run(arguments: Vec<OsString>) {
-    let log_path =
-        crate::known_dirs::ipc_service_logs().expect("Should be able to compute IPC service logs dir");
+    let log_path = crate::known_dirs::ipc_service_logs()
+        .expect("Should be able to compute IPC service logs dir");
     std::fs::create_dir_all(&log_path).expect("We should have permissions to create our log dir");
     let (layer, _handle) = file_logger::layer(&log_path);
-    let filter = EnvFilter::from_str(SERVICE_RUST_LOG).expect("Hard-coded log filter should always be parsable");
+    let filter = EnvFilter::from_str(SERVICE_RUST_LOG)
+        .expect("Hard-coded log filter should always be parsable");
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).expect("`set_global_default` should always work)");
     tracing::info!(git_version = crate::GIT_VERSION);
