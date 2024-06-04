@@ -4,7 +4,6 @@ locals {
     "bmanifold@firezone.dev",
     "gabriel@firezone.dev",
     "jamil@firezone.dev",
-    "thomas@firezone.dev"
   ]
 
   region            = "us-east1"

@@ -1173,7 +1173,6 @@ name = "connlib-shared"
 version = "1.0.6"
 dependencies = [
  "anyhow",
- "atomicwrites",
  "base64 0.22.1",
  "boringtun",
  "chrono",
@@ -1186,20 +1185,19 @@ dependencies = [
  "known-folders",
  "libc",
  "log",
- "mutants",
+ "netlink-packet-core",
+ "netlink-packet-route",
  "os_info",
  "phoenix-channel",
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "resolv-conf",
  "ring",
  "rtnetlink",
  "secrecy",
  "serde",
  "serde_json",
  "swift-bridge",
- "tempfile",
  "thiserror",
  "tokio",
  "tracing",
@@ -1985,6 +1983,7 @@ name = "firezone-headless-client"
 version = "1.0.6"
 dependencies = [
  "anyhow",
+ "atomicwrites",
  "backoff",
  "clap",
  "connlib-client-shared",
@@ -1994,21 +1993,26 @@ dependencies = [
  "futures",
  "git-version",
  "humantime",
+ "ip_network",
  "ipconfig",
  "known-folders",
+ "mutants",
  "nix 0.28.0",
  "resolv-conf",
  "ring",
+ "rtnetlink",
  "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
  "windows 0.56.0",
  "windows-service",
 ]
@@ -2070,6 +2074,7 @@ dependencies = [
  "futures-bounded",
  "futures-util",
  "hex",
+ "hickory-proto",
  "hickory-resolver",
  "ip-packet",
  "ip_network",
@@ -2087,7 +2092,6 @@ dependencies = [
  "rand_core 0.6.4",
  "rangemap",
  "rtnetlink",
- "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
@@ -3165,6 +3169,7 @@ dependencies = [
 name = "ip-packet"
 version = "1.0.6"
 dependencies = [
+ "hickory-proto",
  "pnet_packet",
 ]
 
@@ -3336,9 +3341,9 @@ dependencies = [
 
 [[package]]
 name = "keyring"
-version = "2.3.2"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be8bc4c6b6e9d85ecdad090fcf342a9216f53d747a537cc05e3452fd650ca46"
+checksum = "363387f0019d714aa60cc30ab4fe501a747f4c08fc58f069dd14be971bd495a0"
 dependencies = [
  "byteorder",
  "lazy_static",
@@ -5568,9 +5573,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.116"
+version = "1.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e17db7126d17feb94eb3fad46bf1a96b034e8aacbc2e775fe81505f8b0b2813"
+checksum = "455182ea6142b14f93f4bc5320a2b31c1f266b66a4a5c858b013302a5d8cbfc3"
 dependencies = [
  "indexmap 2.2.6",
  "itoa 1.0.11",

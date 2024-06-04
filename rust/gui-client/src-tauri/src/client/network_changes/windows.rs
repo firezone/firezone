@@ -486,7 +486,10 @@ mod async_dns {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,
             }
-            Ok(crate::client::resolvers::get().unwrap_or_default())
+            Ok(
+                firezone_headless_client::dns_control::system_resolvers_for_gui()
+                    .unwrap_or_default(),
+            )
         }
     }
 
