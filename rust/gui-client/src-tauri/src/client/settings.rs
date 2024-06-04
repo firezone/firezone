@@ -90,7 +90,9 @@ pub(crate) async fn get_advanced_settings(
             "couldn't request advanced settings from controller task"
         );
     }
-    rx.await.map_err(|_| "Couldn't get settings from `Controller`, maybe the program is crashing".to_string())
+    rx.await.map_err(|_| {
+        "Couldn't get settings from `Controller`, maybe the program is crashing".to_string()
+    })
 }
 
 /// Saves the settings to disk and then tells `Controller` to apply them in-memory

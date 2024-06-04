@@ -88,7 +88,10 @@ impl Client {
         callback_handler: CallbackHandler,
         tokio_handle: tokio::runtime::Handle,
     ) -> Result<Self> {
-        tracing::info!(client_pid = std::process::id(), "Connecting to IPC service...");
+        tracing::info!(
+            client_pid = std::process::id(),
+            "Connecting to IPC service..."
+        );
         let stream = platform::connect_to_service().await?;
         let (rx, tx) = tokio::io::split(stream);
         // Receives messages from the IPC service

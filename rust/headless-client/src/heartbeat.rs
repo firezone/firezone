@@ -2,7 +2,7 @@
 //! so it won't take up much disk space
 
 use std::time::Duration;
-use tokio::time::{Instant, sleep_until};
+use tokio::time::{sleep_until, Instant};
 
 /// Logs a heartbeat to `tracing::info!`. Put this in a Tokio task and forget about it.
 pub async fn heartbeat() {
@@ -44,7 +44,8 @@ mod tests {
         let mut hb = super::Heartbeat::default();
         const SECONDS_PER_DAY: u64 = 86_400;
         const DAYS_PER_YEAR: u64 = 365;
-        let far_future = hb.next_instant + std::time::Duration::from_secs(SECONDS_PER_DAY * DAYS_PER_YEAR * 50);
+        let far_future =
+            hb.next_instant + std::time::Duration::from_secs(SECONDS_PER_DAY * DAYS_PER_YEAR * 50);
 
         // It will only print 32 lines or so for the next 50+ years
         for _ in 0..50 {

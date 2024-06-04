@@ -19,9 +19,7 @@ use tokio::net::windows::named_pipe;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 use windows::Win32::{
-    Foundation::HANDLE,
-    Security as WinSec,
-    System::Pipes::GetNamedPipeClientProcessId,
+    Foundation::HANDLE, Security as WinSec, System::Pipes::GetNamedPipeClientProcessId,
 };
 use windows_service::{
     service::{
@@ -147,7 +145,9 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Running,
-        controls_accepted: ServiceControlAccept::POWER_EVENT | ServiceControlAccept::SHUTDOWN | ServiceControlAccept::STOP,
+        controls_accepted: ServiceControlAccept::POWER_EVENT
+            | ServiceControlAccept::SHUTDOWN
+            | ServiceControlAccept::STOP,
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
         wait_hint: Duration::default(),
@@ -199,7 +199,10 @@ impl IpcServer {
 
     pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
         let server = create_pipe_server()?;
-        tracing::info!(server_pid = std::process::id(), "Listening for GUI to connect over IPC...");
+        tracing::info!(
+            server_pid = std::process::id(),
+            "Listening for GUI to connect over IPC..."
+        );
         server
             .connect()
             .await
@@ -208,9 +211,8 @@ impl IpcServer {
         let mut client_pid: u32 = 0;
         // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
         // from Tokio, so it should be valid.
-        unsafe {
-            GetNamedPipeClientProcessId(handle, &mut client_pid)
-        }.context("Couldn't get PID of named pipe client")?;
+        unsafe { GetNamedPipeClientProcessId(handle, &mut client_pid) }
+            .context("Couldn't get PID of named pipe client")?;
         tracing::info!(?client_pid, "Accepted IPC connection");
         Ok(server)
     }

@@ -1,10 +1,7 @@
 use anyhow::{Context as _, Result};
 use std::os::windows::io::AsRawHandle;
 use tokio::net::windows::named_pipe;
-use windows::Win32::{
-    Foundation::HANDLE,
-    System::Pipes::GetNamedPipeServerProcessId,
-};
+use windows::Win32::{Foundation::HANDLE, System::Pipes::GetNamedPipeServerProcessId};
 
 /// A type alias to abstract over the Windows and Unix IPC primitives
 pub(crate) type IpcStream = named_pipe::NamedPipeClient;
@@ -22,9 +19,8 @@ pub(crate) async fn connect_to_service() -> Result<IpcStream> {
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
-    unsafe {
-        GetNamedPipeServerProcessId(handle, &mut server_pid)
-    }.context("Couldn't get PID of named pipe server")?;
+    unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
+        .context("Couldn't get PID of named pipe server")?;
     tracing::info!(?server_pid, "Made IPC connection");
     Ok(stream)
 }
