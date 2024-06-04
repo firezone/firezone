@@ -52,6 +52,20 @@ defmodule Web.Live.Groups.IndexTest do
     assert Floki.text(button) =~ "Add Group"
   end
 
+  test "filters form has onkeydown attribute to prevent Enter from submitting form", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/groups")
+
+    assert form = Floki.find(html, "form#groups-filters")
+    assert Floki.has_attribute(form, "onkeydown", "return event.key != 'Enter';")
+  end
+
   test "renders empty table when there are no groups", %{
     account: account,
     identity: identity,
