@@ -133,15 +133,9 @@ struct ReferenceState {
     global_dns_records: HashMap<DomainName, HashSet<IpAddr>>,
 
     /// The expected ICMP handshakes.
-    expected_icmp_handshakes: VecDeque<(IpAddr, IcmpSeq, IcmpIdentifier, ResourceKind)>,
+    expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
     /// The expected DNS handshakes.
     expected_dns_handshakes: VecDeque<QueryId>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ResourceKind {
-    Cidr,
-    Dns,
 }
 
 type QueryId = u16;
@@ -635,6 +629,7 @@ impl ReferenceStateMachine for ReferenceState {
                             .or_default()
                             .extend(ips_resolved_by_query);
                         state.expected_dns_handshakes.push_back(*query_id);
+                        state.client_dns_records.entry(domain).or_default().sort();
                     }
                 }
             }
@@ -651,7 +646,6 @@ impl ReferenceStateMachine for ReferenceState {
                 let dst = state
                     .sample_resource_dst(idx)
                     .expect("Transition to only be sampled if we have at least one resource");
-                let dst = dst.into_reference_packet_dst();
 
                 state.on_icmp_packet(*src, dst, *seq, *identifier);
             }
@@ -1327,6 +1321,11 @@ impl TunnelTest {
                     self.client_dns_records.entry(domain).or_default().push(ip);
                 }
 
+                // Ensure all IPs are always sorted.
+                for ips in self.client_dns_records.values_mut() {
+                    ips.sort()
+                }
+
                 return;
             }
         }
@@ -1400,43 +1399,46 @@ impl TunnelTest {
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet(
-        &mut self,
-        src: Option<IpAddr>,
-        dst: impl Into<IpAddr>,
-        seq: u16,
-        identifier: u16,
-    ) {
-        let dst = dst.into();
+    fn on_icmp_packet(&mut self, src: Option<IpAddr>, dst: ResourceDst, seq: u16, identifier: u16) {
         let packet_originates_from_client =
             src.is_none() || src.is_some_and(|src| src == self.client.tunnel_ip(src)); // Packets from IPs other than the client's are dropped by the gateway. We still create connections for them though.
-        tracing::Span::current().record("dst", tracing::field::display(dst));
 
-        if self.dns_resource_by_ip(dst).is_some() && packet_originates_from_client {
-            tracing::debug!("Connected to DNS resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .push_back((dst, seq, identifier, ResourceKind::Dns));
-            return;
+        match &dst {
+            ResourceDst::Cidr(ip_dst) => {
+                tracing::Span::current().record("dst", tracing::field::display(ip_dst));
+
+                // Second, if we are not yet connected, check if we have a resource for this IP.
+                let Some((_, resource)) = self.client_cidr_resources.longest_match(*ip_dst) else {
+                    tracing::debug!("No resource corresponds to IP");
+                    return;
+                };
+
+                if self.client_connected_cidr_resources.contains(&resource.id)
+                    && packet_originates_from_client
+                {
+                    tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
+                    self.expected_icmp_handshakes
+                        .push_back((dst, seq, identifier));
+                    return;
+                }
+
+                // If we have a resource, the first packet will initiate a connection to the gateway.
+                tracing::debug!(
+                    "Not connected to resource, expecting to trigger connection intent"
+                );
+                self.client_connected_cidr_resources.insert(resource.id);
+            }
+            ResourceDst::Dns(domain, _) => {
+                tracing::Span::current().record("dst", tracing::field::display(domain));
+
+                if self.client_dns_records.contains_key(domain) && packet_originates_from_client {
+                    tracing::debug!("Connected to DNS resource, expecting packet to be routed");
+                    self.expected_icmp_handshakes
+                        .push_back((dst, seq, identifier));
+                    return;
+                }
+            }
         }
-
-        // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
-            tracing::debug!("No resource corresponds to IP");
-            return;
-        };
-
-        if self.client_connected_cidr_resources.contains(&resource.id)
-            && packet_originates_from_client
-        {
-            tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .push_back((dst, seq, identifier, ResourceKind::Cidr));
-            return;
-        }
-
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.client_connected_cidr_resources.insert(resource.id);
     }
 
     fn sample_resolved_non_resource_dst(&self, idx: &sample::Index) -> Option<IpAddr> {
@@ -1556,7 +1558,7 @@ impl ReferenceState {
         let not_existing_icmp =
             self.expected_icmp_handshakes
                 .iter()
-                .all(|(_, existing_seq, existing_identifer, _)| {
+                .all(|(_, existing_seq, existing_identifer)| {
                     existing_seq != seq && existing_identifer != identifier
                 });
 
@@ -2289,12 +2291,12 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_state.expected_icmp_handshakes,
         &state.client_received_icmp_replies,
-        |(_, seq_a, id_a, _), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
     let unexpected_icmp_requests = find_unexpected_entries(
         &ref_state.expected_icmp_handshakes,
         &state.gateway_received_icmp_requests,
-        |(_, seq_a, id_a, _), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
 
     assert_eq!(
@@ -2308,7 +2310,7 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
         "Unexpected ICMP requests on gateway"
     );
 
-    for (resource_dst, seq, identifier, kind) in ref_state.expected_icmp_handshakes.iter() {
+    for (resource_dst, seq, identifier) in ref_state.expected_icmp_handshakes.iter() {
         let client_sent_request = &state
             .client_sent_icmp_requests
             .get(&(*seq, *identifier))
@@ -2340,8 +2342,8 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             "ICMP request source == ICMP reply destination"
         );
 
-        match kind {
-            ResourceKind::Cidr => {
+        match resource_dst {
+            ResourceDst::Cidr(resource_dst) => {
                 // For CIDR resources, the expected dst is always known.
 
                 assert_eq!(
@@ -2350,10 +2352,21 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
                     "ICMP request on gateway to target correct CIDR resource"
                 );
             }
-            ResourceKind::Dns => {
+            ResourceDst::Dns(domain, _) => {
                 // For DNS resources, we need to look up, which proxy IP we used.
                 // We consider it an implementation detail, how connlib assigns those IPs.
                 // We do want to assert that the mapping is stable.
+
+                let actual_destination = gateway_received_request.destination();
+                let possible_resource_ips = ref_state
+                    .global_dns_records
+                    .get(domain)
+                    .expect("ICMP packet for DNS resource to target known domain");
+
+                assert!(
+                    possible_resource_ips.contains(&actual_destination),
+                    "ICMP request on gateway to target a known resource IP"
+                );
 
                 match state
                     .client_proxy_ip_mapping
@@ -2362,13 +2375,13 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
                     Entry::Vacant(v) => {
                         // We have to gradually discover connlib's mapping ...
                         // For the first packet, we just save the IP that we ended up talking to.
-                        v.insert(gateway_received_request.source());
+                        v.insert(gateway_received_request.destination());
                     }
                     Entry::Occupied(o) => {
                         assert_eq!(
-                            gateway_received_request.source(),
+                            gateway_received_request.destination(),
                             *o.get(),
-                            "ICMP request on gateway to target correct DNS resource"
+                            "ICMP request on client to target correct same IP of DNS resource"
                         );
                     }
                 }
