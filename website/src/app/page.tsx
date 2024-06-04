@@ -37,16 +37,16 @@ export const metadata: Metadata = {
 
 function ActionButtons() {
   return (
-    <div className="w-full max-w-screen-sm flex space-x-2 justify-between mt-8">
+    <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
       <button
         type="button"
-        className="w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
+        className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
       >
         <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
       </button>
       <button
         type="button"
-        className="w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
+        className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
       >
         <Link href="/contact/sales">Request demo</Link>
         <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -71,12 +71,12 @@ export default function Page() {
             </SlideIn>
           </h1>
           <div className="max-w-screen-md mx-auto">
-            <h2 className="mb-8 text-xl tracking-tight justify-center font-medium text-neutral-900 inline-block">
+            <h3 className="mb-8 text-xl tracking-tight justify-center font-medium text-neutral-900 inline-block">
               Firezone is a fast, flexible VPN replacement built on WireGuard®
               that{" "}
               <span className="text-primary-450 font-bold">eliminates</span>{" "}
               tedious configuration and integrates with your identity provider.
-            </h2>
+            </h3>
           </div>
           <div className="mb-12 flex flex-col px-4 justify-center items-center">
             <ActionButtons />
@@ -106,14 +106,11 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
             Upgrade to zero-trust access in{" "}
-            <span className="ml-0.5 sm:ml-1 -mr-0.5 text-primary-450">
-              minutes
-            </span>
-            .
-          </h2>
+            <span className="text-primary-450">minutes</span>.
+          </h3>
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
@@ -125,21 +122,21 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="flex justify-center items-center px-4 md:px-0 mx-auto mt-8 md:mt-16 max-w-screen-lg">
+        <div className="flex justify-center items-center px-4 mx-auto mt-8 md:mt-16 max-w-screen-lg">
           <UpgradeDiagram />
         </div>
 
-        <div className="flex items-stretch mx-auto sm:px-4 md:px-8 mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
+        <div className="flex items-stretch mx-auto mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
           <SlideIn
             direction="left"
             delay={0.5}
             duration={1}
             className="flex flex-col p-4"
           >
-            <h4 className="mb-2 md:mb-4 text-md md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
+            <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Flexible
             </h4>
-            <p className="text-sm md:text-lg lg:text-xl tracking-tight md:text-justify">
+            <p className="text-md sm:text-lg md:text-xl tracking-tight md:text-justify">
               Control access to VPCs, subnets, hosts by IP or DNS, and even
               public SaaS apps.
             </p>
@@ -150,10 +147,10 @@ export default function Page() {
             duration={1}
             className="flex flex-col p-4 justify-center"
           >
-            <h4 className="mb-2 md:mb-4 text-md md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
+            <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Secure
             </h4>
-            <p className="text-sm md:text-lg lg:text-xl tracking-tight md:text-justify">
+            <p className="text-md sm:text-lg md:text-xl tracking-tight md:text-justify">
               Users and groups automatically sync with your identity provider,
               so access is revoked as soon as employees leave.
             </p>
@@ -164,10 +161,10 @@ export default function Page() {
             duration={1}
             className="flex flex-col p-4 justify-center"
           >
-            <h4 className="mb-2 md:mb-4 text-md md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
+            <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Granular
             </h4>
-            <p className="text-sm md:text-lg lg:text-xl tracking-tight md:text-justify">
+            <p className="text-md sm:text-lg md:text-xl tracking-tight md:text-justify">
               Restrict access even further with port-level rules that allow
               access to some services but not others, even on the same host.
             </p>
@@ -186,12 +183,12 @@ export default function Page() {
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
             Achieve compliance{" "}
-            <span className="mx-0.5 sm:mx-1 text-primary-450">without </span>
+            <span className="text-primary-450">without </span>
             the headache.
-          </h2>
+          </h3>
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
@@ -220,12 +217,11 @@ export default function Page() {
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
       <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
-            Add{" "}
-            <span className="mx-0.5 sm:mx-1 text-primary-450">two-factor</span>
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+            Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
-          </h2>
+          </h3>
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
@@ -260,10 +256,10 @@ export default function Page() {
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
       <section className="bg-neutral-900 text-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
             <Strike>Bandwidth problems.</Strike>
-          </h2>
+          </h3>
         </div>
 
         <div className="mx-auto mt-8 px-4 max-w-screen-md">
@@ -291,11 +287,11 @@ export default function Page() {
 
       {/* Feature section 5: No more open firewall ports. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
-            Say <span className="mx-0.5 sm:mx-1 text-primary-450">goodbye</span>{" "}
-            to firewall configuration.
-          </h2>
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+            Say <span className="text-primary-450">goodbye</span> to firewall
+            configuration.
+          </h3>
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
@@ -323,12 +319,11 @@ export default function Page() {
 
       {/* Feature section 6: Runs everywhere your business does. */}
       <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
-            Runs{" "}
-            <span className="mx-0.5 sm:mx-1 text-primary-450">everywhere</span>{" "}
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+            Runs <span className="text-primary-450">everywhere </span>
             your business does.
-          </h2>
+          </h3>
         </div>
 
         <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
@@ -451,11 +446,11 @@ export default function Page() {
 
       {/* Feature section 7: Open source for transparency and trust. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4">
-          <h2 className="text-xl sm:text-2xl md:text-4xl sm:justify-center tracking-tight font-bold">
-            <span className="mx-0.5 sm:mx-1 text-primary-450">Open source</span>{" "}
-            for transparency and trust.
-          </h2>
+        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
+          <h3 className="text-xl sm:text-2xl md:text-4xl tracking-tight font-bold inline-block">
+            <span className="text-primary-450">Open source</span> for
+            transparency and trust.
+          </h3>
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
@@ -475,15 +470,20 @@ export default function Page() {
             className="mx-auto px-4 md:px-0"
           />
         </div>
-
-        <div className="mx-auto flex max-w-lg justify-between mt-8">
-          <RunaCap />
-          <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-            href="https://www.github.com/firezone/firezone"
-          >
-            Leave us a star
-          </ActionLink>
+        <div className="flex flex-col justify-center items-center px-4">
+          <div className="w-full flex flex-wrap max-w-screen-sm justify-between mt-8">
+            <div className="mx-auto w-64 mb-8 inline-flex justify-center">
+              <RunaCap />
+            </div>
+            <div className="mx-auto w-64 mb-8 inline-flex justify-center">
+              <ActionLink
+                className="flex underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                href="https://www.github.com/firezone/firezone"
+              >
+                Leave us a star
+              </ActionLink>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -491,10 +491,10 @@ export default function Page() {
       <section className="border-t border-neutral-200 py-8 md:py-16 bg-neutral-100">
         <div className="mx-auto max-w-screen-lg">
           <div className="px-4 flex flex-wrap">
-            <h2 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
+            <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
               Yes, you can use Firezone to{" "}
-            </h2>
-            <h2 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold">
+            </h3>
+            <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold">
               <RotatingWords
                 className="underline text-primary-450 mx-0.5 sm:mx-1 inline-flex"
                 words={[
@@ -509,21 +509,21 @@ export default function Page() {
                   "tunnel to a remote host",
                 ]}
               />
-            </h2>
+            </h3>
           </div>
           <div className="px-4 flex flex-wrap mt-8">
-            <h2 className="mb-2 text-xl md:text-2xl tracking-tight font-semibold">
+            <h3 className="mb-2 text-xl md:text-2xl tracking-tight font-semibold">
               Here are just a few ways customers are using Firezone:
-            </h2>
+            </h3>
           </div>
           <div className="gap-4 items-center pt-8 px-4 mx-auto md:grid md:grid-cols-2 xl:gap-8 sm:pt-12 lg:px-6">
             <SlideIn delay={0.5} direction="right">
               <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
                 <div className="flex items-center space-x-2.5">
                   <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h3 className="text-xl tracking-tight font-bold text-neutral-900">
+                  <h4 className="text-xl tracking-tight font-bold text-neutral-900">
                     VPN Replacement
-                  </h3>
+                  </h4>
                 </div>
                 <p className="mt-8 text-neutral-900 text-xl">
                   Remote employees can securely access office networks, cloud
@@ -562,9 +562,9 @@ export default function Page() {
               <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
                 <div className="flex items-center space-x-2.5">
                   <HiRocketLaunch className="flex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
+                  <h4 className="text-xl tracking-tight font-bold text-neutral-900 ">
                     Infrastructure Access
-                  </h3>
+                  </h4>
                 </div>
                 <p className="mt-8 text-neutral-900 text-xl">
                   Empower engineers and DevOps to manage their team’s access to
@@ -603,9 +603,9 @@ export default function Page() {
               <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
                 <div className="flex items-center space-x-2.5">
                   <HiGlobeAlt className=" lex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
+                  <h4 className="text-xl tracking-tight font-bold text-neutral-900 ">
                     Internet Security
-                  </h3>
+                  </h4>
                 </div>
                 <p className="mt-8 text-neutral-900 text-xl">
                   Route sensitive internet traffic through a trusted gateway to
@@ -644,9 +644,9 @@ export default function Page() {
               <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
                 <div className="flex items-center space-x-2.5">
                   <HiHome className="flex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h3 className="text-xl tracking-tight font-bold text-neutral-900 ">
+                  <h4 className="text-xl tracking-tight font-bold text-neutral-900 ">
                     Homelab Access
-                  </h3>
+                  </h4>
                 </div>
                 <p className="mt-8 text-neutral-900 text-xl">
                   Securely access your home network, and services like Plex,
@@ -699,12 +699,12 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 py-24 bg-neutral-900">
         <div className="flex flex-col px-4 justify-center items-center">
-          <h2 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
+          <h3 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
             Ready to get started?
-          </h2>
-          <h3 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
-            Give your team secure access to company resources in minutes.
           </h3>
+          <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
+            Give your team secure access to company resources in minutes.
+          </h4>
           <ActionButtons />
         </div>
       </section>

@@ -3,12 +3,12 @@ import { HiCheck, HiXMark } from "react-icons/hi2";
 
 export default function BattleCard() {
   return (
-    <>
-      <h2 className="text-4xl tracking-tight font-bold justify-center text-neutral-900">
+    <div className="sm:mx-auto px-4">
+      <h2 className="text-2xl md:text-4xl tracking-tight font-bold sm:justify-center mb-8 md:mb-16">
         See how Firezone compares
       </h2>
 
-      <div className="max-w-screen-lg mt-24 mx-auto px-8">
+      <div className="max-w-screen-lg mx-auto sm:px-8">
         <div className="shadow-lg rounded mx-auto overflow-x-auto">
           <table className="border w-full text-left text-neutral-900 text-sm md:text-md lg:text-lg">
             <thead>
@@ -199,6 +199,6 @@ export default function BattleCard() {
           <i>Last updated: 4/22/2024</i>
         </p>
       </div>
-    </>
+    </div>
   );
 }
