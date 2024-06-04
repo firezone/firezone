@@ -220,6 +220,8 @@ pub fn run_only_headless_client() -> Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
+    // TODO: This might have the same issue with fatal errors not getting logged
+    // as addressed for the IPC service in PR #5216
     let (layer, _handle) = cli
         .common
         .log_dir

@@ -106,7 +106,9 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     }
     let rt = tokio::runtime::Runtime::new()?;
     rt.spawn(crate::heartbeat::heartbeat());
-    rt.block_on(crate::ipc_listen())?;
+    if let Err(error) = rt.block_on(crate::ipc_listen()) {
+        tracing::error!(?error, "`ipc_listen` failed");
+    }
     Ok(())
 }
 
