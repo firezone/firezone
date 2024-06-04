@@ -63,7 +63,7 @@ defmodule Web.Live.Groups.IndexTest do
       |> live(~p"/#{account}/groups")
 
     assert form = Floki.find(html, "form#groups-filters")
-    assert Floki.has_attribute(form, "onkeydown", "return event.key != 'Enter';")
+    assert ["return event.key != 'Enter';"] = Floki.attribute(form, "onkeydown")
   end
 
   test "renders empty table when there are no groups", %{
