@@ -218,6 +218,12 @@ jobs:
         run: |
           set -xe
 
+          # mark:automatic-version
+          if [ "${{ inputs.tag_name }}" != "1.0.6" ]; then
+            echo "Version mismatch between artifact and release. Have we bumped versions and rebased since the last release?"
+            exit 1
+          fi
+
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
           gh release upload ${{ inputs.tag_name }} \
             ${{ env.BINARY_DEST_PATH }} \
