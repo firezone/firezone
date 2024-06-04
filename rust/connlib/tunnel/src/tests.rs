@@ -32,7 +32,7 @@ use secrecy::ExposeSecret;
 use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
@@ -73,11 +73,6 @@ struct TunnelTest {
     /// This contains results from both, queries to DNS resources and non-resources.
     client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
-    /// Mapping of proxy IPs to real resource destinations.
-    ///
-    /// As the client, we don't know how connlib achieves this mapping but we care about it being stable.
-    client_proxy_ip_mapping: HashMap<IpAddr, IpAddr>,
-
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
@@ -86,7 +81,7 @@ struct TunnelTest {
 
     client_sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
     client_received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
-    gateway_received_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
+    gateway_received_icmp_requests: VecDeque<IpPacket<'static>>,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -277,7 +272,6 @@ impl StateMachineTest for TunnelTest {
             client_received_icmp_replies: Default::default(),
             gateway_received_icmp_requests: Default::default(),
             client_received_dns_responses: Default::default(),
-            client_proxy_ip_mapping: Default::default(),
             client_sent_dns_queries: Default::default(),
         };
 
@@ -1088,13 +1082,9 @@ impl TunnelTest {
         }) {
             let packet = packet.to_owned();
 
-            if let Some(icmp) = packet.as_icmp() {
-                let echo_request = icmp.as_echo_request().expect("to be echo request");
-
-                self.gateway_received_icmp_requests.insert(
-                    (echo_request.sequence(), echo_request.identifier()),
-                    packet.clone(),
-                );
+            if packet.as_icmp().is_some() {
+                self.gateway_received_icmp_requests
+                    .push_back(packet.clone());
 
                 let echo_response = ip_packet::make::icmp_response_packet(packet);
                 let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
@@ -2287,30 +2277,25 @@ fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
     name
 }
 
+/// Asserts the following properties for all ICMP handshakes:
+/// 1. An ICMP request on the client MUST result in an ICMP response using the same sequence, identifier and flipped src & dst IP.
+/// 2. An ICMP request on the gateway MUST target the intended resource:
+///     - For CIDR resources, that is the actual CIDR resource IP.
+///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_state.expected_icmp_handshakes,
         &state.client_received_icmp_replies,
         |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
-    let unexpected_icmp_requests = find_unexpected_entries(
-        &ref_state.expected_icmp_handshakes,
-        &state.gateway_received_icmp_requests,
-        |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
-    );
-
     assert_eq!(
         unexpected_icmp_replies,
         Vec::<&IpPacket>::new(),
         "Unexpected ICMP replies on client"
     );
-    assert_eq!(
-        unexpected_icmp_requests,
-        Vec::<&IpPacket>::new(),
-        "Unexpected ICMP requests on gateway"
-    );
 
-    for (resource_dst, seq, identifier) in ref_state.expected_icmp_handshakes.iter() {
+    // Ensure sent ICMP requests have a correct reply.
+    for (_, seq, identifier) in &ref_state.expected_icmp_handshakes {
         let client_sent_request = &state
             .client_sent_icmp_requests
             .get(&(*seq, *identifier))
@@ -2319,18 +2304,7 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             .client_received_icmp_replies
             .get(&(*seq, *identifier))
             .expect("to have ICMP reply on client");
-        let gateway_received_request = &state
-            .gateway_received_icmp_requests
-            .get(&(*seq, *identifier))
-            .expect("to have ICMP request on gateway");
 
-        assert_eq!(
-            gateway_received_request.source(),
-            ref_state
-                .client
-                .tunnel_ip(gateway_received_request.source()),
-            "ICMP request on gateway to originate from client"
-        );
         assert_eq!(
             client_sent_request.destination(),
             client_received_reply.source(),
@@ -2340,6 +2314,29 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             client_sent_request.source(),
             client_received_reply.destination(),
             "ICMP request source == ICMP reply destination"
+        );
+    }
+
+    assert_eq!(
+        ref_state.expected_icmp_handshakes.len(),
+        state.gateway_received_icmp_requests.len(),
+        "Unexpected ICMP requests on gateway"
+    );
+
+    // Assert that packets target the correct resource.
+    // Due to how connlib may translate ICMP requests, we cannot link the packet on the gateway to the original one.
+    // Thus, we rely on the order here.
+    for ((resource_dst, _, _), gateway_received_request) in ref_state
+        .expected_icmp_handshakes
+        .iter()
+        .zip(state.gateway_received_icmp_requests.iter())
+    {
+        assert_eq!(
+            gateway_received_request.source(),
+            ref_state
+                .client
+                .tunnel_ip(gateway_received_request.source()),
+            "ICMP request on gateway to originate from client"
         );
 
         match resource_dst {
@@ -2353,10 +2350,6 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
                 );
             }
             ResourceDst::Dns(domain, _) => {
-                // For DNS resources, we need to look up, which proxy IP we used.
-                // We consider it an implementation detail, how connlib assigns those IPs.
-                // We do want to assert that the mapping is stable.
-
                 let actual_destination = gateway_received_request.destination();
                 let possible_resource_ips = ref_state
                     .global_dns_records
@@ -2367,24 +2360,6 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
                     possible_resource_ips.contains(&actual_destination),
                     "ICMP request on gateway to target a known resource IP"
                 );
-
-                match state
-                    .client_proxy_ip_mapping
-                    .entry(client_sent_request.destination())
-                {
-                    Entry::Vacant(v) => {
-                        // We have to gradually discover connlib's mapping ...
-                        // For the first packet, we just save the IP that we ended up talking to.
-                        v.insert(gateway_received_request.destination());
-                    }
-                    Entry::Occupied(o) => {
-                        assert_eq!(
-                            gateway_received_request.destination(),
-                            *o.get(),
-                            "ICMP request on client to target correct same IP of DNS resource"
-                        );
-                    }
-                }
             }
         }
     }
