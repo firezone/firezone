@@ -3,8 +3,17 @@ import AsciinemaPlayer from "@/components/AsciinemaPlayer";
 import Image from "next/image";
 import Link from "next/link";
 
-[Tauri](https://tauri.app/) is "a framework for building tiny, blazingly fast
-binaries for all major desktop platforms."
+> [I would have thought](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1896717039)
+> after more than 20 years of GUI paradigms, the major OSes would have made GUIs
+> as nice to program as CLIs. Oh well.
+
+> I thought so too at one point, until i got into working _on_ (instead of
+> "with") a gui framework. Now I cry myself to sleep every night 🤷
+
+---
+
+[**Tauri**](https://tauri.app/) is "a framework for building tiny, blazingly
+fast binaries for all major desktop platforms."
 
 We
 [chose Tauri over other frameworks](https://github.com/firezone/firezone/issues/2715)
@@ -43,7 +52,7 @@ turning them into experienced users and contributors. The Rust language
 deliberately took advantage of this, shipping the beginner-friendly Cargo
 package manager from Rust 1.0 and shipping Clippy a few years later in 2018.
 
-Tauri does the same thing, shipping the `tauri-cli` tool for setting up
+Tauri does the same thing, shipping the `create-tauri-app` tool for setting up
 boilerplate projects, and package bundlers for Windows `.msi` installers and
 Debian `.deb` packages that Just Work, at least for simple programs.
 
