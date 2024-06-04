@@ -215,7 +215,10 @@ impl IpcServer {
         // we also do a loop.
         tokio::task::yield_now().await;
 
-        let server = self.bind_to_pipe().await.context("Couldn't bind to named pipe")?;
+        let server = self
+            .bind_to_pipe()
+            .await
+            .context("Couldn't bind to named pipe")?;
         tracing::info!("Listening for GUI to connect over IPC...");
         server
             .connect()
