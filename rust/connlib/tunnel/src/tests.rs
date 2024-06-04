@@ -598,9 +598,10 @@ impl ReferenceStateMachine for ReferenceState {
 
                 state
                     .client_dns_records
-                    .entry(domain)
+                    .entry(domain.clone())
                     .or_default()
                     .extend(ips_resolved_by_query);
+                state.client_dns_records.entry(domain).or_default().sort();
             }
             Transition::SendICMPPacketToNonResourceIp { .. } => {
                 // Packets to non-resources are dropped, no state change required.
@@ -1227,6 +1228,10 @@ impl TunnelTest {
                     .entry(requested_domain.clone())
                     .or_default()
                     .extend(proxy_ips);
+                self.client_dns_records
+                    .entry(requested_domain)
+                    .or_default()
+                    .sort();
 
                 return;
             }
