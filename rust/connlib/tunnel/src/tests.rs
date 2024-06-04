@@ -175,8 +175,8 @@ enum Transition {
     /// Add a new DNS resource to the client.
     AddDnsResource {
         resource: ResourceDescriptionDns,
-        /// The IPs we resolve the domain to.
-        resolved_ips: HashSet<IpAddr>,
+        /// The DNS records to add together with the resource.
+        records: HashMap<DomainName, HashSet<IpAddr>>,
     },
     /// Send a DNS query.
     SendDnsQuery {
@@ -516,8 +516,8 @@ impl ReferenceStateMachine for ReferenceState {
         let add_dns_resource =
             (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
                 Transition::AddDnsResource {
+                    records: HashMap::from([(resource.address_as_domain().unwrap(), resolved_ips)]),
                     resource,
-                    resolved_ips,
                 }
             });
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
@@ -564,7 +564,7 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::AddDnsResource {
                 resource: new_resource,
-                resolved_ips,
+                records,
             } => {
                 let existing_resource = state
                     .client_dns_resources
@@ -572,10 +572,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // For the client, there is no difference between a DNS resource and a truly global DNS name.
                 // We store all records in the same map to follow the same model.
-                state.global_dns_records.insert(
-                    new_resource.address_as_domain().unwrap(),
-                    resolved_ips.clone(),
-                );
+                state.global_dns_records.extend(records.clone());
 
                 // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
                 if let Some(resource) = existing_resource {
@@ -685,34 +682,41 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::AddDnsResource {
-                resource,
-                resolved_ips,
-            } => {
+            Transition::AddDnsResource { records, .. } => {
                 // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
 
                 // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
                 // Connlib cannot know, when a DNS record expires, thus we currently don't allow to add DNS resources where the same domain resolves to different IPs
-                let domain = resource.address_as_domain().unwrap();
-                let has_resolved_domain_already = state.global_dns_records.contains_key(&domain);
 
-                let no_existing_record_overlaps_ip = state
-                    .global_dns_records
-                    .values()
-                    .all(|ips| ips.is_disjoint(resolved_ips));
+                for (name, resolved_ips) in records {
+                    if state.global_dns_records.contains_key(name) {
+                        return false;
+                    }
 
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
-                let any_real_ip_overlaps_with_cidr_resource =
-                    resolved_ips.iter().any(|resolved_ip| {
-                        state
-                            .client_cidr_resources
-                            .longest_match(*resolved_ip)
-                            .is_some()
-                    });
+                    let ip_overlap = state
+                        .global_dns_records
+                        .values()
+                        .any(|ips| !ips.is_disjoint(resolved_ips));
 
-                !has_resolved_domain_already
-                    && !any_real_ip_overlaps_with_cidr_resource
-                    && no_existing_record_overlaps_ip
+                    if ip_overlap {
+                        return false;
+                    }
+
+                    // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
+                    let any_real_ip_overlaps_with_cidr_resource =
+                        resolved_ips.iter().any(|resolved_ip| {
+                            state
+                                .client_cidr_resources
+                                .longest_match(*resolved_ip)
+                                .is_some()
+                        });
+
+                    if any_real_ip_overlaps_with_cidr_resource {
+                        return false;
+                    }
+                }
+
+                true
             }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
