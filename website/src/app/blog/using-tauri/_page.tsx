@@ -14,5 +14,5 @@ export default function _Page() {
     >
       <Content />
     </Post>
-  )
+  );
 }

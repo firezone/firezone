@@ -1,5 +1,6 @@
-import Image from "next/image";
 import Alert from "@/components/DocsAlert";
+import AsciinemaPlayer from "@/components/AsciinemaPlayer";
+import Image from "next/image";
 import Link from "next/link";
 
 [Tauri](https://tauri.app/) is "a framework for building tiny, blazingly fast
@@ -8,21 +9,23 @@ binaries for all major desktop platforms."
 We
 [chose Tauri over other frameworks](https://github.com/firezone/firezone/issues/2715)
 because it was the fastest way to get the product working on Linux and Windows.
-The team already has experience with HTML/JS/CSS and our cross-platform
+The team already has experience with HTML/JS/CSS, and our cross-platform
 connection library `connlib` is written in Rust.
 
-These other frameworks and libraries were considered and rejected for now. They
-might be reconsidered in the future:
+We might consider other frameworks in the future. These ones are rejected for
+now:
 
-- Qt - Quality of Rust bindings unknown, typically distributed with lots of
+- **Qt** - Quality of Rust bindings unknown, typically distributed with lots of
   separate DLL files.
-- FLTK - Difficult to style, very "batteries not included"
-- GTK+ - Quality of Rust bindings unknown, quality of Windows support unknown
-- Win32 API - Verbose, complicated, documentation is confusing, not portable to
+- **FLTK** - Difficult to style, very "batteries not included"
+- **GTK+** - Quality of Rust bindings unknown, quality of Windows support
+  unknown
+- **Win32** - Verbose, complicated, documentation is confusing, not portable to
   Linux
-- native-windows-gui - Not popular enough / not maintained
-- WinForms / WPF - Binding to C# assumed to be difficult
-- Electron - Huge downloads, quality of Rust bindings unknown
+- **native-windows-gui** - Not popular enough / not maintained
+- **WinForms / WPF** - Binding to C# assumed to be difficult
+- **Electron** - Huge downloads, quality of Rust bindings unknown
+- **Iced** - Nobody on the team has experience with it
 
 # What is good about Tauri?
 
@@ -44,7 +47,15 @@ Tauri does the same thing, shipping the `tauri-cli` tool for setting up
 boilerplate projects, and package bundlers for Windows `.msi` installers and
 Debian `.deb` packages that Just Work, at least for simple programs.
 
-## It's Rust and TypeScript
+<AsciinemaPlayer
+  src="/blog/using-tauri/tauri.cast"
+  autoplay={true}
+  rows={30}
+  idleTimeLimit={3}
+  preload={true}
+/>
+
+## Tauri integrates with Rust and TypeScript
 
 Firezone already uses Rust for the data plane (the Gateway, the Relay, and
 `connlib`) and TypeScript for the website and admin portal. I don't know much
@@ -56,7 +67,112 @@ JavaScript inside the web view can call into `async` Rust functions (TODO: Code
 example), and from there we can use `tokio`'s mpsc channels to send events to a
 central controller task. (TODO: Code)
 
-# What snags did we hit?
+## Tauri comes with batteries included
+
+The requirements for the beta Windows Client included:
+
+- A system tray icon and menu
+- Pop-up "toast" notifications such as "Firezone is connected"
+- A plan for automatic updates in the future
+- A plan for a Linux port in the future
+- The ability to receive deep links from web browsers
+
+Tauri has built-in modules for a
+[system tray menu](https://docs.rs/tauri/1.6.7/tauri/struct.SystemTrayMenu.html),
+[notifications](https://docs.rs/tauri/1.6.7/tauri/api/notification/struct.Notification.html),
+and [self-updates](https://docs.rs/tauri/1.6.7/tauri/updater/index.html), and it
+has a `.deb` bundler built in. For deep links we used
+[tauri-plugin-deep-link](https://crates.io/crates/tauri-plugin-deep-link).
+
+This made it easy to commit to Tauri - We knew that worst-case, we had
+_something_ that would work for a beta release. We ended up replacing the Tauri
+notifications on Windows with `tauri-winrt-notification`, rewriting the deep
+link code using `tauri-plugin-deep-link` as a reference, and not deploying
+self-updates yet.
+
+The system tray menu will be replaced too eventually, but until then Tauri saved
+us a lot of effort - We only have
+[~150 lines of code](https://github.com/firezone/firezone/blob/879fdeea1919f879e10e105f92bbf488731628ae/rust/gui-client/src-tauri/src/client/gui/system_tray_menu.rs)
+related to that menu, and we didn't have to shop around for another crate to get
+it working in the same event loop.
+
+# Why did the Linux port take twice as long as Windows?
+
+The Linux port took twice as long as Windows because running a GUI with `sudo`
+in Linux just doesn't seem to work right, and we need root permissions to
+control DNS.
+
+On Windows, we got away with a single top-level GUI process that had admin
+privilege. Linux seems to be stricter about root privileges, and when we ported
+the Windows Client to Linux, it didn't work.
+
+The tray icon
+[didn't show up on all platforms](https://github.com/firezone/firezone/issues/4053),
+so we couldn't sign in, and when we tried, we
+[couldn't open a browser](https://github.com/firezone/firezone/issues/4103)
+
+There might be some tricks with environment variables to convince a root Linux
+GUI to talk to X11 / Wayland, but we gave up on that and switched to 2 top-level
+processes: A GUI running as the normal user, and a systemd service. This puts a
+boundary between the millions of lines of WebKit and JavascriptCore code in the
+GUI, and the cryptography and connection code in `connlib`, so it may improve
+security. It also allows non-sudo users to run the GUI, and it allows the tunnel
+service to clean up the connection even if the GUI panics or crashes.
+
+Unfortunately this process splitting slowed down development, and the
+requirement to have a systemd service means that we can't have a single-file
+portable exe anymore (without extra effort), but this is the architecture we're
+planning to support.
+
+# What non-Tauri issues did we have?
+
+## Web views use a lot of RAM
+
+The GUI uses about 100 MB of RAM even with all windows hidden. This seems to be
+the minimum for keeping the web view process alive. It's okay for an MVP, but
+it's still 5% of the 2 GB needed to run an Ubuntu VM, just to run a GUI that
+isn't even needed for Firezone's core functions.
+
+We might be able to fix this in the future by closing the windows instead of
+just hiding them, by separating the tray icon from the main GUI process, or by
+switching frameworks entirely. Iced uses about half as much RAM, but at time of
+writing an Iced binary compiled on Ubuntu 20.04 didn't work perfectly on 22.04.
+
+And there is some solace that we're theoretically able to share code pages with
+other web view processes, we're not loading our own entire copy of Chromium like
+Electron does.
+
+(TODO: Task manager screenshot)
+
+## Ubuntu forwards and backwards compatibility is hard
+
+Ubuntu 20.04 ships `webkit2gtk` version 4.0. Ubuntu 22.04 ships version 4.0 and
+4.1. Ubuntu 24.04 only ships 4.1.
+
+It's not possible to link with both, so it's impractical to make one exe that
+runs on all 3 of the Ubuntu versions we'd like to support. For now we are not
+supporting 24.04 yet, and in the future we may give it a separate package. This
+is common in Linux programs that use anything more than the most common
+libraries.
+
+Tauri does offer an AppImage option to bundle the webview, but this increases
+the download size from ~10 MB to ~100 MB, and it seems we can't install our
+background service if we're running from an AppImage, since they're meant to
+work without installation.
+
+Switching to FLTK or GTK+ might fix this, but it's hard to say without
+researching.
+
+## WebView2 just doesn't install sometimes
+
+https://github.com/firezone/firezone/pull/4981
+
+This is an upstream issue with WebView2 for Windows. Sometimes the installer
+times out in our GitHub CI runners and it isn't clear why.
+
+TODO: Screenshot or log paste
+
+# What Tauri-related issues did we have?
 
 Overall, I like Tauri a lot. This section is longer because there are lots of
 little details. "It's good" is shorter than "We had trouble because..."
@@ -69,38 +185,14 @@ has two subdirectories: `src` and `src-tauri`. The entire Rust project is
 contained in `src-tauri`, and the `src` directory contains files for the web
 view. `Cargo.toml` and `tauri.conf.json` are in `src-tauri`. I find this
 confusing. I think Tauri's primary purpose is to wrap up web apps into native
-apps, so the Rust code is isolated in `src-tauri`, and the project is
-supposed to be an NPM project that incidentally contains a Rust wrapper.
+apps, so the Rust code is isolated in `src-tauri`, and the project is supposed
+to be an NPM project that incidentally contains a Rust wrapper.
 
 I think of the Firezone Client as a Rust program that incidentally uses
 HTML+JS+CSS for the GUI, so this layout is backwards to me. I would have
 expected a top-level `/Cargo.toml`, with the Rust under `/src`, and the web
 files under `/src-web` or similar. Maybe there's a reason for this, but I'm not
 aware of it.
-
-## Linux doesn't like running GUIs with root permissions
-
-This isn't Tauri's fault. The Windows Client, at first, ran with admin
-privileges so that it can open the secure tunnel and control the system's DNS.
-
-After Windows was working, I got it to compile on Linux, with the Windows code
-configured out, but almost nothing worked - Blank windows, missing tray icons,
-etc.
-
-It turns out that getting the environment right to run a GUI with sudo was
-difficult. We knew that running a GUI with root powers was risky anyway. Even
-though we're not loading untrusted web pages like a web browser is, we would
-still be running a JIT _somewhere_ due to WebKit, and we would still be mixing
-code for the secure tunnel and code for reading config files in the same
-process. It also meant that ordinary users couldn't run Firezone, which is a
-problem in corporate environments where users may not have sudo on their
-desktops.
-
-So we pushed back the Linux GUI release until it could be split into 2
-processes, then we did the same split on Windows for the same reasons. This
-means we lost the "download and run" property of having a single exe, since they
-both install a background service, but the security and convenience of the GUI
-Clients are both improved.
 
 ## Tauri's deb bundler is not very customizable
 
@@ -175,40 +267,6 @@ better from the underlying OSes and this causes him to
 ["cry (himself) to sleep at night 🤷"](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1898328992)
 Me too, Fabian, me too. /s
 
-## Web views use a lot of RAM
-
-This isn't Tauri's fault, it's a direct effect of using web technology.
-
-The GUI process consistently uses about 100 MB of RAM even when idle. This seems
-to be the minimum for keeping the web view process alive. Even if we hide all windows, it
-won't reduce the amount of RAM.
-
-We might be able to fix this in the future by closing the windows instead of
-just hiding them, and at least we're theoretically able to share code pages with
-other web view processes, we're not loading our own copy of Chromium like
-Electron does.
-
-(TODO: Task manager screenshot)
-
-## Ubuntu forwards and backwards compatibility is hard
-
-Not Tauri's fault. Ubuntu 20.04 ships `webkit2gtk` version 4.0. Ubuntu 22.04
-ships version 4.0 and 4.1. Ubuntu 24.04 only ships 4.1.
-
-It's not possible to link with both, so it's theoretically impossible to make
-one exe that runs on all 3 of the Ubuntu versions we'd like to support. For now
-we are not supporting 24.04 yet, and in the future we may give it a separate
-package. This is common in Linux programs that use anything more than the most
-common libraries.
-
-Tauri does offer an AppImage option to bundle the webview, but this increases
-the download size from ~10 MB to ~100 MB, and it seems we can't install our
-background service if we're running from an AppImage, since they're meant to
-work without installation.
-
-Switching to FLTK or GTK+ might fix this, but it's hard to say without
-researching.
-
 ## Setting binary names is tricky
 
 On Linux our GUI is named `firezone-client-gui`, and so is our package.
@@ -245,15 +303,6 @@ setup within the Tauri context.
 
 It may not be Tauri's fault, but it's disappointing because I liked having
 control of `main` for as long as possible before starting up Tauri.
-
-## WebView2 just doesn't install sometimes
-
-https://github.com/firezone/firezone/pull/4981
-
-This is an upstream issue with WebView2 for Windows. Sometimes the installer
-times out in our GitHub CI runners and it isn't clear why. Not Tauri's fault.
-
-TODO: Screenshot or log paste
 
 # Conclusion
 
