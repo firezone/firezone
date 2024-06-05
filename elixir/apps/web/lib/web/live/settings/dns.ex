@@ -39,9 +39,11 @@ defmodule Web.Settings.DNS do
         use Firezone's internal DNS.
         All other queries will use the resolver below if configured.
         If no resolver is configured, the client's default system resolver will be used.
-        <.website_link href="/kb/deploy/dns">
-          Read more about configuring DNS in Firezone.
-        </.website_link>
+        <p class="mt-3">
+          <.website_link href="/kb/deploy/dns">
+            Read more about configuring DNS in Firezone.
+          </.website_link>
+        </p>
       </:help>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">

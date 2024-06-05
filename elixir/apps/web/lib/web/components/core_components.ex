@@ -226,9 +226,9 @@ defmodule Web.CoreComponents do
           </div>
         </div>
       </div>
-      <p :for={help <- @help} class="pt-3 text-neutral-400">
+      <div :for={help <- @help} class="pt-3 text-neutral-400">
         <%= render_slot(help) %>
-      </p>
+      </div>
     </div>
     """
   end
