@@ -105,11 +105,12 @@ us a lot of effort - We only have
 related to that menu, and we didn't have to shop around for another crate to get
 it working in the same event loop.
 
+# How does Tauri work?
+
 # Why did the Linux port take twice as long as Windows?
 
-The Linux port took twice as long as Windows because running a GUI with `sudo`
-in Linux just doesn't seem to work right, and we need root permissions to
-control DNS.
+The Linux port took twice as long because running a GUI with `sudo` in Linux
+just doesn't seem to work, and we need root permissions to control DNS.
 
 On Windows, we got away with a single top-level GUI process that had admin
 privilege. Linux seems to be stricter about root privileges, and when we ported
@@ -122,11 +123,16 @@ so we couldn't sign in, and when we tried, we
 
 There might be some tricks with environment variables to convince a root Linux
 GUI to talk to X11 / Wayland, but we gave up on that and switched to 2 top-level
-processes: A GUI running as the normal user, and a systemd service. This puts a
-boundary between the millions of lines of WebKit and JavascriptCore code in the
-GUI, and the cryptography and connection code in `connlib`, so it may improve
-security. It also allows non-sudo users to run the GUI, and it allows the tunnel
-service to clean up the connection even if the GUI panics or crashes.
+processes:
+
+- A GUI running as the normal user, and
+- A systemd service running as root, with lots of sandboxing.
+
+This puts a boundary between the millions of lines of WebKit and JavascriptCore
+code in the GUI, and the cryptography and connection code in `connlib`, so it
+may improve security. It also allows non-sudo users to run the GUI, and it
+allows the tunnel service to clean up the connection even if the GUI panics or
+crashes.
 
 Unfortunately this process splitting slowed down development, and the
 requirement to have a systemd service means that we can't have a single-file
