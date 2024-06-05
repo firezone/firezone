@@ -2260,22 +2260,26 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
 }
 
 fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
-    collection::vec(
-        any::<IpAddr>().prop_map(|ip| DnsServer::from((ip, 53))),
-        0..4,
-    )
-    .prop_filter(
-        "if configured, upstream DNS must contain IPv4 and IPv6 servers",
-        |servers| {
-            if servers.is_empty() {
-                return true;
-            }
+    let ip4_dns_servers = collection::vec(
+        any::<Ipv4Addr>().prop_map(|ip| DnsServer::from((ip, 53))),
+        1..4,
+    );
+    let ip6_dns_servers = collection::vec(
+        any::<Ipv6Addr>().prop_map(|ip| DnsServer::from((ip, 53))),
+        1..4,
+    );
 
-            // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
+    // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
+    // AN ADMIN COULD CONFIGURE ONLY IPv4 SERVERS IN WHICH CASE WE ARE SCREWED IF THE CLIENT ONLY HAS IPv6 CONNECTIVITY.
 
-            servers.iter().any(|s| s.ip().is_ipv4()) && servers.iter().any(|s| s.ip().is_ipv6())
-        },
-    )
+    prop_oneof![
+        Just(Vec::new()),
+        (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut ip4_servers, ip6_servers)| {
+            ip4_servers.extend(ip6_servers);
+
+            ip4_servers
+        })
+    ]
 }
 
 fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
