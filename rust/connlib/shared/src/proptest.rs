@@ -10,7 +10,10 @@ use proptest::{
     collection, sample,
     strategy::{Just, Strategy},
 };
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{Ipv4Addr, Ipv6Addr},
+    ops::Range,
+};
 
 // Generate resources sharing 1 site
 pub fn resources_sharing_site() -> impl Strategy<Value = (Vec<ResourceDescription>, Site)> {
@@ -52,7 +55,7 @@ pub fn dns_resource_with_sites(sites: Vec<Site>) -> impl Strategy<Value = Resour
     (
         resource_id(),
         resource_name(),
-        dns_resource_address(),
+        domain_name(2..4),
         address_description(),
     )
         .prop_map(
@@ -126,19 +129,12 @@ pub fn resource_name() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{4,10}".into())
 }
 
-pub fn dns_resource_address() -> impl Strategy<Value = String> {
-    domain_name().prop_map(|d| d.to_string())
+pub fn domain_label() -> impl Strategy<Value = String> {
+    any_with::<String>("[a-z]{3,6}".into())
 }
 
-pub fn domain_name() -> impl Strategy<Value = hickory_proto::rr::Name> {
-    let labels = any_with::<String>("[a-z]{3,6}".into());
-
-    collection::vec(labels, 2..4).prop_map(|labels| {
-        let mut name = hickory_proto::rr::Name::from_labels(labels).unwrap();
-        name.set_fqdn(false);
-
-        name
-    })
+pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = String> {
+    collection::vec(domain_label(), depth).prop_map(|labels| labels.join("."))
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.
