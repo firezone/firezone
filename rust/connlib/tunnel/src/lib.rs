@@ -43,9 +43,6 @@ const MTU: usize = 1280;
 
 const REALM: &str = "firezone";
 
-#[cfg(target_os = "linux")]
-const FIREZONE_MARK: u32 = 0xfd002021;
-
 pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState>;
 pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 
@@ -163,6 +160,10 @@ where
 
                     continue;
                 }
+                Poll::Ready(io::Input::DnsResponse(query, response)) => {
+                    self.role_state.on_dns_result(query, response);
+                    continue;
+                }
                 Poll::Pending => {}
             }
 
@@ -249,6 +250,9 @@ where
                     }
 
                     continue;
+                }
+                Poll::Ready(io::Input::DnsResponse(_, _)) => {
+                    unreachable!("Gateway does not (yet) resolve DNS queries via `Io`")
                 }
                 Poll::Pending => {}
             }

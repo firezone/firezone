@@ -1173,33 +1173,30 @@ name = "connlib-shared"
 version = "1.0.6"
 dependencies = [
  "anyhow",
- "atomicwrites",
  "base64 0.22.1",
  "boringtun",
  "chrono",
  "domain",
  "futures",
  "futures-util",
- "hickory-proto",
  "ip_network",
  "itertools 0.12.1",
  "known-folders",
  "libc",
  "log",
- "mutants",
+ "netlink-packet-core",
+ "netlink-packet-route",
  "os_info",
  "phoenix-channel",
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "resolv-conf",
  "ring",
  "rtnetlink",
  "secrecy",
  "serde",
  "serde_json",
  "swift-bridge",
- "tempfile",
  "thiserror",
  "tokio",
  "tracing",
@@ -1985,6 +1982,7 @@ name = "firezone-headless-client"
 version = "1.0.6"
 dependencies = [
  "anyhow",
+ "atomicwrites",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
@@ -1993,21 +1991,26 @@ dependencies = [
  "futures",
  "git-version",
  "humantime",
+ "ip_network",
  "ipconfig",
  "known-folders",
+ "mutants",
  "nix 0.28.0",
  "resolv-conf",
  "ring",
+ "rtnetlink",
  "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
  "windows 0.56.0",
  "windows-service",
 ]
@@ -2069,6 +2072,7 @@ dependencies = [
  "futures-bounded",
  "futures-util",
  "hex",
+ "hickory-proto",
  "hickory-resolver",
  "ip-packet",
  "ip_network",
@@ -2086,7 +2090,6 @@ dependencies = [
  "rand_core 0.6.4",
  "rangemap",
  "rtnetlink",
- "sd-notify",
  "secrecy",
  "serde",
  "serde_json",
@@ -3164,6 +3167,7 @@ dependencies = [
 name = "ip-packet"
 version = "1.0.6"
 dependencies = [
+ "hickory-proto",
  "pnet_packet",
 ]
 
@@ -3335,9 +3339,9 @@ dependencies = [
 
 [[package]]
 name = "keyring"
-version = "2.3.2"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be8bc4c6b6e9d85ecdad090fcf342a9216f53d747a537cc05e3452fd650ca46"
+checksum = "363387f0019d714aa60cc30ab4fe501a747f4c08fc58f069dd14be971bd495a0"
 dependencies = [
  "byteorder",
  "lazy_static",
@@ -5043,9 +5047,9 @@ checksum = "f2ff9a1f06a88b01621b7ae906ef0211290d1c8a168a15542486a8f61c0833b9"
 
 [[package]]
 name = "redis"
-version = "0.25.3"
+version = "0.25.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6472825949c09872e8f2c50bde59fcefc17748b6be5c90fd67cd8b4daca73bfd"
+checksum = "e0d7a6955c7511f60f3ba9e86c6d02b3c3f144f8c24b288d1f4e18074ab8bbec"
 dependencies = [
  "async-trait",
  "bytes",
@@ -6533,9 +6537,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.37.0"
+version = "1.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1adbebffeca75fcfd058afa480fb6c0b81e165a0323f9c9d39c9697e37c46787"
+checksum = "ba4f4a02a7a80d6f274636f0aa95c7e383b912d41fe721a31f29e29698585a4a"
 dependencies = [
  "backtrace",
  "bytes",
@@ -6562,9 +6566,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
+checksum = "5f5ae998a069d4b5aba8ee9dad856af7d520c3699e6159b185c2acd48155d39a"
 dependencies = [
  "proc-macro2",
  "quote",

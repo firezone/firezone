@@ -6,15 +6,7 @@
 pub mod callbacks;
 pub mod error;
 pub mod messages;
-
-/// Module to generate and store a persistent device ID on disk
-///
-/// Only properly implemented on Linux and Windows (platforms with Tauri and headless client)
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub mod device_id;
-
-#[cfg(target_os = "linux")]
-pub mod linux;
+pub mod tun_device_manager;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
@@ -48,21 +40,10 @@ pub type DomainName = domain::base::Name<Vec<u8>>;
 /// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
 pub const BUNDLE_ID: &str = "dev.firezone.client";
 
+pub const DEFAULT_MTU: u32 = 1280;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
-
-/// Deactivates DNS control on Windows
-#[cfg(target_os = "windows")]
-pub fn deactivate_dns_control() -> anyhow::Result<()> {
-    windows::dns::deactivate()
-}
-
-/// Deactivates DNS control on other platforms (does nothing)
-#[cfg(not(target_os = "windows"))]
-#[allow(clippy::unnecessary_wraps)]
-pub fn deactivate_dns_control() -> anyhow::Result<()> {
-    Ok(())
-}
 
 pub fn keypair() -> (StaticSecret, PublicKey) {
     let private_key = StaticSecret::random_from_rng(OsRng);

@@ -17,9 +17,6 @@ use std::collections::{HashSet, VecDeque};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
-const PEERS_IPV4: &str = "100.64.0.0/11";
-const PEERS_IPV6: &str = "fd00:2021:1111::/107";
-
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 impl<CB> GatewayTunnel<CB>
@@ -33,10 +30,6 @@ where
         self.io
             .device_mut()
             .set_config(config, vec![], &callbacks)?;
-        self.io.device_mut().set_routes(
-            HashSet::from([PEERS_IPV4.parse().unwrap(), PEERS_IPV6.parse().unwrap()]),
-            &callbacks,
-        )?;
 
         let name = self.io.device_mut().name().to_owned();
 

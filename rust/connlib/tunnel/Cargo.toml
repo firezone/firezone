@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.36", default-features = false, features = ["rt", "rt-multi-thread", "sync", "process"] }
+tokio = { version = "1.38", default-features = false, features = ["rt", "rt-multi-thread", "sync", "process"] }
 thiserror = { version = "1.0", default-features = false }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
@@ -45,6 +45,7 @@ tracing-subscriber = {version = "0.3", features = ["env-filter"]}
 pretty_assertions = "1.4.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 rand = "0.8"
+hickory-proto = { workspace = true }
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
@@ -54,7 +55,6 @@ proptest = ["dep:proptest", "connlib-shared/proptest"]
 netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
-sd-notify = "0.4.1"
 
 # Android tunnel dependencies
 [target.'cfg(target_os = "android")'.dependencies]

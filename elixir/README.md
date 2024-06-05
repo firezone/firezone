@@ -281,9 +281,13 @@ to the acceptance test that you are running.
 ## Connecting to a staging or production instances
 
 We use Google Cloud Platform for all our staging and production infrastructure.
-You'll need access to this env to perform the commands below; to get and access
-you need to add yourself to `project_owners` in `main.tf` for each of the
-[environments](../terraform/environments).
+You'll need access to this env to perform the commands below; to request access
+you need to complete the following process:
+
+- Open a PR adding yourself to `project_owners` in `main.tf` for each of the
+[environments](../terraform/environments) you need access.
+- Request a review from an existing project owner.
+- Once approved, merge the PR and verify access by continuing with one of the steps below.
 
 This is a danger zone so first of all, ALWAYS make sure on which environment
 your code is running:
