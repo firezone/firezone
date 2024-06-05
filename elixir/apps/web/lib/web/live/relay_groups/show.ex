@@ -117,7 +117,7 @@ defmodule Web.RelayGroups.Show do
             ordered_by={@order_by_table_id["relays"]}
             metadata={@relays_metadata}
           >
-            <:col :let={relay} label="INSTANCE">
+            <:col :let={relay} label="instance">
               <.link navigate={~p"/#{@account}/relays/#{relay.id}"} class={[link_style()]}>
                 <code :if={relay.name} class="block text-xs">
                   <%= relay.name %>
@@ -130,7 +130,7 @@ defmodule Web.RelayGroups.Show do
                 </code>
               </.link>
             </:col>
-            <:col :let={relay} label="STATUS">
+            <:col :let={relay} label="status">
               <.connection_status schema={relay} />
             </:col>
             <:empty>

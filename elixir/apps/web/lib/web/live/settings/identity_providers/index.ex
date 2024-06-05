@@ -78,13 +78,15 @@ defmodule Web.Settings.IdentityProviders.Index do
           ordered_by={@order_by_table_id["providers"]}
           metadata={@providers_metadata}
         >
-          <:col :let={provider} field={{:providers, :name}} label="Name">
+          <:col :let={provider} field={{:providers, :name}} label="Name" class="w-2/12">
             <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
               <%= provider.name %>
             </.link>
           </:col>
-          <:col :let={provider} label="Type"><%= adapter_name(provider.adapter) %></:col>
-          <:col :let={provider} label="Status">
+          <:col :let={provider} label="Type" class="w-2/12">
+            <%= adapter_name(provider.adapter) %>
+          </:col>
+          <:col :let={provider} label="Status" class="w-2/12">
             <.status provider={provider} />
           </:col>
           <:col :let={provider} label="Sync Status">

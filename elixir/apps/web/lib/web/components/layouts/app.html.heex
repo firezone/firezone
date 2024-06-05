@@ -85,14 +85,14 @@
       <a
         target="_blank"
         href="https://www.firezone.dev/kb?utm_source=product"
-        class="text-neutral-700 hover:text-neutral-900 md:hidden"
+        class="text-neutral-700 hover:text-neutral-900 lg:hidden"
       >
         Docs
       </a>
       <a
         target="_blank"
         href="https://firezone.statuspage.io"
-        class="text-neutral-700 hover:text-neutral-900 md:hidden"
+        class="text-neutral-700 hover:text-neutral-900 lg:hidden"
       >
         Status
       </a>
@@ -100,7 +100,7 @@
   </:bottom>
 </.sidebar>
 
-<main class="md:ml-64 h-auto pt-14">
+<main class="lg:ml-64 h-auto pt-14">
   <.flash :if={@account.warning} kind={:warning}>
     <%= @account.warning %>.
     <span :if={Domain.Billing.account_provisioned?(@account)}>

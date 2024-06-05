@@ -170,28 +170,28 @@ defmodule Web.Clients.Show do
           ordered_by={@order_by_table_id["flows"]}
           metadata={@flows_metadata}
         >
-          <:col :let={flow} label="AUTHORIZED">
+          <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="EXPIRES">
+          <:col :let={flow} label="expires">
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
-          <:col :let={flow} label="REMOTE IP" class="w-3/12">
+          <:col :let={flow} label="remote ip" class="w-3/12">
             <%= flow.client_remote_ip %>
           </:col>
-          <:col :let={flow} label="POLICY">
+          <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <.policy_name policy={flow.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="GATEWAY" class="w-3/12">
+          <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             <br />
             <code class="text-xs"><%= flow.gateway_remote_ip %></code>
           </:col>
-          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>

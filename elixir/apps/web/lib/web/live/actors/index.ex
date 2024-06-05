@@ -68,7 +68,9 @@ defmodule Web.Actors.Index do
           metadata={@actors_metadata}
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
-            <.actor_name_and_role account={@account} actor={actor} />
+            <span class="block truncate" title={actor.name}>
+              <.actor_name_and_role account={@account} actor={actor} />
+            </span>
           </:col>
 
           <:col :let={actor} label="identifiers">
@@ -81,7 +83,7 @@ defmodule Web.Actors.Index do
             </div>
           </:col>
 
-          <:col :let={actor} label="groups">
+          <:col :let={actor} label="groups" class="w-4/12">
             <.peek peek={@actor_groups[actor.id]}>
               <:empty>
                 None

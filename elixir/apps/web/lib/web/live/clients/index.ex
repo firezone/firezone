@@ -61,17 +61,17 @@ defmodule Web.Clients.Index do
           ordered_by={@order_by_table_id["clients"]}
           metadata={@clients_metadata}
         >
-          <:col :let={client} field={{:clients, :name}} label="NAME">
+          <:col :let={client} field={{:clients, :name}} label="name">
             <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
               <%= client.name %>
             </.link>
           </:col>
-          <:col :let={client} label="USER">
+          <:col :let={client} label="user">
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
               <%= client.actor.name %>
             </.link>
           </:col>
-          <:col :let={client} label="STATUS">
+          <:col :let={client} label="status">
             <.connection_status schema={client} />
           </:col>
           <:empty>

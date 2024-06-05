@@ -15,7 +15,7 @@ defmodule Web.NavigationComponents do
             data-drawer-toggle="drawer-navigation"
             aria-controls="drawer-navigation"
             class={[
-              "p-2 mr-2 text-neutral-600 rounded cursor-pointer md:hidden",
+              "p-2 mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
               "hover:text-neutral-900 hover:bg-neutral-100"
             ]}
           >
@@ -33,14 +33,14 @@ defmodule Web.NavigationComponents do
           <a
             target="_blank"
             href="https://www.firezone.dev/kb?utm_source=product"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 lg:ml-2 hidden lg:block"
           >
             Docs
           </a>
           <a
             target="_blank"
             href="https://firezone.statuspage.io"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 lg:ml-2 hidden lg:block"
           >
             Status
           </a>
@@ -108,7 +108,7 @@ defmodule Web.NavigationComponents do
         pt-14 pb-8
         transition-transform -translate-x-full
         bg-white border-r border-neutral-200
-        md:translate-x-0
+        lg:translate-x-0
       ]} aria-label="Sidenav" id="drawer-navigation">
       <div class="overflow-y-auto py-1 px-1 h-full bg-white">
         <ul>

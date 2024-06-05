@@ -73,12 +73,12 @@ defmodule Web.Resources.Index do
           ordered_by={@order_by_table_id["resources"]}
           metadata={@resources_metadata}
         >
-          <:col :let={resource} field={{:resources, :name}} label="NAME">
+          <:col :let={resource} field={{:resources, :name}} label="Name">
             <.link navigate={~p"/#{@account}/resources/#{resource.id}"} class={link_style()}>
               <%= resource.name %>
             </.link>
           </:col>
-          <:col :let={resource} field={{:resources, :address}} label="ADDRESS">
+          <:col :let={resource} field={{:resources, :address}} label="Address">
             <code class="block text-xs">
               <%= resource.address %>
             </code>
@@ -94,7 +94,7 @@ defmodule Web.Resources.Index do
               </.badge>
             </.link>
           </:col>
-          <:col :let={resource} label="Authorized groups">
+          <:col :let={resource} label="Authorized groups" class="w-4/12">
             <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
               <:empty>
                 None -

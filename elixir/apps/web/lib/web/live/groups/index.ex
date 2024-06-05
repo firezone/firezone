@@ -66,7 +66,7 @@ defmodule Web.Groups.Index do
           ordered_by={@order_by_table_id["groups"]}
           metadata={@groups_metadata}
         >
-          <:col :let={group} field={{:groups, :name}} label="NAME" class="w-2/4">
+          <:col :let={group} field={{:groups, :name}} label="name" class="w-2/4">
             <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
               <%= group.name %>
             </.link>
@@ -75,7 +75,7 @@ defmodule Web.Groups.Index do
               (deleted)
             </span>
           </:col>
-          <:col :let={group} label="ACTORS">
+          <:col :let={group} label="actors">
             <.peek peek={Map.fetch!(@group_actors, group.id)}>
               <:empty>
                 None
