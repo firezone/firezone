@@ -1603,13 +1603,7 @@ impl ReferenceState {
 
         let (name, mut addr) = idx.get(&resource_records).clone();
 
-        if src.is_ipv4() {
-            addr.retain(|ip| ip.is_ipv4())
-        }
-
-        if src.is_ipv6() {
-            addr.retain(|ip| ip.is_ipv6())
-        }
+        addr.retain(|ip| ip.is_ipv4() == src.is_ipv4());
 
         if addr.is_empty() {
             return None;
@@ -1732,12 +1726,7 @@ impl ResourceDst {
                     .expect("DNS records to contain domain name")
                     .clone();
 
-                if src.is_ipv4() {
-                    ips.retain(|ip| ip.is_ipv4())
-                }
-                if src.is_ipv6() {
-                    ips.retain(|ip| ip.is_ipv6())
-                }
+                ips.retain(|ip| ip.is_ipv4() == src.is_ipv4());
 
                 *idx.get(&ips)
             }
