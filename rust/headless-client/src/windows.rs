@@ -229,6 +229,9 @@ impl IpcServer {
 
     async fn bind_to_pipe(&self) -> Result<IpcStream> {
         const NUM_ITERS: usize = 10;
+        // This loop is defense-in-depth. The `yield_now` in `next_client` is enough
+        // to fix #5143, but Tokio doesn't guarantee any behavior when yielding, so
+        // the loop will catch it even if yielding doesn't.
         for i in 0..NUM_ITERS {
             match create_pipe_server(&self.pipe_path) {
                 Ok(server) => return Ok(server),
