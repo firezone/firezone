@@ -103,6 +103,11 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     // Purposely leak the file logger handle so it won't
     // accidentally stop logging if we try to bubble up an error.
     // See <https://github.com/firezone/firezone/issues/3567>
+    // I tried doing what the `tracing` docs say and it doesn't work. I think
+    // the `Drop` impl for `WorkerGuard` might be broken. It might be stopping the
+    // appender thread before flushing. If I leak it, somehow it works, like the thread
+    // keeps going, then realizes its channel is closed, flushes, and exits.
+    // And maybe the
     Box::leak(Box::new(logging_handles.logger.clone()));
 
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
