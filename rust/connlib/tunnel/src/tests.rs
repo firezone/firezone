@@ -32,7 +32,7 @@ use secrecy::ExposeSecret;
 use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ops::ControlFlow,
@@ -2359,6 +2359,38 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
                 assert!(
                     possible_resource_ips.contains(&actual_destination),
                     "ICMP request on gateway to target a known resource IP"
+                );
+            }
+        }
+    }
+
+    // Assert that the mapping of proxy IP to resource destination is stable.
+    // How connlib assigns proxy IPs for domains is an implementation detail.
+    // Yet, we care that it remains stable to ensure that any form of sticky sessions don't get broken (i.e. packets to one IP are always routed to the same IP on the gateway).
+    // To assert this, we build up a map as we iterate through all packets that have been sent.
+    let mut mapping = HashMap::new();
+
+    for ((_, seq, id), gateway_received_request) in ref_state
+        .expected_icmp_handshakes
+        .iter()
+        .zip(state.gateway_received_icmp_requests.iter())
+    {
+        let client_sent_request = &state
+            .client_sent_icmp_requests
+            .get(&(*seq, *id))
+            .expect("to have ICMP request on client");
+
+        match mapping.entry(client_sent_request.destination()) {
+            Entry::Vacant(v) => {
+                // We have to gradually discover connlib's mapping ...
+                // For the first packet, we just save the IP that we ended up talking to.
+                v.insert(gateway_received_request.destination());
+            }
+            Entry::Occupied(o) => {
+                assert_eq!(
+                    gateway_received_request.destination(),
+                    *o.get(),
+                    "ICMP request on client to target correct same IP of DNS resource"
                 );
             }
         }
