@@ -91,14 +91,15 @@ fn windows_service_run(arguments: Vec<OsString>) {
     set_global_default(subscriber).expect("`set_global_default` should always work)");
     tracing::info!(git_version = crate::GIT_VERSION);
     if let Err(error) = fallible_windows_service_run(arguments, handle) {
-        tracing::error!(?error, "fallible_windows_service_run returned an error");
+        tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }
-    tracing::info!("Returning from `windows_service_run`");
 }
 
 // Most of the Windows-specific service stuff should go here
 //
 // The arguments don't seem to match the ones passed to the main thread at all.
+//
+// If Windows stops us gracefully, this function may never return.
 fn fallible_windows_service_run(
     arguments: Vec<OsString>,
     logging_handle: file_logger::Handle,
@@ -165,9 +166,12 @@ fn fallible_windows_service_run(
             Ok(())
         }
         Err(join_error) => Err(anyhow::Error::from(join_error).context("`ipc_listen` panicked")),
-        Ok(Err(error)) => Err(error.context("`ipc_listen` failed")),
+        Ok(Err(error)) => Err(error.context("`ipc_listen` threw an error")),
         Ok(Ok(impossible)) => match impossible {},
     };
+    if let Err(error) = &result {
+        tracing::error!(?error, "`ipc_listen` failed");
+    }
 
     // Drop the logging handle so it flushes the logs before we let Windows kill our process.
     // There is no obvious and elegant way to do this, since the logging and `ServiceState`
@@ -191,7 +195,8 @@ fn fallible_windows_service_run(
             process_id: None,
         })
         .expect("Should be able to tell Windows we're stopping");
-    result
+    // Generally unreachable
+    Ok(())
 }
 
 pub(crate) struct IpcServer {
