@@ -71,7 +71,10 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-pub(crate) fn run(cli: client::Cli, advanced_settings: settings::AdvancedSettings) -> Result<(), Error> {
+pub(crate) fn run(
+    cli: client::Cli,
+    advanced_settings: settings::AdvancedSettings,
+) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
         Ok(x) => Some(x),

@@ -1,6 +1,6 @@
 use anyhow::{bail, Context as _, Result};
-use connlib_client_shared::file_logger;
 use clap::{Args, Parser};
+use connlib_client_shared::file_logger;
 use firezone_headless_client::FIREZONE_GROUP;
 use std::{path::PathBuf, str::FromStr};
 
