@@ -694,15 +694,6 @@ impl ReferenceStateMachine for ReferenceState {
                         return false;
                     }
 
-                    let ip_overlap = state
-                        .global_dns_records
-                        .values()
-                        .any(|ips| !ips.is_disjoint(resolved_ips));
-
-                    if ip_overlap {
-                        return false;
-                    }
-
                     // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
                     let any_real_ip_overlaps_with_cidr_resource =
                         resolved_ips.iter().any(|resolved_ip| {
