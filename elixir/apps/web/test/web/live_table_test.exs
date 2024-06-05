@@ -523,7 +523,7 @@ defmodule Web.LiveTableTest do
                },
                private: %{
                  list_opts: [
-                   page: [limit: 25],
+                   page: [limit: 10],
                    filter: [],
                    order_by: []
                  ]
@@ -536,7 +536,7 @@ defmodule Web.LiveTableTest do
                },
                private: %{
                  list_opts: [
-                   page: [cursor: "next_page", limit: 25],
+                   page: [cursor: "next_page", limit: 10],
                    filter: [{:name, "foo"}],
                    order_by: [{:actors, :asc, :name}]
                  ]
@@ -555,7 +555,7 @@ defmodule Web.LiveTableTest do
 
     test "does nothing when list opts are not changed", %{socket: socket} do
       socket = handle_live_tables_params(socket, %{}, "/actors")
-      assert_receive {:callback, _socket, [page: [limit: 25], filter: [], order_by: []]}
+      assert_receive {:callback, _socket, [page: [limit: 10], filter: [], order_by: []]}
 
       handle_live_tables_params(socket, %{}, "/actors")
       refute_receive {:callback, _socket, _list_opts}

@@ -21,32 +21,27 @@ defmodule Web.Actors.Show do
         |> assign_live_table("identities",
           query_module: Auth.Identity.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_identities_update!/2
         )
         |> assign_live_table("tokens",
           query_module: Tokens.Token.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_tokens_update!/2
         )
         |> assign_live_table("clients",
           query_module: Clients.Client.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_clients_update!/2
         )
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("groups",
           query_module: Actors.Group.Query,
           sortable_fields: [],
           hide_filters: [:provider_id],
-          limit: 15,
           callback: &handle_groups_update!/2
         )
 
