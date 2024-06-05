@@ -238,6 +238,7 @@ defmodule Web.Actors.Show do
               :if={identity_has_email?(identity)}
               size="xs"
               title="Send Welcome Email"
+              style="info"
               icon="hero-envelope"
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
