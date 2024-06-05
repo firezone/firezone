@@ -16,7 +16,7 @@
 //! - MAC addresses
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 use std::{fs, io};
 
 use time::OffsetDateTime;
@@ -41,11 +41,10 @@ where
 }
 
 fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
-    let inner = Arc::new(Mutex::new(Inner {
+    let appender = Appender {
         directory,
         current: None,
-    }));
-    let appender = Appender { inner };
+    };
 
     let (non_blocking, guard) = tracing_appender::non_blocking(appender);
     let handle = Handle {
@@ -66,16 +65,13 @@ pub struct Handle {
 
 #[derive(Debug)]
 struct Appender {
-    inner: Arc<Mutex<Inner>>,
-}
-
-#[derive(Debug)]
-struct Inner {
     directory: PathBuf,
+    // Leaving this so that I/O errors come up through `write` instead of panicking
+    // in `layer`
     current: Option<(fs::File, String)>,
 }
 
-impl Inner {
+impl Appender {
     fn with_current_file<R>(
         &mut self,
         cb: impl Fn(&mut fs::File) -> io::Result<R>,
@@ -147,14 +143,10 @@ impl Inner {
 
 impl io::Write for Appender {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        try_unlock(&self.inner).with_current_file(|f| f.write(buf))
+        self.with_current_file(|f| f.write(buf))
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        try_unlock(&self.inner).with_current_file(|f| f.flush())
+        self.with_current_file(|f| f.flush())
     }
-}
-
-fn try_unlock(inner: &Mutex<Inner>) -> MutexGuard<'_, Inner> {
-    inner.lock().unwrap_or_else(|e| e.into_inner())
 }
