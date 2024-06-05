@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
@@ -6,11 +6,18 @@ mermaid.initialize({
     theme: 'default',
 });
 
-export default class Mermaid extends React.Component {
-    componentDidMount() {
-        mermaid.contentLoaded();
-    }
-    render() {
-        return (<div className="mermaid">{this.props.chart}</div>);
-    }
+type MermaidProps = {
+    chart: string;
 };
+
+const Mermaid: React.FC<MermaidProps> = ({
+    chart, ...mermaidOptions}) => {
+
+    useEffect (() => {
+        mermaid.contentLoaded();
+    }, []);
+
+    return (<div className="mermaid">{chart}</div>);
+};
+
+export default Mermaid;

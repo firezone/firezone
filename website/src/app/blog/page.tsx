@@ -32,8 +32,8 @@ export default function Page() {
             type="Learn"
           >
             <p className="mb-2">
-              We chose Tauri over other frameworks because it was the fastest way to
-              get the Firezone Client working on Linux and Windows.
+              We chose Tauri over other frameworks because it was the fastest
+              way to get the Firezone Client working on Linux and Windows.
             </p>
           </SummaryCard>
           <SummaryCard
