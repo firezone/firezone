@@ -2,7 +2,6 @@ import Alert from "@/components/DocsAlert";
 import AsciinemaPlayer from "@/components/AsciinemaPlayer";
 import Image from "next/image";
 import Link from "next/link";
-import Mermaid from "@/components/Mermaid";
 
 > [I would have thought](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1896717039)
 > after more than 20 years of GUI paradigms, the major OSes would have made GUIs
@@ -108,22 +107,19 @@ it working in the same event loop.
 
 # How does Tauri work?
 
-<Mermaid
-  name="tauri-arch"
-  chart={`
-    flowchart TD
-      A(Firezone Client) --> B(Tauri)
-      B --> C(WRY)
-      C --> D("WebView2 (Windows)")
-      C --> E("webkit2gtk (Linux)")
-      C --> F(TAO)
-      B --> G(Tokio)
-      A --> G
-      A --> J(connlib)
-      F --> H(GTK+)
-      F --> I(Windows)
-  `}
-/>
+{/_ flowchart TD A(Firezone Client) --> B(Tauri) B --> C(WRY) C --> D("WebView2
+(Windows)") C --> E("webkit2gtk (Linux)") C --> F(TAO) B --> G(Tokio) A --> G A
+--> J(connlib) F --> H(GTK+) F --> I(Windows) _/}
+
+<Link target="_blank" href="/images/blog/using-tauri/tauri-arch.svg">
+  <Image
+    src="/images/blog/using-tauri/tauri-arch.svg"
+    alt="Tauri dependency diagram"
+    width={1200}
+    height={1200}
+    className="p-16"
+  />
+</Link>
 
 Tauri is built atop [WRY](https://github.com/tauri-apps/wry), the webview
 rendering library. WRY is built atop [TAO](https://github.com/tauri-apps/tao),
@@ -144,26 +140,31 @@ WebView2 pre-installed. Tauri automatically runs a downloader when the MSI is
 installed if needed. On Linux (Debian and Ubuntu), we tell `apt` that we depend
 on `webkit2gtk`, so `apt` will install it for us.
 
-<Mermaid
-  name="msi-bundle"
-  chart={`
-    flowchart TD
-      A(MSI) --> B(GUI exe)
-      A --> C(IPC service exe)
-      A --> D(WebView2 downloader)
-  `}
-/>
+{/_ flowchart TD A(MSI) --> B(GUI exe) A --> C(IPC service exe) A --> D(WebView2
+downloader) _/}
 
-<Mermaid
-  name="deb-bundle"
-  chart={`
-    flowchart TD
-      A(deb) --> B(GUI exe)
-      A --> C(IPC service exe)
-      A --> D("webkit2gtk dependencies")
-  `}
-/>
+<Link target="_blank" href="/images/blog/using-tauri/msi-bundle.svg">
+  <Image
+    src="/images/blog/using-tauri/msi-bundle.svg"
+    alt="MSI bundle diagram"
+    width={1200}
+    height={1200}
+    className="p-16"
+  />
+</Link>
 
+{/_ flowchart TD A(deb) --> B(GUI exe) A --> C(IPC service exe) A -->
+D("webkit2gtk dependencies") _/}
+
+<Link target="_blank" href="/images/blog/using-tauri/deb-bundle.svg">
+  <Image
+    src="/images/blog/using-tauri/deb-bundle.svg"
+    alt="deb bundle diagram"
+    width={1200}
+    height={1200}
+    className="p-16"
+  />
+</Link>
 # Why did the Linux port take twice as long as Windows?
 
 The Linux port took twice as long because running a GUI with `sudo` in Linux
