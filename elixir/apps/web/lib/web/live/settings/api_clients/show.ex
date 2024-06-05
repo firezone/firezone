@@ -16,7 +16,6 @@ defmodule Web.Settings.ApiClients.Show do
         |> assign_live_table("tokens",
           query_module: Tokens.Token.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_tokens_update!/2
         )
 

@@ -24,7 +24,6 @@ defmodule Web.Actors.EditGroups do
           query_module: Actors.Group.Query,
           sortable_fields: [],
           hide_filters: [:provider_id],
-          limit: 5,
           callback: &handle_groups_update!/2
         )
 
