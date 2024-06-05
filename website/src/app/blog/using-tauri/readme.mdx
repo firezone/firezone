@@ -2,6 +2,7 @@ import Alert from "@/components/DocsAlert";
 import AsciinemaPlayer from "@/components/AsciinemaPlayer";
 import Image from "next/image";
 import Link from "next/link";
+import Mermaid from "@/components/Mermaid";
 
 > [I would have thought](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1896717039)
 > after more than 20 years of GUI paradigms, the major OSes would have made GUIs
@@ -106,6 +107,22 @@ related to that menu, and we didn't have to shop around for another crate to get
 it working in the same event loop.
 
 # How does Tauri work?
+
+<Mermaid
+  chart={`
+    flowchart TD
+      A(Firezone Client) --> B(Tauri)
+      B --> C(WRY)
+      C --> D("WebView2 (Windows)")
+      C --> E("webkit2gtk (Linux)")
+      C --> F(TAO)
+      B --> G(Tokio)
+      F --> H(GTK)
+      F --> I(Windows)
+  `}
+/>
+
+Perfectly fine
 
 # Why did the Linux port take twice as long as Windows?
 
