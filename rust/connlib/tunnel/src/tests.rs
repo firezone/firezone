@@ -6,7 +6,7 @@ use connlib_shared::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
         gateway, ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
-    proptest::{cidr_resource, dns_resource, domain_name},
+    proptest::{cidr_resource, dns_resource, domain_label, domain_name},
     DomainName, StaticSecret,
 };
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
@@ -162,8 +162,8 @@ enum Transition {
     /// Add a new DNS resource to the client.
     AddDnsResource {
         resource: ResourceDescriptionDns,
-        /// The IPs we resolve the domain to.
-        resolved_ips: HashSet<IpAddr>,
+        /// The DNS records to add together with the resource.
+        records: HashMap<DomainName, HashSet<IpAddr>>,
     },
     /// Send a DNS query.
     SendDnsQuery {
@@ -500,13 +500,9 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         let add_cidr_resource = cidr_resource(8).prop_map(Transition::AddCidrResource);
-        let add_dns_resource =
-            (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
-                Transition::AddDnsResource {
-                    resource,
-                    resolved_ips,
-                }
-            });
+        let add_non_wildcard_dns_resource = non_wildcard_dns_resource();
+        let add_star_wildcard_dns_resource = star_wildcard_dns_resource();
+        let add_question_mark_wildcard_dns_resource = question_mark_wildcard_dns_resource();
         let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
         let set_system_dns_servers =
             system_dns_servers().prop_map(|servers| Transition::UpdateSystemDnsServers { servers });
@@ -515,7 +511,9 @@ impl ReferenceStateMachine for ReferenceState {
 
         let mut strategies = vec![
             (1, add_cidr_resource.boxed()),
-            (1, add_dns_resource.boxed()),
+            (1, add_non_wildcard_dns_resource.boxed()),
+            (1, add_star_wildcard_dns_resource.boxed()),
+            (1, add_question_mark_wildcard_dns_resource.boxed()),
             (1, tick.boxed()),
             (1, set_system_dns_servers.boxed()),
             (1, set_upstream_dns_servers.boxed()),
@@ -547,7 +545,7 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::AddDnsResource {
                 resource: new_resource,
-                resolved_ips,
+                records,
             } => {
                 let existing_resource = state
                     .client_dns_resources
@@ -555,23 +553,23 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // For the client, there is no difference between a DNS resource and a truly global DNS name.
                 // We store all records in the same map to follow the same model.
-                state.global_dns_records.insert(
-                    new_resource.address_as_domain().unwrap(),
-                    resolved_ips.clone(),
-                );
+                state.global_dns_records.extend(records.clone());
 
                 // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
                 if let Some(resource) = existing_resource {
                     if new_resource.address != resource.address {
                         state.client_connected_cidr_resources.remove(&resource.id);
 
-                        let name = resource.address_as_domain().unwrap();
-                        state.global_dns_records.remove(&name);
+                        state
+                            .global_dns_records
+                            .retain(|name, _| !matches_domain(&resource.address, name));
 
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
                         // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state.client_dns_records.remove(&name);
+                        state
+                            .client_dns_records
+                            .retain(|name, _| !matches_domain(&resource.address, name));
                     }
                 }
             }
@@ -668,34 +666,32 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::AddDnsResource {
-                resource,
-                resolved_ips,
-            } => {
+            Transition::AddDnsResource { records, .. } => {
                 // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
 
                 // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
                 // Connlib cannot know, when a DNS record expires, thus we currently don't allow to add DNS resources where the same domain resolves to different IPs
-                let domain = resource.address_as_domain().unwrap();
-                let has_resolved_domain_already = state.global_dns_records.contains_key(&domain);
 
-                let no_existing_record_overlaps_ip = state
-                    .global_dns_records
-                    .values()
-                    .all(|ips| ips.is_disjoint(resolved_ips));
+                for (name, resolved_ips) in records {
+                    if state.global_dns_records.contains_key(name) {
+                        return false;
+                    }
 
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
-                let any_real_ip_overlaps_with_cidr_resource =
-                    resolved_ips.iter().any(|resolved_ip| {
-                        state
-                            .client_cidr_resources
-                            .longest_match(*resolved_ip)
-                            .is_some()
-                    });
+                    // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
+                    let any_real_ip_overlaps_with_cidr_resource =
+                        resolved_ips.iter().any(|resolved_ip| {
+                            state
+                                .client_cidr_resources
+                                .longest_match(*resolved_ip)
+                                .is_some()
+                        });
 
-                !has_resolved_domain_already
-                    && !any_real_ip_overlaps_with_cidr_resource
-                    && no_existing_record_overlaps_ip
+                    if any_real_ip_overlaps_with_cidr_resource {
+                        return false;
+                    }
+                }
+
+                true
             }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
@@ -1603,7 +1599,7 @@ impl ReferenceState {
     fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
         self.client_dns_resources
             .values()
-            .find_map(|r| (r.address_as_domain().unwrap() == domain).then_some(r.id))
+            .find_map(|r| matches_domain(&r.address, domain).then_some(r.id))
     }
 
     fn dns_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
@@ -1647,6 +1643,18 @@ impl ReferenceState {
 
         self.cidr_resource_by_ip(dns_server)
     }
+}
+
+fn matches_domain(resource_address: &str, domain: &DomainName) -> bool {
+    let name = domain.to_string();
+
+    if resource_address.starts_with('*') || resource_address.starts_with('?') {
+        let (_, base) = resource_address.split_once('.').unwrap();
+
+        return name.ends_with(base);
+    }
+
+    name == resource_address
 }
 
 /// The source of the packet that should be sent through the tunnel.
@@ -2138,6 +2146,62 @@ fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
     collection::hash_set(any::<IpAddr>(), 1..4)
 }
 
+fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+    (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
+        Transition::AddDnsResource {
+            records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
+            resource,
+        }
+    })
+}
+
+fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+    dns_resource().prop_flat_map(|r| {
+        let wildcard_address = format!("*.{}", r.address);
+
+        let records = subdomain_records(r.address, domain_name(1..3));
+        let resource = Just(ResourceDescriptionDns {
+            address: wildcard_address,
+            ..r
+        });
+
+        (resource, records)
+            .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
+    })
+}
+
+fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+    dns_resource().prop_flat_map(|r| {
+        let wildcard_address = format!("?.{}", r.address);
+
+        let records = subdomain_records(r.address, domain_label());
+        let resource = Just(ResourceDescriptionDns {
+            address: wildcard_address,
+            ..r
+        });
+
+        (resource, records)
+            .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
+    })
+}
+
+/// A strategy for generating a set of DNS records all nested under the provided base domain.
+fn subdomain_records(
+    base: String,
+    subdomains: impl Strategy<Value = String>,
+) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
+    collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
+        subdomain_ips
+            .into_iter()
+            .map(|(label, ips)| {
+                let domain = format!("{label}.{base}");
+
+                (domain.parse().unwrap(), ips)
+            })
+            .collect()
+    })
+}
+
 fn dns_query() -> impl Strategy<Value = Transition> {
     (
         any::<sample::Index>(),
@@ -2271,7 +2335,7 @@ fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
 
 fn global_dns_records() -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
     collection::hash_map(
-        domain_name().prop_map(hickory_name_to_domain),
+        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
         collection::hash_set(any::<IpAddr>(), 1..6),
         0..15,
     )
