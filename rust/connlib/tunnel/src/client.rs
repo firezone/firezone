@@ -13,7 +13,7 @@ use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -40,6 +40,10 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // however... this also mean any resource is refresh within a 5 mins interval
 // therefore, only the first time it's added that happens, after that it doesn't matter.
 const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
+
+// The max time a dns request can be configured to live in resolvconf
+// is 30 seconds. See resolvconf(5) timeout.
+const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DnsResource {
@@ -335,6 +339,8 @@ pub struct ClientState {
     ip_provider: IpProvider,
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// DNS queries that had their source IP mangled because the servers is a CIDR resource.
+    mangled_dns_queries: HashMap<u16, std::time::Instant>,
     /// When to next refresh DNS resources.
     ///
     /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
@@ -376,6 +382,7 @@ impl ClientState {
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
+            mangled_dns_queries: Default::default(),
         }
     }
 
@@ -451,7 +458,8 @@ impl ClientState {
             return None;
         };
 
-        let Some(peer) = self.peer_by_resource_mut(resource) else {
+        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+        else {
             // If the resource are intending to is a DNS resource (i.e. we resolved an IP for it), look up the original name.
             let domain = self
                 .dns_resources_internal_ips
@@ -463,6 +471,14 @@ impl ClientState {
         };
 
         let packet = peer.transform_tun_to_network(packet);
+
+        let packet = maybe_mangle_dns_query_to_cidr_resource(
+            packet,
+            &self.dns_mapping,
+            &mut self.mangled_dns_queries,
+            now,
+        );
+
         let gateway_id = peer.id();
 
         let transmit = self
@@ -509,6 +525,13 @@ impl ClientState {
             }
         };
 
+        let packet = maybe_mangle_dns_response_from_cidr_resource(
+            packet,
+            &self.dns_mapping,
+            &mut self.mangled_dns_queries,
+            now,
+        );
+
         Some(packet.into_immutable())
     }
 
@@ -546,8 +569,8 @@ impl ClientState {
         self.awaiting_connection.remove(&resource_id);
 
         let resource_ids = HashSet::from([resource_id]);
-        let mut peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
-        peer.set_dns(self.dns_mapping());
+        let peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
+
         self.peers.insert(peer, &[]);
 
         let peer_ips = if let Some(domain_response) = domain_response {
@@ -833,10 +856,8 @@ impl ClientState {
     }
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
-        self.dns_mapping = new_mapping.clone();
-        self.peers
-            .iter_mut()
-            .for_each(|p| p.set_dns(new_mapping.clone()));
+        self.dns_mapping = new_mapping;
+        self.mangled_dns_queries.clear();
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -930,7 +951,8 @@ impl ClientState {
             Some(next_dns_refresh) if now >= next_dns_refresh => {
                 let mut connections = Vec::new();
 
-                self.peers.iter_mut().for_each(|p| p.expire_dns_track());
+                self.mangled_dns_queries
+                    .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
 
                 for resource in self.dns_resources_internal_ips.values() {
                     let Some(peer) = self.peer_by_resource(resource.id) else {
@@ -1078,7 +1100,8 @@ impl ClientState {
 
             self.resource_ids.remove(id);
 
-            let Some(peer) = self.peer_by_resource_mut(*id) else {
+            let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, *id)
+            else {
                 continue;
             };
             let gateway_id = peer.id();
@@ -1166,13 +1189,17 @@ impl ClientState {
 
         Some(peer)
     }
+}
 
-    fn peer_by_resource_mut(&mut self, resource: ResourceId) -> Option<&mut GatewayOnClient> {
-        let gateway_id = self.resources_gateways.get(&resource)?;
-        let peer = self.peers.get_mut(gateway_id)?;
+fn peer_by_resource_mut<'p>(
+    resources_gateways: &HashMap<ResourceId, GatewayId>,
+    peers: &'p mut PeerStore<GatewayId, GatewayOnClient>,
+    resource: ResourceId,
+) -> Option<&'p mut GatewayOnClient> {
+    let gateway_id = resources_gateways.get(&resource)?;
+    let peer = peers.get_mut(gateway_id)?;
 
-        Some(peer)
-    }
+    Some(peer)
 }
 
 fn effective_dns_servers(
@@ -1252,6 +1279,74 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     }
 
     false
+}
+
+/// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
+fn maybe_mangle_dns_query_to_cidr_resource<'p>(
+    mut packet: MutableIpPacket<'p>,
+    dns_mapping: &BiMap<IpAddr, DnsServer>,
+    mangeled_dns_queries: &mut HashMap<u16, Instant>,
+    now: Instant,
+) -> MutableIpPacket<'p> {
+    let dst = packet.destination();
+
+    let Some(srv) = dns_mapping.get_by_left(&dst) else {
+        return packet;
+    };
+
+    let Some(dgm) = packet.as_udp() else {
+        return packet;
+    };
+
+    let Ok(message) = domain::base::Message::from_slice(dgm.payload()) else {
+        return packet;
+    };
+
+    tracing::debug!(old_dst = %dst, new_dst = %srv.ip(), "Packet is a DNS query to a DNS server configured as a CIDR resource");
+
+    mangeled_dns_queries.insert(message.header().id(), now);
+    packet.set_dst(srv.ip());
+    packet.update_checksum();
+
+    packet
+}
+
+fn maybe_mangle_dns_response_from_cidr_resource<'p>(
+    mut packet: MutableIpPacket<'p>,
+    dns_mapping: &BiMap<IpAddr, DnsServer>,
+    mangeled_dns_queries: &mut HashMap<u16, Instant>,
+    now: Instant,
+) -> MutableIpPacket<'p> {
+    let src_ip = packet.source();
+
+    let Some(udp) = packet.as_udp() else {
+        return packet;
+    };
+
+    let src_port = udp.get_source();
+
+    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+        return packet;
+    };
+
+    let Ok(message) = domain::base::Message::from_slice(udp.payload()) else {
+        return packet;
+    };
+
+    let Some(query_sent_at) = mangeled_dns_queries.remove(&message.header().id()) else {
+        return packet;
+    };
+
+    if now.duration_since(query_sent_at) > IDS_EXPIRE {
+        return packet;
+    }
+
+    tracing::debug!(old_src = %src_ip, new_src = %sentinel, "Packet is a DNS response from a DNS server configured as a CIDR resource");
+
+    packet.set_src(*sentinel);
+    packet.update_checksum();
+
+    packet
 }
 
 pub struct IpProvider {
