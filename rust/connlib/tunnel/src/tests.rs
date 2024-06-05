@@ -2352,7 +2352,7 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             ResourceDst::Cidr(resource_dst) => {
                 assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
             }
-            ResourceDst::Dns(domain, _) => {
+            ResourceDst::Dns(domain) => {
                 assert_destination_is_dns_resource(
                     gateway_received_request,
                     &ref_state.global_dns_records,
