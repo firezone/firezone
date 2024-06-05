@@ -1,23 +1,26 @@
-import React, {useEffect} from 'react';
-import mermaid from 'mermaid';
+import React, { useEffect } from "react";
+import mermaid from "mermaid";
 
 mermaid.initialize({
-    startOnLoad: true,
-    theme: 'default',
+  startOnLoad: true,
+  theme: "default",
 });
 
 type MermaidProps = {
-    chart: string;
+  name: string;
+  chart: string;
 };
 
-const Mermaid: React.FC<MermaidProps> = ({
-    chart, ...mermaidOptions}) => {
+const Mermaid: React.FC<MermaidProps> = ({ name, chart }) => {
+  useEffect(() => {
+    mermaid.contentLoaded();
+  }, []);
 
-    useEffect (() => {
-        mermaid.contentLoaded();
-    }, []);
-
-    return (<div className="mermaid">{chart}</div>);
+  return (
+    <div className="mermaid" id={name}>
+      {chart}
+    </div>
+  );
 };
 
 export default Mermaid;

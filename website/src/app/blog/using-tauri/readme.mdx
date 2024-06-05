@@ -109,6 +109,7 @@ it working in the same event loop.
 # How does Tauri work?
 
 <Mermaid
+  name="tauri-arch"
   chart={`
     flowchart TD
       A(Firezone Client) --> B(Tauri)
@@ -117,12 +118,51 @@ it working in the same event loop.
       C --> E("webkit2gtk (Linux)")
       C --> F(TAO)
       B --> G(Tokio)
-      F --> H(GTK)
+      A --> G
+      A --> J(connlib)
+      F --> H(GTK+)
       F --> I(Windows)
   `}
 />
 
-Perfectly fine
+Tauri is built atop [WRY](https://github.com/tauri-apps/wry), the webview
+rendering library. WRY is built atop [TAO](https://github.com/tauri-apps/tao),
+the window creation library. All 3 projects are maintained by the Tauri
+Programme.
+
+WRY in turn uses platform-specific web views like `webkit2gtk` on Linux and
+[WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2) on
+Windows. TAO creates windows using GTK+ on Linux and the Windows API on Windows.
+
+The Firezone Client sits above all that and bundles our headless connection
+library `connlib` into a Tauri app. Tauri and Firezone both use the async
+runtime [Tokio](https://github.com/tokio-rs/tokio).
+
+The release packages are small because we don't take responsibility for
+installing WebView2 or `webkit2gtk`. Windows 11 and some Windows 10 systems have
+WebView2 pre-installed. Tauri automatically runs a downloader when the MSI is
+installed if needed. On Linux (Debian and Ubuntu), we tell `apt` that we depend
+on `webkit2gtk`, so `apt` will install it for us.
+
+<Mermaid
+  name="msi-bundle"
+  chart={`
+    flowchart TD
+      A(MSI) --> B(GUI exe)
+      A --> C(IPC service exe)
+      A --> D(WebView2 downloader)
+  `}
+/>
+
+<Mermaid
+  name="deb-bundle"
+  chart={`
+    flowchart TD
+      A(deb) --> B(GUI exe)
+      A --> C(IPC service exe)
+      A --> D("webkit2gtk dependencies")
+  `}
+/>
 
 # Why did the Linux port take twice as long as Windows?
 
