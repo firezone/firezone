@@ -45,9 +45,6 @@ use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 proptest_state_machine::prop_state_machine! {
     #![proptest_config(Config {
-        // Enable verbose mode to make the state machine test print the
-        // transitions for each case.
-        verbose: 1,
         cases: 1000,
         .. Config::default()
     })]
@@ -2315,6 +2312,8 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             client_received_reply.destination(),
             "ICMP request source == ICMP reply destination"
         );
+
+        tracing::info!(target: "assertions", "✅ src and dst IP for ICMP request ({seq},{identifier}) are correct");
     }
 
     assert_eq!(
@@ -2323,10 +2322,18 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
         "Unexpected ICMP requests on gateway"
     );
 
+    tracing::info!(target: "assertions", "✅ Performed the expected {} ICMP handshakes", state.gateway_received_icmp_requests.len());
+
+    // Assert that the mapping of proxy IP to resource destination is stable.
+    // How connlib assigns proxy IPs for domains is an implementation detail.
+    // Yet, we care that it remains stable to ensure that any form of sticky sessions don't get broken (i.e. packets to one IP are always routed to the same IP on the gateway).
+    // To assert this, we build up a map as we iterate through all packets that have been sent.
+    let mut mapping = HashMap::new();
+
     // Assert that packets target the correct resource.
     // Due to how connlib may translate ICMP requests, we cannot link the packet on the gateway to the original one.
     // Thus, we rely on the order here.
-    for ((resource_dst, _, _), gateway_received_request) in ref_state
+    for ((resource_dst, seq, id), gateway_received_request) in ref_state
         .expected_icmp_handshakes
         .iter()
         .zip(state.gateway_received_icmp_requests.iter())
@@ -2339,15 +2346,26 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             "ICMP request on gateway to originate from client"
         );
 
+        let client_sent_request = &state
+            .client_sent_icmp_requests
+            .get(&(*seq, *id))
+            .expect("to have ICMP request on client");
+
+        let client_dst = client_sent_request.destination();
+        let gateway_dst = gateway_received_request.destination();
+
         match resource_dst {
             ResourceDst::Cidr(resource_dst) => {
                 // For CIDR resources, the expected dst is always known.
 
+                let gateway_dst = gateway_received_request.destination();
+
                 assert_eq!(
-                    gateway_received_request.destination(),
-                    *resource_dst,
+                    gateway_dst, *resource_dst,
                     "ICMP request on gateway to target correct CIDR resource"
                 );
+
+                tracing::info!(target: "assertions", "✅ {gateway_dst} is the correct resource");
             }
             ResourceDst::Dns(domain, _) => {
                 let actual_destination = gateway_received_request.destination();
@@ -2360,38 +2378,24 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
                     possible_resource_ips.contains(&actual_destination),
                     "ICMP request on gateway to target a known resource IP"
                 );
-            }
-        }
-    }
 
-    // Assert that the mapping of proxy IP to resource destination is stable.
-    // How connlib assigns proxy IPs for domains is an implementation detail.
-    // Yet, we care that it remains stable to ensure that any form of sticky sessions don't get broken (i.e. packets to one IP are always routed to the same IP on the gateway).
-    // To assert this, we build up a map as we iterate through all packets that have been sent.
-    let mut mapping = HashMap::new();
+                tracing::info!(target: "assertions", "✅ {actual_destination} is a valid IP for {domain}");
 
-    for ((_, seq, id), gateway_received_request) in ref_state
-        .expected_icmp_handshakes
-        .iter()
-        .zip(state.gateway_received_icmp_requests.iter())
-    {
-        let client_sent_request = &state
-            .client_sent_icmp_requests
-            .get(&(*seq, *id))
-            .expect("to have ICMP request on client");
-
-        match mapping.entry(client_sent_request.destination()) {
-            Entry::Vacant(v) => {
-                // We have to gradually discover connlib's mapping ...
-                // For the first packet, we just save the IP that we ended up talking to.
-                v.insert(gateway_received_request.destination());
-            }
-            Entry::Occupied(o) => {
-                assert_eq!(
-                    gateway_received_request.destination(),
-                    *o.get(),
-                    "ICMP request on client to target correct same IP of DNS resource"
-                );
+                match mapping.entry(client_dst) {
+                    Entry::Vacant(v) => {
+                        // We have to gradually discover connlib's mapping ...
+                        // For the first packet, we just save the IP that we ended up talking to.
+                        v.insert(gateway_dst);
+                    }
+                    Entry::Occupied(o) => {
+                        assert_eq!(
+                            gateway_dst,
+                            *o.get(),
+                            "ICMP request on client to target correct same IP of DNS resource"
+                        );
+                        tracing::info!(target: "assertions", "✅ {client_dst} maps to {gateway_dst}");
+                    }
+                }
             }
         }
     }
