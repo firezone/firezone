@@ -272,4 +272,9 @@ mod tests {
             r"\\.\pipe\dev.firezone.client"
         );
     }
+
+    #[test]
+    fn pipe_path() {
+        assert!(super::pipe_path().starts_with(r"\\.\pipe\"));
+    }
 }

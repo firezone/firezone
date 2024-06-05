@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 mock = []
-proptest = ["dep:proptest", "dep:itertools", "dep:hickory-proto"]
+proptest = ["dep:proptest", "dep:itertools"]
 
 [dependencies]
 anyhow = "1.0.82"
@@ -24,7 +24,7 @@ rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.36", features = ["fs"] }
+tokio = { version = "1.38", features = ["fs"] }
 tracing = { workspace = true }
 url = { version = "2.4.1", default-features = false }
 uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
@@ -34,14 +34,13 @@ libc = "0.2"
 phoenix-channel = { workspace = true }
 proptest = { version = "1.4.0", optional = true }
 itertools = { version = "0.12", optional = true }
-hickory-proto = { workspace = true, optional = true }
 
 # Needed for Android logging until tracing is working
 log = "0.4"
 
 [dev-dependencies]
 itertools = "0.12"
-tokio = { version = "1.36", features = ["macros", "rt"] }
+tokio = { version = "1.38", features = ["macros", "rt"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
