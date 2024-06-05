@@ -853,14 +853,14 @@ defmodule Web.CoreComponents do
       >
         <.provider_icon adapter={@identity.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <span class={~w|
+      <span class={~w[
         text-xs
         min-w-0
         rounded-r
         mr-2 py-0.5 pl-1.5 pr-2.5
         text-neutral-900
         bg-neutral-100
-      |}>
+      ]}>
         <span class="block truncate" title={get_identity_email(@identity)}>
           <%= get_identity_email(@identity) %>
         </span>
