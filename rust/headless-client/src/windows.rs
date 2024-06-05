@@ -84,13 +84,13 @@ fn windows_service_run(arguments: Vec<OsString>) {
     let log_path = crate::known_dirs::ipc_service_logs()
         .expect("Should be able to compute IPC service logs dir");
     std::fs::create_dir_all(&log_path).expect("We should have permissions to create our log dir");
-    let (layer, _handle) = file_logger::layer(&log_path);
+    let (layer, handle) = file_logger::layer(&log_path);
     let filter = EnvFilter::from_str(SERVICE_RUST_LOG)
         .expect("Hard-coded log filter should always be parsable");
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).expect("`set_global_default` should always work)");
     tracing::info!(git_version = crate::GIT_VERSION);
-    if let Err(error) = fallible_windows_service_run(arguments) {
+    if let Err(error) = fallible_windows_service_run(arguments, handle) {
         tracing::error!(?error, "fallible_windows_service_run returned an error");
     }
     tracing::info!("Returning from `windows_service_run`");
@@ -99,7 +99,10 @@ fn windows_service_run(arguments: Vec<OsString>) {
 // Most of the Windows-specific service stuff should go here
 //
 // The arguments don't seem to match the ones passed to the main thread at all.
-fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
+fn fallible_windows_service_run(
+    arguments: Vec<OsString>,
+    logging_handle: file_logger::Handle,
+) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
@@ -161,24 +164,33 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             // We cancelled because Windows asked us to shut down.
             Ok(())
         }
-        Err(join_error) => {
-            // The IPC task may have panicked
-            Err(join_error.into())
-        }
-        Ok(Err(error)) => Err(error.context("ipc_listen failed")),
+        Err(join_error) => Err(anyhow::Error::from(join_error).context("`ipc_listen` panicked")),
+        Ok(Err(error)) => Err(error.context("`ipc_listen` failed")),
         Ok(Ok(impossible)) => match impossible {},
     };
 
+    // Drop the logging handle so it flushes the logs before we let Windows kill our process.
+    // There is no obvious and elegant way to do this, since the logging and `ServiceState`
+    // changes are interleaved, not nested:
+    // - Start logging
+    // - ServiceState::Running
+    // - Stop logging
+    // - ServiceState::Stopped
+    std::mem::drop(logging_handle);
+
     // Tell Windows that we're stopping
-    status_handle.set_service_status(ServiceStatus {
-        service_type: SERVICE_TYPE,
-        current_state: ServiceState::Stopped,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
-        checkpoint: 0,
-        wait_hint: Duration::default(),
-        process_id: None,
-    })?;
+    // Per Windows docs, this will cause Windows to kill our process eventually.
+    status_handle
+        .set_service_status(ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::Stopped,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        })
+        .expect("Should be able to tell Windows we're stopping");
     result
 }
 
