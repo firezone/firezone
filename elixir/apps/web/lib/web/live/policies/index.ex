@@ -64,22 +64,24 @@ defmodule Web.Policies.Index do
           ordered_by={@order_by_table_id["policies"]}
           metadata={@policies_metadata}
         >
-          <:col :let={policy} label="ID">
+          <:col :let={policy} label="id" class="w-3/12">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
-              <%= policy.id %>
+              <span class="block truncate">
+                <%= policy.id %>
+              </span>
             </.link>
           </:col>
-          <:col :let={policy} label="GROUP">
+          <:col :let={policy} label="group" class="w-3/12">
             <span class="flex items-center">
               <.group account={@account} group={policy.actor_group} />
             </span>
           </:col>
-          <:col :let={policy} label="RESOURCE">
+          <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
               <%= policy.resource.name %>
             </.link>
           </:col>
-          <:col :let={policy} label="STATUS">
+          <:col :let={policy} label="status">
             <%= if is_nil(policy.deleted_at) do %>
               <%= if is_nil(policy.disabled_at) do %>
                 Active

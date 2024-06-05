@@ -64,7 +64,7 @@ defmodule Web.Policies.Show do
 
     <.section>
       <:title>
-        Policy: <code><%= @policy.id %></code>
+        <.policy_name policy={@policy} />
         <span :if={not is_nil(@policy.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
@@ -170,13 +170,13 @@ defmodule Web.Policies.Show do
           ordered_by={@order_by_table_id["flows"]}
           metadata={@flows_metadata}
         >
-          <:col :let={flow} label="AUTHORIZED">
+          <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="EXPIRES">
+          <:col :let={flow} label="expires">
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
-          <:col :let={flow} label="CLIENT, ACTOR" class="w-3/12">
+          <:col :let={flow} label="client, actor" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
               <%= flow.client.name %>
             </.link>
@@ -186,14 +186,14 @@ defmodule Web.Policies.Show do
             </.link>
             <%= flow.client_remote_ip %>
           </:col>
-          <:col :let={flow} label="GATEWAY" class="w-3/12">
+          <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={link_style()}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             <br />
             <code class="text-xs"><%= flow.gateway_remote_ip %></code>
           </:col>
-          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={link_style()}>
               Show
             </.link>
