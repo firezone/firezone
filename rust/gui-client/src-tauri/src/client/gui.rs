@@ -71,45 +71,7 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
-    let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
-
-    // If the log filter is unparsable, show an error and use the default
-    // Fixes <https://github.com/firezone/firezone/issues/3452>
-    let advanced_settings =
-        match tracing_subscriber::EnvFilter::from_str(&advanced_settings.log_filter) {
-            Ok(_) => advanced_settings,
-            Err(_) => {
-                native_dialog::MessageDialog::new()
-                    .set_title("Log filter error")
-                    .set_text(
-                        "The custom log filter is not parsable. Using the default log filter.",
-                    )
-                    .set_type(native_dialog::MessageType::Error)
-                    .show_alert()
-                    .context("Can't show log filter error dialog")?;
-
-                AdvancedSettings {
-                    log_filter: AdvancedSettings::default().log_filter,
-                    ..advanced_settings
-                }
-            }
-        };
-
-    // Start logging
-    let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
-    tracing::info!("started log");
-    tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
-    // Purposely leak the file logger handle so it won't
-    // accidentally stop logging if we try to bubble up an error.
-    // See <https://github.com/firezone/firezone/issues/3567>
-    // I tried doing what the `tracing` docs say and it doesn't work. I think
-    // the `Drop` impl for `WorkerGuard` might be broken. It might be stopping the
-    // appender thread before flushing. If I leak it, somehow it works, like the thread
-    // keeps going, then realizes its channel is closed, flushes, and exits.
-    // And maybe the
-    Box::leak(Box::new(logging_handles.logger.clone()));
-
+pub(crate) fn run(cli: client::Cli, advanced_settings: settings::AdvancedSettings) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
         Ok(x) => Some(x),
@@ -245,7 +207,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                             app_handle_2,
                             ctlr_tx,
                             ctlr_rx,
-                            logging_handles,
                             advanced_settings,
                         )
                         .await
@@ -468,8 +429,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    /// Must be kept alive so the logger will keep running
-    _logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
@@ -733,7 +692,6 @@ async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
-    logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
     tracing::info!("Entered `run_controller`");
@@ -743,7 +701,6 @@ async fn run_controller(
         auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
-        _logging_handles: logging_handles,
         notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
