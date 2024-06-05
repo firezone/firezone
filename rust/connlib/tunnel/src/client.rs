@@ -339,7 +339,7 @@ pub struct ClientState {
     ip_provider: IpProvider,
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
-    /// DNS queries that had their source IP mangled because the servers is a CIDR resource.
+    /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
     mangled_dns_queries: HashMap<u16, std::time::Instant>,
     /// When to next refresh DNS resources.
     ///
