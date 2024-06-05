@@ -82,7 +82,7 @@ defmodule Web.Groups.EditActors do
             ordered_by={@order_by_table_id["actors"]}
             metadata={@actors_metadata}
           >
-            <:col :let={actor} label="ACTOR">
+            <:col :let={actor} label="actor">
               <.icon
                 :if={removed?(actor, @removed)}
                 name="hero-minus"
@@ -106,7 +106,7 @@ defmodule Web.Groups.EditActors do
                 }
               />
             </:col>
-            <:col :let={actor} label="IDENTITIES">
+            <:col :let={actor} label="identities">
               <span class="flex flex-wrap gap-y-2">
                 <.identity_identifier
                   :for={identity <- actor.identities}

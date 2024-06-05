@@ -150,11 +150,11 @@ defmodule Web.Groups.Show do
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
         >
-          <:col :let={actor} label="ACTOR">
+          <:col :let={actor} label="actor">
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
-          <:col :let={actor} label="IDENTITIES">
-            <span class="flex items-center">
+          <:col :let={actor} label="identities">
+            <span class="flex flex-wrap gap-y-2">
               <.identity_identifier
                 :for={identity <- actor.identities}
                 account={@account}
@@ -200,17 +200,17 @@ defmodule Web.Groups.Show do
           ordered_by={@order_by_table_id["policies"]}
           metadata={@policies_metadata}
         >
-          <:col :let={policy} label="ID">
+          <:col :let={policy} label="id">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
               <%= policy.id %>
             </.link>
           </:col>
-          <:col :let={policy} label="RESOURCE">
+          <:col :let={policy} label="resource">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
               <%= policy.resource.name %>
             </.link>
           </:col>
-          <:col :let={policy} label="STATUS">
+          <:col :let={policy} label="status">
             <%= if is_nil(policy.deleted_at) do %>
               <%= if is_nil(policy.disabled_at) do %>
                 Active

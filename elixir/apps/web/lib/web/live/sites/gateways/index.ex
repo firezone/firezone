@@ -79,17 +79,17 @@ defmodule Web.Sites.Gateways.Index do
           ordered_by={@order_by_table_id["gateways"]}
           metadata={@gateways_metadata}
         >
-          <:col :let={gateway} field={{:gateways, :name}} label="INSTANCE">
+          <:col :let={gateway} field={{:gateways, :name}} label="instance">
             <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
               <%= gateway.name %>
             </.link>
           </:col>
-          <:col :let={gateway} label="REMOTE IP">
+          <:col :let={gateway} label="remote iP">
             <code>
               <%= gateway.last_seen_remote_ip %>
             </code>
           </:col>
-          <:col :let={gateway} label="STATUS">
+          <:col :let={gateway} label="status">
             <.connection_status schema={gateway} />
           </:col>
           <:empty>
