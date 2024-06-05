@@ -25,7 +25,6 @@ defmodule Web.Groups.EditActors do
         )
         |> assign_live_table("actors",
           query_module: Actors.Actor.Query,
-          limit: 10,
           sortable_fields: [
             {:actors, :name}
           ],
