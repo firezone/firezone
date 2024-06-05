@@ -1025,7 +1025,7 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
     ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
+        let mut buffer = [0u8; 2000];
 
         if !self.client.wants(dst) {
             return ControlFlow::Continue(());
@@ -1050,7 +1050,7 @@ impl TunnelTest {
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
         global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
+        let mut buffer = [0u8; 2000];
 
         if !self.gateway.wants(dst) {
             return ControlFlow::Continue(());
