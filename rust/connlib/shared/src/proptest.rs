@@ -159,15 +159,12 @@ pub fn ip4_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv4Network> 
     assert!(host_mask_bits > 0);
     assert!(host_mask_bits <= 32);
 
-    (any::<Ipv4Addr>(), any::<sample::Index>()).prop_filter_map(
-        "ip network must be valid",
-        move |(ip, netmask)| {
-            let host_mask = netmask.index(host_mask_bits);
-            let netmask = 32 - host_mask;
+    (any::<Ipv4Addr>(), any::<sample::Index>()).prop_map(move |(ip, netmask)| {
+        let host_mask = netmask.index(host_mask_bits);
+        let netmask = 32 - host_mask;
 
-            Ipv4Network::new(ip, netmask as u8).ok()
-        },
-    )
+        Ipv4Network::new_truncate(ip, netmask as u8).expect("netmask to be <= 32")
+    })
 }
 
 /// A strategy of IPv6 networks, configurable by the size of the host mask.
@@ -175,13 +172,10 @@ pub fn ip6_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv6Network> 
     assert!(host_mask_bits > 0);
     assert!(host_mask_bits <= 128);
 
-    (any::<Ipv6Addr>(), any::<sample::Index>()).prop_filter_map(
-        "ip network must be valid",
-        move |(ip, netmask)| {
-            let host_mask = netmask.index(host_mask_bits);
-            let netmask = 128 - host_mask;
+    (any::<Ipv6Addr>(), any::<sample::Index>()).prop_map(move |(ip, netmask)| {
+        let host_mask = netmask.index(host_mask_bits);
+        let netmask = 128 - host_mask;
 
-            Ipv6Network::new(ip, netmask as u8).ok()
-        },
-    )
+        Ipv6Network::new_truncate(ip, netmask as u8).expect("netmask to be <= 128")
+    })
 }
