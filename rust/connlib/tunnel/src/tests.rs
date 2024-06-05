@@ -226,6 +226,7 @@ impl StateMachineTest for TunnelTest {
             state: firezone_relay::Server::new(
                 ref_state.relay.ip_stack,
                 rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
+                3478,
                 49152,
                 65535,
             ),

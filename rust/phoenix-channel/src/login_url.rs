@@ -59,6 +59,7 @@ impl LoginUrl {
             Some(device_name),
             None,
             None,
+            None,
         )?;
 
         Ok(LoginUrl {
@@ -88,6 +89,7 @@ impl LoginUrl {
             Some(device_name),
             None,
             None,
+            None,
         )?;
 
         Ok(LoginUrl {
@@ -100,6 +102,7 @@ impl LoginUrl {
         url: impl TryInto<Url, Error = E>,
         firezone_token: &SecretString,
         device_name: Option<String>,
+        listen_port: u16,
         ipv4_address: Option<Ipv4Addr>,
         ipv6_address: Option<Ipv6Addr>,
     ) -> std::result::Result<Self, LoginUrlError<E>> {
@@ -110,6 +113,7 @@ impl LoginUrl {
             None,
             None,
             device_name,
+            Some(listen_port),
             ipv4_address,
             ipv6_address,
         )?;
@@ -176,6 +180,7 @@ fn get_websocket_path<E>(
     public_key: Option<[u8; 32]>,
     external_id: Option<String>,
     name: Option<String>,
+    port: Option<u16>,
     ipv4_address: Option<Ipv4Addr>,
     ipv6_address: Option<Ipv6Addr>,
 ) -> std::result::Result<Url, LoginUrlError<E>> {
@@ -208,8 +213,11 @@ fn get_websocket_path<E>(
         if let Some(ipv4_address) = ipv4_address {
             query_pairs.append_pair("ipv4", &ipv4_address.to_string());
         }
-        if let Some(ipv4_address) = ipv6_address {
-            query_pairs.append_pair("ipv6", &ipv4_address.to_string());
+        if let Some(ipv6_address) = ipv6_address {
+            query_pairs.append_pair("ipv6", &ipv6_address.to_string());
+        }
+        if let Some(port) = port {
+            query_pairs.append_pair("port", &port.to_string());
         }
     }
 

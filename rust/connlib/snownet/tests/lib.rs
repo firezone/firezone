@@ -462,7 +462,7 @@ impl Firewall {
 impl TestRelay {
     fn new(local: impl Into<RelaySocket>, span: Span) -> Self {
         let local = local.into();
-        let inner = firezone_relay::Server::new(to_ip_stack(local), OsRng, 49152, 65535);
+        let inner = firezone_relay::Server::new(to_ip_stack(local), OsRng, 3478, 49152, 65535);
 
         Self {
             inner,

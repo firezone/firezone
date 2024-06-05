@@ -696,7 +696,7 @@ struct TestServer {
 impl TestServer {
     fn new(relay_public_addr: impl Into<IpStack>) -> Self {
         Self {
-            server: Server::new(relay_public_addr, StepRng::new(0, 0), 49152, 65535),
+            server: Server::new(relay_public_addr, StepRng::new(0, 0), 3478, 49152, 65535),
         }
     }
 
