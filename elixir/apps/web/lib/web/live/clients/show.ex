@@ -22,7 +22,6 @@ defmodule Web.Clients.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_flows_update!/2
         )
 

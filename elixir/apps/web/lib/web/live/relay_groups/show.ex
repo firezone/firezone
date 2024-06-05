@@ -29,7 +29,6 @@ defmodule Web.RelayGroups.Show do
             {:relays, :name},
             {:relays, :last_seen_at}
           ],
-          limit: 10,
           callback: &handle_relays_update!/2
         )
 

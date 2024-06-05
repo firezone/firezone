@@ -452,7 +452,7 @@ defmodule Web.LiveTable do
     callback = Keyword.fetch!(opts, :callback)
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
-    limit = Keyword.get(opts, :limit, 25)
+    limit = Keyword.get(opts, :limit, 10)
 
     # Note: we don't support nesting, :and or :where on the UI yet
     hidden_filters = Enum.map(enforce_filters, &elem(&1, 0)) ++ hide_filters

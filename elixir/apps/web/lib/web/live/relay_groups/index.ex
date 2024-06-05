@@ -14,7 +14,6 @@ defmodule Web.RelayGroups.Index do
         |> assign_live_table("groups",
           query_module: Relays.Group.Query,
           sortable_fields: [],
-          limit: 5,
           callback: &handle_groups_update!/2
         )
 

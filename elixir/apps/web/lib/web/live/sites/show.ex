@@ -25,7 +25,6 @@ defmodule Web.Sites.Show do
           sortable_fields: [
             {:gateways, :last_seen_at}
           ],
-          limit: 10,
           callback: &handle_gateways_update!/2
         )
         |> assign_live_table("resources",
@@ -37,7 +36,6 @@ defmodule Web.Sites.Show do
             {:resources, :name},
             {:resources, :address}
           ],
-          limit: 10,
           callback: &handle_resources_update!/2
         )
 
