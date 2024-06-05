@@ -2127,7 +2127,7 @@ fn icmp_to_resolved_non_resource() -> impl Strategy<Value = Transition> {
 }
 
 fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
-    collection::hash_set(any::<IpAddr>(), 1..4)
+    collection::hash_set(any::<IpAddr>(), 1..6)
 }
 
 fn dns_query() -> impl Strategy<Value = Transition> {
