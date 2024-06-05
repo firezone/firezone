@@ -2329,6 +2329,8 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
         .iter()
         .zip(state.gateway_received_icmp_requests.iter())
     {
+        let _guard = tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
+
         let client_sent_request = &state
             .client_sent_icmp_requests
             .get(&(*seq, *identifier))
@@ -2489,6 +2491,8 @@ fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState)
     );
 
     for query_id in ref_state.expected_dns_handshakes.iter() {
+        let _guard = tracing::info_span!(target: "assertions", "dns", %query_id).entered();
+
         let client_sent_query = state
             .client_sent_dns_queries
             .get(query_id)
