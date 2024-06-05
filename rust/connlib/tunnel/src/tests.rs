@@ -2397,6 +2397,8 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
         .iter()
         .zip(state.gateway_received_icmp_requests.iter())
     {
+        let _guard = tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
+
         let client_sent_request = &state
             .client_sent_icmp_requests
             .get(&(*seq, *identifier))
@@ -2406,7 +2408,7 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             .get(&(*seq, *identifier))
             .expect("to have ICMP reply on client");
 
-        assert_correct_src_and_dst_ips(client_sent_request, client_received_reply, seq, identifier);
+        assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
         assert_eq!(
             gateway_received_request.source(),
@@ -2439,21 +2441,46 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
 fn assert_correct_src_and_dst_ips(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
-    seq: &IcmpSeq,
-    identifier: &IcmpIdentifier,
 ) {
     assert_eq!(
         client_sent_request.destination(),
         client_received_reply.source(),
-        "ICMP request destination == ICMP reply source"
+        "request destination == reply source"
     );
+
+    tracing::info!(target: "assertions", "✅ dst IP of request matches src IP of response: {}", client_sent_request.destination());
+
     assert_eq!(
         client_sent_request.source(),
         client_received_reply.destination(),
-        "ICMP request source == ICMP reply destination"
+        "request source == reply destination"
     );
 
-    tracing::info!(target: "assertions", "✅ src and dst IP for ICMP request ({seq},{identifier}) are correct");
+    tracing::info!(target: "assertions", "✅ src IP of request matches dst IP of response: {}", client_sent_request.source());
+}
+
+fn assert_correct_src_and_dst_udp_ports(
+    client_sent_request: &IpPacket<'_>,
+    client_received_reply: &IpPacket<'_>,
+) {
+    let client_sent_request = client_sent_request.as_udp().expect("packet to be UDP");
+    let client_received_reply = client_received_reply.as_udp().expect("packet to be UDP");
+
+    assert_eq!(
+        client_sent_request.get_destination(),
+        client_received_reply.get_source(),
+        "request destination == reply source"
+    );
+
+    tracing::info!(target: "assertions", "✅ dst port of request matches src port of response: {}", client_sent_request.get_destination());
+
+    assert_eq!(
+        client_sent_request.get_source(),
+        client_received_reply.get_destination(),
+        "request source == reply destination"
+    );
+
+    tracing::info!(target: "assertions", "✅ src port of request matches dst port of response: {}", client_sent_request.get_source());
 }
 
 fn assert_destination_is_cdir_resource(
@@ -2532,6 +2559,8 @@ fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState)
     );
 
     for query_id in ref_state.expected_dns_handshakes.iter() {
+        let _guard = tracing::info_span!(target: "assertions", "dns", %query_id).entered();
+
         let client_sent_query = state
             .client_sent_dns_queries
             .get(query_id)
@@ -2541,36 +2570,8 @@ fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState)
             .get(query_id)
             .expect("to have DNS response on client");
 
-        assert_eq!(
-            client_sent_query.destination(),
-            client_received_response.source(),
-            "DNS query dIP == DNS response sIP"
-        );
-        assert_eq!(
-            client_sent_query.source(),
-            client_received_response.destination(),
-            "DNS query sIP == DNS response dIP"
-        );
-
-        {
-            let client_sent_query = client_sent_query
-                .as_udp()
-                .expect("DNS query to be UDP packet");
-            let client_received_response = client_received_response
-                .as_udp()
-                .expect("DNS response to be UDP packet");
-
-            assert_eq!(
-                client_sent_query.get_destination(),
-                client_received_response.get_source(),
-                "DNS query dport == DNS response sport"
-            );
-            assert_eq!(
-                client_sent_query.get_source(),
-                client_received_response.get_destination(),
-                "DNS query sport == DNS response dport"
-            );
-        }
+        assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
+        assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
     }
 }
 
