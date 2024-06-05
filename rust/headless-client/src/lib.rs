@@ -422,7 +422,10 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     let mut server = platform::IpcServer::new().await?;
     loop {
         dns_control::deactivate()?;
-        let stream = server.next_client().await?;
+        let stream = server
+            .next_client()
+            .await
+            .context("Failed to wait for incoming IPC connection from a GUI")?;
         if let Err(error) = handle_ipc_client(stream).await {
             tracing::error!(?error, "Error while handling IPC client");
         }
@@ -580,8 +583,10 @@ pub fn debug_command_setup() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{Cli, CliIpcService, CmdIpc};
+    use anyhow::Context as _;
     use clap::Parser;
-    use std::path::PathBuf;
+    use std::{path::PathBuf, time::Duration};
+    use tokio::time::timeout;
     use url::Url;
 
     // Can't remember how Clap works sometimes
@@ -592,6 +597,7 @@ mod tests {
 
         let actual = Cli::parse_from([exe_name, "--api-url", "wss://api.firez.one"]);
         assert_eq!(actual.api_url, Url::parse("wss://api.firez.one")?);
+        assert!(!actual.check);
 
         let actual = Cli::parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]);
         assert!(actual.check);
@@ -609,6 +615,26 @@ mod tests {
         let actual = CliIpcService::parse_from([exe_name, "ipc-service"]);
         assert_eq!(actual.command, CmdIpc::IpcService);
 
+        Ok(())
+    }
+
+    /// Replicate #5143
+    ///
+    /// When the IPC service has disconnected from a GUI and loops over, sometimes
+    /// the named pipe is not ready. If our IPC code doesn't handle this right,
+    /// this test will fail.
+    #[tokio::test]
+    async fn ipc_server() -> anyhow::Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+
+        let mut server = crate::platform::IpcServer::new_for_test().await?;
+        for i in 0..5 {
+            if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
+                Err(err).with_context(|| {
+                    format!("Couldn't listen for next IPC client, iteration {i}")
+                })?;
+            }
+        }
         Ok(())
     }
 }
