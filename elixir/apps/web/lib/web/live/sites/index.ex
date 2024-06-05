@@ -112,7 +112,7 @@ defmodule Web.Sites.Index do
             </.peek>
           </:col>
 
-          <:col :let={group} label="online gateways">
+          <:col :let={group} label="online gateways" class="w-1/6">
             <% gateways = Enum.filter(group.gateways, & &1.online?)
             peek = %{count: length(gateways), items: Enum.take(gateways, 5)} %>
             <.peek peek={peek}>
