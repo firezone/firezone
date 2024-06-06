@@ -14,5 +14,12 @@ pub(crate) async fn connect_to_service() -> Result<IpcStream> {
             path.display()
         )
     })?;
+    let cred = stream.peer_cred()?;
+    tracing::info!(
+        uid = cred.uid(),
+        gid = cred.gid(),
+        pid = cred.pid(),
+        "Made an IPC connection"
+    );
     Ok(stream)
 }

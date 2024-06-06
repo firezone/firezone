@@ -37,6 +37,7 @@ use platform::Signals;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
 pub mod dns_control;
+pub mod heartbeat;
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
@@ -219,6 +220,8 @@ pub fn run_only_headless_client() -> Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
+    // TODO: This might have the same issue with fatal errors not getting logged
+    // as addressed for the IPC service in PR #5216
     let (layer, _handle) = cli
         .common
         .log_dir
@@ -347,6 +350,7 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
     debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+    rt.spawn(crate::heartbeat::heartbeat());
     let mut signals = Signals::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented

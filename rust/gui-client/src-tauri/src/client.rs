@@ -1,7 +1,10 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
+use connlib_client_shared::file_logger;
 use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
+use tracing::instrument;
+use tracing_subscriber::EnvFilter;
 
 mod about;
 mod auth;
@@ -17,6 +20,8 @@ mod settings;
 mod updates;
 mod uptime;
 mod welcome;
+
+use settings::AdvancedSettings;
 
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
@@ -57,6 +62,7 @@ pub(crate) enum Error {
 ///
 /// In total there are 4 subcommands (non-elevated, elevated GUI, crash handler, and deep link process)
 /// In steady state, the only processes running will be the GUI and the crash handler.
+#[instrument(skip_all)]
 pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = Cli::parse();
@@ -89,14 +95,17 @@ pub(crate) fn run() -> Result<()> {
                 anyhow::bail!("`smoke-test` must run as a normal user");
             }
 
-            let result = gui::run(cli);
+            let settings = settings::load_advanced_settings().unwrap_or_default();
+            // Don't fix the log filter for smoke tests
+            let _logger = start_logging(&settings.log_filter)?;
+            let result = gui::run(cli, settings);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(?error, "gui::run error");
+                tracing::error!(?error);
             }
             Ok(result?)
         }
@@ -106,21 +115,55 @@ pub(crate) fn run() -> Result<()> {
 /// `gui::run` but wrapped in `anyhow::Result`
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
+// Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
-    let result = gui::run(cli);
+    let mut settings = settings::load_advanced_settings().unwrap_or_default();
+    fix_log_filter(&mut settings)?;
+    let _logger = start_logging(&settings.log_filter)?;
+    let result = gui::run(cli, settings);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
-        tracing::error!(?error, "gui::run error");
+        tracing::error!(?error, error_msg = %error);
         show_error_dialog(error)?;
     }
 
     Ok(result?)
 }
 
+/// Parse the log filter from settings, showing an error and fixing it if needed
+fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
+    if EnvFilter::try_new(&settings.log_filter).is_ok() {
+        return Ok(());
+    }
+    settings.log_filter = AdvancedSettings::default().log_filter;
+
+    native_dialog::MessageDialog::new()
+        .set_title("Log filter error")
+        .set_text("The custom log filter is not parsable. Using the default log filter.")
+        .set_type(native_dialog::MessageType::Error)
+        .show_alert()
+        .context("Can't show log filter error dialog")?;
+
+    Ok(())
+}
+
+/// Starts logging
+///
+/// Don't drop the log handle or logging will stop.
+fn start_logging(directives: &str) -> Result<file_logger::Handle> {
+    let logging_handles = logging::setup(directives)?;
+    tracing::info!(?GIT_VERSION, "`gui-client` started logging");
+
+    Ok(logging_handles.logger)
+}
+
+#[instrument(skip_all)]
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
-    let error_msg = match error {
+    // This message gets shown to users in the GUI and could be localized, unlike
+    // messages in the log which only need to be used for `git grep`.
+    let user_friendly_error_msg = match error {
         // TODO: Update this URL
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
         gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
@@ -129,10 +172,11 @@ fn show_error_dialog(error: &gui::Error) -> Result<()> {
         gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         gui::Error::Other(error) => error.to_string(),
     };
+    tracing::error!(?user_friendly_error_msg);
 
     native_dialog::MessageDialog::new()
         .set_title("Firezone Error")
-        .set_text(&error_msg)
+        .set_text(&user_friendly_error_msg)
         .set_type(native_dialog::MessageType::Error)
         .show_alert()?;
     Ok(())

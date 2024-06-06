@@ -16,6 +16,7 @@ use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
+use tracing::instrument;
 use url::Url;
 
 use ControllerRequest as Req;
@@ -71,38 +72,11 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
-    let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
-
-    // If the log filter is unparsable, show an error and use the default
-    // Fixes <https://github.com/firezone/firezone/issues/3452>
-    let advanced_settings =
-        match tracing_subscriber::EnvFilter::from_str(&advanced_settings.log_filter) {
-            Ok(_) => advanced_settings,
-            Err(_) => {
-                native_dialog::MessageDialog::new()
-                    .set_title("Log filter error")
-                    .set_text(
-                        "The custom log filter is not parsable. Using the default log filter.",
-                    )
-                    .set_type(native_dialog::MessageType::Error)
-                    .show_alert()
-                    .context("Can't show log filter error dialog")?;
-
-                AdvancedSettings {
-                    log_filter: AdvancedSettings::default().log_filter,
-                    ..advanced_settings
-                }
-            }
-        };
-
-    // Start logging
-    // TODO: Try using an Arc to keep the file logger alive even if Tauri bails out
-    // That may fix <https://github.com/firezone/firezone/issues/3567>
-    let logging_handles = client::logging::setup(&advanced_settings.log_filter)?;
-    tracing::info!("started log");
-    tracing::info!("GIT_VERSION = {}", crate::client::GIT_VERSION);
-
+#[instrument(skip_all)]
+pub(crate) fn run(
+    cli: client::Cli,
+    advanced_settings: settings::AdvancedSettings,
+) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
         Ok(x) => Some(x),
@@ -117,6 +91,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
+    rt.spawn(firezone_headless_client::heartbeat::heartbeat());
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
 
@@ -127,7 +102,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
 
     let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
 
-    tracing::debug!("Setting up Tauri app instance...");
+    tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
@@ -171,7 +146,7 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
             }
         })
         .setup(move |app| {
-            tracing::debug!("Entered Tauri's `setup`");
+            tracing::info!("Entered Tauri's `setup`");
 
             let setup_inner = move || {
                 // Check for updates
@@ -237,7 +212,6 @@ pub(crate) fn run(cli: client::Cli) -> Result<(), Error> {
                             app_handle_2,
                             ctlr_tx,
                             ctlr_rx,
-                            logging_handles,
                             advanced_settings,
                         )
                         .await
@@ -460,8 +434,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
-    /// Must be kept alive so the logger will keep running
-    _logging_handles: client::logging::Handles,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
@@ -725,16 +697,15 @@ async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
-    logging_handles: client::logging::Handles,
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
+    tracing::info!("Entered `run_controller`");
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
         auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
-        _logging_handles: logging_handles,
         notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
@@ -808,7 +779,10 @@ async fn run_controller(
                     },
                     Req::Fail(Failure::Error) => bail!("Test error"),
                     Req::Fail(Failure::Panic) => panic!("Test panic"),
-                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => break,
+                    Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
+                        tracing::info!("User clicked Quit in the menu");
+                        break
+                    }
                     req => if let Err(error) = controller.handle_request(req).await {
                         tracing::error!(?error, "Failed to handle a ControllerRequest");
                     }

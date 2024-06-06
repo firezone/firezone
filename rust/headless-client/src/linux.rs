@@ -105,7 +105,10 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(crate::ipc_listen())?;
+    rt.spawn(crate::heartbeat::heartbeat());
+    if let Err(error) = rt.block_on(crate::ipc_listen()) {
+        tracing::error!(?error, "`ipc_listen` failed");
+    }
     Ok(())
 }
 
@@ -156,14 +159,11 @@ impl IpcServer {
         tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;
-        // I'm not sure if we can enforce group membership here - Docker
-        // might just be enforcing it with filesystem permissions.
-        // Checking the secondary groups of another user looks complicated.
         tracing::info!(
             uid = cred.uid(),
             gid = cred.gid(),
             pid = cred.pid(),
-            "Got an IPC connection"
+            "Accepted an IPC connection"
         );
         Ok(stream)
     }

@@ -10,6 +10,7 @@ use connlib_client_shared::file_logger;
 use connlib_shared::BUNDLE_ID;
 use std::{
     ffi::{c_void, OsString},
+    os::windows::io::AsRawHandle,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -17,7 +18,9 @@ use std::{
 use tokio::net::windows::named_pipe;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
-use windows::Win32::Security as WinSec;
+use windows::Win32::{
+    Foundation::HANDLE, Security as WinSec, System::Pipes::GetNamedPipeClientProcessId,
+};
 use windows_service::{
     service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
@@ -78,30 +81,33 @@ pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
 fn windows_service_run(arguments: Vec<OsString>) {
-    if let Err(error) = fallible_windows_service_run(arguments) {
-        tracing::error!(?error, "fallible_windows_service_run returned an error");
+    let log_path = crate::known_dirs::ipc_service_logs()
+        .expect("Should be able to compute IPC service logs dir");
+    std::fs::create_dir_all(&log_path).expect("We should have permissions to create our log dir");
+    let (layer, handle) = file_logger::layer(&log_path);
+    let filter = EnvFilter::from_str(SERVICE_RUST_LOG)
+        .expect("Hard-coded log filter should always be parsable");
+    let subscriber = Registry::default().with(layer.with_filter(filter));
+    set_global_default(subscriber).expect("`set_global_default` should always work)");
+    tracing::info!(git_version = crate::GIT_VERSION);
+    if let Err(error) = fallible_windows_service_run(arguments, handle) {
+        tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }
 }
 
 // Most of the Windows-specific service stuff should go here
 //
 // The arguments don't seem to match the ones passed to the main thread at all.
-fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
-    let log_path =
-        crate::known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?;
-    std::fs::create_dir_all(&log_path)?;
-    let (layer, _handle) = file_logger::layer(&log_path);
-    let filter = EnvFilter::from_str(SERVICE_RUST_LOG)?;
-    let subscriber = Registry::default().with(layer.with_filter(filter));
-    set_global_default(subscriber)?;
-    tracing::info!(git_version = crate::GIT_VERSION);
+//
+// If Windows stops us gracefully, this function may never return.
+fn fallible_windows_service_run(
+    arguments: Vec<OsString>,
+    logging_handle: file_logger::Handle,
+) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
-
-    // Fixes <https://github.com/firezone/firezone/issues/4899>,
-    // DNS rules persisting after reboot
-    crate::dns_control::deactivate().ok();
+    rt.spawn(crate::heartbeat::heartbeat());
 
     let ipc_task = rt.spawn(super::ipc_listen());
     let ipc_task_ah = ipc_task.abort_handle();
@@ -111,8 +117,12 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
         match control_event {
             // TODO
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-            ServiceControl::Stop => {
-                tracing::info!("Got stop signal from service controller");
+            ServiceControl::PowerEvent(event) => {
+                tracing::info!(?event, "Power event");
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Shutdown | ServiceControl::Stop => {
+                tracing::info!(?control_event, "Got stop signal from service controller");
                 ipc_task_ah.abort();
                 ServiceControlHandlerResult::NoError
             }
@@ -125,12 +135,13 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             | ServiceControl::ParamChange
             | ServiceControl::Pause
             | ServiceControl::Preshutdown
-            | ServiceControl::Shutdown
             | ServiceControl::HardwareProfileChange(_)
-            | ServiceControl::PowerEvent(_)
             | ServiceControl::SessionChange(_)
             | ServiceControl::TimeChange
-            | ServiceControl::TriggerEvent => ServiceControlHandlerResult::NotImplemented,
+            | ServiceControl::TriggerEvent => {
+                tracing::warn!(?control_event, "Unhandled service control event");
+                ServiceControlHandlerResult::NotImplemented
+            }
             _ => ServiceControlHandlerResult::NotImplemented,
         }
     };
@@ -140,7 +151,9 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Running,
-        controls_accepted: ServiceControlAccept::STOP,
+        controls_accepted: ServiceControlAccept::POWER_EVENT
+            | ServiceControlAccept::SHUTDOWN
+            | ServiceControlAccept::STOP,
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
         wait_hint: Duration::default(),
@@ -152,25 +165,38 @@ fn fallible_windows_service_run(arguments: Vec<OsString>) -> Result<()> {
             // We cancelled because Windows asked us to shut down.
             Ok(())
         }
-        Err(join_error) => {
-            // The IPC task may have panicked
-            Err(join_error.into())
-        }
-        Ok(Err(error)) => Err(error.context("ipc_listen failed")),
+        Err(join_error) => Err(anyhow::Error::from(join_error).context("`ipc_listen` panicked")),
+        Ok(Err(error)) => Err(error.context("`ipc_listen` threw an error")),
         Ok(Ok(impossible)) => match impossible {},
     };
+    if let Err(error) = &result {
+        tracing::error!(?error, "`ipc_listen` failed");
+    }
+
+    // Drop the logging handle so it flushes the logs before we let Windows kill our process.
+    // There is no obvious and elegant way to do this, since the logging and `ServiceState`
+    // changes are interleaved, not nested:
+    // - Start logging
+    // - ServiceState::Running
+    // - Stop logging
+    // - ServiceState::Stopped
+    std::mem::drop(logging_handle);
 
     // Tell Windows that we're stopping
-    status_handle.set_service_status(ServiceStatus {
-        service_type: SERVICE_TYPE,
-        current_state: ServiceState::Stopped,
-        controls_accepted: ServiceControlAccept::empty(),
-        exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
-        checkpoint: 0,
-        wait_hint: Duration::default(),
-        process_id: None,
-    })?;
-    result
+    // Per Windows docs, this will cause Windows to kill our process eventually.
+    status_handle
+        .set_service_status(ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::Stopped,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        })
+        .expect("Should be able to tell Windows we're stopping");
+    // Generally unreachable
+    Ok(())
 }
 
 pub(crate) struct IpcServer {
@@ -219,11 +245,21 @@ impl IpcServer {
             .bind_to_pipe()
             .await
             .context("Couldn't bind to named pipe")?;
-        tracing::info!("Listening for GUI to connect over IPC...");
+        tracing::info!(
+            server_pid = std::process::id(),
+            "Listening for GUI to connect over IPC..."
+        );
         server
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
+        let handle = HANDLE(server.as_raw_handle() as isize);
+        let mut client_pid: u32 = 0;
+        // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
+        // from Tokio, so it should be valid.
+        unsafe { GetNamedPipeClientProcessId(handle, &mut client_pid) }
+            .context("Couldn't get PID of named pipe client")?;
+        tracing::info!(?client_pid, "Accepted IPC connection");
         Ok(server)
     }
 
