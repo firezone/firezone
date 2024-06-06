@@ -20,6 +20,7 @@ defmodule Web.Policies.New do
         resource_id: params["resource_id"],
         actor_group_id: params["actor_group_id"],
         page_title: "New Policy",
+        timezone: Map.get(socket.private.connect_params, "timezone", "UTC"),
         form: form
       )
 
@@ -88,22 +89,22 @@ defmodule Web.Policies.New do
                   disabled={not is_nil(@resource_id)}
                   required
                 />
-              </fieldset>
-
-              <.condition_form form={@form} providers={@providers} />
-
-              <div>
-                <h2 class="mb-4 text-xl text-neutral-900">
-                  Description
-                </h2>
 
                 <.input
                   field={@form[:description]}
+                  label="Description"
                   type="textarea"
                   placeholder="Optionally, enter a reason for creating a policy here."
                   phx-debounce="300"
                 />
-              </div>
+              </fieldset>
+
+              <.condition_form
+                form={@form}
+                account={@account}
+                timezone={@timezone}
+                providers={@providers}
+              />
             </div>
 
             <.submit_button phx-disable-with="Creating Policy..." class="w-full">
@@ -151,35 +152,6 @@ defmodule Web.Policies.New do
       Map.put(attrs, "resource_id", resource_id)
     else
       attrs
-    end
-  end
-
-  defp map_condition_params(attrs) do
-    Map.update(attrs, "conditions", %{}, fn conditions ->
-      for {property, condition_attrs} <- conditions,
-          condition_attrs = map_condition_values(condition_attrs),
-          into: %{} do
-        {property, condition_attrs}
-      end
-    end)
-  end
-
-  defp map_condition_values(%{"operator" => "is_in_day_of_week_time_ranges"} = condition_attrs) do
-    Map.update(condition_attrs, "values", [], fn values ->
-      values
-      |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
-      |> Enum.map(fn {dow, time_ranges} ->
-        "#{dow}/#{time_ranges}"
-      end)
-    end)
-  end
-
-  defp map_condition_values(%{"values" => values} = condition_attrs) do
-    values
-    |> Enum.reject(fn value -> is_nil(value) or value == "" end)
-    |> case do
-      [] -> nil
-      _other -> condition_attrs
     end
   end
 end

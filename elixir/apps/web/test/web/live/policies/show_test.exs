@@ -19,13 +19,13 @@ defmodule Web.Live.Policies.ShowTest do
             property: :current_utc_datetime,
             operator: :is_in_day_of_week_time_ranges,
             values: [
-              "M/true",
-              "T/",
-              "W/true",
-              "R/",
-              "F/",
-              "S/10:00:00-15:00:00",
-              "U/23:00:00-23:59:59"
+              "M/true/UTC",
+              "T//UTC",
+              "W/true/UTC",
+              "R//UTC",
+              "F//UTC",
+              "S/10:00:00-15:00:00/UTC",
+              "U/23:00:00-23:59:59/UTC"
             ]
           },
           %{
@@ -159,8 +159,8 @@ defmodule Web.Live.Policies.ShowTest do
     assert table["conditions"] =~ "This policy can be used on"
     assert table["conditions"] =~ "Mondays"
     assert table["conditions"] =~ "Wednesdays"
-    assert table["conditions"] =~ "Saturdays (10:00:00 - 15:00:00)"
-    assert table["conditions"] =~ "Sundays (23:00:00 - 23:59:59)"
+    assert table["conditions"] =~ "Saturdays (10:00:00 - 15:00:00 UTC)"
+    assert table["conditions"] =~ "Sundays (23:00:00 - 23:59:59 UTC)"
     assert table["conditions"] =~ "from United States of America"
     assert table["conditions"] =~ "from IP addresses that are"
     assert table["conditions"] =~ "not within"

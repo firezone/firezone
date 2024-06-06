@@ -163,16 +163,16 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       # Friday
       datetime = ~U[2021-01-01 10:00:00Z]
 
-      dow_time_ranges = ["F/10:00:00-10:00:00"]
+      dow_time_ranges = ["F/10:00:00-10:00:00/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
-      dow_time_ranges = ["F/10:00:00-11:00:00"]
+      dow_time_ranges = ["F/10:00:00-11:00:00/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
-      dow_time_ranges = ["F/09:00:00-10:00:00"]
+      dow_time_ranges = ["F/09:00:00-10:00:00/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
-      dow_time_ranges = ["F/true"]
+      dow_time_ranges = ["F/true/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
     end
 
@@ -180,111 +180,204 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       # Friday
       datetime = ~U[2021-01-01 10:00:00Z]
 
-      dow_time_ranges = ["F/09:00:00-09:59:59"]
+      dow_time_ranges = ["F/09:00:00-09:59:59/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
 
-      dow_time_ranges = ["F/10:00:01-11:00:00"]
+      dow_time_ranges = ["F/10:00:01-11:00:00/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
 
-      dow_time_ranges = ["M/09:00:00-11:00:00"]
+      dow_time_ranges = ["M/09:00:00-11:00:00/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
 
-      dow_time_ranges = ["U/true"]
+      dow_time_ranges = ["U/true/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+    end
+
+    test "handles different timezones" do
+      # Friday in UTC, Thursday in US/Pacific (UTC-8)
+      datetime = ~U[2021-01-01 01:00:00Z]
+
+      dow_time_ranges = ["R/true/US/Pacific"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
+
+      dow_time_ranges = ["F/true/UTC"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
+
+      dow_time_ranges = ["R/15:00:00-19:00:00/US/Pacific"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
+
+      dow_time_ranges = ["R/00:00:00-02:00:00/US/Pacific"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+
+      dow_time_ranges = ["F/02:00:00-04:00:00/Europe/Kyiv"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
     end
 
     test "returns false when ranges are invalid" do
       datetime = ~U[2021-01-01 10:00:00Z]
 
-      dow_time_ranges = ["F/10:00:00-09:59:59"]
+      dow_time_ranges = ["F/10:00:00-09:59:59/UTC"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
 
-      dow_time_ranges = ["F/11:00:00-12:00:00-"]
+      dow_time_ranges = ["F/11:00:00-12:00:00-/US/Pacific"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
 
-      dow_time_ranges = ["F/false"]
+      dow_time_ranges = ["F/false/UTC"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+
+      dow_time_ranges = ["F/10-11"]
+      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+
+      dow_time_ranges = ["F/10-11/"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
     end
   end
 
   describe "parse_days_of_week_time_ranges/1" do
     test "parses list of days of the week time ranges" do
-      assert parse_days_of_week_time_ranges(["M/true"]) ==
-               {:ok, %{"M" => true}}
+      assert parse_days_of_week_time_ranges(["M/true/UTC"]) ==
+               {:ok, %{"M" => [{~T[00:00:00], ~T[23:59:59], "UTC"}]}}
 
-      assert parse_days_of_week_time_ranges(["M/true", "W/19:00:00-22:00:00"]) ==
-               {:ok, %{"M" => true, "W" => [{~T[19:00:00], ~T[22:00:00]}]}}
+      assert parse_days_of_week_time_ranges(["M/true/UTC", "W/19:00:00-22:00:00,22-23/US/Pacific"]) ==
+               {:ok,
+                %{
+                  "M" => [
+                    {~T[00:00:00], ~T[23:59:59], "UTC"}
+                  ],
+                  "W" => [
+                    {~T[19:00:00], ~T[22:00:00], "US/Pacific"},
+                    {~T[22:00:00], ~T[23:00:00], "US/Pacific"}
+                  ]
+                }}
     end
 
     test "merges list of days of the week time ranges" do
-      assert parse_days_of_week_time_ranges(["M/true,10:00:00-11:00:00", "W/19:00:00-22:00:00"]) ==
-               {:ok, %{"M" => true, "W" => [{~T[19:00:00], ~T[22:00:00]}]}}
-
       assert parse_days_of_week_time_ranges([
-               "M/true",
-               "W/19:00:00-22:00:00",
-               "M/10:00:00-11:00:00"
-             ]) == {:ok, %{"M" => true, "W" => [{~T[19:00:00], ~T[22:00:00]}]}}
-
-      assert parse_days_of_week_time_ranges([
-               "M/09:00:00-10:00:00",
-               "W/19:00:00-22:00:00",
-               "M/10:00:00-11:00:00"
+               "M/true,10:00:00-11:00:00/UTC",
+               "W/19:00:00-22:00:00/US/Pacific"
              ]) ==
                {:ok,
                 %{
-                  "M" => [{~T[09:00:00], ~T[10:00:00]}, {~T[10:00:00], ~T[11:00:00]}],
-                  "W" => [{~T[19:00:00], ~T[22:00:00]}]
+                  "M" => [
+                    {~T[00:00:00], ~T[23:59:59], "UTC"},
+                    {~T[10:00:00], ~T[11:00:00], "UTC"}
+                  ],
+                  "W" => [
+                    {~T[19:00:00], ~T[22:00:00], "US/Pacific"}
+                  ]
                 }}
+
+      assert parse_days_of_week_time_ranges([
+               "M/true/UTC",
+               "W/19:00:00-22:00:00/UTC",
+               "M/10:00:00-11:00:00/UTC"
+             ]) ==
+               {:ok,
+                %{
+                  "M" => [
+                    {~T[00:00:00], ~T[23:59:59], "UTC"},
+                    {~T[10:00:00], ~T[11:00:00], "UTC"}
+                  ],
+                  "W" => [
+                    {~T[19:00:00], ~T[22:00:00], "UTC"}
+                  ]
+                }}
+
+      assert parse_days_of_week_time_ranges([
+               "M/22:00:00-22:30/UTC",
+               "M/19-22:00:00/UTC",
+               "M/true/UTC"
+             ]) ==
+               {:ok,
+                %{
+                  "M" => [
+                    {~T[22:00:00], ~T[22:30:00], "UTC"},
+                    {~T[19:00:00], ~T[22:00:00], "UTC"},
+                    {~T[00:00:00], ~T[23:59:59], "UTC"}
+                  ]
+                }}
+
+      assert parse_days_of_week_time_ranges([
+               "M/09:00:00-10:00:00/UTC",
+               "W/19:00:00-22:00:00/UTC",
+               "M/10:00:00-11:00:00/UTC"
+             ]) ==
+               {:ok,
+                %{
+                  "M" => [
+                    {~T[09:00:00], ~T[10:00:00], "UTC"},
+                    {~T[10:00:00], ~T[11:00:00], "UTC"}
+                  ],
+                  "W" => [
+                    {~T[19:00:00], ~T[22:00:00], "UTC"}
+                  ]
+                }}
+    end
+
+    test "returns error on invalid timezone" do
+      assert parse_days_of_week_time_ranges(["M/true/"]) ==
+               {:error, "timezone is required"}
+
+      assert parse_days_of_week_time_ranges(["M/true/invalid"]) ==
+               {:error, "invalid timezone"}
     end
   end
 
   describe "parse_day_of_week_time_ranges/1" do
     test "parses 7 days of the week" do
       for day <- ~w[M T W R F S U] do
-        assert {:ok, {^day, [true]}} = parse_day_of_week_time_ranges("#{day}/true")
+        assert {:ok,
+                {^day,
+                 [
+                   {~T[00:00:00], ~T[23:59:59], "Europe/Kyiv"}
+                 ]}} = parse_day_of_week_time_ranges("#{day}/true/Europe/Kyiv")
       end
     end
 
     test "parses day of week time ranges" do
-      assert parse_day_of_week_time_ranges("M/08:00:00-17:00:00,22:00:00-23:59:59") ==
-               {:ok, {"M", [{~T[08:00:00], ~T[17:00:00]}, {~T[22:00:00], ~T[23:59:59]}]}}
+      assert parse_day_of_week_time_ranges("M/08:00:00-17:00:00,22:00:00-23:59:59/America/Merida") ==
+               {:ok,
+                {"M",
+                 [
+                   {~T[08:00:00], ~T[17:00:00], "America/Merida"},
+                   {~T[22:00:00], ~T[23:59:59], "America/Merida"}
+                 ]}}
 
-      assert parse_day_of_week_time_ranges("U/08:00:00-17:00:00") ==
-               {:ok, {"U", [{~T[08:00:00], ~T[17:00:00]}]}}
+      assert parse_day_of_week_time_ranges("U/08:00:00-17:00:00/UTC") ==
+               {:ok, {"U", [{~T[08:00:00], ~T[17:00:00], "UTC"}]}}
 
-      assert parse_day_of_week_time_ranges("U/08:00-17:00:00") ==
-               {:ok, {"U", [{~T[08:00:00], ~T[17:00:00]}]}}
+      assert parse_day_of_week_time_ranges("U/08:00-17:00:00/US/Pacific") ==
+               {:ok, {"U", [{~T[08:00:00], ~T[17:00:00], "US/Pacific"}]}}
     end
 
     test "returns error when invalid day of week is provided" do
-      assert parse_day_of_week_time_ranges("X/08:00:00-17:00:00") ==
+      assert parse_day_of_week_time_ranges("X/08:00:00-17:00:00/UTC") ==
                {:error, "invalid day of the week, must be one of M, T, W, R, F, S, U"}
     end
 
     test "returns error when invalid time range is provided" do
-      assert parse_day_of_week_time_ranges("M/08:00:00-17:00:00-") ==
+      assert parse_day_of_week_time_ranges("M/08:00:00-17:00:00-/UTC") ==
                {:error, "invalid time range: 08:00:00-17:00:00-"}
     end
 
     test "returns error when invalid time is provided" do
-      assert parse_day_of_week_time_ranges("M/25-17:00:00") ==
+      assert parse_day_of_week_time_ranges("M/25-17:00:00/UTC") ==
                {:error, "invalid time range: 25-17:00:00"}
 
-      assert parse_day_of_week_time_ranges("M/08:00:00-25") ==
+      assert parse_day_of_week_time_ranges("M/08:00:00-25/UTC") ==
                {:error, "invalid time range: 08:00:00-25"}
     end
 
     test "returns error when start of the time range is greater than the end of it" do
       assert {:error, "start of the time range must be less than or equal to the end of it"} =
-               parse_day_of_week_time_ranges("M/17:00:00-08:00:00")
+               parse_day_of_week_time_ranges("M/17:00:00-08:00:00/UTC")
     end
   end
 
   describe "parse_time_ranges/1" do
     test "parses time ranges" do
       assert parse_time_ranges("true") ==
-               {:ok, [true]}
+               {:ok, [{~T[00:00:00], ~T[23:59:59]}]}
 
       assert parse_time_ranges("08:00:00-17:00:00") ==
                {:ok, [{~T[08:00:00], ~T[17:00:00]}]}
@@ -342,7 +435,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
                {:ok, {~T[08:00:00], ~T[17:00:00]}}
 
       assert parse_time_range("true") ==
-               {:ok, true}
+               {:ok, {~T[00:00:00], ~T[23:59:59]}}
     end
 
     test "returns error when invalid time range is provided" do

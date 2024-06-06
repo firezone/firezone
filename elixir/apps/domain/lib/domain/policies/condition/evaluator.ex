@@ -92,82 +92,91 @@ defmodule Domain.Policies.Condition.Evaluator do
     |> parse_days_of_week_time_ranges()
     |> case do
       {:ok, dow_time_ranges} ->
-        today = DateTime.to_date(datetime)
-        time = DateTime.to_time(datetime)
-        day_of_the_week = Enum.at(@days_of_week, Date.day_of_week(today) - 1)
-
-        case Map.fetch(dow_time_ranges, day_of_the_week) do
-          {:ok, true} ->
-            true
-
-          {:ok, time_ranges} ->
-            Enum.any?(time_ranges, fn {start_time, end_time} ->
-              Time.compare(start_time, time) != :gt and Time.compare(time, end_time) != :gt
-            end)
-
-          :error ->
-            false
-        end
+        Enum.any?(dow_time_ranges, fn {day, time_ranges} ->
+          datetime_in_time_ranges?(datetime, day, time_ranges)
+        end)
 
       {:error, _reason} ->
         false
     end
   end
 
+  defp datetime_in_time_ranges?(datetime, day_of_the_week, time_ranges) do
+    Enum.any?(time_ranges, fn {start_time, end_time, timezone} ->
+      {:ok, datetime} = DateTime.shift_zone(datetime, timezone, Tzdata.TimeZoneDatabase)
+      date = DateTime.to_date(datetime)
+      time = DateTime.to_time(datetime)
+
+      if Enum.at(@days_of_week, Date.day_of_week(date) - 1) == day_of_the_week do
+        Time.compare(start_time, time) != :gt and Time.compare(time, end_time) != :gt
+      else
+        false
+      end
+    end)
+  end
+
   def parse_days_of_week_time_ranges(dows_time_ranges) do
-    Enum.reduce(dows_time_ranges, {:ok, %{}}, fn dow_time_ranges, {:ok, acc} ->
+    Enum.reduce_while(dows_time_ranges, {:ok, %{}}, fn dow_time_ranges, {:ok, acc} ->
       case parse_day_of_week_time_ranges(dow_time_ranges) do
         {:ok, {day, dow_time_ranges}} ->
           {_current_value, acc} =
-            Map.get_and_update(acc, day, fn current_value ->
-              {current_value, merge_time_ranges(current_value || [], dow_time_ranges)}
+            Map.get_and_update(acc, day, fn
+              nil -> {nil, dow_time_ranges}
+              current_value -> {current_value, current_value ++ dow_time_ranges}
             end)
 
-          {:ok, acc}
+          {:cont, {:ok, acc}}
 
         {:error, reason} ->
-          {:error, reason}
+          {:halt, {:error, reason}}
       end
     end)
   end
 
   def parse_day_of_week_time_ranges(dow_time_ranges) do
-    String.split(dow_time_ranges, "/", parts: 2)
-    |> case do
-      [day, time_ranges] when day in @days_of_week ->
-        case parse_time_ranges(time_ranges) do
-          {:ok, time_ranges} ->
-            {:ok, {day, time_ranges}}
-
-          {:error, reason} ->
-            {:error, reason}
+    case String.split(dow_time_ranges, "/", parts: 3) do
+      [day, time_ranges, timezone] when day in @days_of_week ->
+        with {:ok, time_ranges} <- parse_time_ranges(time_ranges, timezone) do
+          {:ok, {day, time_ranges}}
         end
+
+      [_day, _time_ranges] ->
+        {:error, "timezone is required"}
 
       _ ->
         {:error, "invalid day of the week, must be one of #{Enum.join(@days_of_week, ", ")}"}
     end
   end
 
-  defp merge_time_ranges(true, _time_ranges), do: true
-  # defp merge_time_ranges(_time_ranges, true), do: true
+  def parse_time_ranges(time_ranges, timezone) do
+    with true <- Tzdata.zone_exists?(timezone),
+         {:ok, time_ranges} <- parse_time_ranges(time_ranges) do
+      time_ranges =
+        Enum.map(time_ranges, fn {start_time, end_time} ->
+          {start_time, end_time, timezone}
+        end)
 
-  defp merge_time_ranges(left_time_ranges, right_time_ranges) do
-    cond do
-      true in left_time_ranges ->
-        true
+      {:ok, time_ranges}
+    else
+      false ->
+        {:error, "invalid timezone"}
 
-      true in right_time_ranges ->
-        true
-
-      true ->
-        left_time_ranges ++ right_time_ranges
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  def parse_time_ranges(nil) do
+    {:ok, []}
   end
 
   def parse_time_ranges(time_ranges) do
     String.split(time_ranges, ",", trim: true)
     |> Enum.reduce_while({:ok, []}, fn time_range, {:ok, acc} ->
-      case parse_time_range(time_range) do
+      time_range
+      |> String.trim()
+      |> parse_time_range()
+      |> case do
         {:ok, time} ->
           {:cont, {:ok, [time | acc]}}
 
@@ -185,11 +194,11 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def parse_time_range("true") do
-    {:ok, true}
+    {:ok, {~T[00:00:00], ~T[23:59:59]}}
   end
 
   def parse_time_range(time_range) do
-    with [start_time, end_time] <- String.split(time_range, "-", parts: 2),
+    with [start_time, end_time] <- String.split(time_range, "-", parts: 2, trim: true),
          {:ok, start_time} <- parse_time(start_time),
          {:ok, end_time} <- parse_time(end_time),
          true <- Time.compare(start_time, end_time) != :gt do

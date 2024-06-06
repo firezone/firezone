@@ -62,6 +62,7 @@ defmodule Web.Live.Policies.NewTest do
              "policy[actor_group_id]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
              "policy[conditions][current_utc_datetime][values][F]",
              "policy[conditions][current_utc_datetime][values][M]",
              "policy[conditions][current_utc_datetime][values][R]",
@@ -100,6 +101,7 @@ defmodule Web.Live.Policies.NewTest do
              "policy[actor_group_id]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
              "policy[conditions][current_utc_datetime][values][F]",
              "policy[conditions][current_utc_datetime][values][M]",
              "policy[conditions][current_utc_datetime][values][R]",
@@ -149,6 +151,7 @@ defmodule Web.Live.Policies.NewTest do
              "policy[actor_group_id]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
              "policy[conditions][current_utc_datetime][values][F]",
              "policy[conditions][current_utc_datetime][values][M]",
              "policy[conditions][current_utc_datetime][values][R]",
@@ -283,6 +286,7 @@ defmodule Web.Live.Policies.NewTest do
         current_utc_datetime: %{
           property: "current_utc_datetime",
           operator: "is_in_day_of_week_time_ranges",
+          timezone: "US/Pacific",
           values: %{
             M: "true",
             T: "",
@@ -328,13 +332,13 @@ defmodule Web.Live.Policies.NewTest do
                property: :current_utc_datetime,
                operator: :is_in_day_of_week_time_ranges,
                values: [
-                 "M/true",
-                 "T/",
-                 "W/true",
-                 "R/",
-                 "F/",
-                 "S/10:00:00-15:00:00",
-                 "U/23:00:00-23:59:59"
+                 "M/true/US/Pacific",
+                 "T//US/Pacific",
+                 "W/true/US/Pacific",
+                 "R//US/Pacific",
+                 "F//US/Pacific",
+                 "S/10:00:00-15:00:00/US/Pacific",
+                 "U/23:00:00-23:59:59/US/Pacific"
                ]
              },
              %Domain.Policies.Condition{

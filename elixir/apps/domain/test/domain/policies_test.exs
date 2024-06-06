@@ -261,9 +261,9 @@ defmodule Domain.PoliciesTest do
             property: :current_utc_datetime,
             operator: :is_in_day_of_week_time_ranges,
             values: [
-              "M/13:00:00-15:00:00,19:00:00-22:00:00",
-              "F/08:00:00-20:00:00",
-              "S/true"
+              "M/13:00:00-15:00:00,19:00:00-22:00:00/Europe/Kyiv",
+              "F/08:00:00-20:00:00/UTC",
+              "S/true/US/Pacific"
             ]
           }
         ]
@@ -291,9 +291,9 @@ defmodule Domain.PoliciesTest do
                  property: :current_utc_datetime,
                  operator: :is_in_day_of_week_time_ranges,
                  values: [
-                   "M/13:00:00-15:00:00,19:00:00-22:00:00",
-                   "F/08:00:00-20:00:00",
-                   "S/true"
+                   "M/13:00:00-15:00:00,19:00:00-22:00:00/Europe/Kyiv",
+                   "F/08:00:00-20:00:00/UTC",
+                   "S/true/US/Pacific"
                  ]
                }
              ]

@@ -18,6 +18,44 @@ defmodule Web.Policies.Components do
     ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
   end
 
+  def map_condition_params(attrs) do
+    Map.update(attrs, "conditions", %{}, fn conditions ->
+      for {property, condition_attrs} <- conditions,
+          condition_attrs = map_condition_values(condition_attrs),
+          into: %{} do
+        {property, condition_attrs}
+      end
+    end)
+  end
+
+  defp map_condition_values(
+         %{
+           "operator" => "is_in_day_of_week_time_ranges",
+           "timezone" => timezone
+         } = condition_attrs
+       ) do
+    Map.update(condition_attrs, "values", [], fn values ->
+      values
+      |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
+      |> Enum.map(fn {dow, time_ranges} ->
+        "#{dow}/#{time_ranges}/#{timezone}"
+      end)
+    end)
+  end
+
+  defp map_condition_values(%{"values" => values} = condition_attrs) do
+    values
+    |> Enum.reject(fn value -> is_nil(value) or value == "" end)
+    |> case do
+      [] -> nil
+      _other -> condition_attrs
+    end
+  end
+
+  defp map_condition_values(_condition_attrs) do
+    nil
+  end
+
   def conditions(assigns) do
     ~H"""
     <span :if={@conditions == []} class="text-neutral-500">
@@ -93,12 +131,22 @@ defmodule Web.Policies.Components do
 
   defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
-      assign_new(assigns, :ranges, fn ->
+      assign_new(assigns, :tz_time_ranges_by_dow, fn ->
         {:ok, ranges} = Policies.Condition.Evaluator.parse_days_of_week_time_ranges(values)
 
         ranges
         |> Enum.reject(fn {_dow, time_ranges} -> time_ranges == [] end)
-        |> Enum.sort_by(fn {dow, _time_ranges} -> day_of_week_index(dow) end)
+        |> Enum.map(fn {dow, time_ranges} ->
+          time_ranges_by_timezone =
+            time_ranges
+            |> Enum.reduce(%{}, fn {starts_at, ends_at, timezone}, acc ->
+              range = {starts_at, ends_at}
+              Map.update(acc, timezone, [range], fn ranges -> [range | ranges] end)
+            end)
+
+          {dow, time_ranges_by_timezone}
+        end)
+        |> Enum.sort_by(fn {dow, _time_ranges_by_timezone} -> day_of_week_index(dow) end)
       end)
 
     ~H"""
@@ -107,14 +155,14 @@ defmodule Web.Policies.Components do
       <.intersperse_blocks>
         <:separator>,</:separator>
 
-        <:item :for={{day_of_week, ranges} <- @ranges}>
+        <:item :for={{day_of_week, tz_time_ranges} <- @tz_time_ranges_by_dow}>
           <span class="ml-1 font-medium">
             <%= day_of_week_name(day_of_week) <> "s" %>
-            <span :if={is_list(ranges) and ranges != []}>
+            <span :for={{timezone, time_ranges} <- tz_time_ranges}>
               <%= "(" <>
-                Enum.map_join(ranges, ", ", fn {from, to} ->
+                Enum.map_join(time_ranges, ", ", fn {from, to} ->
                   "#{from} - #{to}"
-                end) <> ")" %>
+                end) <> " #{timezone})" %>
             </span>
           </span>
         </:item>
@@ -462,12 +510,33 @@ defmodule Web.Policies.Components do
         </p>
       </div>
 
-      <div id="policy_conditions_current_utc_datetime_condition" class="space-y-2 hidden">
-        <.current_utc_datetime_condition_day_input
-          :for={{code, _name} <- @days_of_week}
-          condition_form={condition_form}
-          day={code}
+      <div
+        id="policy_conditions_current_utc_datetime_condition"
+        class={[
+          "space-y-2",
+          condition_form.source == %{} && "hidden"
+        ]}
+      >
+        <.input
+          type="select"
+          label="Timezone"
+          name="policy[conditions][current_utc_datetime][timezone]"
+          id="policy_conditions_current_utc_datetime_timezone"
+          field={condition_form[:timezone]}
+          placeholder="Timezone"
+          options={Tzdata.zone_list()}
+          disabled={@disabled}
+          value={condition_form[:timezone].value || @timezone}
         />
+
+        <div class="space-y-2">
+          <.current_utc_datetime_condition_day_input
+            :for={{code, _name} <- @days_of_week}
+            disabled={@disabled}
+            condition_form={condition_form}
+            day={code}
+          />
+        </div>
       </div>
     </fieldset>
     """
@@ -493,7 +562,8 @@ defmodule Web.Policies.Components do
       field={@condition_form[:values]}
       name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
       id={"policy_conditions_current_utc_datetime_values_#{@day}"}
-      placeholder="9:00-12:00,13:00-17:00"
+      placeholder="9:00-12:00, 13:00-17:00"
+      disabled={@disabled}
       value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
       value_index={day_of_week_index(@day)}
     />
@@ -501,9 +571,11 @@ defmodule Web.Policies.Components do
   end
 
   defp get_datetime_range_for_day_of_week(day, form_field) do
-    Enum.find_value(form_field.value || [], fn
-      ^day <> "/" <> ranges -> ranges
-      _ -> nil
+    Enum.find_value(form_field.value || [], fn dow_time_ranges ->
+      case String.split(dow_time_ranges, "/", parts: 3) do
+        [^day, ranges, _timezone] -> ranges
+        _other -> false
+      end
     end)
   end
 
