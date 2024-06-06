@@ -303,15 +303,30 @@ impl<'a> IpPacket<'a> {
         self.next_header() == IpNextHeaderProtocols::Tcp
     }
 
-    pub fn as_udp(&self) -> Option<UdpPacket> {
+    pub fn try_as_udp(&self) -> Option<UdpPacket> {
         self.is_udp()
             .then(|| UdpPacket::new(self.payload()))
             .flatten()
     }
 
-    pub fn as_dns(&self) -> Option<hickory_proto::op::Message> {
-        let udp = self.as_udp()?;
-        let message = hickory_proto::op::Message::from_vec(udp.payload()).ok()?;
+    pub fn as_udp_debug_checked(&self) -> Option<UdpPacket> {
+        debug_assert!(self.is_udp(), "Packet is not a UDP packet");
+
+        UdpPacket::new(self.payload())
+    }
+
+    /// View this [`IpPacket`] as a DNS message.
+    ///
+    /// This is a checked conversion, panicking in debug mode in case this packet is not a DNS message.
+    pub fn as_dns_debug_checked(&self) -> Option<hickory_proto::op::Message> {
+        let udp = self.as_udp_debug_checked()?;
+        let message = match hickory_proto::op::Message::from_vec(udp.payload()) {
+            Ok(message) => message,
+            Err(e) => {
+                debug_assert!(false, "Failed to parse UDP payload as DNS message: {e}");
+                return None;
+            }
+        };
 
         Some(message)
     }

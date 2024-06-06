@@ -4,7 +4,6 @@ use crate::{IpPacket, MutableIpPacket};
 use hickory_proto::{
     op::{Message, Query},
     rr::{Name, RData, Record, RecordType},
-    serialize::binary::BinDecodable as _,
 };
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
@@ -12,7 +11,6 @@ use pnet_packet::{
     ipv6::MutableIpv6Packet,
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
-    Packet as _,
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -239,8 +237,8 @@ pub fn dns_response<I>(
 where
     I: Iterator<Item = IpAddr>,
 {
-    let udp = packet.as_udp()?;
-    let mut query = Message::from_bytes(udp.payload()).ok()?;
+    let udp = packet.as_udp_debug_checked()?;
+    let mut query = packet.as_dns_debug_checked()?;
 
     let mut response = Message::new();
     response.set_id(query.id());

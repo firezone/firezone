@@ -919,7 +919,7 @@ impl TunnelTest {
         {
             let packet = packet.to_owned().into_immutable();
 
-            if let Some(udp) = packet.as_udp() {
+            if let Some(udp) = packet.try_as_udp() {
                 if let Ok(message) = hickory_proto::op::Message::from_bytes(udp.payload()) {
                     debug_assert_eq!(
                         message.message_type(),
@@ -1270,7 +1270,7 @@ impl TunnelTest {
             return;
         };
 
-        if let Some(udp) = packet.as_udp() {
+        if let Some(udp) = packet.try_as_udp() {
             if udp.get_source() == 53 {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
@@ -2463,8 +2463,8 @@ fn assert_correct_src_and_dst_udp_ports(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
 ) {
-    let client_sent_request = client_sent_request.as_udp().expect("packet to be UDP");
-    let client_received_reply = client_received_reply.as_udp().expect("packet to be UDP");
+    let client_sent_request = client_sent_request.as_udp_debug_checked().unwrap();
+    let client_received_reply = client_received_reply.as_udp_debug_checked().unwrap();
 
     assert_eq!(
         client_sent_request.get_destination(),
