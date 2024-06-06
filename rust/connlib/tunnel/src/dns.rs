@@ -112,21 +112,29 @@ pub(crate) fn parse<'a>(
 
     let question = message.first_question()?;
 
-    tracing::trace!("Parsed packet as DNS query: '{question}'");
+    let _guard = tracing::debug_span!("dns", domain = %question.qname()).entered();
 
     // In general we prefer to always have a response NxDomain to deal with with domains we don't expect
     // For systems with splitdns, in theory, we should only see Ptr queries we don't handle(e.g. apple's dns-sd)
     let resource =
         match resource_from_question(dns_resources, dns_resources_internal_ips, &question) {
-            Some(ResolveStrategy::LocalResponse(resource)) => Some(resource),
+            Some(ResolveStrategy::LocalResponse(resource)) => {
+                tracing::debug!(records = ?resource, "DNS query is for a connected resource");
+
+                Some(resource)
+            }
             Some(ResolveStrategy::ForwardQuery(params)) => {
+                tracing::debug!("DNS query is for a non-resource");
+
                 return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
             }
             Some(ResolveStrategy::DeferredResponse(resource)) => {
+                tracing::debug!("DNS query is for a not-connected resource");
+
                 return Some(ResolveStrategy::DeferredResponse((
                     resource,
                     question.qtype(),
-                )))
+                )));
             }
             None => None,
         };
@@ -292,7 +300,7 @@ pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
 }
 
 // No object safety =_=
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum RecordData<T> {
     A(Vec<domain::rdata::A>),
     Aaaa(Vec<domain::rdata::Aaaa>),

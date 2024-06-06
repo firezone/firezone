@@ -114,7 +114,7 @@ struct ReferenceState {
     /// On a repeated query, we will access those previously resolved IPs.
     ///
     /// Essentially, the client's DNS records represents the addresses a client application (like a browser) would _actually_ know about.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    client_dns_records: HashMap<DomainName, Vec<(IpAddr, IpStatus)>>,
 
     /// The CIDR resources the client is connected to.
     client_connected_cidr_resources: HashSet<ResourceId>,
@@ -128,6 +128,15 @@ struct ReferenceState {
     expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
     /// The expected DNS handshakes.
     expected_dns_handshakes: VecDeque<QueryId>,
+}
+
+/// When handling DNS queries, connlib caches A as well as AAAA records, regardless of the original query.
+///
+/// To correctly model connlib's behaviour, we need to remember, whether an IP has only been cached internally or actually been returned to the client as part of a query.
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
+enum IpStatus {
+    Internal,
+    Queried,
 }
 
 type QueryId = u16;
@@ -590,27 +599,68 @@ impl ReferenceStateMachine for ReferenceState {
                         state.client_connected_cidr_resources.insert(resource);
                     }
                     Some(_) | None => {
-                        // Depending on the DNS query type, we filter the resolved addresses.
-                        let ips_resolved_by_query = all_ips.iter().copied().filter({
-                            #[allow(clippy::wildcard_enum_match_arm)]
-                            match r_type {
-                                RecordType::A => {
-                                    &(|ip: &IpAddr| ip.is_ipv4()) as &dyn Fn(&IpAddr) -> bool
-                                }
-                                RecordType::AAAA => {
-                                    &(|ip: &IpAddr| ip.is_ipv6()) as &dyn Fn(&IpAddr) -> bool
-                                }
-                                _ => unimplemented!(),
-                            }
-                        });
+                        // If we are NOT connected to this resource yet, we will connect and expire existing DNS records in the process.
+                        if !state.client_dns_records.contains_key(&domain) {
+                            for ip in &all_ips {
+                                for (prev_domain, prev_ips) in state.client_dns_records.iter_mut() {
+                                    prev_ips.retain(|(prev_ip, _)| {
+                                        if prev_ip == ip {
+                                            tracing::debug!(
+                                                "Expiring DNS record: '{prev_domain} -> {prev_ip}'"
+                                            );
+                                            return false;
+                                        }
 
-                        state
-                            .client_dns_records
-                            .entry(domain.clone())
-                            .or_default()
-                            .extend(ips_resolved_by_query);
+                                        true
+                                    });
+                                }
+                            }
+
+                            // We only add new records when we first connect to a resource.
+                            for ip in all_ips {
+                                state
+                                .client_dns_records
+                                .entry(domain.clone())
+                                .or_default()
+                                .push({
+                                    let ip_status = {
+                                        #[allow(clippy::wildcard_enum_match_arm)]
+                                        match r_type {
+                                            RecordType::A if ip.is_ipv4() => IpStatus::Queried,
+                                            RecordType::AAAA if ip.is_ipv6() => IpStatus::Queried,
+                                            RecordType::A | RecordType::AAAA => IpStatus::Internal,
+                                            _ => unimplemented!(),
+                                        }
+                                    };
+
+                                    tracing::debug!(
+                                        "Adding DNS record on client: '{domain} -> {ip}' ({ip_status:?})"
+                                    );
+
+                                    (ip, ip_status)
+                                });
+                            }
+
+                            state.client_dns_records.entry(domain).or_default().sort();
+                        } else {
+                            // If we are already connected, any existing entries are switched to `Queried` to make the test harness aware that we can now send packets to this address.
+                            for (ip, status) in state.client_dns_records.entry(domain).or_default()
+                            {
+                                let new_status = {
+                                    #[allow(clippy::wildcard_enum_match_arm)]
+                                    match r_type {
+                                        RecordType::A if ip.is_ipv4() => IpStatus::Queried,
+                                        RecordType::AAAA if ip.is_ipv6() => IpStatus::Queried,
+                                        RecordType::A | RecordType::AAAA => continue,
+                                        _ => unimplemented!(),
+                                    }
+                                };
+
+                                *status = new_status;
+                            }
+                        }
+
                         state.expected_dns_handshakes.push_back(*query_id);
-                        state.client_dns_records.entry(domain).or_default().sort();
                     }
                 }
             }
@@ -1289,6 +1339,8 @@ impl TunnelTest {
                         }
                     };
 
+                    tracing::debug!("Client received new DNS record: '{domain} -> {ip}'");
+
                     self.client_dns_records.entry(domain).or_default().push(ip);
                 }
 
@@ -1399,7 +1451,12 @@ impl ReferenceState {
             ResourceDst::Dns(domain) => {
                 tracing::Span::current().record("dst", tracing::field::display(domain));
 
-                if self.client_dns_records.contains_key(domain) && src.originates_from_client() {
+                if self.client_dns_records.get(domain).is_some_and(|ips| {
+                    ips.iter().any(|(ip, status)| {
+                        matches!(status, IpStatus::Queried) && ip.is_ipv4() == src.is_ipv4()
+                    })
+                }) && src.originates_from_client()
+                {
                     tracing::debug!("Connected to DNS resource, expecting packet to be routed");
                     self.expected_icmp_handshakes
                         .push_back((dst, seq, identifier));
@@ -1587,7 +1644,9 @@ impl ReferenceState {
 
         let (name, mut addr) = idx.get(&resource_records).clone();
 
-        addr.retain(|ip| ip.is_ipv4() == src.is_ipv4());
+        addr.retain(|(ip, status)| {
+            (ip.is_ipv4() == src.is_ipv4()) && matches!(status, IpStatus::Queried)
+        });
 
         if addr.is_empty() {
             return None;
@@ -1606,7 +1665,7 @@ impl ReferenceState {
         let domain = self
             .client_dns_records
             .iter()
-            .find_map(|(domain, ips)| ips.contains(&ip).then_some(domain))?;
+            .find_map(|(domain, ips)| ips.contains(&(ip, IpStatus::Queried)).then_some(domain))?;
 
         self.dns_resource_by_domain(domain)
     }
@@ -1624,6 +1683,7 @@ impl ReferenceState {
                 self.dns_resource_by_domain(domain).is_none().then_some(ips)
             })
             .flatten()
+            .filter_map(|(ip, status)| matches!(status, IpStatus::Queried).then_some(ip))
             .copied()
             .collect()
     }
@@ -1667,6 +1727,16 @@ enum PacketSource {
     TunnelIp4,
     TunnelIp6,
     Other(IpAddr),
+}
+
+impl fmt::Display for PacketSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PacketSource::TunnelIp4 => write!(f, "TunnelIP4"),
+            PacketSource::TunnelIp6 => write!(f, "TunnelIP6"),
+            PacketSource::Other(ip) => ip.fmt(f),
+        }
+    }
 }
 
 impl PacketSource {
@@ -1721,6 +1791,8 @@ impl ResourceDst {
                     .get(&domain)
                     .expect("DNS records to contain domain name")
                     .clone();
+
+                tracing::debug!(%domain, ?ips, %src, "Sampling DNS resource IP");
 
                 ips.retain(|ip| ip.is_ipv4() == src.is_ipv4());
 

@@ -706,8 +706,17 @@ impl ClientState {
             .collect();
 
         for addr in addrs.clone() {
-            self.dns_resources_internal_ips
-                .insert(addr, resource_description.clone());
+            if let Some(existing) = self
+                .dns_resources_internal_ips
+                .insert(addr, resource_description.clone())
+            {
+                let name = existing.address;
+                let resolved_ip = peer.translations.get_by_left(&addr).unwrap();
+
+                tracing::warn!(
+                    "Overlapping DNS records detected; '{name} -> {resolved_ip}' is now invalid"
+                );
+            }
         }
 
         send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
