@@ -63,11 +63,10 @@ defmodule Web.Resources.Edit do
                 field={@form[:address_description]}
                 type="text"
                 label="Address Description"
-                placeholder={@form[:address].value || "http://example.com/"}
-                required
+                placeholder="Enter a description or URL"
               />
               <p class="mt-2 text-xs text-neutral-500">
-                Will be shown in Clients to help users access this Resource. If a URL is provided, it will be clickable.
+                Optional description or URL to show in Clients to help users access this Resource.
               </p>
             </div>
 

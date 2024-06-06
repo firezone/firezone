@@ -5,7 +5,7 @@ defmodule Domain.Resources.Resource.Changeset do
 
   @fields ~w[address address_description name type]a
   @update_fields ~w[name address_description]a
-  @required_fields ~w[name address address_description type]a
+  @required_fields ~w[name address type]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{connections: []}

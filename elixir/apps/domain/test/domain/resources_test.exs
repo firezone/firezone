@@ -890,7 +890,6 @@ defmodule Domain.ResourcesTest do
       assert errors_on(changeset) == %{
                name: ["can't be blank"],
                address: ["can't be blank"],
-               address_description: ["can't be blank"],
                type: ["can't be blank"],
                connections: ["can't be blank"]
              }
@@ -1018,7 +1017,7 @@ defmodule Domain.ResourcesTest do
           type: :cidr,
           name: "mycidr",
           address: "192.168.1.1/28",
-          address_description: "192.168.1.1/28"
+          address_description: "https://google.com"
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)

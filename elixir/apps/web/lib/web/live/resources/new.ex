@@ -113,11 +113,10 @@ defmodule Web.Resources.New do
                 field={@form[:address_description]}
                 type="text"
                 label="Address Description"
-                placeholder={@form[:address].value || "http://example.com/"}
-                required
+                placeholder="Enter a description or URL"
               />
               <p class="mt-2 text-xs text-neutral-500">
-                Will be shown in Clients to help users access this Resource. If a URL is provided, it will be clickable.
+                Optional description or URL to show in Clients to help users access this Resource.
               </p>
             </div>
 
@@ -161,7 +160,6 @@ defmodule Web.Resources.New do
     attrs =
       attrs
       |> maybe_put_default_name(name_changed?)
-      |> maybe_put_default_address_description(address_description_changed?)
       |> map_filters_form_attrs(socket.assigns.account)
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
@@ -184,7 +182,6 @@ defmodule Web.Resources.New do
     attrs =
       attrs
       |> maybe_put_default_name()
-      |> maybe_put_default_address_description()
       |> map_filters_form_attrs(socket.assigns.account)
       |> map_connections_form_attrs()
       |> maybe_put_connections(socket.assigns.params)
@@ -210,32 +207,6 @@ defmodule Web.Resources.New do
 
   defp maybe_put_default_name(attrs, false) do
     Map.put(attrs, "name", attrs["address"])
-  end
-
-  defp maybe_put_default_address_description(attrs, address_description_changed? \\ true)
-
-  defp maybe_put_default_address_description(
-         %{"type" => "dns", "address" => address} = attrs,
-         false
-       )
-       when is_binary(address) do
-    Map.put(attrs, "address_description", "http://#{address}/")
-  end
-
-  defp maybe_put_default_address_description(
-         %{"type" => "ip", "address" => address} = attrs,
-         false
-       )
-       when is_binary(address) do
-    Map.put(attrs, "address_description", "http://#{address}/")
-  end
-
-  defp maybe_put_default_address_description(attrs, false) do
-    Map.put(attrs, "address_description", "")
-  end
-
-  defp maybe_put_default_address_description(attrs, true) do
-    attrs
   end
 
   defp maybe_put_connections(attrs, params) do
