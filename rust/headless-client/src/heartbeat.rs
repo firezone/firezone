@@ -1,5 +1,9 @@
 //! A heartbeat that logs to `INFO` at exponentially increasing intervals
 //! so it won't take up much disk space
+//!
+//! The IPC service is quiet when signed out, and the GUI is quiet when it's in steady
+//! state, so this heartbeat allows us to estimate roughly how long each process stayed
+//! up when looking at user logs, using unlimited disk space per run of the app.
 
 use std::time::Duration;
 use tokio::time::{sleep_until, Instant};
