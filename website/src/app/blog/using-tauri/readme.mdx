@@ -107,20 +107,6 @@ it working in the same event loop.
 
 # How does Tauri work?
 
-{/* 
-flowchart TD 
-  A(Firezone Client) --> B(Tauri)
-  B --> C(WRY)
-  C --> D("WebView2 (Windows)")
-  C --> E("webkit2gtk (Linux)")
-  C --> F(TAO)
-  B --> G(Tokio)
-  A --> G
-  A --> J(connlib)
-  F --> H(GTK+)
-  F --> I(Windows)
-*/}
-
 <Link target="_blank" href="/images/blog/using-tauri/tauri-arch.svg">
   <Image
     src="/images/blog/using-tauri/tauri-arch.svg"
@@ -150,13 +136,6 @@ WebView2 pre-installed. Tauri automatically runs a downloader when the MSI is
 installed if needed. On Linux (Debian and Ubuntu), we tell `apt` that we depend
 on `webkit2gtk`, so `apt` will install it for us.
 
-{/*
-flowchart TD
-  A(MSI) --> B(GUI exe)
-  A --> C(IPC service exe)
-  A --> D(WebView2 downloader)
-*/}
-
 <Link target="_blank" href="/images/blog/using-tauri/msi-bundle.svg">
   <Image
     src="/images/blog/using-tauri/msi-bundle.svg"
@@ -166,13 +145,6 @@ flowchart TD
     className="p-16"
   />
 </Link>
-
-{/*
-flowchart TD
-  A(deb) --> B(GUI exe)
-  A --> C(IPC service exe)
-  A --> D("webkit2gtk dependencies") 
-*/}
 
 <Link target="_blank" href="/images/blog/using-tauri/deb-bundle.svg">
   <Image
