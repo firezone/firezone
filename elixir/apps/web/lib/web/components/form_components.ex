@@ -32,9 +32,8 @@ defmodule Web.FormComponents do
 
   attr :type, :string,
     default: "text",
-    values:
-      ~w(checkbox color date datetime-local email file hidden month number password
-               range radio readonly search group_select select tel text textarea taglist time url week)
+    values: ~w(checkbox color date datetime-local email file hidden month number password
+               range radio readonly search group_select select tel text textarea time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
@@ -116,7 +115,7 @@ defmodule Web.FormComponents do
 
     ~H"""
     <div phx-feedback-for={@name}>
-      <label class="flex items-center gap-4 text-sm leading-6 text-zinc-600">
+      <label class="flex items-center gap-4 text-sm leading-6 text-neutral-600">
         <input
           type="checkbox"
           id={@id}
@@ -143,7 +142,7 @@ defmodule Web.FormComponents do
   def input(%{type: "group_select"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
         type="hidden"
@@ -221,7 +220,7 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "mt-2 block w-full rounded sm:text-sm sm:leading-6",
+          "block w-full rounded sm:text-sm sm:leading-6",
           "bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
           "phx-no-feedback:border-neutral-300",
@@ -230,54 +229,6 @@ defmodule Web.FormComponents do
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
-      </.error>
-    </div>
-    """
-  end
-
-  def input(%{type: "taglist"} = assigns) do
-    values =
-      if is_nil(assigns.value),
-        do: [],
-        else: Enum.map(assigns.value, &Phoenix.HTML.Form.normalize_value("text", &1))
-
-    assigns = assign(assigns, :values, values)
-
-    ~H"""
-    <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
-
-      <div :for={{value, index} <- Enum.with_index(@values)} class="flex mt-2">
-        <input
-          type="text"
-          name={"#{@name}[]"}
-          id={@id}
-          value={value}
-          class={[
-            "bg-neutral-50 p-2.5 block w-full rounded border text-neutral-900 text-sm",
-            "phx-no-feedback:border-neutral-300",
-            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-            "border-neutral-300",
-            @errors != [] && "border-rose-400"
-          ]}
-          {@rest}
-        />
-        <.button
-          type="button"
-          phx-click={"delete:#{@name}"}
-          phx-value-index={index}
-          class="align-middle ml-2 inline-block whitespace-nowrap"
-        >
-          <.icon name="hero-minus" /> Delete
-        </.button>
-      </div>
-
-      <.button type="button" phx-click={"add:#{@name}"} class="mt-2">
-        <.icon name="hero-plus" /> Add
-      </.button>
-
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
         <%= msg %>
       </.error>
