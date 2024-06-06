@@ -16,6 +16,7 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
+use crate::io::DnsQueryError;
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
@@ -648,10 +649,28 @@ impl ClientState {
         &mut self,
         query: DnsQuery<'static>,
         response: Result<
-            Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
-            futures_bounded::Timeout,
+            Result<
+                Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
+                futures_bounded::Timeout,
+            >,
+            DnsQueryError,
         >,
     ) {
+        let response = match response {
+            Ok(response) => response,
+            Err(e) => {
+                tracing::warn!(name = %query.name, server = %query.query.destination(), "Failed to send DNS query: {e}");
+                let response = ip_packet::make::dns_err_response(
+                    query.query,
+                    hickory_proto::op::ResponseCode::ServFail,
+                )
+                .map(|p| p.into_immutable());
+
+                self.buffered_packets.extend(response);
+                return;
+            }
+        };
+
         let response = match response {
             Ok(response) => response,
             Err(resolve_timeout) => {

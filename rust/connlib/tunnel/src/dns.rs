@@ -63,6 +63,16 @@ impl<'a> DnsQuery<'a> {
     }
 }
 
+impl Clone for DnsQuery<'static> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            record_type: self.record_type,
+            query: self.query.clone(),
+        }
+    }
+}
+
 struct DnsQueryParams {
     name: String,
     record_type: RecordType,

@@ -1359,10 +1359,10 @@ impl TunnelTest {
 
         self.client.state.on_dns_result(
             query,
-            Ok(Ok(Lookup::new_with_max_ttl(
+            Ok(Ok(Ok(Lookup::new_with_max_ttl(
                 Query::query(name, record_type),
                 record_data,
-            ))),
+            )))),
         );
     }
 }
