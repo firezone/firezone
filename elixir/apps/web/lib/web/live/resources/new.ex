@@ -108,7 +108,7 @@ defmodule Web.Resources.New do
               </p>
             </div>
 
-            <div class="hidden">
+            <div>
               <.input
                 field={@form[:address_description]}
                 type="text"
@@ -117,7 +117,7 @@ defmodule Web.Resources.New do
                 required
               />
               <p class="mt-2 text-xs text-neutral-500">
-                This will be displayed in client applications to assist users in understanding how to access the resource.
+                Will be shown in Clients to help users access this Resource. If a URL is provided, it will be clickable.
               </p>
             </div>
 

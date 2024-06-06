@@ -985,8 +985,7 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == attrs.address
-      # TODO: uncomment once we show address_description
-      # assert resource.address_description == attrs.address_description
+      assert resource.address_description == attrs.address_description
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
