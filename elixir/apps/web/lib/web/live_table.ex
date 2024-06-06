@@ -152,6 +152,7 @@ defmodule Web.LiveTable do
       for={@form}
       phx-change="filter"
       phx-debounce="100"
+      onkeydown="return event.key != 'Enter';"
     >
       <.input type="hidden" name="table_id" value={@live_table_id} />
 
