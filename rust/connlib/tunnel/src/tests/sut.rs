@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
-        gateway, ClientId, GatewayId, Interface, ResourceId,
+        gateway, ClientId, GatewayId, ResourceId,
     },
     DomainName, StaticSecret,
 };
@@ -114,26 +114,11 @@ impl StateMachineTest for TunnelTest {
         };
 
         // Configure client and gateway with the relay.
+        client.init_relays([&relay], ref_state.now);
+        gateway.init_relays([&relay], ref_state.now);
 
-        client.state.update_relays(
-            HashSet::default(),
-            HashSet::from([relay.explode("client")]),
-            ref_state.now,
-        );
-        let _ = client.state.update_interface_config(Interface {
-            ipv4: client.tunnel_ip4,
-            ipv6: client.tunnel_ip6,
-            upstream_dns: ref_state.upstream_dns_resolvers.clone(),
-        });
-        let _ = client
-            .state
-            .update_system_resolvers(ref_state.system_dns_resolvers.clone());
-
-        gateway.state.update_relays(
-            HashSet::default(),
-            HashSet::from([relay.explode("gateway")]),
-            ref_state.now,
-        );
+        client.update_upstream_dns(ref_state.upstream_dns_resolvers.clone());
+        client.update_system_dns(ref_state.system_dns_resolvers.clone());
 
         let mut this = Self {
             now: ref_state.now,
@@ -174,19 +159,11 @@ impl StateMachineTest for TunnelTest {
         // Act: Apply the transition
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client.span.in_scope(|| {
-                    state
-                        .client
-                        .state
-                        .add_resources(&[ResourceDescription::Cidr(r)]);
-                });
+                state.client.add_resource(ResourceDescription::Cidr(r));
             }
-            Transition::AddDnsResource { resource, .. } => state.client.span.in_scope(|| {
-                state
-                    .client
-                    .state
-                    .add_resources(&[ResourceDescription::Dns(resource)]);
-            }),
+            Transition::AddDnsResource { resource, .. } => state
+                .client
+                .add_resource(ResourceDescription::Dns(resource)),
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
@@ -251,14 +228,10 @@ impl StateMachineTest for TunnelTest {
                 state.now += Duration::from_millis(millis);
             }
             Transition::UpdateSystemDnsServers { servers } => {
-                let _ = state.client.state.update_system_resolvers(servers);
+                state.client.update_system_dns(servers);
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
-                let _ = state.client.state.update_interface_config(Interface {
-                    ipv4: state.client.tunnel_ip4,
-                    ipv6: state.client.tunnel_ip6,
-                    upstream_dns: servers,
-                });
+                state.client.update_upstream_dns(servers);
             }
         };
         state.advance(ref_state, &mut buffered_transmits);

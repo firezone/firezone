@@ -198,15 +198,14 @@ where
                     .as_v6()
                     .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
 
-                Some(SimNode {
+                Some(SimNode::new(
                     id,
-                    state: PrivateKey(key),
+                    PrivateKey(key),
                     ip4_socket,
                     ip6_socket,
                     tunnel_ip4,
                     tunnel_ip6,
-                    span: tracing::Span::none(),
-                })
+                ))
             },
         )
 }

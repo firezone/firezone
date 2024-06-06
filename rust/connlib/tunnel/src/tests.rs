@@ -23,11 +23,13 @@ use tracing::Span;
 
 mod assertions;
 mod reference;
+mod sim_node;
 mod strategies;
 mod sut;
 
 use assertions::*;
 use reference::*;
+use sim_node::*;
 use sut::*;
 
 proptest_state_machine::prop_state_machine! {
@@ -170,20 +172,6 @@ impl ResourceDst {
 }
 
 #[derive(Clone)]
-struct SimNode<ID, S> {
-    id: ID,
-    state: S,
-
-    ip4_socket: Option<SocketAddrV4>,
-    ip6_socket: Option<SocketAddrV6>,
-
-    tunnel_ip4: Ipv4Addr,
-    tunnel_ip6: Ipv6Addr,
-
-    span: Span,
-}
-
-#[derive(Clone)]
 struct SimRelay<S> {
     id: RelayId,
     state: S,
@@ -203,45 +191,6 @@ struct SimPortal {
     _client: ClientId,
     gateway: GatewayId,
     _relay: RelayId,
-}
-
-impl<ID, S> SimNode<ID, S>
-where
-    ID: Copy,
-    S: Copy,
-{
-    fn map_state<T>(&self, f: impl FnOnce(S) -> T, span: Span) -> SimNode<ID, T> {
-        SimNode {
-            id: self.id,
-            state: f(self.state),
-            ip4_socket: self.ip4_socket,
-            ip6_socket: self.ip6_socket,
-            tunnel_ip4: self.tunnel_ip4,
-            tunnel_ip6: self.tunnel_ip6,
-            span,
-        }
-    }
-}
-
-impl<ID, S> SimNode<ID, S> {
-    fn wants(&self, dst: SocketAddr) -> bool {
-        self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
-            || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
-    }
-
-    fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
-        Some(match dst.into() {
-            IpAddr::V4(_) => self.ip4_socket?.into(),
-            IpAddr::V6(_) => self.ip6_socket?.into(),
-        })
-    }
-
-    fn tunnel_ip(&self, dst: impl Into<IpAddr>) -> IpAddr {
-        match dst.into() {
-            IpAddr::V4(_) => IpAddr::from(self.tunnel_ip4),
-            IpAddr::V6(_) => IpAddr::from(self.tunnel_ip6),
-        }
-    }
 }
 
 impl SimRelay<firezone_relay::Server<StdRng>> {
@@ -460,19 +409,6 @@ impl SimPortal {
                 .or(dns_site)
                 .expect("resource to be a known CIDR or DNS resource"),
         )
-    }
-}
-
-impl<ID: fmt::Debug, S: fmt::Debug> fmt::Debug for SimNode<ID, S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SimNode")
-            .field("id", &self.id)
-            .field("state", &self.state)
-            .field("ip4_socket", &self.ip4_socket)
-            .field("ip6_socket", &self.ip6_socket)
-            .field("tunnel_ip4", &self.tunnel_ip4)
-            .field("tunnel_ip6", &self.tunnel_ip6)
-            .finish()
     }
 }
 
