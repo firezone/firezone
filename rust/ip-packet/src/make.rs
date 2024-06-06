@@ -2,7 +2,7 @@
 
 use crate::{IpPacket, MutableIpPacket};
 use hickory_proto::{
-    op::{Message, Query},
+    op::{Message, Query, ResponseCode},
     rr::{Name, RData, Record, RecordType},
 };
 use pnet_packet::{
@@ -230,7 +230,7 @@ pub fn dns_query(
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
-pub fn dns_response<I>(
+pub fn dns_ok_response<I>(
     packet: IpPacket<'static>,
     resolve: impl Fn(&Name) -> I,
 ) -> Option<MutableIpPacket<'static>>
@@ -264,6 +264,28 @@ where
 
         response.add_answers(records);
     }
+
+    let payload = response.to_vec().unwrap();
+
+    Some(udp_packet(
+        packet.destination(),
+        packet.source(),
+        udp.get_destination(),
+        udp.get_source(),
+        payload,
+    ))
+}
+
+pub fn dns_err_response(
+    packet: IpPacket<'static>,
+    code: ResponseCode,
+) -> Option<MutableIpPacket<'static>> {
+    let udp = packet.as_udp_debug_checked()?;
+    let query = packet.as_dns_debug_checked()?;
+
+    debug_assert_ne!(code, ResponseCode::NoError);
+
+    let response = Message::error_msg(query.id(), query.op_code(), code);
 
     let payload = response.to_vec().unwrap();
 

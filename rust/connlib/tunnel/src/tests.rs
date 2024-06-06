@@ -1075,7 +1075,7 @@ impl TunnelTest {
                 return ControlFlow::Break(());
             }
 
-            if let Some(response) = ip_packet::make::dns_response(packet, |name| {
+            if let Some(response) = ip_packet::make::dns_ok_response(packet, |name| {
                 global_dns_records
                     .get(&hickory_name_to_domain(name.clone()))
                     .cloned()
