@@ -137,9 +137,7 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 
     native_dialog::MessageDialog::new()
         .set_title("Log filter error")
-        .set_text(
-            "The custom log filter is not parsable. Using the default log filter.",
-        )
+        .set_text("The custom log filter is not parsable. Using the default log filter.")
         .set_type(native_dialog::MessageType::Error)
         .show_alert()
         .context("Can't show log filter error dialog")?;
