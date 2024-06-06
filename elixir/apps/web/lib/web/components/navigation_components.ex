@@ -15,7 +15,7 @@ defmodule Web.NavigationComponents do
             data-drawer-toggle="drawer-navigation"
             aria-controls="drawer-navigation"
             class={[
-              "p-2 mr-2 text-neutral-600 rounded cursor-pointer md:hidden",
+              "p-2 mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
               "hover:text-neutral-900 hover:bg-neutral-100"
             ]}
           >
@@ -33,14 +33,14 @@ defmodule Web.NavigationComponents do
           <a
             target="_blank"
             href="https://www.firezone.dev/kb?utm_source=product"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline lg:ml-2 hidden lg:block"
           >
             Docs
           </a>
           <a
             target="_blank"
             href="https://firezone.statuspage.io"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 md:ml-2 hidden md:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline lg:ml-2 hidden lg:block"
           >
             Status
           </a>
@@ -108,7 +108,7 @@ defmodule Web.NavigationComponents do
         pt-14 pb-8
         transition-transform -translate-x-full
         bg-white border-r border-neutral-200
-        md:translate-x-0
+        lg:translate-x-0
       ]} aria-label="Sidenav" id="drawer-navigation">
       <div class="overflow-y-auto py-1 px-1 h-full bg-white">
         <ul>
@@ -153,25 +153,26 @@ defmodule Web.NavigationComponents do
   attr :navigate, :string, required: true
   slot :inner_block, required: true
   attr :current_path, :string, required: true
-  attr :active_class, :string, required: false, default: "bg-neutral-100"
+
+  attr :active_class, :string,
+    required: false,
+    default: "bg-neutral-50 text-neutral-800 font-medium"
 
   def sidebar_item(assigns) do
     ~H"""
     <li>
       <.link navigate={@navigate} class={~w[
       flex items-center p-2
-      text-base text-neutral-900
+      text-base
       rounded
       #{sidebar_item_active?(@current_path, @navigate) && @active_class}
-      hover:bg-neutral-100
-      group]}>
+      text-neutral-700
+      hover:bg-neutral-100 hover:text-neutral-900
+      ]}>
         <.icon name={@icon} class={~w[
-          w-6 h-6
-          text-neutral-700
-          transition duration-75
-          group-hover:text-neutral-900
+          w-5 h-5
         ]} />
-        <span class="ml-3"><%= render_slot(@inner_block) %></span>
+        <span class="ml-3 text-lg"><%= render_slot(@inner_block) %></span>
       </.link>
     </li>
     """
@@ -186,7 +187,10 @@ defmodule Web.NavigationComponents do
   attr :id, :string, required: true, doc: "ID of the nav group container"
   attr :icon, :string, required: true
   attr :current_path, :string, required: true
-  attr :active_class, :string, required: false, default: "bg-neutral-100"
+
+  attr :active_class, :string,
+    required: false,
+    default: "bg-neutral-50 text-neutral-800 font-medium"
 
   slot :name, required: true
 
@@ -207,31 +211,27 @@ defmodule Web.NavigationComponents do
       <button
         type="button"
         class={~w[
-          flex items-center p-2 w-full group rounded
-          text-base text-neutral-900
+          flex items-center p-2 w-full rounded
+          text-lg text-neutral-700
           transition duration-75
-          hover:bg-neutral-100]}
+          hover:bg-neutral-100 hover:text-neutral-900]}
         aria-controls={"dropdown-#{@id}"}
         data-collapse-toggle={"dropdown-#{@id}"}
         aria-hidden={@dropdown_hidden}
       >
         <.icon name={@icon} class={~w[
-          w-6 h-6 text-neutral-800
-          transition duration-75
-          group-hover:text-neutral-900]} />
+          w-5 h-5 text-neutral-700]} />
         <span class="flex-1 ml-3 text-left whitespace-nowrap"><%= render_slot(@name) %></span>
         <.icon name="hero-chevron-down-solid" class={~w[
-          w-6 h-6 text-neutral-500
-          transition duration-75
-          group-hover:text-neutral-900]} />
+          w-5 h-5 text-neutral-700]} />
       </button>
       <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
-              flex items-center p-2 pl-11 w-full group rounded
-              text-base text-neutral-900
+              flex items-center p-2 pl-10 w-full group rounded
+              text-lg text-neutral-700
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
-              transition duration-75
+              hover:text-neutral-900
               hover:bg-neutral-100]}>
             <%= render_slot(item) %>
           </.link>
@@ -260,7 +260,7 @@ defmodule Web.NavigationComponents do
             navigate={if @account, do: ~p"/#{@account}", else: @home_path}
             class="inline-flex items-center text-neutral-700 hover:text-neutral-900"
           >
-            <.icon name="hero-home-solid" class="w-4 h-4 mr-2" /> Home
+            <.icon name="hero-home-solid" class="w-3.5 h-3.5 mr-2" /> Home
           </.link>
 
           <%= render_slot(@inner_block) %>
@@ -280,7 +280,7 @@ defmodule Web.NavigationComponents do
     ~H"""
     <li class="inline-flex items-center">
       <div class="flex items-center text-neutral-700">
-        <.icon name="hero-chevron-right-solid" class="w-6 h-6" />
+        <.icon name="hero-chevron-right-solid" class="w-3.5 h-3.5" />
         <.link
           :if={not is_nil(@path)}
           navigate={@path}

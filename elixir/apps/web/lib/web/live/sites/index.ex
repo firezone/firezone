@@ -112,15 +112,17 @@ defmodule Web.Sites.Index do
             </.peek>
           </:col>
 
-          <:col :let={group} label="online gateways">
+          <:col :let={group} label="online gateways" class="w-1/6">
             <% gateways = Enum.filter(group.gateways, & &1.online?)
             peek = %{count: length(gateways), items: Enum.take(gateways, 5)} %>
             <.peek peek={peek}>
               <:empty>
-                <.icon
-                  name="hero-exclamation-triangle"
-                  class="inline-block w-5 h-5 mr-1 text-red-500"
-                /> None
+                <span class="justify flex items-center">
+                  <.icon
+                    name="hero-exclamation-triangle-solid"
+                    class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
+                  /> None
+                </span>
               </:empty>
 
               <:separator>

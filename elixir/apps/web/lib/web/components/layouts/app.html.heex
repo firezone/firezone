@@ -81,18 +81,19 @@
   </.sidebar_item_group>
 
   <:bottom>
-    <div class="absolute bottom-0 left-0 justify-left p-4 space-x-4 w-full lg:flex bg-white z-20">
+    <div class="absolute bottom-0 left-0 p-4 space-x-4">
       <a
         target="_blank"
         href="https://www.firezone.dev/kb?utm_source=product"
-        class="text-neutral-700 hover:text-neutral-900 md:hidden"
+        class="text-neutral-700 hover:text-neutral-900 hover:underline lg:hidden"
       >
         Docs
       </a>
       <a
         target="_blank"
         href="https://firezone.statuspage.io"
-        class="text-neutral-700 hover:text-neutral-900 md:hidden"
+        title="Firezone Platform Status"
+        class="text-neutral-700 hover:text-neutral-900 hover:underline lg:hidden"
       >
         Status
       </a>
@@ -100,7 +101,7 @@
   </:bottom>
 </.sidebar>
 
-<main class="md:ml-64 h-auto pt-14">
+<main class="lg:ml-64 h-auto pt-14">
   <.flash :if={@account.warning} kind={:warning}>
     <%= @account.warning %>.
     <span :if={Domain.Billing.account_provisioned?(@account)}>
