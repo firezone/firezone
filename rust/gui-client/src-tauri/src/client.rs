@@ -157,7 +157,9 @@ fn start_logging(directives: &str) -> Result<file_logger::Handle> {
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
-    let error_msg = match error {
+    /// This message gets shown to users in the GUI and could be localized, unlike
+    /// messages in the log which only need to be used for `git grep`.
+    let user_friendly_error_msg = match error {
         // TODO: Update this URL
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
         gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
@@ -166,11 +168,11 @@ fn show_error_dialog(error: &gui::Error) -> Result<()> {
         gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         gui::Error::Other(error) => error.to_string(),
     };
-    tracing::error!("{}", error_msg);
+    tracing::error!("{}", user_friendly_error_msg);
 
     native_dialog::MessageDialog::new()
         .set_title("Firezone Error")
-        .set_text(&error_msg)
+        .set_text(&user_friendly_error_msg)
         .set_type(native_dialog::MessageType::Error)
         .show_alert()?;
     Ok(())
