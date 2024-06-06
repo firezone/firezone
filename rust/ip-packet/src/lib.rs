@@ -309,6 +309,13 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
+    pub fn as_dns(&self) -> Option<hickory_proto::op::Message> {
+        let udp = self.as_udp()?;
+        let message = hickory_proto::op::Message::from_vec(udp.payload()).ok()?;
+
+        Some(message)
+    }
+
     pub fn as_tcp(&self) -> Option<TcpPacket> {
         self.is_tcp()
             .then(|| TcpPacket::new(self.payload()))

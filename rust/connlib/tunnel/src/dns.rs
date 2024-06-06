@@ -8,7 +8,7 @@ use domain::base::{
 };
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
-use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
+use hickory_resolver::proto::op::MessageType;
 use hickory_resolver::proto::rr::RecordType;
 use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
@@ -173,7 +173,7 @@ pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
 ) -> Result<Option<IpPacket>, hickory_resolver::error::ResolveError> {
-    let Some(mut message) = as_dns_message(&original_pkt) else {
+    let Some(mut message) = original_pkt.as_dns() else {
         debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
         return Ok(None);
     };
@@ -444,11 +444,6 @@ pub(crate) fn ips_of_resource<'a>(
 ) -> impl Iterator<Item = IpAddr> + 'a {
     ips.iter()
         .filter_map(move |(ip, r)| (r == resource).then_some(*ip))
-}
-
-pub(crate) fn as_dns_message(pkt: &IpPacket) -> Option<TrustDnsMessage> {
-    let datagram = pkt.as_udp()?;
-    TrustDnsMessage::from_vec(datagram.payload()).ok()
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
