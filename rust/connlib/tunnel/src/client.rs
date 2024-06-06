@@ -728,7 +728,7 @@ impl ClientState {
         for addr in addrs.clone() {
             self.dns_resources_internal_ips
                 .entry(addr)
-                .or_insert(HashSet::new())
+                .or_default()
                 .insert(resource_description.clone());
         }
 
