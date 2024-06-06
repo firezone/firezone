@@ -2,6 +2,7 @@ use super::{ReferenceState, TunnelTest};
 use crate::tests::ResourceDst;
 use connlib_shared::DomainName;
 use ip_packet::IpPacket;
+use pretty_assertions::assert_eq;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
     net::IpAddr,
