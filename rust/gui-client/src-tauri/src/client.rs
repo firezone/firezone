@@ -2,7 +2,8 @@ use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use connlib_client_shared::file_logger;
 use firezone_headless_client::FIREZONE_GROUP;
-use std::{path::PathBuf, str::FromStr};
+use std::path::PathBuf;
+use tracing_subscriber::EnvFilter;
 
 mod about;
 mod auth;
@@ -92,7 +93,9 @@ pub(crate) fn run() -> Result<()> {
                 anyhow::bail!("`smoke-test` must run as a normal user");
             }
 
-            let (settings, _logger) = start_logging()?;
+            let settings = settings::load_advanced_settings().unwrap_or_default();
+            // Don't fix the log filter for smoke tests
+            let _logger = start_logging(&settings.log_filter)?;
             let result = gui::run(cli, settings);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
@@ -111,52 +114,47 @@ pub(crate) fn run() -> Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 fn run_gui(cli: Cli) -> Result<()> {
-    let (settings, _logger) = start_logging()?;
+    let mut settings = settings::load_advanced_settings().unwrap_or_default();
+    fix_log_filter(&mut settings)?;
+    let _logger = start_logging(&settings.log_filter)?;
     let result = gui::run(cli, settings);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
-        tracing::error!(?error, error_msg = error.to_string(), "gui::run error");
+        tracing::error!(?error, error_msg = error.to_string(), "`gui::run` error");
         show_error_dialog(error)?;
     }
 
     Ok(result?)
 }
 
-/// Loads the settings and starts logging
+/// Parse the log filter from settings, showing an error and fixing it if needed
+fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
+    if EnvFilter::try_new(&settings.log_filter).is_ok() {
+        return Ok(());
+    }
+    settings.log_filter = AdvancedSettings::default().log_filter;
+
+    native_dialog::MessageDialog::new()
+        .set_title("Log filter error")
+        .set_text(
+            "The custom log filter is not parsable. Using the default log filter.",
+        )
+        .set_type(native_dialog::MessageType::Error)
+        .show_alert()
+        .context("Can't show log filter error dialog")?;
+
+    Ok(())
+}
+
+/// Starts logging
 ///
 /// Don't drop the log handle or logging will stop.
-fn start_logging() -> Result<(AdvancedSettings, file_logger::Handle)> {
-    let advanced_settings = settings::load_advanced_settings().unwrap_or_default();
+fn start_logging(directives: &str) -> Result<file_logger::Handle> {
+    let logging_handles = logging::setup(directives)?;
+    tracing::info!(?GIT_VERSION, "`gui-client` started logging");
 
-    // If the log filter is unparsable, show an error and use the default
-    // Fixes <https://github.com/firezone/firezone/issues/3452>
-    let advanced_settings =
-        match tracing_subscriber::EnvFilter::from_str(&advanced_settings.log_filter) {
-            Ok(_) => advanced_settings,
-            Err(_) => {
-                native_dialog::MessageDialog::new()
-                    .set_title("Log filter error")
-                    .set_text(
-                        "The custom log filter is not parsable. Using the default log filter.",
-                    )
-                    .set_type(native_dialog::MessageType::Error)
-                    .show_alert()
-                    .context("Can't show log filter error dialog")?;
-
-                AdvancedSettings {
-                    log_filter: AdvancedSettings::default().log_filter,
-                    ..advanced_settings
-                }
-            }
-        };
-
-    // Start logging
-    let logging_handles = logging::setup(&advanced_settings.log_filter)?;
-    tracing::info!("started log");
-    tracing::info!("GIT_VERSION = {}", GIT_VERSION);
-
-    Ok((advanced_settings, logging_handles.logger))
+    Ok(logging_handles.logger)
 }
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {

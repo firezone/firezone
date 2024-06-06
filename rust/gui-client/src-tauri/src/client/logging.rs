@@ -9,7 +9,6 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     result::Result as StdResult,
-    str::FromStr,
 };
 use tokio::task::spawn_blocking;
 use tracing::subscriber::set_global_default;
@@ -48,16 +47,19 @@ pub(crate) enum Error {
 }
 
 /// Set up logs after the process has started
-pub(crate) fn setup(log_filter: &str) -> Result<Handles> {
+///
+/// We need two of these filters for some reason, and `EnvFilter` doesn't implement
+/// `Clone` yet, so that's why we take the directives string
+/// <https://github.com/tokio-rs/tracing/issues/2360>
+pub(crate) fn setup(directives: &str) -> Result<Handles> {
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
-    let filter = EnvFilter::from_str(log_filter)?;
-    let (filter, reloader) = reload::Layer::new(filter);
+    let (filter_2, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
     let subscriber = Registry::default()
-        .with(layer.with_filter(filter))
-        .with(fmt::layer().with_filter(EnvFilter::from_str(log_filter)?));
+        .with(layer.with_filter(filter_2))
+        .with(fmt::layer().with_filter(EnvFilter::try_new(directives)?));
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::warn!(
