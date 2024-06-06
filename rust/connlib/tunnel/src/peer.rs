@@ -1,16 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::Instant;
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
-    gateway::Filter, gateway::Filters, ClientId, DnsServer, GatewayId, ResourceId,
+    gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
 };
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::ip::IpNextHeaderProtocols;
-use ip_packet::{IpPacket, MutableIpPacket, Packet};
+use ip_packet::{IpPacket, MutableIpPacket};
 use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
@@ -98,18 +97,12 @@ impl AllowRules {
     }
 }
 
-// The max time a dns request can be configured to live in resolvconf
-// is 30 seconds. See resolvconf(5) timeout.
-const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
-
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
     pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
 
     pub translations: BiMap<IpAddr, IpAddr>,
-    dns_mapping: BiMap<IpAddr, DnsServer>,
-    mangled_dns_ids: HashMap<u16, std::time::Instant>,
 }
 
 impl GatewayOnClient {
@@ -137,8 +130,6 @@ impl GatewayOnClient {
             id,
             allowed_ips,
             translations: Default::default(),
-            dns_mapping: Default::default(),
-            mangled_dns_ids: Default::default(),
         }
     }
 
@@ -155,16 +146,6 @@ impl GatewayOnClient {
 
         self.translations.insert(proxy_ip, *ip);
         Some(proxy_ip)
-    }
-
-    pub fn expire_dns_track(&mut self) {
-        self.mangled_dns_ids
-            .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
-    }
-
-    pub fn set_dns(&mut self, mapping: BiMap<IpAddr, DnsServer>) {
-        self.mangled_dns_ids.clear();
-        self.dns_mapping = mapping;
     }
 }
 
@@ -303,7 +284,7 @@ impl GatewayOnClient {
         mut pkt: MutableIpPacket<'a>,
     ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
         let addr = pkt.source();
-        let mut src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
+        let src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
 
         if self.allowed_ips.longest_match(src).is_none() {
             return Err(connlib_shared::Error::UnallowedPacket {
@@ -315,23 +296,6 @@ impl GatewayOnClient {
                     .map(|(ip, _)| ip.network_address())
                     .collect(),
             });
-        }
-
-        if let Some(dgm) = pkt.as_udp() {
-            if let Some(sentinel) = self
-                .dns_mapping
-                .get_by_right(&(src, dgm.get_source()).into())
-            {
-                if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
-                    if self
-                        .mangled_dns_ids
-                        .remove(&message.header().id())
-                        .is_some_and(|exp| exp.elapsed() < IDS_EXPIRE)
-                    {
-                        src = *sentinel;
-                    }
-                }
-            }
         }
 
         pkt.set_src(src);
@@ -348,17 +312,6 @@ impl GatewayOnClient {
         if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
             packet.set_dst(*translated_ip);
             packet.update_checksum();
-        }
-
-        if let Some(srv) = self.dns_mapping.get_by_left(&packet.destination()) {
-            if let Some(dgm) = packet.as_udp() {
-                if let Ok(message) = domain::base::Message::from_slice(dgm.payload()) {
-                    self.mangled_dns_ids
-                        .insert(message.header().id(), Instant::now());
-                    packet.set_dst(srv.ip());
-                    packet.update_checksum();
-                }
-            }
         }
 
         packet
