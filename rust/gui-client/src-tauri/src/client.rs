@@ -157,8 +157,8 @@ fn start_logging(directives: &str) -> Result<file_logger::Handle> {
 
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
-    /// This message gets shown to users in the GUI and could be localized, unlike
-    /// messages in the log which only need to be used for `git grep`.
+    // This message gets shown to users in the GUI and could be localized, unlike
+    // messages in the log which only need to be used for `git grep`.
     let user_friendly_error_msg = match error {
         // TODO: Update this URL
         gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
