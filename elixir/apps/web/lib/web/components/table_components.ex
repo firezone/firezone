@@ -324,14 +324,14 @@ defmodule Web.TableComponents do
       <th
         scope="row"
         class={[
-          "text-right px-6 py-4 font-medium text-neutral-900 whitespace-nowrap",
+          "text-right px-4 py-3 font-medium text-neutral-900 whitespace-nowrap",
           "bg-neutral-50 w-1/5",
           @label_class
         ]}
       >
         <%= render_slot(@label) %>
       </th>
-      <td class={["px-6 py-4", @value_class]}>
+      <td class={["px-4 py-3", @value_class]}>
         <%= render_slot(@value) %>
       </td>
     </tr>
