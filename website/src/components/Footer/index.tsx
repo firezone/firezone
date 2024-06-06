@@ -84,7 +84,7 @@ export default function Footer() {
               <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
                   <Link
-                    href="/docs"
+                    href="/kb"
                     className="hover:underline hover:text-neutral-900"
                   >
                     Docs
@@ -92,10 +92,10 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="/kb/architecture"
+                    href="https://trust.firezone.dev/"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Architecture
+                    Trust Center
                   </Link>
                 </li>
                 <li className="mb-4">
