@@ -277,7 +277,7 @@ defmodule Web.Policies.Components do
           placeholder="Operator"
           disabled={@disabled}
           options={condition_operator_options(:remote_ip_location_region)}
-          value={if condition_form, do: condition_form[:operator].value}
+          value={get_in(condition_form, [:operator, Access.key!(:value)])}
         />
 
         <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
@@ -355,7 +355,7 @@ defmodule Web.Policies.Components do
           placeholder="Operator"
           options={condition_operator_options(:remote_ip)}
           disabled={@disabled}
-          value={if condition_form, do: condition_form[:operator].value}
+          value={get_in(condition_form, [:operator, Access.key!(:value)])}
         />
 
         <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
@@ -433,7 +433,7 @@ defmodule Web.Policies.Components do
           placeholder="Operator"
           options={condition_operator_options(:provider_id)}
           disabled={@disabled}
-          value={if condition_form, do: condition_form[:operator].value}
+          value={get_in(condition_form, [:operator, Access.key!(:value)])}
         />
 
         <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
@@ -526,7 +526,7 @@ defmodule Web.Policies.Components do
           placeholder="Timezone"
           options={Tzdata.zone_list()}
           disabled={@disabled}
-          value={if condition_form, do: condition_form[:timezone].value || @timezone}
+          value={condition_form[:timezone].value || @timezone}
         />
 
         <div class="space-y-2">
