@@ -99,7 +99,7 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 /// - Otherwise, a strategy for responding to the query
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<IpAddr, DnsResource>,
+    dns_resources_internal_ips: &HashMap<IpAddr, HashSet<DnsResource>>,
     dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
@@ -368,7 +368,7 @@ fn get_description(
 /// If we are not connected yet, the Client should defer the response and begin connecting.
 fn resource_from_question<N: ToName>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<IpAddr, DnsResource>,
+    dns_resources_internal_ips: &HashMap<IpAddr, HashSet<DnsResource>>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<DomainName>, DnsQueryParams, DnsResource>> {
     let name = ToName::to_vec(question.qname());
@@ -385,7 +385,7 @@ fn resource_from_question<N: ToName>(
 
             if !dns_resources_internal_ips
                 .iter()
-                .any(|(_, r)| r == &description)
+                .any(|(_, r)| r.contains(&description))
             {
                 return Some(ResolveStrategy::DeferredResponse(description));
             }
@@ -405,7 +405,7 @@ fn resource_from_question<N: ToName>(
 
             if !dns_resources_internal_ips
                 .iter()
-                .any(|(_, r)| r == &description)
+                .any(|(_, r)| r.contains(&description))
             {
                 return Some(ResolveStrategy::DeferredResponse(description));
             }
@@ -425,7 +425,14 @@ fn resource_from_question<N: ToName>(
                 return Some(ResolveStrategy::forward(name.to_string(), qtype));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::Ptr(
-                domain::rdata::Ptr::new(resource.address.clone()),
+                domain::rdata::Ptr::new(
+                    resource
+                        .iter()
+                        .next()
+                        .expect("to have at least a resource")
+                        .address
+                        .clone(),
+                ),
             )))
         }
         _ => {
@@ -439,11 +446,11 @@ fn resource_from_question<N: ToName>(
 }
 
 pub(crate) fn ips_of_resource<'a>(
-    ips: &'a HashMap<IpAddr, DnsResource>,
+    ips: &'a HashMap<IpAddr, HashSet<DnsResource>>,
     resource: &'a DnsResource,
 ) -> impl Iterator<Item = IpAddr> + 'a {
     ips.iter()
-        .filter_map(move |(ip, r)| (r == resource).then_some(*ip))
+        .filter_map(move |(ip, r)| (r.contains(resource)).then_some(*ip))
 }
 
 pub(crate) fn as_dns_message(pkt: &IpPacket) -> Option<TrustDnsMessage> {
