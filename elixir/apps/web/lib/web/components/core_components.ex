@@ -744,17 +744,20 @@ defmodule Web.CoreComponents do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <.badge
-      type={if @schema.online?, do: "success", else: "danger"}
-      title={
-        if @schema.last_seen_at,
-          do:
-            "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
-          else: "Never connected"
-      }
-    >
-      <%= if @schema.online?, do: "Online", else: "Offline" %>
-    </.badge>
+    <span class="flex items-center">
+      <.ping_icon color={if @schema.online?, do: "success", else: "danger"} />
+      <span
+        class="ml-2.5"
+        title={
+          if @schema.last_seen_at,
+            do:
+              "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+            else: "Never connected"
+        }
+      >
+        <%= if @schema.online?, do: "Online", else: "Offline" %>
+      </span>
+    </span>
     """
   end
 
@@ -1066,6 +1069,35 @@ defmodule Web.CoreComponents do
       </div>
     </div>
     """
+  end
+
+  @doc """
+  Render an animated status indicator dot.
+  """
+
+  attr :color, :string, default: "info"
+
+  def ping_icon(assigns) do
+    ~H"""
+    <span class="relative flex h-2.5 w-2.5">
+      <span class={~w[
+        animate-ping absolute inline-flex
+        h-full w-full rounded-full opacity-50
+        #{ping_icon_color(@color) |> elem(1)}]}></span>
+      <span class={~w[
+        relative inline-flex rounded-full h-2.5 w-2.5
+        #{ping_icon_color(@color) |> elem(0)}]}></span>
+    </span>
+    """
+  end
+
+  defp ping_icon_color(color) do
+    case color do
+      "info" -> {"bg-accent-500", "bg-accent-400"}
+      "success" -> {"bg-green-500", "bg-green-400"}
+      "warning" -> {"bg-orange-500", "bg-orange-400"}
+      "danger" -> {"bg-red-500", "bg-red-400"}
+    end
   end
 
   @doc """
