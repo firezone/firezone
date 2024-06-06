@@ -4,7 +4,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(%{provider: %{deleted_at: deleted_at}} = assigns) when not is_nil(deleted_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-neutral-500 rounded-full"></span>
+      <.ping_icon color="info" />
       <span class="ml-3">
         Deleted
       </span>
@@ -29,7 +29,7 @@ defmodule Web.Settings.IdentityProviders.Components do
 
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <.ping_icon color="danger" />
       <span class="ml-3">
         No refresh token provided by IdP and access token expires on
         <.datetime datetime={@expires_at} /> UTC
@@ -50,7 +50,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <.ping_icon color="danger" />
       <span class="ml-3">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
@@ -85,7 +85,7 @@ defmodule Web.Settings.IdentityProviders.Components do
 
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <.ping_icon color="danger" />
       <span class="ml-3">
         No refresh token provided by IdP and access token expires on
         <.datetime datetime={@expires_at} /> UTC
@@ -106,7 +106,7 @@ defmodule Web.Settings.IdentityProviders.Components do
       when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <.ping_icon color="danger" />
       <span class="ml-3">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
@@ -141,7 +141,7 @@ defmodule Web.Settings.IdentityProviders.Components do
 
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+      <.ping_icon color="danger" />
       <span class="ml-3">
         No refresh token provided by IdP and access token expires on
         <.datetime datetime={@expires_at} /> UTC
@@ -162,8 +162,8 @@ defmodule Web.Settings.IdentityProviders.Components do
       when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
-      <span class="ml-3">
+      <.ping_icon color="danger" />
+      <span class="ml-2.5">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
           <.button
@@ -192,8 +192,8 @@ defmodule Web.Settings.IdentityProviders.Components do
       when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
-      <span class="ml-3">
+      <.ping_icon color="danger" />
+      <span class="ml-2.5">
         Provisioning
         <span :if={@provider.adapter_state["status"]}>
           <.button
@@ -213,8 +213,8 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(%{provider: %{disabled_at: disabled_at}} = assigns) when not is_nil(disabled_at) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-neutral-500 rounded-full"></span>
-      <span class="ml-3">
+      <.ping_icon color="info" />
+      <span class="ml-2.5">
         Disabled
       </span>
     </div>
@@ -224,8 +224,8 @@ defmodule Web.Settings.IdentityProviders.Components do
   def status(assigns) do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
-      <span class="ml-3">
+      <.ping_icon color="success" />
+      <span class="ml-2.5">
         Active
       </span>
     </div>
@@ -258,13 +258,11 @@ defmodule Web.Settings.IdentityProviders.Components do
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""
     <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
-      <span class={[
-        "w-3 h-3 rounded-full",
-        @provider.last_syncs_failed > 3 or (not is_nil(@provider.sync_disabled_at) && "bg-red-500") ||
-          "bg-green-500"
-      ]}>
-      </span>
-      <span class="ml-3">
+      <.ping_icon color={
+        @provider.last_syncs_failed > 3 or (not is_nil(@provider.sync_disabled_at) && "danger") ||
+          "success"
+      } />
+      <span class="ml-2.5">
         Synced
         <.link
           navigate={~p"/#{@account}/actors?#{%{"actors_filter[provider_id]" => @provider.id}}"}
@@ -292,8 +290,8 @@ defmodule Web.Settings.IdentityProviders.Components do
       </span>
     </div>
     <div :if={is_nil(@provider.last_synced_at)} class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
-      <span class="ml-3">
+      <.ping_icon color="danger" />
+      <span class="ml-2.5">
         Never synced
       </span>
     </div>
@@ -304,8 +302,8 @@ defmodule Web.Settings.IdentityProviders.Components do
       when provisioner in [:just_in_time, :manual] do
     ~H"""
     <div class="flex items-center">
-      <span class="w-3 h-3 bg-green-500 rounded-full"></span>
-      <span class="ml-3">
+      <.ping_icon color="success" />
+      <span class="ml-2.5">
         Created
         <.link
           navigate={~p"/#{@account}/actors?#{%{"actors_filter[provider_id]" => @provider.id}}"}
