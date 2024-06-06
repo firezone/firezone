@@ -315,7 +315,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
     end
 
     test "returns error on invalid timezone" do
-      assert parse_days_of_week_time_ranges(["M/true/"]) ==
+      assert parse_days_of_week_time_ranges(["M/true"]) ==
                {:error, "timezone is required"}
 
       assert parse_days_of_week_time_ranges(["M/true/invalid"]) ==
