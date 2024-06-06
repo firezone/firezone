@@ -40,7 +40,7 @@ defmodule Web.Resources.New do
               <label for="resource_type" class="block mb-2 text-sm text-neutral-900">
                 Type
               </label>
-              <div class="flex text-sm leading-6 text-zinc-600">
+              <div class="flex text-sm leading-6 text-neutral-600">
                 <div class="flex items-center me-4">
                   <.input
                     id="resource-type--dns"
