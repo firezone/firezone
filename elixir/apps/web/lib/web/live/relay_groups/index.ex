@@ -14,7 +14,6 @@ defmodule Web.RelayGroups.Index do
         |> assign_live_table("groups",
           query_module: Relays.Group.Query,
           sortable_fields: [],
-          limit: 5,
           callback: &handle_groups_update!/2
         )
 
@@ -75,7 +74,7 @@ defmodule Web.RelayGroups.Index do
               </span>
             </:group>
 
-            <:col :let={relay} label="INSTANCE">
+            <:col :let={relay} label="instance">
               <.link
                 :if={relay.account_id}
                 navigate={~p"/#{@account}/relays/#{relay.id}"}
@@ -101,11 +100,11 @@ defmodule Web.RelayGroups.Index do
               </div>
             </:col>
 
-            <:col :let={relay} label="TYPE">
+            <:col :let={relay} label="type">
               <%= if relay.account_id, do: "self-hosted", else: "firezone-owned" %>
             </:col>
 
-            <:col :let={relay} label="STATUS">
+            <:col :let={relay} label="status">
               <.connection_status schema={relay} />
             </:col>
             <:empty>

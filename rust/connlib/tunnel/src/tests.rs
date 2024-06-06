@@ -1025,7 +1025,7 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
     ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
+        let mut buffer = [0u8; 2000];
 
         if !self.client.wants(dst) {
             return ControlFlow::Continue(());
@@ -1050,7 +1050,7 @@ impl TunnelTest {
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
         global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 200]; // In these tests, we only send ICMP packets which are very small.
+        let mut buffer = [0u8; 2000];
 
         if !self.gateway.wants(dst) {
             return ControlFlow::Continue(());
@@ -2143,7 +2143,7 @@ fn icmp_to_resolved_non_resource() -> impl Strategy<Value = Transition> {
 }
 
 fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
-    collection::hash_set(any::<IpAddr>(), 1..4)
+    collection::hash_set(any::<IpAddr>(), 1..6)
 }
 
 fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
@@ -2311,22 +2311,26 @@ fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
 }
 
 fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
-    collection::vec(
-        any::<IpAddr>().prop_map(|ip| DnsServer::from((ip, 53))),
-        0..4,
-    )
-    .prop_filter(
-        "if configured, upstream DNS must contain IPv4 and IPv6 servers",
-        |servers| {
-            if servers.is_empty() {
-                return true;
-            }
+    let ip4_dns_servers = collection::vec(
+        any::<Ipv4Addr>().prop_map(|ip| DnsServer::from((ip, 53))),
+        1..4,
+    );
+    let ip6_dns_servers = collection::vec(
+        any::<Ipv6Addr>().prop_map(|ip| DnsServer::from((ip, 53))),
+        1..4,
+    );
 
-            // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
+    // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
+    // AN ADMIN COULD CONFIGURE ONLY IPv4 SERVERS IN WHICH CASE WE ARE SCREWED IF THE CLIENT ONLY HAS IPv6 CONNECTIVITY.
 
-            servers.iter().any(|s| s.ip().is_ipv4()) && servers.iter().any(|s| s.ip().is_ipv6())
-        },
-    )
+    prop_oneof![
+        Just(Vec::new()),
+        (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut ip4_servers, ip6_servers)| {
+            ip4_servers.extend(ip6_servers);
+
+            ip4_servers
+        })
+    ]
 }
 
 fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
@@ -2393,6 +2397,8 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
         .iter()
         .zip(state.gateway_received_icmp_requests.iter())
     {
+        let _guard = tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
+
         let client_sent_request = &state
             .client_sent_icmp_requests
             .get(&(*seq, *identifier))
@@ -2402,7 +2408,7 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
             .get(&(*seq, *identifier))
             .expect("to have ICMP reply on client");
 
-        assert_correct_src_and_dst_ips(client_sent_request, client_received_reply, seq, identifier);
+        assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
         assert_eq!(
             gateway_received_request.source(),
@@ -2435,21 +2441,46 @@ fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceS
 fn assert_correct_src_and_dst_ips(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
-    seq: &IcmpSeq,
-    identifier: &IcmpIdentifier,
 ) {
     assert_eq!(
         client_sent_request.destination(),
         client_received_reply.source(),
-        "ICMP request destination == ICMP reply source"
+        "request destination == reply source"
     );
+
+    tracing::info!(target: "assertions", "✅ dst IP of request matches src IP of response: {}", client_sent_request.destination());
+
     assert_eq!(
         client_sent_request.source(),
         client_received_reply.destination(),
-        "ICMP request source == ICMP reply destination"
+        "request source == reply destination"
     );
 
-    tracing::info!(target: "assertions", "✅ src and dst IP for ICMP request ({seq},{identifier}) are correct");
+    tracing::info!(target: "assertions", "✅ src IP of request matches dst IP of response: {}", client_sent_request.source());
+}
+
+fn assert_correct_src_and_dst_udp_ports(
+    client_sent_request: &IpPacket<'_>,
+    client_received_reply: &IpPacket<'_>,
+) {
+    let client_sent_request = client_sent_request.as_udp().expect("packet to be UDP");
+    let client_received_reply = client_received_reply.as_udp().expect("packet to be UDP");
+
+    assert_eq!(
+        client_sent_request.get_destination(),
+        client_received_reply.get_source(),
+        "request destination == reply source"
+    );
+
+    tracing::info!(target: "assertions", "✅ dst port of request matches src port of response: {}", client_sent_request.get_destination());
+
+    assert_eq!(
+        client_sent_request.get_source(),
+        client_received_reply.get_destination(),
+        "request source == reply destination"
+    );
+
+    tracing::info!(target: "assertions", "✅ src port of request matches dst port of response: {}", client_sent_request.get_source());
 }
 
 fn assert_destination_is_cdir_resource(
@@ -2528,6 +2559,8 @@ fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState)
     );
 
     for query_id in ref_state.expected_dns_handshakes.iter() {
+        let _guard = tracing::info_span!(target: "assertions", "dns", %query_id).entered();
+
         let client_sent_query = state
             .client_sent_dns_queries
             .get(query_id)
@@ -2537,36 +2570,8 @@ fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState)
             .get(query_id)
             .expect("to have DNS response on client");
 
-        assert_eq!(
-            client_sent_query.destination(),
-            client_received_response.source(),
-            "DNS query dIP == DNS response sIP"
-        );
-        assert_eq!(
-            client_sent_query.source(),
-            client_received_response.destination(),
-            "DNS query sIP == DNS response dIP"
-        );
-
-        {
-            let client_sent_query = client_sent_query
-                .as_udp()
-                .expect("DNS query to be UDP packet");
-            let client_received_response = client_received_response
-                .as_udp()
-                .expect("DNS response to be UDP packet");
-
-            assert_eq!(
-                client_sent_query.get_destination(),
-                client_received_response.get_source(),
-                "DNS query dport == DNS response sport"
-            );
-            assert_eq!(
-                client_sent_query.get_source(),
-                client_received_response.get_destination(),
-                "DNS query sport == DNS response dport"
-            );
-        }
+        assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
+        assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
     }
 }
 

@@ -744,17 +744,20 @@ defmodule Web.CoreComponents do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <.badge
-      type={if @schema.online?, do: "success", else: "danger"}
-      title={
-        if @schema.last_seen_at,
-          do:
-            "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
-          else: "Never connected"
-      }
-    >
-      <%= if @schema.online?, do: "Online", else: "Offline" %>
-    </.badge>
+    <span class="flex items-center">
+      <.ping_icon color={if @schema.online?, do: "success", else: "danger"} />
+      <span
+        class="ml-2.5"
+        title={
+          if @schema.last_seen_at,
+            do:
+              "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+            else: "Never connected"
+        }
+      >
+        <%= if @schema.online?, do: "Online", else: "Offline" %>
+      </span>
+    </span>
     """
   end
 
@@ -834,13 +837,13 @@ defmodule Web.CoreComponents do
 
   def identity_identifier(assigns) do
     ~H"""
-    <span class="flex inline-flex" data-identity-id={@identity.id}>
+    <span class="flex items-center" data-identity-id={@identity.id}>
       <.link
         navigate={
           Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
         }
         data-provider-id={@identity.provider.id}
-        title={@identity.provider.adapter}
+        title={get_identity_email(@identity)}
         class={~w[
           text-xs
           rounded-l
@@ -854,23 +857,16 @@ defmodule Web.CoreComponents do
         <.provider_icon adapter={@identity.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
       <span class={~w[
-        flex items-center
         text-xs
+        min-w-0
         rounded-r
         mr-2 py-0.5 pl-1.5 pr-2.5
         text-neutral-900
         bg-neutral-100
       ]}>
-        <%= get_identity_email(@identity) %>
-      </span>
-      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
-        (deleted)
-      </span>
-      <span :if={not is_nil(@identity.provider.disabled_at)} class="text-sm">
-        (provider disabled)
-      </span>
-      <span :if={not is_nil(@identity.provider.deleted_at)} class="text-sm">
-        (provider deleted)
+        <span class="block truncate" title={get_identity_email(@identity)}>
+          <%= get_identity_email(@identity) %>
+        </span>
       </span>
     </span>
     """
@@ -893,33 +889,31 @@ defmodule Web.CoreComponents do
 
   def group(assigns) do
     ~H"""
-    <span class="flex inline-flex" data-group-id={@group.id}>
+    <span class="flex items-center" data-group-id={@group.id}>
       <.link
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
         data-provider-id={@group.provider_id}
         title={@group.provider.adapter}
         class={~w[
-          text-xs
           rounded-l
           py-0.5 px-1.5
           text-neutral-900
           bg-neutral-50
           border-neutral-100
           border
-          whitespace-nowrap
         ]}
       >
         <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <.link navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
-          flex items-center
+      <.link title={@group.name} navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
           text-xs
+          truncate
+          min-w-0
           #{if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5")}
           py-0.5
           text-neutral-800
           bg-neutral-100
-          whitespace-nowrap
         ]}>
         <%= @group.name %>
       </.link>
@@ -1075,6 +1069,35 @@ defmodule Web.CoreComponents do
       </div>
     </div>
     """
+  end
+
+  @doc """
+  Render an animated status indicator dot.
+  """
+
+  attr :color, :string, default: "info"
+
+  def ping_icon(assigns) do
+    ~H"""
+    <span class="relative flex h-2.5 w-2.5">
+      <span class={~w[
+        animate-ping absolute inline-flex
+        h-full w-full rounded-full opacity-50
+        #{ping_icon_color(@color) |> elem(1)}]}></span>
+      <span class={~w[
+        relative inline-flex rounded-full h-2.5 w-2.5
+        #{ping_icon_color(@color) |> elem(0)}]}></span>
+    </span>
+    """
+  end
+
+  defp ping_icon_color(color) do
+    case color do
+      "info" -> {"bg-accent-500", "bg-accent-400"}
+      "success" -> {"bg-green-500", "bg-green-400"}
+      "warning" -> {"bg-orange-500", "bg-orange-400"}
+      "danger" -> {"bg-red-500", "bg-red-400"}
+    end
   end
 
   @doc """

@@ -24,7 +24,6 @@ defmodule Web.Actors.EditGroups do
           query_module: Actors.Group.Query,
           sortable_fields: [],
           hide_filters: [:provider_id],
-          limit: 5,
           callback: &handle_groups_update!/2
         )
 
@@ -80,7 +79,7 @@ defmodule Web.Actors.EditGroups do
             ordered_by={@order_by_table_id["groups"]}
             metadata={@groups_metadata}
           >
-            <:col :let={group} label="GROUP">
+            <:col :let={group} label="group">
               <.icon
                 :if={removed?(group, @removed)}
                 name="hero-minus"

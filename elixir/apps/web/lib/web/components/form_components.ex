@@ -581,11 +581,11 @@ defmodule Web.FormComponents do
     }
 
     spacing = %{
-      "xs" => "px-2 py-1",
-      "sm" => "px-3 py-2",
-      "md" => "px-4 py-2",
-      "lg" => "px-5 py-3",
-      "xl" => "px-6 py-3.5"
+      "xs" => "px-1.5 py-1",
+      "sm" => "px-2 py-2",
+      "md" => "px-3 py-2",
+      "lg" => "px-4 py-3",
+      "xl" => "px-5 py-3.5"
     }
 
     [text[size], spacing[size]]
@@ -594,18 +594,18 @@ defmodule Web.FormComponents do
   defp icon_size(size) do
     icon_size = %{
       "xs" => "w-3 h-3",
-      "sm" => "w-3.5 h-3.5",
-      "md" => "w-4 h-4",
-      "lg" => "w-5 h-5",
-      "xl" => "w-6 h-6"
+      "sm" => "w-3 h-3",
+      "md" => "w-3.5 h-3.5",
+      "lg" => "w-4 h-4",
+      "xl" => "w-5 h-5"
     }
 
     spacing = %{
       "xs" => "mr-1",
-      "sm" => "mr-2",
-      "md" => "mr-3",
-      "lg" => "mr-4",
-      "xl" => "mr-5"
+      "sm" => "mr-1.5",
+      "md" => "mr-2",
+      "lg" => "mr-3",
+      "xl" => "mr-4"
     }
 
     [icon_size[size], spacing[size]]
