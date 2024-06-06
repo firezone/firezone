@@ -16,6 +16,7 @@ use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
+use tracing::instrument;
 use url::Url;
 
 use ControllerRequest as Req;
@@ -71,6 +72,7 @@ pub(crate) enum Error {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
+#[instrument(skip_all)]
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: settings::AdvancedSettings,

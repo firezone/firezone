@@ -3,6 +3,7 @@ use clap::{Args, Parser};
 use connlib_client_shared::file_logger;
 use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
+use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
 mod about;
@@ -61,6 +62,7 @@ pub(crate) enum Error {
 ///
 /// In total there are 4 subcommands (non-elevated, elevated GUI, crash handler, and deep link process)
 /// In steady state, the only processes running will be the GUI and the crash handler.
+#[instrument(skip_all)]
 pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = Cli::parse();
@@ -103,7 +105,7 @@ pub(crate) fn run() -> Result<()> {
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(?error, "gui::run error");
+                tracing::error!(?error);
             }
             Ok(result?)
         }
@@ -113,6 +115,7 @@ pub(crate) fn run() -> Result<()> {
 /// `gui::run` but wrapped in `anyhow::Result`
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
+// Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
@@ -121,7 +124,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
-        tracing::error!(?error, error_msg = error.to_string(), "`gui::run` error");
+        tracing::error!(?error, error_msg = %error);
         show_error_dialog(error)?;
     }
 
@@ -155,6 +158,7 @@ fn start_logging(directives: &str) -> Result<file_logger::Handle> {
     Ok(logging_handles.logger)
 }
 
+#[instrument(skip_all)]
 fn show_error_dialog(error: &gui::Error) -> Result<()> {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
     // This message gets shown to users in the GUI and could be localized, unlike
@@ -168,7 +172,7 @@ fn show_error_dialog(error: &gui::Error) -> Result<()> {
         gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         gui::Error::Other(error) => error.to_string(),
     };
-    tracing::error!("{}", user_friendly_error_msg);
+    tracing::error!(?user_friendly_error_msg);
 
     native_dialog::MessageDialog::new()
         .set_title("Firezone Error")
