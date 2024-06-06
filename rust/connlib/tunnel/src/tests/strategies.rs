@@ -1,7 +1,7 @@
 use super::{PrivateKey, SimNode, SimRelay, Transition};
 use crate::tests::PacketSource;
 use connlib_shared::{
-    messages::{client::ResourceDescriptionDns, ClientId, DnsServer, GatewayId, RelayId},
+    messages::{client::ResourceDescriptionDns, DnsServer, RelayId},
     proptest::{dns_resource, domain_label, domain_name},
     DomainName,
 };
@@ -142,14 +142,6 @@ pub(crate) fn dns_query() -> impl Strategy<Value = Transition> {
                 dns_server_idx,
             },
         )
-}
-
-pub(crate) fn client_id() -> impl Strategy<Value = ClientId> {
-    (any::<u128>()).prop_map(ClientId::from_u128)
-}
-
-pub(crate) fn gateway_id() -> impl Strategy<Value = GatewayId> {
-    (any::<u128>()).prop_map(GatewayId::from_u128)
 }
 
 /// Generates an IPv4 address for the tunnel interface.
