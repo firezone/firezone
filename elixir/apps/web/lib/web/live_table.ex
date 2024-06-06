@@ -189,7 +189,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last md:w-1/3">
+    <div class="flex items-center order-last">
       <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
@@ -224,7 +224,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last md:w-1/3">
+    <div class="flex items-center order-last">
       <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
@@ -259,7 +259,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :uuid}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-4 md:w-1/3">
+    <div class="flex items-center order-4">
       <div class="w-full">
         <.input
           type="group_select"
@@ -337,7 +337,7 @@ defmodule Web.LiveTable do
   defp filter(%{filter: %{type: {:list, :string}, values: values}} = assigns)
        when 0 < length(values) and length(values) < 5 do
     ~H"""
-    <div class="flex items-center order-first md:w-1/3">
+    <div class="flex items-center order-first">
       <div class="flex rounded w-full" role="group">
         <.intersperse_blocks>
           <:item>
@@ -396,7 +396,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: :string, values: values}} = assigns) when length(values) > 0 do
     ~H"""
-    <div class="flex items-center order-4 md:w-1/3">
+    <div class="flex items-center order-4">
       <div class="w-full">
         <.input
           type="group_select"
