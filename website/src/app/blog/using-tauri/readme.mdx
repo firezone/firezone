@@ -107,15 +107,29 @@ it working in the same event loop.
 
 # How does Tauri work?
 
-<Link target="_blank" href="/images/blog/using-tauri/tauri-arch.svg">
-  <Image
-    src="/images/blog/using-tauri/tauri-arch.svg"
-    alt="Tauri dependency diagram"
-    width={1200}
-    height={1200}
-    className="p-16"
-  />
-</Link>
+```text
+Firezone Client
+    |
+    +------> Tokio
+    |
+    +------> connlib
+    |
+    +------> Tauri
+              |
+              +----> Tokio
+              |
+              +----> WRY
+              |       |
+              |       +----> WebView2 (Windows)
+              |       |
+              |       +----> webkit2gtk (Linux)
+              |
+              +----> TAO
+                      |
+                      +----> Win32 (Windows)
+                      |
+                      +----> GTK+ (Linux)
+```
 
 Tauri is built atop [WRY](https://github.com/tauri-apps/wry), the webview
 rendering library. WRY is built atop [TAO](https://github.com/tauri-apps/tao),
@@ -136,25 +150,26 @@ WebView2 pre-installed. Tauri automatically runs a downloader when the MSI is
 installed if needed. On Linux (Debian and Ubuntu), we tell `apt` that we depend
 on `webkit2gtk`, so `apt` will install it for us.
 
-<Link target="_blank" href="/images/blog/using-tauri/msi-bundle.svg">
-  <Image
-    src="/images/blog/using-tauri/msi-bundle.svg"
-    alt="MSI bundle diagram"
-    width={1200}
-    height={1200}
-    className="p-16"
-  />
-</Link>
+```text
+MSI bundle
+    |
+    +----> GUI exe
+    |
+    +----> IPC service exe
+    |
+    +----> WebView2 downloader
+```
 
-<Link target="_blank" href="/images/blog/using-tauri/deb-bundle.svg">
-  <Image
-    src="/images/blog/using-tauri/deb-bundle.svg"
-    alt="deb bundle diagram"
-    width={1200}
-    height={1200}
-    className="p-16"
-  />
-</Link>
+```text
+deb bundle
+    |
+    +----> GUI exe
+    |
+    +----> IPC service exe
+    |
+    +----> webkit2gtk reference
+```
+
 # Why did the Linux port take twice as long as Windows?
 
 The Linux port took twice as long because running a GUI with `sudo` in Linux
