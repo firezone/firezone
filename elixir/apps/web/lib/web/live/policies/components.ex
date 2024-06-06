@@ -140,14 +140,39 @@ defmodule Web.Policies.Components do
   defp condition_operator_option_name(:is_not_in_cidr), do: "is not in"
 
   def condition_form(assigns) do
+    assigns =
+      assign_new(assigns, :policy_conditions_enabled?, fn ->
+        Domain.Accounts.policy_conditions_enabled?(assigns.account)
+      end)
+
     ~H"""
     <fieldset class="flex flex-col gap-2">
-      <legend class="text-lg mb-4">Conditions</legend>
+      <div class="flex items-center justify-between">
+        <legend class="text-lg mb-4">Conditions</legend>
+        <%= if @policy_conditions_enabled? == false do %>
+          <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
+            <.badge type="primary" title="Feature available on a higher pricing plan">
+              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+            </.badge>
+          </.link>
+        <% end %>
+      </div>
 
-      <.remote_ip_location_region_condition_form form={@form} />
-      <.remote_ip_condition_form form={@form} />
-      <.provider_id_condition_form form={@form} providers={@providers} />
-      <.current_utc_datetime_condition_form form={@form} />
+      <.remote_ip_location_region_condition_form
+        form={@form}
+        disabled={@policy_conditions_enabled? == false}
+      />
+      <.remote_ip_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
+      <.provider_id_condition_form
+        form={@form}
+        providers={@providers}
+        disabled={@policy_conditions_enabled? == false}
+      />
+      <.current_utc_datetime_condition_form
+        form={@form}
+        timezone={@timezone}
+        disabled={@policy_conditions_enabled? == false}
+      />
     </fieldset>
     """
   end
@@ -185,13 +210,16 @@ defmodule Web.Policies.Components do
         </legend>
 
         <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the location of the client.
+          Restrict access based on the location of the Client.
         </p>
       </div>
 
       <div
         id="policy_conditions_remote_ip_location_region_condition"
-        class="grid gap-2 sm:grid-cols-5 sm:gap-4 hidden"
+        class={[
+          "grid gap-2 sm:grid-cols-5 sm:gap-4",
+          condition_form.source == %{} && "hidden"
+        ]}
       >
         <.input
           type="select"
@@ -199,6 +227,7 @@ defmodule Web.Policies.Components do
           id="policy_conditions_remote_ip_location_region_operator"
           field={condition_form[:operator]}
           placeholder="Operator"
+          disabled={@disabled}
           options={condition_operator_options(:remote_ip_location_region)}
           value={condition_form && condition_form[:operator].value}
         />
@@ -215,6 +244,7 @@ defmodule Web.Policies.Components do
               name="policy[conditions][remote_ip_location_region][values][]"
               id={"policy_conditions_remote_ip_location_region_values_#{index}"}
               options={[{"Select Country", nil}] ++ Domain.Geo.all_country_options!()}
+              disabled={@disabled}
               value_index={index}
               value={value}
             />
@@ -258,13 +288,16 @@ defmodule Web.Policies.Components do
         </legend>
 
         <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the client's IP address.
+          Restrict access based on the Client's IP address.
         </p>
       </div>
 
       <div
         id="policy_conditions_remote_ip_condition"
-        class="grid gap-2 sm:grid-cols-5 sm:gap-4 hidden"
+        class={[
+          "grid gap-2 sm:grid-cols-5 sm:gap-4",
+          condition_form.source == %{} && "hidden"
+        ]}
       >
         <.input
           type="select"
@@ -273,6 +306,7 @@ defmodule Web.Policies.Components do
           field={condition_form[:operator]}
           placeholder="Operator"
           options={condition_operator_options(:remote_ip)}
+          disabled={@disabled}
           value={condition_form && condition_form[:operator].value}
         />
 
@@ -288,6 +322,7 @@ defmodule Web.Policies.Components do
               name="policy[conditions][remote_ip][values][]"
               id={"policy_conditions_remote_ip_values_#{index}"}
               placeholder="189.172.0.0/24"
+              disabled={@disabled}
               value_index={index}
               value={value}
             />
@@ -331,13 +366,16 @@ defmodule Web.Policies.Components do
         </legend>
 
         <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the authentication provider that was used to sign in.
+          Restrict access based on the identity provider that was used to sign in.
         </p>
       </div>
 
       <div
         id="policy_conditions_provider_id_condition"
-        class="grid gap-2 sm:grid-cols-5 sm:gap-4 hidden"
+        class={[
+          "grid gap-2 sm:grid-cols-5 sm:gap-4",
+          condition_form.source == %{} && "hidden"
+        ]}
       >
         <.input
           type="select"
@@ -346,6 +384,7 @@ defmodule Web.Policies.Components do
           field={condition_form[:operator]}
           placeholder="Operator"
           options={condition_operator_options(:provider_id)}
+          disabled={@disabled}
           value={condition_form && condition_form[:operator].value}
         />
 
@@ -361,6 +400,7 @@ defmodule Web.Policies.Components do
               name="policy[conditions][provider_id][values][]"
               id={"policy_conditions_provider_id_values_#{index}"}
               options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
+              disabled={@disabled}
               value_index={index}
               value={value}
             />
@@ -418,7 +458,7 @@ defmodule Web.Policies.Components do
         </legend>
 
         <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the current time of the day in UTC timezone.
+          Restrict access based on the current time of the day.
         </p>
       </div>
 

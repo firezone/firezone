@@ -1135,6 +1135,12 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def feature_name(%{feature: :policy_conditions} = assigns) do
+    ~H"""
+    Define Policy Conditions
+    """
+  end
+
   def feature_name(%{feature: :multi_site_resources} = assigns) do
     ~H"""
     Define globally-distributed resources
