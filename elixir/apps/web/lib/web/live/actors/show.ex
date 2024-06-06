@@ -21,32 +21,27 @@ defmodule Web.Actors.Show do
         |> assign_live_table("identities",
           query_module: Auth.Identity.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_identities_update!/2
         )
         |> assign_live_table("tokens",
           query_module: Tokens.Token.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_tokens_update!/2
         )
         |> assign_live_table("clients",
           query_module: Clients.Client.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_clients_update!/2
         )
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("groups",
           query_module: Actors.Group.Query,
           sortable_fields: [],
           hide_filters: [:provider_id],
-          limit: 15,
           callback: &handle_groups_update!/2
         )
 
@@ -229,24 +224,27 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["identities"]}
           metadata={@identities_metadata}
         >
-          <:col :let={identity} label="IDENTITY">
+          <:col :let={identity} label="identity">
             <.identity_identifier account={@account} identity={identity} />
           </:col>
-          <:col :let={identity} label="CREATED">
+          <:col :let={identity} label="created">
             <.created_by account={@account} schema={identity} />
           </:col>
-          <:col :let={identity} label="LAST SIGNED IN">
+          <:col :let={identity} label="last signed in">
             <.relative_datetime datetime={identity.last_seen_at} />
           </:col>
           <:action :let={identity}>
             <.button
               :if={identity_has_email?(identity)}
               size="xs"
+              title="Send Welcome Email"
               icon="hero-envelope"
               phx-click="send_welcome_email"
               phx-value-id={identity.id}
             >
-              Send Welcome Email
+              <span class="hidden md:block truncate">
+                Send Welcome Email
+              </span>&nbsp;
             </.button>
           </:action>
           <:action :let={identity}>
@@ -323,19 +321,19 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["tokens"]}
           metadata={@tokens_metadata}
         >
-          <:col :let={token} label="TYPE" class="w-1/12">
+          <:col :let={token} label="type" class="w-1/12">
             <%= token.type %>
           </:col>
-          <:col :let={token} :if={@actor.type != :service_account} label="IDENTITY" class="w-2/12">
+          <:col :let={token} :if={@actor.type != :service_account} label="identity" class="w-3/12">
             <.identity_identifier account={@account} identity={token.identity} />
           </:col>
-          <:col :let={token} :if={@actor.type == :service_account} label="NAME" class="w-2/12">
+          <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
             <%= token.name %>
           </:col>
-          <:col :let={token} label="CREATED">
+          <:col :let={token} label="created">
             <.created_by account={@account} schema={token} />
           </:col>
-          <:col :let={token} label="LAST USED" class="w-3/12">
+          <:col :let={token} label="last used">
             <p>
               <.relative_datetime datetime={token.last_seen_at} />
             </p>
@@ -343,10 +341,10 @@ defmodule Web.Actors.Show do
               <code class="text-xs"><.last_seen schema={token} /></code>
             </p>
           </:col>
-          <:col :let={token} label="EXPIRES">
+          <:col :let={token} label="expires">
             <.relative_datetime datetime={token.expires_at} />
           </:col>
-          <:col :let={token} label="CLIENT">
+          <:col :let={token} label="client">
             <.intersperse_blocks :if={token.type == :client}>
               <:separator>,&nbsp;</:separator>
 
@@ -390,12 +388,12 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["clients"]}
           metadata={@clients_metadata}
         >
-          <:col :let={client} label="NAME">
+          <:col :let={client} label="name">
             <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
               <%= client.name %>
             </.link>
           </:col>
-          <:col :let={client} label="STATUS">
+          <:col :let={client} label="status">
             <.connection_status schema={client} />
           </:col>
           <:empty>
@@ -420,32 +418,32 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["flows"]}
           metadata={@flows_metadata}
         >
-          <:col :let={flow} label="AUTHORIZED">
+          <:col :let={flow} label="authorized" class="xl:w-1/12">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="EXPIRES">
+          <:col :let={flow} label="expires" class="xl:w-1/12">
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
-          <:col :let={flow} label="POLICY">
+          <:col :let={flow} label="policy" class="w-3/12">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <Web.Policies.Components.policy_name policy={flow.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="CLIENT" class="w-3/12">
+          <:col :let={flow} label="client">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
               <%= flow.client.name %>
             </.link>
             <br />
             <code class="text-xs"><%= flow.client_remote_ip %></code>
           </:col>
-          <:col :let={flow} label="GATEWAY" class="w-3/12">
+          <:col :let={flow} label="gateway">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             <br />
             <code class="text-xs"><%= flow.gateway_remote_ip %></code>
           </:col>
-          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="activity" class="w-1/12">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>
@@ -476,7 +474,7 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["groups"]}
           metadata={@groups_metadata}
         >
-          <:col :let={group} label="NAME">
+          <:col :let={group} label="name">
             <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
               <%= group.name %>
             </.link>

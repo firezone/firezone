@@ -25,7 +25,6 @@ defmodule Web.Sites.Show do
           sortable_fields: [
             {:gateways, :last_seen_at}
           ],
-          limit: 10,
           callback: &handle_gateways_update!/2
         )
         |> assign_live_table("resources",
@@ -37,7 +36,6 @@ defmodule Web.Sites.Show do
             {:resources, :name},
             {:resources, :address}
           ],
-          limit: 10,
           callback: &handle_resources_update!/2
         )
 
@@ -156,17 +154,17 @@ defmodule Web.Sites.Show do
             ordered_by={@order_by_table_id["gateways"]}
             metadata={@gateways_metadata}
           >
-            <:col :let={gateway} label="INSTANCE">
+            <:col :let={gateway} label="instance">
               <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
                 <%= gateway.name %>
               </.link>
             </:col>
-            <:col :let={gateway} label="REMOTE IP">
+            <:col :let={gateway} label="remote ip">
               <code>
                 <%= gateway.last_seen_remote_ip %>
               </code>
             </:col>
-            <:col :let={gateway} label="STATUS">
+            <:col :let={gateway} label="status">
               <.connection_status schema={gateway} />
             </:col>
             <:empty>
@@ -211,7 +209,7 @@ defmodule Web.Sites.Show do
             ordered_by={@order_by_table_id["resources"]}
             metadata={@resources_metadata}
           >
-            <:col :let={resource} label="NAME" field={{:resources, :name}}>
+            <:col :let={resource} label="name" field={{:resources, :name}}>
               <.link
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
                 class={[link_style()]}
@@ -219,7 +217,7 @@ defmodule Web.Sites.Show do
                 <%= resource.name %>
               </.link>
             </:col>
-            <:col :let={resource} label="ADDRESS" field={{:resources, :address}}>
+            <:col :let={resource} label="address" field={{:resources, :address}}>
               <code class="block text-xs">
                 <%= resource.address %>
               </code>

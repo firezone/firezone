@@ -27,7 +27,6 @@ defmodule Web.Resources.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("policies",
@@ -208,15 +207,15 @@ defmodule Web.Resources.Show do
           ordered_by={@order_by_table_id["policies"]}
           metadata={@policies_metadata}
         >
-          <:col :let={policy} label="ID">
+          <:col :let={policy} label="id">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
               <%= policy.id %>
             </.link>
           </:col>
-          <:col :let={policy} label="GROUP">
+          <:col :let={policy} label="group">
             <.group account={@account} group={policy.actor_group} />
           </:col>
-          <:col :let={policy} label="STATUS">
+          <:col :let={policy} label="status">
             <%= if is_nil(policy.deleted_at) do %>
               <%= if is_nil(policy.disabled_at) do %>
                 Active
@@ -268,18 +267,18 @@ defmodule Web.Resources.Show do
           ordered_by={@order_by_table_id["flows"]}
           metadata={@flows_metadata}
         >
-          <:col :let={flow} label="AUTHORIZED">
+          <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="EXPIRES">
+          <:col :let={flow} label="expires">
             <.relative_datetime datetime={flow.expires_at} />
           </:col>
-          <:col :let={flow} label="POLICY">
+          <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <.policy_name policy={flow.policy} />
             </.link>
           </:col>
-          <:col :let={flow} label="CLIENT, ACTOR" class="w-3/12">
+          <:col :let={flow} label="client, actor" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
               <%= flow.client.name %>
             </.link>
@@ -289,14 +288,14 @@ defmodule Web.Resources.Show do
             </.link>
             <%= flow.client_remote_ip %>
           </:col>
-          <:col :let={flow} label="GATEWAY" class="w-3/12">
+          <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
               <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
             </.link>
             <br />
             <code class="text-xs"><%= flow.gateway_remote_ip %></code>
           </:col>
-          <:col :let={flow} :if={@flow_activities_enabled?} label="ACTIVITY">
+          <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
               Show
             </.link>

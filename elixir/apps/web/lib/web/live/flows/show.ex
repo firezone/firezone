@@ -26,7 +26,6 @@ defmodule Web.Flows.Show do
         |> assign_live_table("activities",
           query_module: Flows.Activity.Query,
           sortable_fields: [],
-          limit: 10,
           callback: &handle_activities_update!/2
         )
 
@@ -156,22 +155,22 @@ defmodule Web.Flows.Show do
           ordered_by={@order_by_table_id["activities"]}
           metadata={@activities_metadata}
         >
-          <:col :let={activity} label="STARTED AT">
+          <:col :let={activity} label="started at">
             <.relative_datetime datetime={activity.window_started_at} />
           </:col>
-          <:col :let={activity} label="ENDED AT">
+          <:col :let={activity} label="ended at">
             <.relative_datetime datetime={activity.window_ended_at} />
           </:col>
-          <:col :let={activity} label="DESTINATION">
+          <:col :let={activity} label="destination">
             <%= activity.destination %>
           </:col>
-          <:col :let={activity} label="CONNECTIVITY TYPE">
+          <:col :let={activity} label="connectivity type">
             <%= activity.connectivity_type %>
           </:col>
-          <:col :let={activity} label="RX">
+          <:col :let={activity} label="rx">
             <%= Sizeable.filesize(activity.rx_bytes) %>
           </:col>
-          <:col :let={activity} label="TX">
+          <:col :let={activity} label="tx">
             <%= Sizeable.filesize(activity.tx_bytes) %>
           </:col>
           <:empty>

@@ -834,13 +834,13 @@ defmodule Web.CoreComponents do
 
   def identity_identifier(assigns) do
     ~H"""
-    <span class="flex inline-flex" data-identity-id={@identity.id}>
+    <span class="flex items-center" data-identity-id={@identity.id}>
       <.link
         navigate={
           Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
         }
         data-provider-id={@identity.provider.id}
-        title={@identity.provider.adapter}
+        title={get_identity_email(@identity)}
         class={~w[
           text-xs
           rounded-l
@@ -854,23 +854,16 @@ defmodule Web.CoreComponents do
         <.provider_icon adapter={@identity.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
       <span class={~w[
-        flex items-center
         text-xs
+        min-w-0
         rounded-r
         mr-2 py-0.5 pl-1.5 pr-2.5
         text-neutral-900
         bg-neutral-100
       ]}>
-        <%= get_identity_email(@identity) %>
-      </span>
-      <span :if={not is_nil(@identity.deleted_at)} class="text-sm">
-        (deleted)
-      </span>
-      <span :if={not is_nil(@identity.provider.disabled_at)} class="text-sm">
-        (provider disabled)
-      </span>
-      <span :if={not is_nil(@identity.provider.deleted_at)} class="text-sm">
-        (provider deleted)
+        <span class="block truncate" title={get_identity_email(@identity)}>
+          <%= get_identity_email(@identity) %>
+        </span>
       </span>
     </span>
     """
@@ -893,33 +886,31 @@ defmodule Web.CoreComponents do
 
   def group(assigns) do
     ~H"""
-    <span class="flex inline-flex" data-group-id={@group.id}>
+    <span class="flex items-center" data-group-id={@group.id}>
       <.link
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
         data-provider-id={@group.provider_id}
         title={@group.provider.adapter}
         class={~w[
-          text-xs
           rounded-l
           py-0.5 px-1.5
           text-neutral-900
           bg-neutral-50
           border-neutral-100
           border
-          whitespace-nowrap
         ]}
       >
         <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <.link navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
-          flex items-center
+      <.link title={@group.name} navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
           text-xs
+          truncate
+          min-w-0
           #{if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5")}
           py-0.5
           text-neutral-800
           bg-neutral-100
-          whitespace-nowrap
         ]}>
         <%= @group.name %>
       </.link>
