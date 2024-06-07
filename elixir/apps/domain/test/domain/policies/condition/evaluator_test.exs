@@ -209,7 +209,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       dow_time_ranges = ["R/00:00:00-02:00:00/US/Pacific"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
 
-      dow_time_ranges = ["F/02:00:00-04:00:00/Europe/Kyiv"]
+      dow_time_ranges = ["F/02:00:00-04:00:00/Poland"]
       assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
     end
 
@@ -329,8 +329,8 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         assert {:ok,
                 {^day,
                  [
-                   {~T[00:00:00], ~T[23:59:59], "Europe/Kyiv"}
-                 ]}} = parse_day_of_week_time_ranges("#{day}/true/Europe/Kyiv")
+                   {~T[00:00:00], ~T[23:59:59], "US/Pacific"}
+                 ]}} = parse_day_of_week_time_ranges("#{day}/true/US/Pacific")
       end
     end
 

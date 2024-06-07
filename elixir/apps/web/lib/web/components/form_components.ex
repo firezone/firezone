@@ -198,7 +198,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
       <input
-        :if={dbg(@rest[:disabled]) in [true, "true"] and not is_nil(dbg(@value))}
+        :if={@rest[:disabled] in [true, "true"] and not is_nil(@value)}
         type="hidden"
         name={@name}
         value={@value}

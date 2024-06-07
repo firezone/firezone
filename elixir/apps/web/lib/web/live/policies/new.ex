@@ -143,7 +143,6 @@ defmodule Web.Policies.New do
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->
-        changeset |> dbg()
         {:noreply, assign(socket, form: to_form(changeset, action: :insert))}
     end
   end
