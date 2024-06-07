@@ -518,9 +518,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       bypass = Bypass.open()
 
       WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
-      # WorkOSDirectory.mock_list_directories_endpoint(bypass)
-      # WorkOSDirectory.mock_list_users_endpoint(bypass, users)
-      # WorkOSDirectory.mock_list_groups_endpoint(bypass)
 
       for path <- [
             "/directories",

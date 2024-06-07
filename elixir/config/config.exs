@@ -244,8 +244,8 @@ config :tailwind,
   ]
 
 config :workos, WorkOS.Client,
-  api_key: System.get_env("WORKOS_API_KEY"),
-  client_id: System.get_env("WORKOS_CLIENT_ID"),
+  api_key: "sk_example_123456789",
+  client_id: "client_123456789",
   baseurl: "https://api.workos.com"
 
 # Import environment specific config. This must remain at the bottom

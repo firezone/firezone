@@ -61,6 +61,20 @@ variable "stripe_default_price_id" {
   type = string
 }
 
+variable "workos_api_key" {
+  type = string
+  sensitive = true
+}
+
+variable "workos_client_id" {
+  type = string
+  sensitive = true
+}
+
+variable "workos_base_url" {
+  type = string
+}
+
 # Version overrides
 #
 # This section should be used to bind a specific version of the Firezone component
