@@ -206,6 +206,13 @@ planning to support.
 
 ## Web views use a lot of RAM
 
+<Image
+  width={1598}
+  height={952}
+  src="/images/blog/using-tauri/lots-of-ram.png"
+  alt="Windows Task Manager showing that the webviews need about 100 MB of RAM to do nothing"
+/>
+
 The GUI uses about 100 MB of RAM even with all windows hidden. This seems to be
 the minimum for keeping the web view process alive. It's okay for an MVP, but
 it's still 5% of the 2 GB needed to run an Ubuntu VM, just to run a GUI that
@@ -219,8 +226,6 @@ writing an Iced binary compiled on Ubuntu 20.04 didn't work perfectly on 22.04.
 And there is some solace that we're theoretically able to share code pages with
 other web view processes, we're not loading our own entire copy of Chromium like
 Electron does.
-
-(TODO: Task manager screenshot)
 
 ## Ubuntu forwards and backwards compatibility is hard
 
@@ -243,12 +248,17 @@ researching.
 
 ## WebView2 just doesn't install sometimes
 
+<Image
+  width={1230}
+  height={464}
+  src="/images/blog/using-tauri/webview-install-hang.png"
+  alt="The WebView2 installer just hanging in CI for some reason"
+/>
+
 https://github.com/firezone/firezone/pull/4981
 
 This is an upstream issue with WebView2 for Windows. Sometimes the installer
 times out in our GitHub CI runners and it isn't clear why.
-
-TODO: Screenshot or log paste
 
 # What Tauri-related issues did we have?
 
