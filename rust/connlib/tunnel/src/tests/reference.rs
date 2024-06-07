@@ -1,8 +1,6 @@
 use super::{
-    IcmpIdentifier, IcmpSeq, PacketSource, PrivateKey, QueryId, ResourceDst, SimNode, SimRelay,
-    Transition,
+    sim_node::*, sim_relay::*, strategies::*, transition::*, IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::tests::strategies::*;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{

@@ -1,12 +1,11 @@
-use super::{domain_to_hickory_name, QueryId, ReferenceState, SimNode, SimPortal, SimRelay};
-use crate::{
-    dns::DnsQuery,
-    tests::{
-        assert_dns_packets_properties, assert_icmp_packets_properties, hickory_name_to_domain,
-        Transition,
-    },
-    ClientEvent, ClientState, GatewayEvent, GatewayState, Request,
-};
+use super::reference::ReferenceState;
+use super::sim_node::SimNode;
+use super::sim_portal::SimPortal;
+use super::sim_relay::SimRelay;
+use super::QueryId;
+use crate::tests::assertions::*;
+use crate::tests::transition::Transition;
+use crate::{dns::DnsQuery, ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
@@ -14,7 +13,7 @@ use connlib_shared::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
         gateway, ClientId, GatewayId, ResourceId,
     },
-    DomainName, StaticSecret,
+    DomainName,
 };
 use hickory_proto::{
     op::{MessageType, Query},
@@ -33,6 +32,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
     ops::ControlFlow,
+    str::FromStr as _,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -85,14 +85,12 @@ impl StateMachineTest for TunnelTest {
             .set_default();
 
         // Construct client, gateway and relay from the initial state.
-        let mut client = ref_state.client.map_state(
-            |key| ClientState::new(StaticSecret::from(key.0)),
-            debug_span!("client"),
-        );
-        let mut gateway = ref_state.gateway.map_state(
-            |key| GatewayState::new(StaticSecret::from(key.0)),
-            debug_span!("gateway"),
-        );
+        let mut client = ref_state
+            .client
+            .map_state(ClientState::new, debug_span!("client"));
+        let mut gateway = ref_state
+            .gateway
+            .map_state(GatewayState::new, debug_span!("gateway"));
         let relay = ref_state.relay.map_state(
             |seed, ip_stack| {
                 firezone_relay::Server::new(
@@ -883,4 +881,23 @@ fn map_client_resource_to_gateway_resource(
     cidr_resource
         .or(dns_resource)
         .expect("resource to be a known CIDR or DNS resource")
+}
+
+fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
+    name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
+    let name = name.to_string();
+
+    let domain = DomainName::from_chars(name.chars()).unwrap();
+    debug_assert_eq!(name, domain.to_string());
+
+    domain
+}
+
+fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
+    let domain = domain.to_string();
+
+    let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
+    debug_assert_eq!(name.to_string(), domain);
+
+    name
 }

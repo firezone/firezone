@@ -1,5 +1,6 @@
 use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
+use proptest::prelude::*;
 use rand::rngs::StdRng;
 use snownet::{RelaySocket, Transmit};
 use std::{
@@ -254,4 +255,13 @@ impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
             .field("allocations", &self.allocations)
             .finish()
     }
+}
+
+pub(crate) fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
+    (
+        any::<u64>(),
+        firezone_relay::proptest::dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
+        any::<u128>(),
+    )
+        .prop_map(|(seed, ip_stack, id)| SimRelay::new(RelayId::from_u128(id), seed, ip_stack))
 }
