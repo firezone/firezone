@@ -306,7 +306,24 @@ any event for it. This is not a limitation of Windows, so I'm not sure why Tauri
 only allows right clicks.
 
 On GNOME, if the menu is too long and the screen is too short, you can't open
-submenus. (TODO: Screenshots)
+submenus. If the menu is barely too long, the submenus open but they're squashed
+into a tiny scroll view that doesn't look like a submenu:
+
+<Image
+  width={888}
+  height={724}
+  src="/images/blog/using-tauri/squashed-menu.png"
+  alt="A very long menu displayed in GNOME, with the submenu being squashed"
+/>
+
+On Windows, the submenus look like submenus:
+
+<Image
+  width={1048}
+  height={654}
+  src="/images/blog/using-tauri/good-menu.png"
+  alt="A very long menu displayed in GNOME, with the submenu being squashed"
+/>
 
 Also in GNOME, clicking on a notification runs another instance of the app. I
 assume this is intended to activate the app, but it doesn't seem to happen on
