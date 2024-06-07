@@ -128,9 +128,11 @@ impl Io {
 
     pub fn perform_dns_query(&mut self, query: DnsQuery<'static>) -> Result<(), DnsQueryError> {
         let upstream = query.query.destination();
-        let Some(resolver) = self.upstream_dns_servers.get(&upstream).cloned() else {
-            return Err(DnsQueryError::UnknownServer);
-        };
+        let resolver = self
+            .upstream_dns_servers
+            .get(&upstream)
+            .cloned()
+            .expect("Only DNS queries to known upstream servers should be forwarded to `Io`");
 
         if self
             .forwarded_dns_queries
@@ -184,8 +186,6 @@ impl Io {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DnsQueryError {
-    #[error("No upstream DNS server configured")]
-    UnknownServer,
     #[error("Too many ongoing DNS queries")]
     TooManyQueries,
 }
