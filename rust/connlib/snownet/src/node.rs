@@ -1508,13 +1508,9 @@ where
                 IceAgentEvent::NominatedSend {
                     destination,
                     source,
+                    local: nominated_candidate,
                     ..
                 } => {
-                    let nominated_candidate = self
-                        .local_candidate(source)
-                        .expect("to only nominate existing candidates")
-                        .clone();
-
                     let remote_socket = match nominated_candidate.kind() {
                         CandidateKind::Relayed => {
                             let relay = allocations.iter().find_map(|(relay, allocation)| {
@@ -1776,14 +1772,6 @@ where
         for candidate in irrelevant_candidates {
             remove_local_candidate(id, &mut self.agent, &candidate, pending_events)
         }
-    }
-
-    fn local_candidate(&self, source: SocketAddr) -> Option<&Candidate> {
-        self.agent
-            .local_candidates()
-            .iter()
-            .filter(|c| !c.discarded())
-            .find(|c| c.addr() == source)
     }
 
     fn socket(&self) -> Option<PeerSocket<RId>> {
