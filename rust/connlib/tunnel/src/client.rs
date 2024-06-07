@@ -679,8 +679,7 @@ impl ClientState {
 
         let dns_reply = match response {
             Ok(Ok(response)) => match dns::build_response_from_resolve_result(query, response) {
-                Ok(Some(dns_reply)) => dns_reply,
-                Ok(None) => return,
+                Ok(dns_reply) => dns_reply,
                 Err(e) => make_error_reply(&e),
             },
             Ok(Err(timeout)) => make_error_reply(&timeout),

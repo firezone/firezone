@@ -141,7 +141,7 @@ pub(crate) fn parse<'a>(
             None => None,
         };
     let response = build_dns_with_answer(message, question.qname(), &resource)?;
-    let response = build_response(packet, response)?;
+    let response = build_response(packet, response);
 
     Some(ResolveStrategy::LocalResponse(response))
 }
@@ -176,13 +176,13 @@ pub(crate) fn create_local_answer<'a>(
 
     let response = build_dns_with_answer(message, question.qname(), &Some(resource))?;
 
-    build_response(packet, response)
+    Some(build_response(packet, response))
 }
 
 pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<Option<IpPacket>, hickory_resolver::error::ResolveError> {
+) -> Result<IpPacket, hickory_resolver::error::ResolveError> {
     let mut message = original_pkt.unwrap_as_dns();
 
     message.set_message_type(MessageType::Response);
@@ -215,10 +215,7 @@ pub(crate) fn build_response_from_resolve_result(
 }
 
 /// Constructs an IP packet responding to an IP packet containing a DNS query
-fn build_response(
-    original_pkt: IpPacket<'_>,
-    mut dns_answer: Vec<u8>,
-) -> Option<IpPacket<'static>> {
+fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPacket<'static> {
     let response_len = dns_answer.len();
     let original_dgm = original_pkt.unwrap_as_udp();
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
@@ -227,7 +224,7 @@ fn build_response(
     res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
     res_buf.append(&mut dns_answer);
 
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
+    let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
     let dgm_len = UDP_HEADER_SIZE + response_len;
     match &mut pkt {
         MutableIpPacket::Ipv4(p) => p.set_total_length((hdr_len + response_len) as u16),
@@ -235,17 +232,19 @@ fn build_response(
     }
     pkt.swap_src_dst();
 
-    let mut dgm = MutableUdpPacket::new(pkt.payload_mut())?;
+    let mut dgm = MutableUdpPacket::new(pkt.payload_mut()).unwrap();
     dgm.set_length(dgm_len as u16);
     dgm.set_source(original_dgm.get_destination());
     dgm.set_destination(original_dgm.get_source());
 
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
-    let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
-    pkt.as_udp()?.set_checksum(udp_checksum);
+    let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
+    let udp_checksum = pkt
+        .to_immutable()
+        .udp_checksum(&pkt.to_immutable().unwrap_as_udp());
+    pkt.unwrap_as_udp().set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
 
-    Some(IpPacket::owned(res_buf).unwrap())
+    IpPacket::owned(res_buf).unwrap()
 }
 
 fn build_dns_with_answer<N>(
