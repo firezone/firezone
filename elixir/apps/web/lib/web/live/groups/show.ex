@@ -111,8 +111,7 @@ defmodule Web.Groups.Show do
           }
           kind={:info}
         >
-          <p>This group is managed by Firezone and cannot be edited.</p>
-          <p>It will contain all actors with at least one authentication identity.</p>
+          <p>This Group contains all Users and cannot be edited.</p>
         </.flash>
         <.flash :if={Actors.group_synced?(@group)} kind={:info}>
           This group is synced from an external source and cannot be edited.

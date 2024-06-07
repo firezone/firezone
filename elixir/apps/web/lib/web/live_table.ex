@@ -89,30 +89,6 @@ defmodule Web.LiveTable do
     Map.take(filter.params, keys) != %{}
   end
 
-  defp resource_filter(assigns) do
-    ~H"""
-    <.form
-      :if={@filters != []}
-      id={"#{@live_table_id}-filters"}
-      for={@form}
-      phx-change="filter"
-      phx-debounce="100"
-      onkeydown="return event.key != 'Enter';"
-    >
-      <.input type="hidden" name="table_id" value={@live_table_id} />
-
-      <div
-        :for={filter <- @filters}
-        class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 pb-4"
-      >
-        <div class="w-full xl:w-1/2">
-          <.filter live_table_id={@live_table_id} form={@form} filter={filter} />
-        </div>
-      </div>
-    </.form>
-    """
-  end
-
   def datetime_input(assigns) do
     ~H"""
     <div phx-feedback-for={@field.name} class={["flex items-center"]}>
@@ -168,6 +144,30 @@ defmodule Web.LiveTable do
   defp normalize_value(_, nil),
     do: nil
 
+  defp resource_filter(assigns) do
+    ~H"""
+    <.form
+      :if={@filters != []}
+      id={"#{@live_table_id}-filters"}
+      for={@form}
+      phx-change="filter"
+      phx-debounce="100"
+      onkeydown="return event.key != 'Enter';"
+    >
+      <.input type="hidden" name="table_id" value={@live_table_id} />
+
+      <div class="mb-2 space-y-2 md:space-y-0 md:gap-2 md:flex md:justify-end">
+        <.filter
+          :for={filter <- @filters}
+          live_table_id={@live_table_id}
+          form={@form}
+          filter={filter}
+        />
+      </div>
+    </.form>
+    """
+  end
+
   defp filter(%{filter: %{type: {:range, :datetime}}} = assigns) do
     ~H"""
     <div class="flex items-center">
@@ -190,137 +190,147 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
-    <div class={["relative w-full"]} phx-feedback-for={@form[@filter.name].name}>
-      <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-        <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-      </div>
+    <div class="flex items-center order-last">
+      <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
+        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
+        </div>
 
-      <input
-        type="text"
-        name={@form[@filter.name].name}
-        id={@form[@filter.name].id}
-        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
-        placeholder={"Search by " <> @filter.title}
-        class={[
-          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-          "block w-full pl-10 p-2",
-          "phx-no-feedback:border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          "focus:outline-none focus:border-1 focus:ring-0",
-          "border-neutral-300",
-          @form[@filter.name].errors != [] && "border-rose-400"
-        ]}
-      />
-      <.error
-        :for={msg <- @form[@filter.name].errors}
-        data-validation-error-for={@form[@filter.name].name}
-      >
-        <%= msg %>
-      </.error>
+        <input
+          type="text"
+          name={@form[@filter.name].name}
+          id={@form[@filter.name].id}
+          value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
+          placeholder={"Search by " <> @filter.title}
+          class={[
+            "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
+            "block w-full pl-10 p-2",
+            "phx-no-feedback:border-neutral-300",
+            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+            "focus:outline-none focus:border-1 focus:ring-0",
+            "border-neutral-300",
+            @form[@filter.name].errors != [] && "border-rose-400"
+          ]}
+        />
+        <.error
+          :for={msg <- @form[@filter.name].errors}
+          data-validation-error-for={@form[@filter.name].name}
+        >
+          <%= msg %>
+        </.error>
+      </div>
     </div>
     """
   end
 
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
-    <div class={["relative w-full"]} phx-feedback-for={@form[@filter.name].name}>
-      <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-        <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
-      </div>
+    <div class="flex items-center order-last">
+      <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
+        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
+        </div>
 
-      <input
-        type="text"
-        name={@form[@filter.name].name}
-        id={@form[@filter.name].id}
-        value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
-        placeholder={"Search by " <> @filter.title}
-        class={[
-          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-          "block w-full pl-10 p-2",
-          "phx-no-feedback:border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          "focus:outline-none focus:border-1 focus:ring-0",
-          "border-neutral-300",
-          @form[@filter.name].errors != [] && "border-rose-400"
-        ]}
-      />
-      <.error
-        :for={msg <- @form[@filter.name].errors}
-        data-validation-error-for={@form[@filter.name].name}
-      >
-        <%= msg %>
-      </.error>
+        <input
+          type="text"
+          name={@form[@filter.name].name}
+          id={@form[@filter.name].id}
+          value={Phoenix.HTML.Form.normalize_value("text", @form[@filter.name].value)}
+          placeholder={"Search by " <> @filter.title}
+          class={[
+            "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
+            "block w-full pl-10 p-2",
+            "phx-no-feedback:border-neutral-300",
+            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+            "focus:outline-none focus:border-1 focus:ring-0",
+            "border-neutral-300",
+            @form[@filter.name].errors != [] && "border-rose-400"
+          ]}
+        />
+        <.error
+          :for={msg <- @form[@filter.name].errors}
+          data-validation-error-for={@form[@filter.name].name}
+        >
+          <%= msg %>
+        </.error>
+      </div>
     </div>
     """
   end
 
   defp filter(%{filter: %{type: {:string, :uuid}}} = assigns) do
     ~H"""
-    <.input
-      type="group_select"
-      field={@form[@filter.name]}
-      options={
-        [
-          {nil, [{"For any " <> @filter.title, nil}]}
-        ] ++ @filter.values
-      }
-    />
+    <div class="flex items-center order-4">
+      <div class="w-full">
+        <.input
+          type="group_select"
+          field={@form[@filter.name]}
+          options={
+            [
+              {nil, [{"For any " <> @filter.title, nil}]}
+            ] ++ @filter.values
+          }
+        />
+      </div>
+    </div>
     """
   end
 
   defp filter(%{filter: %{type: :string, values: values}} = assigns)
        when 0 < length(values) and length(values) < 5 do
     ~H"""
-    <div class="inline-flex rounded-md shadow-sm" role="group">
-      <.intersperse_blocks>
-        <:item>
-          <label
-            for={"#{@live_table_id}-#{@filter.name}-__all__"}
-            class={[
-              "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
-              "hover:bg-neutral-200 hover:text-neutral-700",
-              "cursor-pointer",
-              "border-y border-l rounded-l",
-              is_nil(@form[@filter.name].value) && "bg-neutral-100"
-            ]}
-          >
-            <.input
-              id={"#{@live_table_id}-#{@filter.name}-__all__"}
-              type="radio"
-              field={@form[@filter.name]}
-              name={"_reset:" <> @form[@filter.name].name}
-              value="true"
-              checked={is_nil(@form[@filter.name].value)}
-              class="hidden"
-            /> All
-          </label>
-        </:item>
+    <div class="flex items-center order-first">
+      <div class="flex rounded" role="group">
+        <.intersperse_blocks>
+          <:item>
+            <label
+              for={"#{@live_table_id}-#{@filter.name}-__all__"}
+              class={[
+                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "hover:bg-neutral-200 hover:text-neutral-700",
+                "cursor-pointer",
+                "border-y border-l rounded-l",
+                is_nil(@form[@filter.name].value) && "bg-neutral-100"
+              ]}
+            >
+              <.input
+                id={"#{@live_table_id}-#{@filter.name}-__all__"}
+                type="radio"
+                field={@form[@filter.name]}
+                name={"_reset:" <> @form[@filter.name].name}
+                value="true"
+                checked={is_nil(@form[@filter.name].value)}
+                class="hidden"
+              /> All
+            </label>
+          </:item>
 
-        <:item :let={position} :for={{label, value} <- @filter.values}>
-          <label
-            for={"#{@live_table_id}-#{@filter.name}-#{value}"}
-            class={[
-              "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
-              "hover:bg-neutral-200 hover:text-neutral-700",
-              "cursor-pointer",
-              @form[@filter.name].value == value && "bg-neutral-100",
-              position == :first && "border-y border-l rounded-l",
-              position == :last && "border-y border-r rounded-r",
-              position != :first && position != :last && "border"
-            ]}
-          >
-            <.input
-              id={"#{@live_table_id}-#{@filter.name}-#{value}"}
-              type="radio"
-              field={@form[@filter.name]}
-              value={value}
-              checked={@form[@filter.name].value == value}
-              class="hidden"
-            />
-            <%= label %>
-          </label>
-        </:item>
-      </.intersperse_blocks>
+          <:item :let={position} :for={{label, value} <- @filter.values}>
+            <label
+              for={"#{@live_table_id}-#{@filter.name}-#{value}"}
+              class={[
+                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "hover:bg-neutral-200 hover:text-neutral-700",
+                "cursor-pointer",
+                @form[@filter.name].value == value && "bg-neutral-100",
+                position == :first && "border-y border-l rounded-l",
+                position == :last && "border-y border-r rounded-r",
+                position != :first && position != :last && "border"
+              ]}
+            >
+              <.input
+                id={"#{@live_table_id}-#{@filter.name}-#{value}"}
+                type="radio"
+                field={@form[@filter.name]}
+                value={value}
+                checked={@form[@filter.name].value == value}
+                class="hidden"
+              />
+              <%= label %>
+            </label>
+          </:item>
+        </.intersperse_blocks>
+      </div>
     </div>
     """
   end
@@ -328,71 +338,77 @@ defmodule Web.LiveTable do
   defp filter(%{filter: %{type: {:list, :string}, values: values}} = assigns)
        when 0 < length(values) and length(values) < 5 do
     ~H"""
-    <div class="inline-flex rounded-md shadow-sm" role="group">
-      <.intersperse_blocks>
-        <:item>
-          <label
-            for={"#{@live_table_id}-#{@filter.name}-__all__"}
-            class={[
-              "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
-              "hover:bg-neutral-200 hover:text-neutral-700",
-              "cursor-pointer",
-              "border-y border-l rounded-l",
-              is_nil(@form[@filter.name].value) && "bg-neutral-100"
-            ]}
-          >
-            <.input
-              id={"#{@live_table_id}-#{@filter.name}-__all__"}
-              type="checkbox"
-              field={@form[@filter.name]}
-              name={"_reset:" <> @form[@filter.name].name}
-              value={true}
-              checked={is_nil(@form[@filter.name].value)}
-              class="hidden"
-            /> All
-          </label>
-        </:item>
+    <div class="flex items-center order-first">
+      <div class="flex rounded w-full" role="group">
+        <.intersperse_blocks>
+          <:item>
+            <label
+              for={"#{@live_table_id}-#{@filter.name}-__all__"}
+              class={[
+                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "hover:bg-neutral-200 hover:text-neutral-700",
+                "cursor-pointer",
+                "border-y border-l rounded-l",
+                is_nil(@form[@filter.name].value) && "bg-neutral-100"
+              ]}
+            >
+              <.input
+                id={"#{@live_table_id}-#{@filter.name}-__all__"}
+                type="checkbox"
+                field={@form[@filter.name]}
+                name={"_reset:" <> @form[@filter.name].name}
+                value={true}
+                checked={is_nil(@form[@filter.name].value)}
+                class="hidden"
+              /> All
+            </label>
+          </:item>
 
-        <:item :let={position} :for={{label, value} <- @filter.values}>
-          <label
-            for={"#{@live_table_id}-#{@filter.name}-#{value}"}
-            class={[
-              "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
-              "hover:bg-neutral-200 hover:text-neutral-700",
-              "cursor-pointer",
-              @form[@filter.name].value && value in @form[@filter.name].value && "bg-neutral-100",
-              position == :first && "border-y border-l rounded-l",
-              position == :last && "border-y border-r rounded-r",
-              position != :first && position != :last && "border"
-            ]}
-          >
-            <.input
-              id={"#{@live_table_id}-#{@filter.name}-#{value}"}
-              type="checkbox"
-              field={@form[@filter.name]}
-              name={@form[@filter.name].name <> "[]"}
-              value={value}
-              checked={@form[@filter.name].value && value in @form[@filter.name].value}
-              class="hidden"
-            />
-            <%= label %>
-          </label>
-        </:item>
-      </.intersperse_blocks>
+          <:item :let={position} :for={{label, value} <- @filter.values}>
+            <label
+              for={"#{@live_table_id}-#{@filter.name}-#{value}"}
+              class={[
+                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "hover:bg-neutral-200 hover:text-neutral-700",
+                "cursor-pointer",
+                @form[@filter.name].value && value in @form[@filter.name].value && "bg-neutral-100",
+                position == :first && "border-y border-l rounded-l",
+                position == :last && "border-y border-r rounded-r",
+                position != :first && position != :last && "border"
+              ]}
+            >
+              <.input
+                id={"#{@live_table_id}-#{@filter.name}-#{value}"}
+                type="checkbox"
+                field={@form[@filter.name]}
+                name={@form[@filter.name].name <> "[]"}
+                value={value}
+                checked={@form[@filter.name].value && value in @form[@filter.name].value}
+                class="hidden"
+              />
+              <%= label %>
+            </label>
+          </:item>
+        </.intersperse_blocks>
+      </div>
     </div>
     """
   end
 
   defp filter(%{filter: %{type: :string, values: values}} = assigns) when length(values) > 0 do
     ~H"""
-    <.input
-      type="group_select"
-      field={@form[@filter.name]}
-      options={[
-        {nil, [{"For any " <> @filter.title, nil}]},
-        {@filter.title, @filter.values}
-      ]}
-    />
+    <div class="flex items-center order-4">
+      <div class="w-full">
+        <.input
+          type="group_select"
+          field={@form[@filter.name]}
+          options={[
+            {nil, [{"For any " <> @filter.title, nil}]},
+            {@filter.title, @filter.values}
+          ]}
+        />
+      </div>
+    </div>
     """
   end
 
