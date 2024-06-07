@@ -233,7 +233,7 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "mt-2 block w-full rounded sm:text-sm sm:leading-6",
+          "block w-full rounded sm:text-sm sm:leading-6",
           "bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
           "phx-no-feedback:border-neutral-300",
