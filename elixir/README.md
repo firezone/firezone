@@ -274,7 +274,14 @@ WorkOS is currently being used for JumpCloud directory sync integration.  This a
 
 If you are not planning to use the JumpCloud provider in your local development setup, then no additional setup is needed.
 However, if you do need to use the JumpCloud provider locally, you will need to obtain an API Key and Client ID from the [WorkOS Dashboard](https://dashboard.workos.com/api-keys).
-If you are able to login to the WorkOS Dashboard, make sure that you have selected the 'Staging' environment within WorkOS.
+
+To obtain a WorkOS dashboard login, contact one of the following Firezone team members:
+
+* @jamilbk
+* @bmanifold
+* @AndrewDryga
+
+Once you are able to login to the WorkOS Dashboard, make sure that you have selected the 'Staging' environment within WorkOS.
 Navigate to the API Keys page and use the `Create Key` button to obtain credentials.
 
 After obtaining WorkOS API credentials, you will need to make sure they are set in the environment ENVs when starting your local dev instance of Firezone.  As an example:
