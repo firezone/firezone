@@ -62,12 +62,12 @@ variable "stripe_default_price_id" {
 }
 
 variable "workos_api_key" {
-  type = string
+  type      = string
   sensitive = true
 }
 
 variable "workos_client_id" {
-  type = string
+  type      = string
   sensitive = true
 }
 
