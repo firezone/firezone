@@ -22,4 +22,5 @@ make_hash "$BINARY_DEST_PATH.pdb"
 msiexec //i "$BINARY_DEST_PATH.msi" //log install.log //qn
 # For debugging
 cat install.log
+# Make sure the IPC service is running
 sc query FirezoneClientIpcService | grep RUNNING
