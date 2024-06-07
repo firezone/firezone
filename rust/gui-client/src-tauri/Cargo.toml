@@ -1,6 +1,6 @@
 [package]
 name = "firezone-gui-client"
-# mark:automatic-version
+# mark:next-tauri-version
 version = "1.0.6"
 description = "Firezone"
 edition = "2021"

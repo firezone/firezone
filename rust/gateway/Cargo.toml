@@ -1,6 +1,6 @@
 [package]
 name = "firezone-gateway"
-# mark:automatic-version
+# mark:next-gateway-version
 version = "1.0.6"
 edition = "2021"
 
