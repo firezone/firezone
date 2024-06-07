@@ -157,7 +157,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
       <input
-        :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
+        :if={not is_nil(@value) and @rest[:disabled] == true}
         type="hidden"
         name={@name}
         value={@value}
@@ -198,7 +198,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label for={@id}><%= @label %></.label>
       <input
-        :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
+        :if={dbg(@rest[:disabled]) in [true, "true"] and not is_nil(dbg(@value))}
         type="hidden"
         name={@name}
         value={@value}

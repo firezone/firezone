@@ -9,7 +9,6 @@ defmodule Domain.Policies.Condition.Changeset do
     |> put_default_value(:operator, :is_in)
     |> validate_required([:property, :operator])
     |> validate_operator()
-    |> validate_length(:values, min: 1)
   end
 
   def valid_operators_for_property(:remote_ip_location_region), do: [:is_in, :is_not_in]

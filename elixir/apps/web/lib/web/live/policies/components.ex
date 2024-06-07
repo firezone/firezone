@@ -274,7 +274,6 @@ defmodule Web.Policies.Components do
           name="policy[conditions][remote_ip_location_region][operator]"
           id="policy_conditions_remote_ip_location_region_operator"
           field={condition_form[:operator]}
-          placeholder="Operator"
           disabled={@disabled}
           options={condition_operator_options(:remote_ip_location_region)}
           value={get_in(condition_form, [:operator, Access.key!(:value)])}
@@ -352,7 +351,6 @@ defmodule Web.Policies.Components do
           name="policy[conditions][remote_ip][operator]"
           id="policy_conditions_remote_ip_operator"
           field={condition_form[:operator]}
-          placeholder="Operator"
           options={condition_operator_options(:remote_ip)}
           disabled={@disabled}
           value={get_in(condition_form, [:operator, Access.key!(:value)])}
@@ -430,7 +428,6 @@ defmodule Web.Policies.Components do
           name="policy[conditions][provider_id][operator]"
           id="policy_conditions_provider_id_operator"
           field={condition_form[:operator]}
-          placeholder="Operator"
           options={condition_operator_options(:provider_id)}
           disabled={@disabled}
           value={get_in(condition_form, [:operator, Access.key!(:value)])}
@@ -563,8 +560,8 @@ defmodule Web.Policies.Components do
       name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
       id={"policy_conditions_current_utc_datetime_values_#{@day}"}
       placeholder="9:00-12:00, 13:00-17:00"
-      disabled={@disabled}
       value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
+      disabled={@disabled}
       value_index={day_of_week_index(@day)}
     />
     """
