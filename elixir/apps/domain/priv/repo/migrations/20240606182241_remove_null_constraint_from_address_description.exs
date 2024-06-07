@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.RemoveNullConstraintFromAddressDescription do
 
   def change do
     alter table(:resources) do
-      modify(:address_description, :string, null: false)
+      modify(:address_description, :string, null: true)
     end
   end
 end
