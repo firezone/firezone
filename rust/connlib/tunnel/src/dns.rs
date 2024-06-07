@@ -38,7 +38,7 @@ pub(crate) enum ResolveStrategy<T, U, V> {
 
 #[derive(Debug)]
 pub struct DnsQuery<'a> {
-    pub name: String,
+    pub name: DomainName,
     pub record_type: RecordType,
     // We could be much more efficient with this field,
     // we only need the header to create the response.
@@ -65,7 +65,7 @@ impl<'a> DnsQuery<'a> {
 }
 
 struct DnsQueryParams {
-    name: String,
+    name: DomainName,
     record_type: RecordType,
 }
 
@@ -80,7 +80,7 @@ impl DnsQueryParams {
 }
 
 impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
-    fn forward(name: String, record_type: Rtype) -> ResolveStrategy<T, DnsQueryParams, V> {
+    fn forward(name: DomainName, record_type: Rtype) -> ResolveStrategy<T, DnsQueryParams, V> {
         ResolveStrategy::ForwardQuery(DnsQueryParams {
             name,
             record_type: u16::from(record_type).into(),
@@ -379,7 +379,7 @@ fn resource_from_question<N: ToName>(
     match qtype {
         Rtype::A => {
             let Some(description) = get_description(&name, dns_resources) else {
-                return Some(ResolveStrategy::forward(name.to_string(), qtype));
+                return Some(ResolveStrategy::forward(name, qtype));
             };
 
             let description = DnsResource::from_description(&description, name);
@@ -400,7 +400,7 @@ fn resource_from_question<N: ToName>(
         }
         Rtype::AAAA => {
             let Some(description) = get_description(&name, dns_resources) else {
-                return Some(ResolveStrategy::forward(name.to_string(), qtype));
+                return Some(ResolveStrategy::forward(name, qtype));
             };
             let description = DnsResource::from_description(&description, name);
 
@@ -420,10 +420,10 @@ fn resource_from_question<N: ToName>(
         }
         Rtype::PTR => {
             let Some(ip) = reverse_dns_addr(&name.to_string()) else {
-                return Some(ResolveStrategy::forward(name.to_string(), qtype));
+                return Some(ResolveStrategy::forward(name, qtype));
             };
             let Some((_, resources)) = dns_resources_internal_ips.get(&ip) else {
-                return Some(ResolveStrategy::forward(name.to_string(), qtype));
+                return Some(ResolveStrategy::forward(name, qtype));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::Ptr(
                 domain::rdata::Ptr::new(
@@ -441,7 +441,7 @@ fn resource_from_question<N: ToName>(
                 return None;
             };
 
-            Some(ResolveStrategy::forward(name.to_string(), qtype))
+            Some(ResolveStrategy::forward(name, qtype))
         }
     }
 }
