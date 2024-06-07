@@ -230,6 +230,7 @@ pub fn dns_query(
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
+/// Makes a DNS response to the given DNS query packet, using a resolver callback
 pub fn dns_ok_response<I>(
     packet: IpPacket<'static>,
     resolve: impl Fn(&Name) -> I,
