@@ -1,12 +1,11 @@
 use connlib_shared::{
     messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
-        ClientId, DnsServer, GatewayId, RelayId, ResourceId,
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns},
+        DnsServer,
     },
     DomainName,
 };
 use hickory_proto::rr::RecordType;
-use ip_network_table::IpNetworkTable;
 use proptest::{sample, test_runner::Config};
 use std::{
     collections::{HashMap, HashSet},
@@ -18,6 +17,7 @@ use std::{
 mod assertions;
 mod reference;
 mod sim_node;
+mod sim_portal;
 mod sim_relay;
 mod strategies;
 mod sut;
@@ -25,6 +25,7 @@ mod sut;
 use assertions::*;
 use reference::*;
 use sim_node::*;
+use sim_portal::*;
 use sim_relay::*;
 use sut::*;
 
@@ -164,45 +165,6 @@ impl ResourceDst {
                 *idx.get(&ips)
             }
         }
-    }
-}
-
-/// Stub implementation of the portal.
-///
-/// Currently, we only simulate a connection between a single client and a single gateway on a single site.
-#[derive(Debug, Clone)]
-struct SimPortal {
-    _client: ClientId,
-    gateway: GatewayId,
-    _relay: RelayId,
-}
-
-impl SimPortal {
-    /// Picks, which gateway and site we should connect to for the given resource.
-    fn handle_connection_intent(
-        &self,
-        resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resources: &HashMap<ResourceId, ResourceDescriptionDns>,
-    ) -> (GatewayId, SiteId) {
-        // TODO: Should we somehow vary how many gateways we connect to?
-        // TODO: Should we somehow pick, which site to use?
-
-        let cidr_site = client_cidr_resources
-            .iter()
-            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id));
-
-        let dns_site = client_dns_resources
-            .get(&resource)
-            .and_then(|r| Some(r.sites.first()?.id));
-
-        (
-            self.gateway,
-            cidr_site
-                .or(dns_site)
-                .expect("resource to be a known CIDR or DNS resource"),
-        )
     }
 }
 

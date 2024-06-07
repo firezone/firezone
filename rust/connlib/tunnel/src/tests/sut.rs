@@ -105,11 +105,7 @@ impl StateMachineTest for TunnelTest {
             },
             debug_span!("relay"),
         );
-        let portal = SimPortal {
-            _client: client.id,
-            gateway: gateway.id,
-            _relay: relay.id,
-        };
+        let portal = SimPortal::new(client.id, gateway.id, relay.id);
 
         // Configure client and gateway with the relay.
         client.init_relays([&relay], ref_state.now);
