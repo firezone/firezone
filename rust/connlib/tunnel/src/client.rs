@@ -657,7 +657,11 @@ impl ClientState {
         >,
     ) {
         let response = match response {
-            Ok(response) => response,
+            Ok(Ok(response)) => response,
+            Ok(Err(timeout)) => {
+                tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {timeout}");
+                return;
+            }
             Err(e) => {
                 tracing::warn!(name = %query.name, server = %query.query.destination(), "Failed to send DNS query: {e}");
                 let response = ip_packet::make::dns_err_response(
@@ -667,14 +671,6 @@ impl ClientState {
                 .into_immutable();
 
                 self.buffered_packets.push_back(response);
-                return;
-            }
-        };
-
-        let response = match response {
-            Ok(response) => response,
-            Err(resolve_timeout) => {
-                tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {resolve_timeout}");
                 return;
             }
         };
