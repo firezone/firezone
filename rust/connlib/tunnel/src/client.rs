@@ -20,6 +20,7 @@ use crate::io::DnsQueryError;
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
+use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
 use std::collections::hash_map::Entry;
@@ -28,6 +29,7 @@ use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
+use tracing::Level;
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -645,6 +647,7 @@ impl ClientState {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(name = %query.name, server = %query.query.destination()))] // On debug level, we can log potentially sensitive information such as domain names.
     pub(crate) fn on_dns_result(
         &mut self,
         query: DnsQuery<'static>,
@@ -656,35 +659,35 @@ impl ClientState {
             DnsQueryError,
         >,
     ) {
-        let response = match response {
-            Ok(Ok(response)) => response,
-            Ok(Err(timeout)) => {
-                tracing::warn!(name = %query.name, server = %query.query.destination(), "DNS query timed out: {timeout}");
-                return;
-            }
-            Err(e) => {
-                tracing::warn!(name = %query.name, server = %query.query.destination(), "Failed to send DNS query: {e}");
-                let response = ip_packet::make::dns_err_response(
-                    query.query,
-                    hickory_proto::op::ResponseCode::ServFail,
-                )
-                .into_immutable();
+        let query = query.query;
+        let make_error_reply = {
+            let query = query.clone();
 
-                self.buffered_packets.push_back(response);
-                return;
+            |e: &dyn fmt::Display| {
+                // To avoid sensitive data getting into the logs, only log the error if debug logging is enabled.
+                // We always want to see a warning.
+                if tracing::enabled!(Level::DEBUG) {
+                    tracing::warn!("DNS query failed: {e}");
+                } else {
+                    tracing::warn!("DNS query failed");
+                };
+
+                ip_packet::make::dns_err_response(query, hickory_proto::op::ResponseCode::ServFail)
+                    .into_immutable()
             }
         };
 
-        match dns::build_response_from_resolve_result(query.query, response) {
-            Ok(Some(packet)) => {
-                self.buffered_packets.push_back(packet);
-            }
-            Ok(None) => {}
-            Err(_) => {
-                // The error might contain sensitive information therefore we ignore it
-                tracing::debug!("Failed to build DNS response from lookup result");
-            }
-        }
+        let dns_reply = match response {
+            Ok(Ok(response)) => match dns::build_response_from_resolve_result(query, response) {
+                Ok(Some(dns_reply)) => dns_reply,
+                Ok(None) => return,
+                Err(e) => make_error_reply(&e),
+            },
+            Ok(Err(timeout)) => make_error_reply(&timeout),
+            Err(e) => make_error_reply(&e),
+        };
+
+        self.buffered_packets.push_back(dns_reply);
     }
 
     fn dns_response(
