@@ -72,7 +72,7 @@ impl AllowRules {
                 .as_tcp()
                 .is_some_and(|p| self.tcp.contains(&p.get_destination())),
             IpNextHeaderProtocols::Udp => packet
-                .try_as_udp()
+                .as_udp()
                 .is_some_and(|p| self.udp.contains(&p.get_destination())),
             IpNextHeaderProtocols::Icmp | IpNextHeaderProtocols::Icmpv6 => self.icmp,
             _ => false,

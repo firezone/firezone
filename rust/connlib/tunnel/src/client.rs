@@ -664,9 +664,9 @@ impl ClientState {
                     query.query,
                     hickory_proto::op::ResponseCode::ServFail,
                 )
-                .map(|p| p.into_immutable());
+                .into_immutable();
 
-                self.buffered_packets.extend(response);
+                self.buffered_packets.push_back(response);
                 return;
             }
         };

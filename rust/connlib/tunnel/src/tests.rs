@@ -919,7 +919,7 @@ impl TunnelTest {
         {
             let packet = packet.to_owned().into_immutable();
 
-            if let Some(udp) = packet.try_as_udp() {
+            if let Some(udp) = packet.as_udp() {
                 if let Ok(message) = hickory_proto::op::Message::from_bytes(udp.payload()) {
                     debug_assert_eq!(
                         message.message_type(),
@@ -1075,13 +1075,15 @@ impl TunnelTest {
                 return ControlFlow::Break(());
             }
 
-            if let Some(response) = ip_packet::make::dns_ok_response(packet, |name| {
-                global_dns_records
-                    .get(&hickory_name_to_domain(name.clone()))
-                    .cloned()
-                    .into_iter()
-                    .flatten()
-            }) {
+            if packet.as_udp().is_some() {
+                let response = ip_packet::make::dns_ok_response(packet, |name| {
+                    global_dns_records
+                        .get(&hickory_name_to_domain(name.clone()))
+                        .cloned()
+                        .into_iter()
+                        .flatten()
+                });
+
                 let maybe_transmit = self.send_ip_packet_gateway_to_client(response);
                 buffered_transmits.extend(maybe_transmit);
 
@@ -1270,7 +1272,7 @@ impl TunnelTest {
             return;
         };
 
-        if let Some(udp) = packet.try_as_udp() {
+        if let Some(udp) = packet.as_udp() {
             if udp.get_source() == 53 {
                 let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
@@ -2463,8 +2465,8 @@ fn assert_correct_src_and_dst_udp_ports(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
 ) {
-    let client_sent_request = client_sent_request.as_udp_debug_checked().unwrap();
-    let client_received_reply = client_received_reply.as_udp_debug_checked().unwrap();
+    let client_sent_request = client_sent_request.unwrap_as_udp();
+    let client_received_reply = client_received_reply.unwrap_as_udp();
 
     assert_eq!(
         client_sent_request.get_destination(),

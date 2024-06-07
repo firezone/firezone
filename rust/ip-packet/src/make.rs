@@ -233,12 +233,12 @@ pub fn dns_query(
 pub fn dns_ok_response<I>(
     packet: IpPacket<'static>,
     resolve: impl Fn(&Name) -> I,
-) -> Option<MutableIpPacket<'static>>
+) -> MutableIpPacket<'static>
 where
     I: Iterator<Item = IpAddr>,
 {
-    let udp = packet.as_udp_debug_checked()?;
-    let mut query = packet.as_dns_debug_checked()?;
+    let udp = packet.unwrap_as_udp();
+    let mut query = packet.unwrap_as_dns();
 
     let mut response = Message::new();
     response.set_id(query.id());
@@ -267,21 +267,18 @@ where
 
     let payload = response.to_vec().unwrap();
 
-    Some(udp_packet(
+    udp_packet(
         packet.destination(),
         packet.source(),
         udp.get_destination(),
         udp.get_source(),
         payload,
-    ))
+    )
 }
 
-pub fn dns_err_response(
-    packet: IpPacket<'static>,
-    code: ResponseCode,
-) -> Option<MutableIpPacket<'static>> {
-    let udp = packet.as_udp_debug_checked()?;
-    let query = packet.as_dns_debug_checked()?;
+pub fn dns_err_response(packet: IpPacket<'static>, code: ResponseCode) -> MutableIpPacket<'static> {
+    let udp = packet.unwrap_as_udp();
+    let query = packet.unwrap_as_dns();
 
     debug_assert_ne!(code, ResponseCode::NoError);
 
@@ -289,13 +286,13 @@ pub fn dns_err_response(
 
     let payload = response.to_vec().unwrap();
 
-    Some(udp_packet(
+    udp_packet(
         packet.destination(),
         packet.source(),
         udp.get_destination(),
         udp.get_source(),
         payload,
-    ))
+    )
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {

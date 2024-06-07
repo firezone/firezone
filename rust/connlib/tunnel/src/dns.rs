@@ -114,7 +114,7 @@ pub(crate) fn parse<'a>(
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     dns_mapping.get_by_left(&packet.destination())?;
-    let datagram = packet.try_as_udp()?;
+    let datagram = packet.as_udp()?;
     let message = as_dns(&datagram)?;
     if message.header().qr() {
         return None;
@@ -150,7 +150,7 @@ pub(crate) fn create_local_answer<'a>(
     ips: &HashSet<IpAddr>,
     packet: IpPacket<'a>,
 ) -> Option<IpPacket<'a>> {
-    let datagram = packet.as_udp_debug_checked()?;
+    let datagram = packet.unwrap_as_udp();
     let message = as_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
     let qtype = question.qtype();
@@ -183,9 +183,7 @@ pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
 ) -> Result<Option<IpPacket>, hickory_resolver::error::ResolveError> {
-    let Some(mut message) = original_pkt.as_dns_debug_checked() else {
-        return Ok(None);
-    };
+    let mut message = original_pkt.unwrap_as_dns();
 
     message.set_message_type(MessageType::Response);
 
@@ -222,7 +220,7 @@ fn build_response(
     mut dns_answer: Vec<u8>,
 ) -> Option<IpPacket<'static>> {
     let response_len = dns_answer.len();
-    let original_dgm = original_pkt.as_udp_debug_checked()?;
+    let original_dgm = original_pkt.unwrap_as_udp();
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
     let mut res_buf = Vec::with_capacity(hdr_len + response_len);
 
