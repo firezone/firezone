@@ -332,7 +332,7 @@ defmodule Web.CoreComponents do
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class={["block text-sm text-neutral-900", @class]}>
+    <label for={@for} class={["block text-sm text-neutral-900 mb-2", @class]}>
       <%= render_slot(@inner_block) %>
     </label>
     """
@@ -406,10 +406,10 @@ defmodule Web.CoreComponents do
   def list(assigns) do
     ~H"""
     <div class="mt-14">
-      <dl class="-my-4 divide-y divide-zinc-100">
+      <dl class="-my-4 divide-y divide-neutral-100">
         <div :for={item <- @item} class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
-          <dt class="w-1/4 flex-none text-zinc-500"><%= item.title %></dt>
-          <dd class="text-zinc-700"><%= render_slot(item) %></dd>
+          <dt class="w-1/4 flex-none text-neutral-500"><%= item.title %></dt>
+          <dd class="text-neutral-700"><%= render_slot(item) %></dd>
         </div>
       </dl>
     </div>

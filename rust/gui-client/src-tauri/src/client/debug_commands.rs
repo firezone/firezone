@@ -40,7 +40,7 @@ fn crash() -> Result<()> {
     let _handles = client::logging::setup("debug")?;
     tracing::info!("started log (DebugCrash)");
 
-    panic!("purposely crashing to see if it shows up in logs");
+    panic!("purposely panicking to see if it shows up in logs");
 }
 
 #[allow(clippy::print_stdout)]
