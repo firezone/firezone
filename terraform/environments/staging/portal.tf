@@ -351,7 +351,7 @@ locals {
     # Sign Up
     {
       name  = "SIGN_UP_WHITELISTED_DOMAINS"
-      value = "firezone.dev,firez.one"
+      value = "firezone.dev,firez.one,pentesters.oneleet.com"
     },
     {
       name  = "FEATURE_REST_API_ENABLED"

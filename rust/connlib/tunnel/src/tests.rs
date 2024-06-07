@@ -1336,14 +1336,12 @@ impl TunnelTest {
     // - hickory error?
     // - TTL?
     fn on_forwarded_dns_query(&mut self, query: DnsQuery<'static>, ref_state: &ReferenceState) {
-        let name = query.name.parse::<DomainName>().unwrap(); // TODO: Could `DnsQuery` hold a `DomainName` directly?
-
         let resolved_ips = &ref_state
             .global_dns_records
-            .get(&name)
+            .get(&query.name)
             .expect("Deferred DNS query to be for known domain");
 
-        let name = domain_to_hickory_name(name);
+        let name = domain_to_hickory_name(query.name.clone());
         let record_type = query.record_type;
 
         let record_data = resolved_ips

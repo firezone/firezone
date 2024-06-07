@@ -139,7 +139,7 @@ impl Io {
             .forwarded_dns_queries
             .try_push(
                 {
-                    let name = query.name.clone();
+                    let name = query.name.clone().to_string();
                     let record_type = query.record_type;
 
                     async move { resolver.lookup(&name, record_type).await }

@@ -35,8 +35,7 @@ pub(crate) async fn check() -> Result<Release> {
         .head(update_url.clone())
         .header("User-Agent", user_agent)
         .send()
-        .await
-        .context("Couldn't fetch from update URL `{update_url}`")?;
+        .await?;
     let status = response.status();
     if status != reqwest::StatusCode::TEMPORARY_REDIRECT {
         anyhow::bail!("HTTP status: {status} from update URL `{update_url}`");
