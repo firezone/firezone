@@ -184,32 +184,6 @@ defmodule Web.Settings.IdentityProviders.Components do
         %{
           provider: %{
             adapter: :jumpcloud,
-            adapter_state: %{"refresh_token" => nil, "expires_at" => expires_at},
-            disabled_at: nil
-          }
-        } = assigns
-      ) do
-    assigns =
-      assign_new(assigns, :expires_at, fn ->
-        {:ok, dt, _} = DateTime.from_iso8601(expires_at)
-        dt
-      end)
-
-    ~H"""
-    <div class="flex items-center">
-      <span class="w-3 h-3 bg-red-500 rounded-full"></span>
-      <span class="ml-3">
-        No refresh token provided by IdP and access token expires on
-        <.datetime datetime={@expires_at} /> UTC
-      </span>
-    </div>
-    """
-  end
-
-  def status(
-        %{
-          provider: %{
-            adapter: :jumpcloud,
             disabled_at: disabled_at,
             adapter_state: %{"status" => "pending_access_token"}
           }
@@ -225,7 +199,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           <.button
             size="xs"
             navigate={
-              ~p"/#{@provider.account_id}/settings/identity_providers/okta/#{@provider}/redirect"
+              ~p"/#{@provider.account_id}/settings/identity_providers/jumpcloud/#{@provider}/redirect"
             }
           >
             Connect IdP
