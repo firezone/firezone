@@ -431,50 +431,29 @@ struct Controller {
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
+    // Exists even when signed out
+    callback_handler: CallbackHandler,
     ctlr_tx: CtlrTx,
+    /// Always-on IPC connection
+    ipc: ipc::Client,
     /// connlib session for the currently signed-in user, if there is one
-    session: Option<Session>,
+    // session: Option<Session>,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
     uptime: client::uptime::Tracker,
 }
 
-/// Everything related to a signed-in user session
-struct Session {
-    callback_handler: CallbackHandler,
-    connlib: ipc::Client,
-}
-
 impl Controller {
     // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
     async fn start_session(&mut self, token: SecretString) -> Result<()> {
-        if self.session.is_some() {
-            bail!("can't start session, we're already in a session");
-        }
-
-        let callback_handler = CallbackHandler {
-            ctlr_tx: self.ctlr_tx.clone(),
-            notify_controller: Arc::clone(&self.notify_controller),
-            resources: Default::default(),
-        };
-
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
-        let connlib = ipc::Client::connect(
-            api_url.as_str(),
-            token,
-            callback_handler.clone(),
-            tokio::runtime::Handle::current(),
-        )
-        .await?;
-
-        self.session = Some(Session {
-            callback_handler,
-            connlib,
-        });
+        self.ipc
+            .connect_to_firezone(api_url.as_str(), token)
+            .await?;
         self.refresh_system_tray_menu()?;
 
         ran_before::set().await?;
@@ -559,15 +538,8 @@ impl Controller {
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
-                if self.session.is_some() {
-                    if self.tunnel_ready {
-                        tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
-                    } else {
-                        tracing::warn!(
-                            "Connlib is already raising the tunnel, calling `sign_out` anyway"
-                        );
-                        self.sign_out().await?;
-                    }
+                if self.tunnel_ready {
+                    tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
                 } else {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
                     self.sign_out().await?;
@@ -628,18 +600,13 @@ impl Controller {
         // TODO: Show some "Waiting for portal..." state if we got the deep link but
         // haven't got `on_tunnel_ready` yet.
         if let Some(auth_session) = self.auth.session() {
-            if let Some(connlib_session) = &self.session {
-                if self.tunnel_ready {
-                    // Signed in, tunnel ready
-                    let resources = connlib_session.callback_handler.resources.load();
-                    system_tray_menu::signed_in(&auth_session.actor_name, &resources)
-                } else {
-                    // Signed in, raising tunnel
-                    system_tray_menu::signing_in("Signing In...")
-                }
+            if self.tunnel_ready {
+                // Signed in, tunnel ready
+                let resources = self.callback_handler.resources.load();
+                system_tray_menu::signed_in(&auth_session.actor_name, &resources)
             } else {
-                tracing::error!("We have an auth session but no connlib session");
-                system_tray_menu::signed_out()
+                // Signed in, raising tunnel
+                system_tray_menu::signing_in("Signing In...")
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
@@ -661,16 +628,10 @@ impl Controller {
     async fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
         self.tunnel_ready = false;
-        if let Some(session) = self.session.take() {
-            tracing::debug!("disconnecting connlib");
-            // This is redundant if the token is expired, in that case
-            // connlib already disconnected itself.
-            session.connlib.disconnect().await?;
-        } else {
-            // Might just be because we got a double sign-out or
-            // the user canceled the sign-in or something innocent.
-            tracing::info!("Tried to sign out but there's no session, cancelled sign-in");
-        }
+        tracing::debug!("disconnecting connlib");
+        // This is redundant if the token is expired, in that case
+        // connlib already disconnected itself.
+        self.ipc.disconnect_firezone().await?;
         self.refresh_system_tray_menu()?;
         Ok(())
     }
@@ -700,13 +661,26 @@ async fn run_controller(
     advanced_settings: AdvancedSettings,
 ) -> Result<()> {
     tracing::info!("Entered `run_controller`");
+    // TODO: Fix cancel-safety
+    let notify_controller = Arc::new(Notify::new());
+    let callback_handler = CallbackHandler {
+        ctlr_tx: ctlr_tx.clone(),
+        notify_controller: Arc::clone(&notify_controller),
+        resources: Default::default(),
+    };
+    let ipc = ipc::Client::connect_to_ipc(
+        callback_handler.clone(),
+        tokio::runtime::Handle::try_current()?,
+    )
+    .await?;
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
         auth: client::auth::Auth::new(),
+        callback_handler,
         ctlr_tx,
-        session: None,
-        notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
+        ipc,
+        notify_controller,
         tunnel_ready: false,
         uptime: Default::default(),
     };
@@ -752,18 +726,14 @@ async fn run_controller(
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
-                    if let Some(session) = controller.session.as_mut() {
-                        tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        session.connlib.reconnect().await?;
-                    }
+                    tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
+                    controller.ipc.reconnect_firezone().await?;
                 }
             },
             resolvers = dns_listener.notified() => {
                 let resolvers = resolvers?;
-                if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(resolvers).await?;
-                }
+                tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                controller.ipc.set_dns(resolvers).await?;
             },
             req = rx.recv() => {
                 let Some(req) = req else {
@@ -794,6 +764,8 @@ async fn run_controller(
     if let Err(error) = com_worker.close() {
         tracing::error!(?error, "com_worker");
     }
+
+    controller.ipc.disconnect_from_ipc().await?;
 
     // Last chance to do any drops / cleanup before the process crashes.
 

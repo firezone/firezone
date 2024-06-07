@@ -8,6 +8,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tracing::instrument;
 
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
@@ -61,12 +62,24 @@ pub(crate) struct Client {
 }
 
 impl Client {
-    pub(crate) async fn disconnect(mut self) -> Result<()> {
+    #[instrument(skip_all)]
+    pub(crate) async fn disconnect_from_ipc(mut self) -> Result<()> {
+        // In case the caller didn't also disconnect from Firezone
+        if let Err(error) = self.disconnect_firezone().await {
+            tracing::error!(
+                ?error,
+                "Failed to disconnect from Firezone, disconnecting from IPC anyway"
+            );
+        }
+        self.tx.close().await?;
+        self.task.abort();
+        Ok(())
+    }
+
+    pub(crate) async fn disconnect_firezone(&mut self) -> Result<()> {
         self.send_msg(&IpcClientMsg::Disconnect)
             .await
             .context("Couldn't send Disconnect")?;
-        self.tx.close().await?;
-        self.task.abort();
         Ok(())
     }
 
@@ -82,9 +95,8 @@ impl Client {
         Ok(())
     }
 
-    pub(crate) async fn connect(
-        api_url: &str,
-        token: SecretString,
+    #[instrument(skip_all)]
+    pub(crate) async fn connect_to_ipc(
         callback_handler: CallbackHandler,
         tokio_handle: tokio::runtime::Handle,
     ) -> Result<Self> {
@@ -112,20 +124,25 @@ impl Client {
             }
             Ok(())
         });
-
-        let mut client = Self { task, tx };
-        let token = token.expose_secret().clone();
-        client
-            .send_msg(&IpcClientMsg::Connect {
-                api_url: api_url.to_string(),
-                token,
-            })
-            .await
-            .context("Couldn't send Connect message")?;
-        Ok(client)
+        Ok(Self { task, tx })
     }
 
-    pub(crate) async fn reconnect(&mut self) -> Result<()> {
+    pub(crate) async fn connect_to_firezone(
+        &mut self,
+        api_url: &str,
+        token: SecretString,
+    ) -> Result<()> {
+        let token = token.expose_secret().clone();
+        self.send_msg(&IpcClientMsg::Connect {
+            api_url: api_url.to_string(),
+            token,
+        })
+        .await
+        .context("Couldn't send Connect message to IPC service")?;
+        Ok(())
+    }
+
+    pub(crate) async fn reconnect_firezone(&mut self) -> Result<()> {
         self.send_msg(&IpcClientMsg::Reconnect)
             .await
             .context("Couldn't send Reconnect")?;
