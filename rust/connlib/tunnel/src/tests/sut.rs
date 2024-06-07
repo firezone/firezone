@@ -36,7 +36,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::{debug_span, error_span, subscriber::DefaultGuard};
+use tracing::{debug_span, subscriber::DefaultGuard};
 use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
@@ -93,20 +93,18 @@ impl StateMachineTest for TunnelTest {
             |key| GatewayState::new(StaticSecret::from(key.0)),
             debug_span!("gateway"),
         );
-        let relay = SimRelay {
-            state: firezone_relay::Server::new(
-                ref_state.relay.ip_stack,
-                rand::rngs::StdRng::seed_from_u64(ref_state.relay.state),
-                3478,
-                49152,
-                65535,
-            ),
-            ip_stack: ref_state.relay.ip_stack,
-            id: ref_state.relay.id,
-            span: error_span!("relay"),
-            allocations: ref_state.relay.allocations.clone(),
-            buffer: ref_state.relay.buffer.clone(),
-        };
+        let relay = ref_state.relay.map_state(
+            |seed, ip_stack| {
+                firezone_relay::Server::new(
+                    ip_stack,
+                    rand::rngs::StdRng::seed_from_u64(seed),
+                    3478,
+                    49152,
+                    65535,
+                )
+            },
+            debug_span!("relay"),
+        );
         let portal = SimPortal {
             _client: client.id,
             gateway: gateway.id,

@@ -97,11 +97,11 @@ impl ReferenceStateMachine for ReferenceState {
                 |(c, g, r, _, _, _, _, _)| {
                     let c4 = c.ip4_socket.map(|s| *s.ip());
                     let g4 = g.ip4_socket.map(|s| *s.ip());
-                    let r4 = r.ip_stack.as_v4().copied();
+                    let r4 = r.ip_stack().as_v4().copied();
 
                     let c6 = c.ip6_socket.map(|s| *s.ip());
                     let g6 = g.ip6_socket.map(|s| *s.ip());
-                    let r6 = r.ip_stack.as_v6().copied();
+                    let r6 = r.ip_stack().as_v6().copied();
 
                     let c4_eq_g4 = c4.is_some_and(|c| g4.is_some_and(|g| c == g));
                     let c6_eq_g6 = c6.is_some_and(|c| g6.is_some_and(|g| c == g));

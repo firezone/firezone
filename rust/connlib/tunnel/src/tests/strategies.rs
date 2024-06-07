@@ -216,14 +216,7 @@ pub(crate) fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
         firezone_relay::proptest::dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         any::<u128>(),
     )
-        .prop_map(|(seed, ip_stack, id)| SimRelay {
-            id: RelayId::from_u128(id),
-            state: seed,
-            ip_stack,
-            span: tracing::Span::none(),
-            allocations: HashSet::new(),
-            buffer: vec![0u8; (1 << 16) - 1],
-        })
+        .prop_map(|(seed, ip_stack, id)| SimRelay::new(RelayId::from_u128(id), seed, ip_stack))
 }
 
 pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
