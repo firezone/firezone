@@ -499,6 +499,7 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
             IpcClientMsg::Disconnect => {
                 if let Some(connlib) = connlib.take() {
                     connlib.disconnect();
+                    dns_control::deactivate()?;
                 }
             }
             IpcClientMsg::Reconnect => connlib.as_mut().context("No connlib session")?.reconnect(),

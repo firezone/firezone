@@ -56,6 +56,7 @@ impl CallbackHandler {
 }
 
 pub(crate) struct Client {
+    connlib_is_up: bool,
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
     tx: FramedWrite<tokio::io::WriteHalf<platform::IpcStream>, LengthDelimitedCodec>,
@@ -80,6 +81,7 @@ impl Client {
         self.send_msg(&IpcClientMsg::Disconnect)
             .await
             .context("Couldn't send Disconnect")?;
+        self.connlib_is_up = false;
         Ok(())
     }
 
@@ -124,7 +126,11 @@ impl Client {
             }
             Ok(())
         });
-        Ok(Self { task, tx })
+        Ok(Self {
+            connlib_is_up: false,
+            task,
+            tx,
+        })
     }
 
     pub(crate) async fn connect_to_firezone(
@@ -139,10 +145,15 @@ impl Client {
         })
         .await
         .context("Couldn't send Connect message to IPC service")?;
+        self.connlib_is_up = true;
         Ok(())
     }
 
     pub(crate) async fn reconnect_firezone(&mut self) -> Result<()> {
+        if !self.connlib_is_up {
+            tracing::debug!("Ignoring Reconnect since connlib isn't up");
+            return Ok(());
+        }
         self.send_msg(&IpcClientMsg::Reconnect)
             .await
             .context("Couldn't send Reconnect")?;
@@ -151,6 +162,10 @@ impl Client {
 
     /// Tell connlib about the system's default resolvers
     pub(crate) async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
+        if !self.connlib_is_up {
+            tracing::debug!("Ignoring SetDns since connlib isn't up");
+            return Ok(());
+        }
         self.send_msg(&IpcClientMsg::SetDns(dns))
             .await
             .context("Couldn't send SetDns")?;

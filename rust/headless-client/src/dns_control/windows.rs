@@ -76,6 +76,7 @@ pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
 ///
 /// Parameters:
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
+#[tracing::instrument]
 pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
     let dns_config_string = dns_config
         .iter()
