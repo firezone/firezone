@@ -2,9 +2,8 @@
 
 use crate::{IpPacket, MutableIpPacket};
 use hickory_proto::{
-    op::{Message, Query},
+    op::{Message, Query, ResponseCode},
     rr::{Name, RData, Record, RecordType},
-    serialize::binary::BinDecodable as _,
 };
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
@@ -12,7 +11,6 @@ use pnet_packet::{
     ipv6::MutableIpv6Packet,
     tcp::{self, MutableTcpPacket},
     udp::{self, MutableUdpPacket},
-    Packet as _,
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -232,15 +230,16 @@ pub fn dns_query(
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
-pub fn dns_response<I>(
+/// Makes a DNS response to the given DNS query packet, using a resolver callback.
+pub fn dns_ok_response<I>(
     packet: IpPacket<'static>,
     resolve: impl Fn(&Name) -> I,
-) -> Option<MutableIpPacket<'static>>
+) -> MutableIpPacket<'static>
 where
     I: Iterator<Item = IpAddr>,
 {
-    let udp = packet.as_udp()?;
-    let mut query = Message::from_bytes(udp.payload()).ok()?;
+    let udp = packet.unwrap_as_udp();
+    let mut query = packet.unwrap_as_dns();
 
     let mut response = Message::new();
     response.set_id(query.id());
@@ -269,13 +268,33 @@ where
 
     let payload = response.to_vec().unwrap();
 
-    Some(udp_packet(
+    udp_packet(
         packet.destination(),
         packet.source(),
         udp.get_destination(),
         udp.get_source(),
         payload,
-    ))
+    )
+}
+
+/// Makes a DNS response to the given DNS query packet, using the given error code.
+pub fn dns_err_response(packet: IpPacket<'static>, code: ResponseCode) -> MutableIpPacket<'static> {
+    let udp = packet.unwrap_as_udp();
+    let query = packet.unwrap_as_dns();
+
+    debug_assert_ne!(code, ResponseCode::NoError);
+
+    let response = Message::error_msg(query.id(), query.op_code(), code);
+
+    let payload = response.to_vec().unwrap();
+
+    udp_packet(
+        packet.destination(),
+        packet.source(),
+        udp.get_destination(),
+        udp.get_source(),
+        payload,
+    )
 }
 
 fn ipv4_header(src: Ipv4Addr, dst: Ipv4Addr, proto: IpNextHeaderProtocol, buf: &mut [u8]) {

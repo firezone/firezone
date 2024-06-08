@@ -165,6 +165,11 @@ impl<'a> MutableIpPacket<'a> {
             .flatten()
     }
 
+    /// Unwrap this [`IpPacket`] as a [`MutableUdpPacket`], panicking in case it is not.
+    pub fn unwrap_as_udp(&mut self) -> MutableUdpPacket {
+        self.as_udp().expect("Packet is not a UDP packet")
+    }
+
     pub fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
         self.to_immutable()
             .is_tcp()
@@ -307,6 +312,24 @@ impl<'a> IpPacket<'a> {
         self.is_udp()
             .then(|| UdpPacket::new(self.payload()))
             .flatten()
+    }
+
+    /// Unwrap this [`IpPacket`] as a [`UdpPacket`], panicking in case it is not.
+    pub fn unwrap_as_udp(&self) -> UdpPacket {
+        self.as_udp().expect("Packet is not a UDP packet")
+    }
+
+    /// Unwrap this [`IpPacket`] as a DNS message, panicking in case it is not.
+    pub fn unwrap_as_dns(&self) -> hickory_proto::op::Message {
+        let udp = self.unwrap_as_udp();
+        let message = match hickory_proto::op::Message::from_vec(udp.payload()) {
+            Ok(message) => message,
+            Err(e) => {
+                panic!("Failed to parse UDP payload as DNS message: {e}");
+            }
+        };
+
+        message
     }
 
     pub fn as_tcp(&self) -> Option<TcpPacket> {

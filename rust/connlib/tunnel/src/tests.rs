@@ -1075,13 +1075,15 @@ impl TunnelTest {
                 return ControlFlow::Break(());
             }
 
-            if let Some(response) = ip_packet::make::dns_response(packet, |name| {
-                global_dns_records
-                    .get(&hickory_name_to_domain(name.clone()))
-                    .cloned()
-                    .into_iter()
-                    .flatten()
-            }) {
+            if packet.as_udp().is_some() {
+                let response = ip_packet::make::dns_ok_response(packet, |name| {
+                    global_dns_records
+                        .get(&hickory_name_to_domain(name.clone()))
+                        .cloned()
+                        .into_iter()
+                        .flatten()
+                });
+
                 let maybe_transmit = self.send_ip_packet_gateway_to_client(response);
                 buffered_transmits.extend(maybe_transmit);
 
@@ -1357,10 +1359,10 @@ impl TunnelTest {
 
         self.client.state.on_dns_result(
             query,
-            Ok(Ok(Lookup::new_with_max_ttl(
+            Ok(Ok(Ok(Lookup::new_with_max_ttl(
                 Query::query(name, record_type),
                 record_data,
-            ))),
+            )))),
         );
     }
 }
@@ -2461,8 +2463,8 @@ fn assert_correct_src_and_dst_udp_ports(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
 ) {
-    let client_sent_request = client_sent_request.as_udp().expect("packet to be UDP");
-    let client_received_reply = client_received_reply.as_udp().expect("packet to be UDP");
+    let client_sent_request = client_sent_request.unwrap_as_udp();
+    let client_received_reply = client_received_reply.unwrap_as_udp();
 
     assert_eq!(
         client_sent_request.get_destination(),
