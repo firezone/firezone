@@ -25,6 +25,7 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 futures-bounded = { workspace = true }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
+hickory-proto = { workspace = true }
 bimap = "0.6"
 socket2 = { version = "0.5" }
 snownet = { workspace = true }
