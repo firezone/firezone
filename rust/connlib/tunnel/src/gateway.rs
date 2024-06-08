@@ -214,8 +214,9 @@ impl GatewayState {
         self.node.add_remote_candidate(conn_id, ice_candidate, now);
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    pub fn remove_ice_candidate(&mut self, _: ClientId, _: String) {
+        // TODO
+        // self.node.remove_remote_candidate(conn_id, ice_candidate);
     }
 
     /// Accept a connection request from a client.
