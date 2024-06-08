@@ -1511,6 +1511,8 @@ where
                     local: nominated_candidate,
                     ..
                 } => {
+                    dbg!(&nominated_candidate);
+
                     let remote_socket = match nominated_candidate.kind() {
                         CandidateKind::Relayed => {
                             let relay = allocations.iter().find_map(|(relay, allocation)| {
