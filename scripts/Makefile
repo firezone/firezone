@@ -23,7 +23,7 @@ current-headless-version = 1.0.5
 next-apple-version = 1.0.5
 next-android-version = 1.0.3
 next-gateway-version = 1.0.6
-next-tauri-version = 1.0.6
+next-gui-version = 1.0.6
 next-headless-version = 1.0.6
 
 # macOS uses a slightly different sed syntax
@@ -55,8 +55,8 @@ gateway-version:
 tauri-version:
 	@# The website hosts permalinks to our published packages and binaries
 	@find website/ -exec sed $(SEDARG) -e '/mark:current-tauri-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(current-tauri-version)/g;}' {} \;
-	@find .github/ -exec sed $(SEDARG) -e '/mark:next-tauri-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(next-tauri-version)/g;}' {} \;
-	@find rust/ -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-tauri-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(next-tauri-version)/;}' {} \;
+	@find .github/ -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(next-gui-version)/g;}' {} \;
+	@find rust/ -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]*\.[0-9]*\.[0-9]*/$(next-gui-version)/;}' {} \;
 	@cd rust && cargo update --workspace
 
 # Update website changelog and DL links to current version and cargo files, CI release to next version

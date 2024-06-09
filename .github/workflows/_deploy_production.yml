@@ -9,10 +9,6 @@ on:
         default: ${{ github.sha }}
         required: false
 
-env:
-  # mark:automatic-version
-  VERSION: "1.0.6"
-
 concurrency:
   group: "production-deploy"
   cancel-in-progress: false
@@ -54,65 +50,13 @@ jobs:
           set -xe
 
           IMAGES=(domain api web gateway relay client)
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
 
           for image in "${IMAGES[@]}"; do
             SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag }}
 
             docker buildx imagetools create \
               -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag }} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag }} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION} \
               $SOURCE_TAG
-          done
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: true
-          create_credentials_file: true
-      - name: Copy Google Cloud Storage binaries to "latest" version
-        run: |
-          set -xe
-
-          IMAGES=(firezone-gateway)
-          ARCHITECTURES=(x86_64 aarch64 armv7)
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
-
-          for image in "${IMAGES[@]}"; do
-            for arch in "${ARCHITECTURES[@]}"; do
-              # Copy sha256sum.txt
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
-                gs://firezone-prod-artifacts/${image}/latest/${arch}.sha256sum.txt
-
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}.sha256sum.txt
-
-            gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt
-
-              # Copy binaries
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
-                gs://firezone-prod-artifacts/${image}/latest/${arch}
-
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}
-
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}
-            done
           done
 
   deploy-production:
@@ -149,7 +93,7 @@ jobs:
         id: apply-run
         env:
           TF_VAR_image_tag:
-            '"${{ env.VERSION }}-${{ inputs.tag }}"'
+            '"${{ inputs.tag }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
