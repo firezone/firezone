@@ -260,10 +260,10 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
-            ${{ matrix.name.version && format('type=raw,value=${0}', matrix.name.version) }}
-            ${{ matrix.name.version && format('type=raw,value=${0}-${1}', matrix.name.version, inputs.sha) }}
-            ${{ matrix.name.version && format('type=raw,value=${0}', env.MAJOR_VERSION) }}
-            ${{ matrix.name.version && format('type=raw,value=${0}', env.MAJOR_MINOR_VERSION) }}
+            ${{ matrix.name.version && format('type=raw,value={0}', matrix.name.version) }}
+            ${{ matrix.name.version && format('type=raw,value={0}-{1}', matrix.name.version, inputs.sha) }}
+            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
+            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -369,10 +369,10 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
-            ${{ matrix.image.version && format('type=raw,value=${0}', matrix.image.version) }}
-            ${{ matrix.image.version && format('type=raw,value=${0}-${1}', matrix.image.version, inputs.sha) }}
-            ${{ matrix.image.version && format('type=raw,value=${0}', env.MAJOR_VERSION) }}
-            ${{ matrix.image.version && format('type=raw,value=${0}', env.MAJOR_MINOR_VERSION) }}
+            ${{ matrix.image.version && format('type=raw,value={0}', matrix.image.version) }}
+            ${{ matrix.image.version && format('type=raw,value={0}-{1}', matrix.image.version, inputs.sha) }}
+            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
+            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Create manifest list and push
         working-directory: /tmp/digests/${{ matrix.image.name }}
         run: |
