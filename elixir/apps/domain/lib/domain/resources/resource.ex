@@ -21,7 +21,10 @@ defmodule Domain.Resources.Resource do
 
     has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
     has_many :actor_groups, through: [:policies, :actor_group]
-    field :authorized_by_policy, :map, virtual: true
+
+    # Warning: do not do Repo.preload/2 for this field, it will not work intentionally,
+    # because the actual preload query should also use joins and process policy conditions
+    has_many :authorized_by_policies, Domain.Policies.Policy, where: [id: {:fragment, "FALSE"}]
 
     field :created_by, Ecto.Enum, values: ~w[identity]a
     belongs_to :created_by_identity, Domain.Auth.Identity

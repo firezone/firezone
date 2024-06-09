@@ -60,6 +60,25 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
+             "policy[conditions][provider_id][operator]",
+             "policy[conditions][provider_id][property]",
+             "policy[conditions][provider_id][values][]",
+             "policy[conditions][remote_ip][operator]",
+             "policy[conditions][remote_ip][property]",
+             "policy[conditions][remote_ip][values][]",
+             "policy[conditions][remote_ip_location_region][operator]",
+             "policy[conditions][remote_ip_location_region][property]",
+             "policy[conditions][remote_ip_location_region][values][]",
              "policy[description]",
              "policy[resource_id]"
            ]
@@ -80,6 +99,25 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
+             "policy[conditions][provider_id][operator]",
+             "policy[conditions][provider_id][property]",
+             "policy[conditions][provider_id][values][]",
+             "policy[conditions][remote_ip][operator]",
+             "policy[conditions][remote_ip][property]",
+             "policy[conditions][remote_ip][values][]",
+             "policy[conditions][remote_ip_location_region][operator]",
+             "policy[conditions][remote_ip_location_region][property]",
+             "policy[conditions][remote_ip_location_region][values][]",
              "policy[description]",
              "policy[resource_id]"
            ]
@@ -111,6 +149,25 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
+             "policy[conditions][provider_id][operator]",
+             "policy[conditions][provider_id][property]",
+             "policy[conditions][provider_id][values][]",
+             "policy[conditions][remote_ip][operator]",
+             "policy[conditions][remote_ip][property]",
+             "policy[conditions][remote_ip][values][]",
+             "policy[conditions][remote_ip_location_region][operator]",
+             "policy[conditions][remote_ip_location_region][property]",
+             "policy[conditions][remote_ip_location_region][values][]",
              "policy[description]",
              "policy[resource_id]"
            ]
@@ -135,8 +192,7 @@ defmodule Web.Live.Policies.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
 
     attrs =
-      Fixtures.Policies.policy_attrs()
-      |> Map.take([:name])
+      %{}
       |> Map.put(:actor_group_id, group.id)
       |> Map.put(:resource_id, resource.id)
 
@@ -196,11 +252,10 @@ defmodule Web.Live.Policies.NewTest do
     group = Fixtures.Actors.create_group(account: account)
     resource = Fixtures.Resources.create_resource(account: account)
 
-    attrs =
-      Fixtures.Policies.policy_attrs()
-      |> Map.take([:name])
-      |> Map.put(:actor_group_id, group.id)
-      |> Map.put(:resource_id, resource.id)
+    attrs = %{
+      actor_group_id: group.id,
+      resource_id: resource.id
+    }
 
     {:ok, lv, _html} =
       conn
@@ -211,7 +266,97 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    assert policy = Repo.get_by(Domain.Policies.Policy, attrs)
+
+    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+  end
+
+  test "creates a new policy with conditions", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Actors.create_group(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    attrs = %{
+      actor_group_id: group.id,
+      resource_id: resource.id,
+      conditions: %{
+        current_utc_datetime: %{
+          property: "current_utc_datetime",
+          operator: "is_in_day_of_week_time_ranges",
+          timezone: "US/Pacific",
+          values: %{
+            M: "true",
+            T: "",
+            W: "true",
+            R: "",
+            F: "",
+            S: "10:00:00-15:00:00",
+            U: "23:00:00-23:59:59"
+          }
+        },
+        provider_id: %{
+          property: "provider_id",
+          operator: "is_in",
+          values: [identity.provider_id]
+        },
+        remote_ip: %{
+          property: "remote_ip",
+          operator: "is_not_in_cidr",
+          values: ["0.0.0.0/0"]
+        },
+        remote_ip_location_region: %{
+          property: "remote_ip_location_region",
+          operator: "is_in",
+          values: ["US"]
+        }
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource}")
+
+    assert lv
+           |> form("form", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Domain.Policies.Policy, actor_group_id: group.id)
+    assert policy.resource_id == resource.id
+
+    assert policy.conditions == [
+             %Domain.Policies.Condition{
+               property: :current_utc_datetime,
+               operator: :is_in_day_of_week_time_ranges,
+               values: [
+                 "M/true/US/Pacific",
+                 "T//US/Pacific",
+                 "W/true/US/Pacific",
+                 "R//US/Pacific",
+                 "F//US/Pacific",
+                 "S/10:00:00-15:00:00/US/Pacific",
+                 "U/23:00:00-23:59:59/US/Pacific"
+               ]
+             },
+             %Domain.Policies.Condition{
+               property: :provider_id,
+               operator: :is_in,
+               values: [identity.provider_id]
+             },
+             %Domain.Policies.Condition{
+               property: :remote_ip,
+               operator: :is_not_in_cidr,
+               values: ["0.0.0.0/0"]
+             },
+             %Domain.Policies.Condition{
+               property: :remote_ip_location_region,
+               operator: :is_in,
+               values: ["US"]
+             }
+           ]
 
     assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
   end
@@ -225,9 +370,7 @@ defmodule Web.Live.Policies.NewTest do
     resource = Fixtures.Resources.create_resource(account: account)
 
     attrs =
-      Fixtures.Policies.policy_attrs()
-      |> Map.take([:name])
-      |> Map.put(:actor_group_id, group.id)
+      %{actor_group_id: group.id}
 
     {:ok, lv, _html} =
       conn
@@ -254,10 +397,7 @@ defmodule Web.Live.Policies.NewTest do
 
     gateway_group = Fixtures.Gateways.create_group(account: account)
 
-    attrs =
-      Fixtures.Policies.policy_attrs()
-      |> Map.take([:name])
-      |> Map.put(:actor_group_id, group.id)
+    attrs = %{actor_group_id: group.id}
 
     {:ok, lv, _html} =
       conn

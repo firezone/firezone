@@ -17,7 +17,8 @@ defmodule Domain.Types.IPPort do
     with {:ok, {binary_address, binary_port}} <- parse_binary(binary),
          {:ok, address} <- cast_address(binary_address),
          {:ok, port} <- cast_port(binary_port) do
-      {:ok, %__MODULE__{address_type: type(address), address: address, port: port}}
+      address_type = Domain.Types.IP.type(address)
+      {:ok, %__MODULE__{address_type: address_type, address: address, port: port}}
     else
       _error -> {:error, message: "is invalid"}
     end
@@ -55,9 +56,6 @@ defmodule Domain.Types.IPPort do
       _other -> :error
     end
   end
-
-  defp type(address) when tuple_size(address) == 4, do: :ipv4
-  defp type(address) when tuple_size(address) == 8, do: :ipv6
 
   def dump(%__MODULE__{} = ip) do
     {:ok, __MODULE__.to_string(ip)}

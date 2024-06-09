@@ -75,6 +75,9 @@ defmodule Domain.MixProject do
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
 
+      # Other application deps
+      {:tzdata, "~> 1.1"},
+
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},

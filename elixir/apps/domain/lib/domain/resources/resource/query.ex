@@ -23,24 +23,18 @@ defmodule Domain.Resources.Resource.Query do
   end
 
   def by_authorized_actor_id(queryable, actor_id) do
-    subquery =
-      Domain.Policies.Policy.Query.not_disabled()
-      |> Domain.Policies.Policy.Query.by_actor_id(actor_id)
-      |> where([policies: policies], policies.resource_id == parent_as(:resources).id)
-      |> limit(1)
-
     queryable
     |> join(
-      :inner_lateral,
+      :inner,
       [resources: resources],
-      policies in subquery(subquery),
-      on: true,
-      as: :authorized_by_policies
+      policies in ^Domain.Policies.Policy.Query.not_disabled(),
+      on: policies.resource_id == resources.id,
+      as: :policies
     )
-    # Note: this will only write one of policies to a map, which means that
-    # when a client has access to a resource using multiple policies (eg. being a member in multiple groups),
-    # the policy used will be not deterministic
-    |> select_merge([authorized_by_policies: policies], %{authorized_by_policy: policies})
+    |> Domain.Policies.Policy.Query.by_actor_id(actor_id)
+    |> preload([resources: resources, policies: policies],
+      authorized_by_policies: policies
+    )
   end
 
   def with_at_least_one_gateway_group(queryable) do

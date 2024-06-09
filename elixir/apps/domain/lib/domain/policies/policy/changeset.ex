@@ -11,6 +11,7 @@ defmodule Domain.Policies.Policy.Changeset do
     %Policy{}
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
+    |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
     |> put_change(:account_id, subject.account.id)
     |> put_change(:created_by, :identity)
@@ -21,6 +22,7 @@ defmodule Domain.Policies.Policy.Changeset do
     policy
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
+    |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
   end
 

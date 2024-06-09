@@ -14,6 +14,36 @@ defmodule Web.Live.Policies.ShowTest do
         account: account,
         subject: subject,
         resource: resource,
+        conditions: [
+          %{
+            property: :current_utc_datetime,
+            operator: :is_in_day_of_week_time_ranges,
+            values: [
+              "M/true/UTC",
+              "T//UTC",
+              "W/true/UTC",
+              "R//UTC",
+              "F//UTC",
+              "S/10:00:00-15:00:00/UTC",
+              "U/23:00:00-23:59:59/UTC"
+            ]
+          },
+          %{
+            property: :provider_id,
+            operator: :is_in,
+            values: [identity.provider_id]
+          },
+          %{
+            property: :remote_ip,
+            operator: :is_not_in_cidr,
+            values: ["0.0.0.0/0"]
+          },
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_in,
+            values: ["US"]
+          }
+        ],
         description: "Test Policy"
       )
 
@@ -125,6 +155,19 @@ defmodule Web.Live.Policies.ShowTest do
     assert table["resource"] =~ policy.resource.name
     assert table["description"] =~ policy.description
     assert table["created"] =~ actor.name
+
+    assert table["conditions"] =~ "This policy can be used on"
+    assert table["conditions"] =~ "Mondays"
+    assert table["conditions"] =~ "Wednesdays"
+    assert table["conditions"] =~ "Saturdays (10:00:00 - 15:00:00 UTC)"
+    assert table["conditions"] =~ "Sundays (23:00:00 - 23:59:59 UTC)"
+    assert table["conditions"] =~ "from United States of America"
+    assert table["conditions"] =~ "from IP addresses that are"
+    assert table["conditions"] =~ "not in"
+    assert table["conditions"] =~ "0.0.0.0"
+    assert table["conditions"] =~ "when signed in"
+    assert table["conditions"] =~ "with"
+    assert table["conditions"] =~ "provider(s)"
   end
 
   test "renders logs table", %{

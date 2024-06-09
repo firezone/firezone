@@ -120,6 +120,7 @@ defmodule Domain.Types.CIDR do
          :ok <- validate_netmask(address, netmask) do
       {:ok, %Postgrex.INET{address: address, netmask: netmask}}
     else
+      :invalid_netmask -> {:error, message: "CIDR netmask is invalid or missing"}
       _error -> {:error, message: "is invalid"}
     end
   end
@@ -132,6 +133,7 @@ defmodule Domain.Types.CIDR do
     with [binary_address, binary_netmask] <- String.split(binary, "/", parts: 2) do
       {:ok, {binary_address, binary_netmask}}
     else
+      [_binary_address] -> :invalid_netmask
       _other -> :error
     end
   end
@@ -145,7 +147,7 @@ defmodule Domain.Types.CIDR do
   defp cast_netmask(binary) when is_binary(binary) do
     case Integer.parse(binary) do
       {netmask, ""} -> {:ok, netmask}
-      _other -> :error
+      _other -> :invalid_netmask
     end
   end
 

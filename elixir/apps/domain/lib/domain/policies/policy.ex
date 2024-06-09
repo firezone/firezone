@@ -4,6 +4,8 @@ defmodule Domain.Policies.Policy do
   schema "policies" do
     field :description, :string
 
+    embeds_many :conditions, Domain.Policies.Condition, on_replace: :delete
+
     belongs_to :actor_group, Domain.Actors.Group
     belongs_to :resource, Domain.Resources.Resource
     belongs_to :account, Domain.Accounts.Account
