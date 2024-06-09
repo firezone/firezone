@@ -163,7 +163,7 @@ defmodule Web.Live.Policies.ShowTest do
     assert table["conditions"] =~ "Sundays (23:00:00 - 23:59:59 UTC)"
     assert table["conditions"] =~ "from United States of America"
     assert table["conditions"] =~ "from IP addresses that are"
-    assert table["conditions"] =~ "not within"
+    assert table["conditions"] =~ "not in"
     assert table["conditions"] =~ "0.0.0.0"
     assert table["conditions"] =~ "when signed in"
     assert table["conditions"] =~ "with"
