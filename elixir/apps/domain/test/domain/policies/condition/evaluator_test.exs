@@ -120,6 +120,27 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == true
     end
 
+    test "when client last seen remote ip is in or not in the IP values" do
+      condition = %Domain.Policies.Condition{
+        property: :remote_ip,
+        values: ["192.168.0.1", "2001:0000:130F:0000:0000:09C0:876A:130B"]
+      }
+
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
+      }
+
+      assert conforms?(%{condition | operator: :is_in_cidr}, client) == true
+      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == false
+
+      client = %Domain.Clients.Client{
+        last_seen_remote_ip: %Postgrex.INET{address: {10, 168, 0, 1}}
+      }
+
+      assert conforms?(%{condition | operator: :is_in_cidr}, client) == false
+      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == true
+    end
+
     test "when client identity provider id is in or not in the values" do
       condition = %Domain.Policies.Condition{
         property: :provider_id,

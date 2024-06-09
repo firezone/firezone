@@ -28,7 +28,7 @@ defmodule Domain.Policies.Condition.Changeset do
         changeset
         |> validate_required(:operator)
         |> validate_inclusion(:operator, valid_operators_for_property(:remote_ip))
-        |> validate_list(:values, Domain.Types.CIDR)
+        |> validate_list(:values, Domain.Types.INET)
 
       {_data_or_changes, :provider_id} ->
         changeset

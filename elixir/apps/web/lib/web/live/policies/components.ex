@@ -46,6 +46,25 @@ defmodule Web.Policies.Components do
     true
   end
 
+  defp map_condition_values(
+         %{
+           "operator" => "is_in_day_of_week_time_ranges",
+           "timezone" => timezone
+         } = condition_attrs
+       ) do
+    Map.update(condition_attrs, "values", [], fn values ->
+      values
+      |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
+      |> Enum.map(fn {dow, time_ranges} ->
+        "#{dow}/#{time_ranges}/#{timezone}"
+      end)
+    end)
+  end
+
+  defp map_condition_values(condition_attrs) do
+    condition_attrs
+  end
+
   defp condition_values_empty?(%{
          params: %{
            "operator" => "is_in_day_of_week_time_ranges",
@@ -73,25 +92,6 @@ defmodule Web.Policies.Components do
 
   defp condition_values_empty?(%{}) do
     true
-  end
-
-  defp map_condition_values(
-         %{
-           "operator" => "is_in_day_of_week_time_ranges",
-           "timezone" => timezone
-         } = condition_attrs
-       ) do
-    Map.update(condition_attrs, "values", [], fn values ->
-      values
-      |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
-      |> Enum.map(fn {dow, time_ranges} ->
-        "#{dow}/#{time_ranges}/#{timezone}"
-      end)
-    end)
-  end
-
-  defp map_condition_values(condition_attrs) do
-    condition_attrs
   end
 
   def conditions(assigns) do
@@ -127,8 +127,8 @@ defmodule Web.Policies.Components do
   defp condition(%{property: :remote_ip} = assigns) do
     ~H"""
     <span :if={@values != []} class="mr-1">
-      <span>from IP addresses that are</span> <span :if={@operator == :is_in_cidr}>within</span>
-      <span :if={@operator == :is_not_in_cidr}>not within</span>
+      <span>from IP addresses that are</span> <span :if={@operator == :is_in_cidr}>in</span>
+      <span :if={@operator == :is_not_in_cidr}>not in</span>
       <span class="font-medium"><%= Enum.join(@values, ", ") %></span>
     </span>
     """
@@ -373,7 +373,7 @@ defmodule Web.Policies.Components do
         </legend>
 
         <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the Client's IP address.
+          Restrict access based on the Client's IP address or CIDR range.
         </p>
       </div>
 
@@ -405,7 +405,7 @@ defmodule Web.Policies.Components do
               field={condition_form[:values]}
               name="policy[conditions][remote_ip][values][]"
               id={"policy_conditions_remote_ip_values_#{index}"}
-              placeholder="189.172.0.0/24"
+              placeholder="E.g. 189.172.0.0/24 or 10.10.10.1"
               disabled={@disabled}
               value_index={index}
               value={value}
@@ -514,7 +514,6 @@ defmodule Web.Policies.Components do
         name="policy[conditions][current_utc_datetime][operator]"
         id="policy_conditions_current_utc_datetime_operator"
         field={condition_form[:operator]}
-        placeholder="Operator"
         value={:is_in_day_of_week_time_ranges}
       />
 
@@ -541,7 +540,7 @@ defmodule Web.Policies.Components do
         </legend>
 
         <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the current time of the day.
+          Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
         </p>
       </div>
 
@@ -558,7 +557,6 @@ defmodule Web.Policies.Components do
           name="policy[conditions][current_utc_datetime][timezone]"
           id="policy_conditions_current_utc_datetime_timezone"
           field={condition_form[:timezone]}
-          placeholder="Timezone"
           options={Tzdata.zone_list()}
           disabled={@disabled}
           value={condition_form[:timezone].value || @timezone}
@@ -597,7 +595,7 @@ defmodule Web.Policies.Components do
       field={@condition_form[:values]}
       name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
       id={"policy_conditions_current_utc_datetime_values_#{@day}"}
-      placeholder="9:00-12:00, 13:00-17:00"
+      placeholder="E.g. 9:00-12:00, 13:00-17:00"
       value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
       disabled={@disabled}
       value_index={day_of_week_index(@day)}

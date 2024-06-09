@@ -45,7 +45,8 @@ defmodule Domain.Policies.Condition.Evaluator do
         %Clients.Client{} = client
       ) do
     Enum.any?(values, fn cidr ->
-      {:ok, cidr} = Domain.Types.CIDR.cast(cidr)
+      {:ok, inet} = Domain.Types.INET.cast(cidr)
+      cidr = %{inet | netmask: inet.netmask || Domain.Types.CIDR.max_netmask(inet)}
       Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip)
     end)
   end
@@ -55,7 +56,8 @@ defmodule Domain.Policies.Condition.Evaluator do
         %Clients.Client{} = client
       ) do
     Enum.all?(values, fn cidr ->
-      {:ok, cidr} = Domain.Types.CIDR.cast(cidr)
+      {:ok, inet} = Domain.Types.INET.cast(cidr)
+      cidr = %{inet | netmask: inet.netmask || Domain.Types.CIDR.max_netmask(inet)}
       not Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip)
     end)
   end
