@@ -168,6 +168,8 @@ jobs:
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
+    env:
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
@@ -207,15 +209,12 @@ jobs:
         run: |
           set -xe
 
-          binary_dest_path="${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}"
-
           # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $binary_dest_path
-          sha256sum $binary_dest_path > $binary_dest_path.sha256sum.txt
-
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
+          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
           gh release upload ${{ matrix.name.release_name }} \
-            ${binary_dest_path} \
-            ${binary_dest_path}.sha256sum.txt \
+            ${{ env.BINARY_DEST_PATH }} \
+            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             --clobber \
             --repo ${{ github.repository }}
       - name: Authenticate to Google Cloud
@@ -227,6 +226,16 @@ jobs:
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
           export_environment_variables: true
           create_credentials_file: true
+      - name: Copy binaries to Google Cloud Storage
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["relay", "gateway", "client"]'), matrix.name.image_name }}
+        run: |
+          gcloud storage cp \
+            ${BINARY_DEST_PATH} \
+            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
+
+          gcloud storage cp \
+            ${BINARY_DEST_PATH}.sha256sum.txt \
+            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx

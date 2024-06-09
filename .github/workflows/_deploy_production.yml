@@ -33,6 +33,10 @@ jobs:
     permissions:
       packages: write
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [domain, api, web, gateway, relay, client]
     steps:
       - uses: actions/checkout@v4
       - name: Login to staging registry
@@ -49,14 +53,42 @@ jobs:
         run: |
           set -xe
 
-          IMAGES=(domain api web gateway relay client)
+          SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image }}:${{ inputs.tag }}
 
-          for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag }}
+          docker buildx imagetools create \
+            -t ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image }}:${{ inputs.tag }} \
+            $SOURCE_TAG
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy Google Cloud Storage binaries to "latest" version
+        if: ${{ contains(fromJSON('["client", "relay", "gateway"]'), matrix.image) }}
+        run: |
+          set -xe
 
-            docker buildx imagetools create \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag }} \
-              $SOURCE_TAG
+          ARCHITECTURES=(x86_64 aarch64 armv7)
+
+          for arch in "${ARCHITECTURES[@]}"; do
+            # Copy sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/${{ matrix.image }}/latest/${arch}.sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt
+
+            # Copy binaries
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch} \
+              gs://firezone-prod-artifacts/${{ matrix.image }}/latest/${arch}
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch} \
+              gs://firezone-prod-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}
           done
 
   deploy-production:
