@@ -227,7 +227,7 @@ jobs:
           export_environment_variables: true
           create_credentials_file: true
       - name: Copy binaries to Google Cloud Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["relay", "gateway", "client"]'), matrix.name.image_name }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["relay", "gateway", "client"]'), matrix.name.image_name) }}
         run: |
           gcloud storage cp \
             ${BINARY_DEST_PATH} \
