@@ -138,3 +138,23 @@ jobs:
           run: ${{ steps.apply-run.outputs.run_id }}
           comment:
             "Apply Run from GitHub Actions CI ${{ inputs.tag }}"
+
+  update-vercel:
+    needs: deploy-production
+    runs-on: ubuntu-22.04
+    env:
+      VERCEL_PROJECT: firezone
+      VERCEL_SLUG: firezone
+      # Fetched from Vercel's API. Not a secret.
+      VERCEL_ENV_VAR_ID: Ph436pR2So7nwrSI
+    steps:
+      - name: Update FIREZONE_DEPLOYED_SHA
+        run: |
+          curl -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" -H "Content-Type: application/json" \
+            -d '{
+              "comment": "latest deployed SHA for control plane",
+              "key": "FIREZONE_DEPLOYED_SHA",
+              "type": "plain",
+              "value": "${{ inputs.tag }}"
+            }'
