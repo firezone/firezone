@@ -2,11 +2,11 @@ defmodule Web.MixProject do
   use Mix.Project
 
   def project do
-    {version, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
+    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
 
     [
       app: :web,
-      version: version,
+      version: "0.1.0+#{sha}",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
