@@ -2,10 +2,11 @@ defmodule Firezone.MixProject do
   use Mix.Project
 
   def project do
+    {version, _} = Code.eval_file(Path.join([__DIR__, "sha.exs"]))
     [
       name: :firezone,
       apps_path: "apps",
-      version: "0.1.0",
+      version: version,
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [

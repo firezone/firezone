@@ -2,9 +2,11 @@ defmodule API.MixProject do
   use Mix.Project
 
   def project do
+    {version, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
+
     [
       app: :api,
-      version: "0.1.0",
+      version: version,
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",

@@ -298,6 +298,10 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 ARG MIX_ENV="prod"
 COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
+# Populate the SHA pointing to this build
+ARG GIT_SHA
+RUN echo ${GIT_SHA} > ./GIT_SHA
+
 # Change user to "default" to limit runtime privileges
 USER default
 

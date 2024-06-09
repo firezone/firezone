@@ -46,23 +46,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image_name: domain
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=domain
-          - image_name: api
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=api
-          - image_name: web
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=web
-          - image_name: elixir
-            target: compiler
-            build-args: |
-              APPLICATION_NAME=api
+        - image_name: domain
+          target: runtime
+          build-args: |
+            APPLICATION_NAME=domain
+            GIT_SHA=${{ inputs.sha }}
+        - image_name: api
+          target: runtime
+          build-args: |
+            APPLICATION_NAME=api
+            GIT_SHA=${{ inputs.sha }}
+        - image_name: web
+          target: runtime
+          build-args: |
+            APPLICATION_NAME=web
+            GIT_SHA=${{ inputs.sha }}
+        - image_name: elixir
+          target: compiler
+          build-args: |
+            APPLICATION_NAME=api
+            GIT_SHA=${{ inputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
