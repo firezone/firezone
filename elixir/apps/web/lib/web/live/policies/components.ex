@@ -18,14 +18,61 @@ defmodule Web.Policies.Components do
     ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
   end
 
-  def map_condition_params(attrs) do
+  def map_condition_params(attrs, opts) do
     Map.update(attrs, "conditions", %{}, fn conditions ->
       for {property, condition_attrs} <- conditions,
+          maybe_filter(condition_attrs, opts),
           condition_attrs = map_condition_values(condition_attrs),
           into: %{} do
         {property, condition_attrs}
       end
     end)
+  end
+
+  defp maybe_filter(%{"values" => values}, empty_values: :drop) when is_list(values) do
+    not (values
+         |> List.wrap()
+         |> Enum.reject(fn value -> value in [nil, ""] end)
+         |> Enum.empty?())
+  end
+
+  defp maybe_filter(%{"values" => values}, empty_values: :drop) when is_map(values) do
+    not (values
+         |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+         |> Enum.empty?())
+  end
+
+  defp maybe_filter(_condition_attrs, _opts) do
+    true
+  end
+
+  defp condition_values_empty?(%{
+         params: %{
+           "operator" => "is_in_day_of_week_time_ranges",
+           "values" => values
+         }
+       }) do
+    values
+    |> Enum.reject(fn value ->
+      case String.split(value, "/") do
+        [_, ranges, _] -> ranges == ""
+        _ -> true
+      end
+    end)
+    |> Enum.empty?()
+  end
+
+  defp condition_values_empty?(%{
+         params: %{"values" => values}
+       }) do
+    values
+    |> List.wrap()
+    |> Enum.reject(fn value -> value in [nil, ""] end)
+    |> Enum.empty?()
+  end
+
+  defp condition_values_empty?(%{}) do
+    true
   end
 
   defp map_condition_values(
@@ -43,17 +90,8 @@ defmodule Web.Policies.Components do
     end)
   end
 
-  defp map_condition_values(%{"values" => values} = condition_attrs) do
-    values
-    |> Enum.reject(fn value -> is_nil(value) or value == "" end)
-    |> case do
-      [] -> nil
-      _other -> condition_attrs
-    end
-  end
-
-  defp map_condition_values(_condition_attrs) do
-    nil
+  defp map_condition_values(condition_attrs) do
+    condition_attrs
   end
 
   def conditions(assigns) do
@@ -76,7 +114,7 @@ defmodule Web.Policies.Components do
 
   defp condition(%{property: :remote_ip_location_region} = assigns) do
     ~H"""
-    <span class="mr-1">
+    <span :if={@values != []} class="mr-1">
       <span :if={@operator == :is_in}>from</span>
       <span :if={@operator == :is_not_in}>from any counties except</span>
       <span class="font-medium">
@@ -88,7 +126,7 @@ defmodule Web.Policies.Components do
 
   defp condition(%{property: :remote_ip} = assigns) do
     ~H"""
-    <span class="mr-1">
+    <span :if={@values != []} class="mr-1">
       <span>from IP addresses that are</span> <span :if={@operator == :is_in_cidr}>within</span>
       <span :if={@operator == :is_not_in_cidr}>not within</span>
       <span class="font-medium"><%= Enum.join(@values, ", ") %></span>
@@ -111,7 +149,7 @@ defmodule Web.Policies.Components do
       )
 
     ~H"""
-    <span class="flex flex-wrap space-x-1 mr-1">
+    <span :if={@providers != []} class="flex flex-wrap space-x-1 mr-1">
       <span>when signed in</span>
       <span :if={@operator == :is_in}>with</span>
       <span :if={@operator == :is_not_in}>not with</span>
@@ -266,7 +304,7 @@ defmodule Web.Policies.Components do
         id="policy_conditions_remote_ip_location_region_condition"
         class={[
           "grid gap-2 sm:grid-cols-5 sm:gap-4",
-          condition_form.source == %{} && "hidden"
+          condition_values_empty?(condition_form) && "hidden"
         ]}
       >
         <.input
@@ -343,7 +381,7 @@ defmodule Web.Policies.Components do
         id="policy_conditions_remote_ip_condition"
         class={[
           "grid gap-2 sm:grid-cols-5 sm:gap-4",
-          condition_form.source == %{} && "hidden"
+          condition_values_empty?(condition_form) && "hidden"
         ]}
       >
         <.input
@@ -420,7 +458,7 @@ defmodule Web.Policies.Components do
         id="policy_conditions_provider_id_condition"
         class={[
           "grid gap-2 sm:grid-cols-5 sm:gap-4",
-          condition_form.source == %{} && "hidden"
+          condition_values_empty?(condition_form) && "hidden"
         ]}
       >
         <.input
@@ -511,7 +549,7 @@ defmodule Web.Policies.Components do
         id="policy_conditions_current_utc_datetime_condition"
         class={[
           "space-y-2",
-          condition_form.source == %{} && "hidden"
+          condition_values_empty?(condition_form) && "hidden"
         ]}
       >
         <.input

@@ -121,7 +121,7 @@ defmodule Web.Policies.New do
     form =
       params
       |> put_default_params(socket)
-      |> map_condition_params()
+      |> map_condition_params(empty_values: :keep)
       |> Policies.new_policy(socket.assigns.subject)
       |> to_form(action: :validate)
 
@@ -132,7 +132,7 @@ defmodule Web.Policies.New do
     params =
       params
       |> put_default_params(socket)
-      |> map_condition_params()
+      |> map_condition_params(empty_values: :drop)
 
     with {:ok, policy} <- Policies.create_policy(params, socket.assigns.subject) do
       if site_id = socket.assigns.params["site_id"] do
