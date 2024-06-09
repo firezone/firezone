@@ -231,11 +231,11 @@ jobs:
         run: |
           gcloud storage cp \
             ${BINARY_DEST_PATH} \
-            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
+            gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
 
           gcloud storage cp \
             ${BINARY_DEST_PATH}.sha256sum.txt \
-            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
+            gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx

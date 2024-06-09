@@ -76,19 +76,19 @@ jobs:
           for arch in "${ARCHITECTURES[@]}"; do
             # Copy sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/${{ matrix.image }}/latest/${arch}.sha256sum.txt
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/latest/${arch}.sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt
 
             # Copy binaries
             gcloud storage cp \
-              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch} \
-              gs://firezone-prod-artifacts/${{ matrix.image }}/latest/${arch}
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/latest/${arch}
             gcloud storage cp \
-              gs://firezone-staging-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch} \
-              gs://firezone-prod-artifacts/${{ matrix.image }}/${{ inputs.tag }}/${arch}
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}
           done
 
   deploy-production:
