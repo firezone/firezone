@@ -7,7 +7,7 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub use platform::{ipc_service_logs, logs, runtime, session, settings};
+pub use platform::{ipc_service_config, ipc_service_logs, logs, runtime, session, settings};
 
 #[cfg(target_os = "linux")]
 #[path = "known_dirs/linux.rs"]
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        for dir in [ipc_service_logs(), logs(), runtime(), session(), settings()] {
+        for dir in [ipc_service_config(), ipc_service_logs(), logs(), runtime(), session(), settings()] {
             let dir = dir.expect("should have gotten Some(path)");
             assert!(dir
                 .components()

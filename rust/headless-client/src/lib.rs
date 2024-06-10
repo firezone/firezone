@@ -250,7 +250,7 @@ pub fn run_only_headless_client() -> Result<()> {
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
         Some(id) => id,
-        None => device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
+        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let (private_key, public_key) = keypair();
@@ -423,6 +423,10 @@ impl Callbacks for CallbackHandler {
 }
 
 async fn ipc_listen() -> Result<std::convert::Infallible> {
+    // Create the device ID and IPC service config dir if needed
+    // This also gives the GUI a safe place to put the log filter config
+    device_id::get_or_create().context("Failed to read / create device ID")?;
+
     let mut server = platform::IpcServer::new().await?;
     loop {
         dns_control::deactivate()?;
@@ -473,7 +477,8 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
             IpcClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 assert!(connlib.is_none());
-                let device_id = device_id::get().context("Failed to read / create device ID")?;
+                let device_id =
+                    device_id::get_or_create().context("Failed to get / create device ID")?;
                 let (private_key, public_key) = keypair();
 
                 let login = LoginUrl::client(

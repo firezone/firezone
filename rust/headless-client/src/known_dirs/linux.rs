@@ -1,10 +1,31 @@
 use connlib_shared::BUNDLE_ID;
 use std::path::PathBuf;
 
-#[allow(clippy::unnecessary_wraps)]
+/// Path for IPC service config that either the IPC service or GUI can write
+///
+/// e.g. the device ID should only be written by the IPC service, and
+/// the log filter should only be written by the GUI. No file should be written
+/// by both programs. All writes should use `atomicwrites`.
+///
+/// On Linux, `/var/lib/$BUNDLE_ID/config/firezone-id`
+///
+/// `/var/lib` because this is the correct place to put state data not meant for users
+/// to touch, which is specific to one host and persists across reboots
+/// <https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch05s08.html>
+///
+/// `BUNDLE_ID` because we need our own subdir
+///
+/// `config` to match how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
+
+#[allow(clippy::unnecessary_wraps)] // Signature must match Windows
+pub fn ipc_service_config() -> Option<PathBuf> {
+    Some(PathBuf::from("/var/lib").join(BUNDLE_ID).join("config"))
+}
+
+#[allow(clippy::unnecessary_wraps)] // Signature must match Windows
 pub fn ipc_service_logs() -> Option<PathBuf> {
     // TODO: This is magic, it must match the systemd file
-    Some(PathBuf::from("/var/log").join(connlib_shared::BUNDLE_ID))
+    Some(PathBuf::from("/var/log").join(BUNDLE_ID))
 }
 
 /// e.g. `/home/alice/.cache/dev.firezone.client/data/logs`
