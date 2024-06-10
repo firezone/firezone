@@ -114,6 +114,11 @@ pub(crate) async fn save(settings: &AdvancedSettings) -> Result<()> {
         .context("settings path should have a parent")?;
     tokio::fs::create_dir_all(dir).await?;
     tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
+    // Don't create the dir for the log filter file, that's the IPC service's job.
+    // If it isn't there for some reason yet, just log an error and move on.
+    if let Err(error) = tokio::fs::write(known_dirs::ipc_log_filter().context("`ipc_log_filter` failed")?, &settings.log_filter).await {
+        tracing::error!(?error, "Couldn't write log filter file for IPC service");
+    }
     tracing::debug!(?path, "Saved settings");
     Ok(())
 }
