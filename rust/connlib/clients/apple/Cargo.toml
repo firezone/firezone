@@ -1,6 +1,6 @@
 [package]
 name = "connlib-client-apple"
-# mark:automatic-version
+# mark:next-apple-version
 version = "1.0.6"
 edition = "2021"
 
