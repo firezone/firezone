@@ -841,6 +841,11 @@ impl<R> TestNode<R> {
                 continue;
             }
 
+            if !other.local.contains(&dst) {
+                tracing::debug!(target: "router", %src, %dst, "Unknown destination");
+                continue;
+            }
+
             // Firewall allowed traffic, let's dispatch it.
             other.receive(dst, src, payload, now);
         }
