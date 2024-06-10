@@ -12,10 +12,6 @@ on:
     branches:
       - main
 
-env:
-  # mark:automatic-version
-  VERSION: "1.0.6"
-
 jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
@@ -75,7 +71,7 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.0
         id: apply-run
         env:
-          TF_VAR_image_tag: '"${{ env.VERSION }}-${{ github.sha }}"'
+          TF_VAR_image_tag: '"${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:

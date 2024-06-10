@@ -1,6 +1,6 @@
 [package]
 name = "connlib-client-android"
-# mark:automatic-version
+# mark:next-android-version
 version = "1.0.6"
 edition = "2021"
 

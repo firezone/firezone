@@ -12,10 +12,6 @@ permissions:
   contents: write
   id-token: write
 
-env:
-  # mark:automatic-version
-  VERSION: "1.0.6"
-
 defaults:
   run:
     working-directory: ./rust/gui-client
@@ -29,22 +25,22 @@ jobs:
       matrix:
         include:
           - runs-on: ubuntu-20.04
-            # mark:automatic-version
+            # mark:next-gui-version
             binary-dest-path: firezone-client-gui-linux_1.0.6_x86_64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
-            # mark:automatic-version
+            # mark:next-gui-version
             syms-artifact: rust/gui-client/firezone-client-gui-linux_1.0.6_x86_64.dwp
-            # mark:automatic-version
+            # mark:next-gui-version
             pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.0.6_x86_64.deb
           - runs-on: windows-2019
-            # mark:automatic-version
+            # mark:next-gui-version
             binary-dest-path: firezone-client-gui-windows_1.0.6_x86_64
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
-            # mark:automatic-version
+            # mark:next-gui-version
             syms-artifact: rust/gui-client/firezone-client-gui-windows_1.0.6_x86_64.pdb
-            # mark:automatic-version
+            # mark:next-gui-version
             pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.0.6_x86_64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
@@ -81,7 +77,8 @@ jobs:
       - name: Sign the MSI
         if: ${{ runner.os == 'Windows' }}
         shell: bash
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.VERSION }}_x64_en-US.msi
+        # mark:next-gui-version
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.0.6_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
@@ -105,6 +102,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          TAG_NAME: ${{ env.VERSION }}
+          # mark:next-gui-version
+          TAG_NAME: 1.0.6
         shell: bash
         run: ${{ matrix.upload-script }}
