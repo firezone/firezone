@@ -210,9 +210,10 @@ fn migrate_connection_to_new_relay() {
         ),
     )];
     alice = alice.with_relays("alice", HashSet::from([1]), &mut relays, clock.now);
+    bob = bob.with_relays("bob", HashSet::from([1]), &mut relays, clock.now);
 
-    // Make some progress. (the fact that we only need 5 clock ticks means we are no relying on timeouts here)
-    for _ in 0..5 {
+    // Make some progress. (the fact that we only need 22 clock ticks means we are no relying on timeouts here (22 * 100ms = 2.2s))
+    for _ in 0..22 {
         progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
 
