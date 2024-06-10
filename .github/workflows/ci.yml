@@ -25,9 +25,6 @@ jobs:
   swift:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
-  tauri:
-    uses: ./.github/workflows/_tauri.yml
-    secrets: inherit
   elixir:
     uses: ./.github/workflows/_elixir.yml
   rust:
@@ -67,6 +64,11 @@ jobs:
           name: ${{ matrix.release_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  tauri:
+    needs: update-release-draft
+    uses: ./.github/workflows/_tauri.yml
+    secrets: inherit
 
   build-artifacts:
     needs: update-release-draft
