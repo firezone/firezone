@@ -139,18 +139,6 @@ impl ResourceDst {
     }
 }
 
-/// Sample a random [`PacketSource`].
-///
-/// Packets from random source addresses are tested less frequently.
-/// Those are dropped by the gateway so this transition only ensures we have this safe-guard.
-pub(crate) fn packet_source() -> impl Strategy<Value = PacketSource> {
-    prop_oneof![
-        10 => Just(PacketSource::TunnelIp4),
-        10 => Just(PacketSource::TunnelIp6),
-        1 => any::<IpAddr>().prop_map(PacketSource::Other)
-    ]
-}
-
 /// Generates a [`Transition`] that sends an ICMP packet to a random IP.
 ///
 /// By chance, it could be that we pick a resource IP here.
@@ -180,6 +168,18 @@ pub(crate) fn icmp_to_cidr_resource() -> impl Strategy<Value = Transition> {
                 src,
             },
         )
+}
+
+/// Sample a random [`PacketSource`].
+///
+/// Packets from random source addresses are tested less frequently.
+/// Those are dropped by the gateway so this transition only ensures we have this safe-guard.
+fn packet_source() -> impl Strategy<Value = PacketSource> {
+    prop_oneof![
+        10 => Just(PacketSource::TunnelIp4),
+        10 => Just(PacketSource::TunnelIp6),
+        1 => any::<IpAddr>().prop_map(PacketSource::Other)
+    ]
 }
 
 pub(crate) fn icmp_to_resolved_non_resource() -> impl Strategy<Value = Transition> {
