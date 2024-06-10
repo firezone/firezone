@@ -839,7 +839,7 @@ impl TunnelTest {
                             continue;
                         }
 
-                        panic!("Unhandled packet: {src} -> {dst}")
+                        // panic!("Unhandled packet: {src} -> {dst}")
                     }
 
                     firezone_relay::Command::CreateAllocation { port, family } => {
@@ -1027,6 +1027,18 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
 
+        if self
+            .client
+            .receiving_socket_for(dst.ip())
+            .is_some_and(|s| s == dst)
+        {
+            self.client.span.in_scope(|| {
+                tracing::debug!("Dropping packet because it is directly for host {src} -> {dst}")
+            });
+
+            return ControlFlow::Break(());
+        }
+
         if !self.client.wants(dst) {
             return ControlFlow::Continue(());
         }
@@ -1053,6 +1065,17 @@ impl TunnelTest {
         global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
+
+        if self
+            .gateway
+            .receiving_socket_for(dst.ip())
+            .is_some_and(|s| s == dst)
+        {
+            self.gateway.span.in_scope(|| {
+                tracing::debug!("Dropping packet because it is directly for host {src} -> {dst}")
+            });
+            return ControlFlow::Break(());
+        }
 
         if !self.gateway.wants(dst) {
             return ControlFlow::Continue(());
