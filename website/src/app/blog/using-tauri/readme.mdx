@@ -5,7 +5,7 @@ import Link from "next/link";
 
 > [I would have thought](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1896717039)
 > after more than 20 years of GUI paradigms, the major OSes would have made GUIs
-> as nice to program as CLIs. Oh well.
+> as nice to program as CLIs.
 
 -- The author
 
@@ -59,7 +59,7 @@ Software grows when it is easy to use. It attracts beginners, and turns
 beginners into advanced users and contributors. Python became popular by
 appealing to new programmers who needed to write small programs. JavaScript
 became popular by being pre-installed in every web browser. C++ became popular
-by being published in the 80s.
+by being published before both of them.
 
 Using Tauri, we got the Windows Client to MVP in about 2 months, including the
 time needed for me to learn about `connlib`, and for the team to change our auth
@@ -452,8 +452,9 @@ times out in our GitHub CI runners and it isn't clear why.
 
 # What Tauri-related issues did we have?
 
-Overall, I like Tauri a lot. This section is longer because there are lots of
-little details. "It's good" is shorter than "We had trouble because..."
+Overall, we like Tauri. This section is long because there are lots of little
+details about things that went wrong. "It's good" is shorter than "We had
+trouble because..."
 
 ## The Tauri directory layout is odd
 
@@ -462,15 +463,14 @@ The root of a Tauri project, such as
 has two subdirectories: `src` and `src-tauri`. The entire Rust project is
 contained in `src-tauri`, and the `src` directory contains files for the web
 view. `Cargo.toml` and `tauri.conf.json` are in `src-tauri`. I find this
-confusing. I think Tauri's primary purpose is to wrap up web apps into native
+confusing. I think Tauri's primary use case is to wrap up web apps into native
 apps, so the Rust code is isolated in `src-tauri`, and the project is supposed
 to be an NPM project that incidentally contains a Rust wrapper.
 
-I think of the Firezone Client as a Rust program that incidentally uses
-HTML+JS+CSS for the GUI, so this layout is backwards to me. I would have
-expected a top-level `/Cargo.toml`, with the Rust under `/src`, and the web
-files under `/src-web` or similar. Maybe there's a reason for this, but I'm not
-aware of it.
+We think of the Firezone Client as a Rust program that incidentally uses
+HTML+JS+CSS for the GUI, so this layout is backwards for us. One would expect a
+top-level `/Cargo.toml`, with the Rust code under `/src`, and the web files
+under `/src-web` or something. Maybe there's a reason for the layout Tauri uses.
 
 ## Tauri's deb bundler is not very customizable
 
@@ -529,13 +529,13 @@ On Windows, the submenus look like submenus:
   />
 </Link>
 
-Also in GNOME, clicking on a notification runs another instance of the app. I
-assume this is intended to activate the app, but it doesn't seem to happen on
+Also in GNOME, clicking on a notification runs another instance of the app.
+Maybe this is intended to activate the app, but it doesn't seem to happen on
 Windows. (On Windows, we already worked around Tauri's default notifications
 with
 [tauri-winrt-notification](https://crates.io/crates/tauri-winrt-notification),
-since Tauri's default notifications aren't clickable.) I'm not sure if the
-second instance gets any environment variable or argument to hint that it was
+since Tauri's default notifications aren't clickable.) The second instance
+doesn't get any obvious environment variable or argument to hint that it was
 launched from a notification, so we show a generic "Firezone is already running"
 error instead of doing anything useful.
 
@@ -549,9 +549,9 @@ This is implemented down in `tao`, Tauri's windowing library, for both
 and
 [Windows](https://github.com/tauri-apps/tao/blob/f9f81f2fd761c60abb5b46a6469864562a811c6d/src/platform_impl/windows/event_loop.rs#L219).
 
-I first suspected this is due to some platform-specific limitation, such as
-Windows' `WinMain` function or the fact that some OSes require all GUI-related
-function calls to happen on "the main thread", or at least on a single thread.
+This might be due to some platform-specific limitation, such as Windows'
+`WinMain` function or the fact that some OSes require all GUI-related function
+calls to happen on "the main thread", or at least on a single thread.
 
 `tao` is a fork of `winit`, and `winit` is able to return from
 [its run function](https://docs.rs/winit/latest/winit/event_loop/struct.EventLoop.html#method.run_app)
@@ -564,13 +564,13 @@ should be able to handle this, but instead it busy-loops.
 When asked about these issues, lead Tauri developer Fabian said he also expects
 better from the underlying OSes and this causes him to
 ["cry (himself) to sleep at night 🤷"](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1898328992)
-Me too, Fabian, me too. /s
+Me too, Fabian, me too.
 
 ## Setting binary names is tricky
 
 On Linux our GUI is named `firezone-client-gui`, and so is our package.
 
-I want:
+We want:
 
 1. The `.desktop` file to display our name as "Firezone Client", so it's
    human-friendly,
@@ -582,26 +582,27 @@ I want:
    `$PATH`.
 
 But Tauri's default is to name the first 3 the same and to put all binaries in
-`/usr/bin`. I can fix this by tearing apart the `.deb` and rebuilding it, as I
-did for the post-install script, but it will take more work.
+`/usr/bin`. We could fix this by tearing apart the `.deb` and rebuilding it, as
+we do for the post-install script, but it would take more work.
 
 This is a case where Tauri doesn't quite meet the "Easy things are simple, hard
-things are possible" principle. In this case easy things are simple and hard
-things require working around Tauri.
+things are possible" principle. In this case, easy things are simple, and hard
+things require us to work around Tauri.
 
 ## Initializing Tauri is flaky in CI... maybe?
 
 https://github.com/firezone/firezone/issues/3972#issuecomment-2010728424
 
-At first I tried to initialize as much as the program as possible, then start
-Tauri and move objects into the Tauri context. But we hit this issue, which
-appears to be a race in initializing the GTK+ event loop or something. It's
-arcane stuff 3 layers below us (Tauri, then `tao`, then GTK+) in unsafe C code,
-so the workaround for now is to initialize Tauri immediately and do all our own
-setup within the Tauri context.
+At first we tried to initialize as much of the program as possible before
+starting Tauri, and then move objects into the Tauri context. But we hit this
+issue, which appears to be a race in initializing the GTK+ event loop or
+something. It's arcane stuff 3 layers below us (Tauri, then `tao`, then GTK+) in
+unsafe C code, so the workaround for now is to initialize Tauri immediately and
+do all our own setup within the Tauri context.
 
-It may not be Tauri's fault, but it's disappointing because I liked having
-control of `main` for as long as possible before starting up Tauri.
+It may not be Tauri's fault, but it's disappointing because it's nice to keep
+control of `main` longer before handing control to Tauri and doing everything
+inside callbacks.
 
 # Conclusion
 
@@ -611,4 +612,4 @@ replace parts of it.
 
 But those training wheels are _very_ nice to have on a brand-new GUI project.
 
-So the final word is, **we like Tauri a lot**.
+The final word is, **we like Tauri.**
