@@ -221,7 +221,6 @@ RUN npm i -g pnpm
 
 # Copy only the files needed to fetch the dependencies,
 # to leverage Docker layer cache for them
-RUN echo "0.0.0" > VERSION
 COPY mix.exs mix.lock ./
 COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
@@ -243,7 +242,6 @@ RUN cd apps/web \
 
 # Tailwind needs assets and app directories to look for used classes,
 # so we can't optimize further at this stage
-COPY VERSION ./
 COPY priv priv
 COPY apps apps
 
