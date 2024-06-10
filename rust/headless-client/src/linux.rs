@@ -95,8 +95,7 @@ pub fn sock_path() -> PathBuf {
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
-    tracing::info!("run_ipc_service");
-    // systemd supplies this but maybe we should hard-code a better default
+    // systemd supplies `log_dir` but maybe we should hard-code a better default
     let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
     setup_global_subscriber(layer);
     tracing::info!(git_version = crate::GIT_VERSION);

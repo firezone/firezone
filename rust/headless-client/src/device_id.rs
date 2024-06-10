@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use atomicwrites::{AtomicFile, OverwriteBehavior};
 use std::fs;
 use std::io::Write;
 
@@ -39,8 +40,7 @@ pub(crate) fn get_or_create() -> Result<DeviceId> {
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
 
-    let file =
-        atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::DisallowOverwrite);
+    let file = AtomicFile::new(&path, OverwriteBehavior::DisallowOverwrite);
     file.write(|f| f.write_all(content.as_bytes()))
         .context("Failed to write firezone-id file")?;
 

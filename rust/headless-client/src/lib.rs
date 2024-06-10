@@ -66,6 +66,14 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
     fallback = "unknown"
 );
 
+/// Default log filter for the IPC service
+#[cfg(debug_assertions)]
+const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
+
+/// Default log filter for the IPC service
+#[cfg(not(debug_assertions))]
+const SERVICE_RUST_LOG: &str = "str0m=warn,info";
+
 const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 /// Command-line args for the headless Client
@@ -578,15 +586,54 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
     Ok(Some(token))
 }
 
+/// Reads the log filter for the IPC service
+///
+/// e.g. `info`
+///
+/// Reads from:
+/// 1. `RUST_LOG` env var
+/// 2. `known_dirs::ipc_log_filter()` file
+/// 3. Hard-coded default `SERVICE_RUST_LOG`
+///
+/// Errors if something is badly wrong, e.g. the directory for the config file
+/// can't be computed
+fn get_log_filter() -> Result<String> {
+    if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
+        return Ok(filter);
+    }
+
+    if let Ok(filter) = std::fs::read_to_string(
+        known_dirs::ipc_log_filter()
+            .context("Failed to compute directory for log filter config file")?,
+    )
+    .map(|s| s.trim().to_string())
+    {
+        return Ok(filter);
+    }
+
+    Ok(SERVICE_RUST_LOG.to_string())
+}
+
 /// Sets up logging for stderr only, with INFO level by default
 pub fn debug_command_setup() -> Result<()> {
-    let filter = EnvFilter::builder()
-        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
-        .from_env_lossy();
+    let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
     Ok(())
+}
+
+fn setup_ipc_service_logs() -> Result<connlib_client_shared::file_logger::Handle> {
+    let log_path = crate::known_dirs::ipc_service_logs()
+        .context("Should be able to compute IPC service logs dir")?;
+    std::fs::create_dir_all(&log_path)
+        .context("We should have permissions to create our log dir")?;
+    let (layer, handle) = file_logger::layer(&log_path);
+    let filter = EnvFilter::new(crate::get_log_filter().context("Couldn't read log filter")?);
+    let subscriber = Registry::default().with(layer.with_filter(filter));
+    set_global_default(subscriber).context("`set_global_default` should always work)")?;
+    tracing::info!(git_version = crate::GIT_VERSION);
+    Ok(handle)
 }
 
 #[cfg(test)]
