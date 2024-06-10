@@ -675,7 +675,8 @@ mod tests {
         assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([exe_name, "--log-dir", "bogus_log_dir", "debug"]);
+        let actual =
+            CliIpcService::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
         assert_eq!(actual.command, CmdIpc::RunDebug);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
