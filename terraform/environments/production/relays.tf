@@ -4,6 +4,9 @@ module "relays" {
   source     = "../../modules/google-cloud/apps/relay"
   project_id = module.google-cloud-project.project.project_id
 
+  # TODO: Remember to update the following published documentation when this changes:
+  #  - /website/src/app/kb/deploy/gateways/readme.mdx
+  #  - /website/src/app/kb/architecture/tech-stack/readme.mdx
   instances = {
     "asia-east1" = {
       cidr_range = "10.129.0.0/24"
