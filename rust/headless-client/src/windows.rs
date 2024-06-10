@@ -20,10 +20,11 @@ use windows::Win32::{
 };
 use windows_service::{
     service::{
-        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
-        ServiceType,
+        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
+        ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
     },
     service_control_handler::{self, ServiceControlHandlerResult},
+    service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
 mod wintun_install;
@@ -59,6 +60,37 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
 pub(crate) fn default_token_path() -> std::path::PathBuf {
     // TODO: For Headless Client, system-wide default token path for Windows
     PathBuf::from("token.txt")
+}
+
+pub(crate) fn install_ipc_service() -> Result<()> {
+    let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
+    let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
+
+    let name = OsString::from("FirezoneClientIpcServiceDebug");
+
+    // Un-install existing one first if needed
+    {
+        let service_access = ServiceAccess::DELETE;
+        let service = service_manager.open_service(&name, service_access)?;
+        service.delete()?;
+    }
+
+    let executable_path = std::env::current_exe()?;
+    let service_info = ServiceInfo {
+        name,
+        display_name: OsString::from("Firezone Client IPC (Debug)"),
+        service_type: ServiceType::OWN_PROCESS,
+        start_type: ServiceStartType::AutoStart,
+        error_control: ServiceErrorControl::Normal,
+        executable_path,
+        launch_arguments: vec!["run".into()],
+        dependencies: vec![],
+        account_name: None,
+        account_password: None,
+    };
+    let service = service_manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG)?;
+    service.set_description("Description")?;
+    Ok(())
 }
 
 /// Cross-platform entry point for systemd / Windows services

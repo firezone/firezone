@@ -143,14 +143,16 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
-    #[command(hide = true)]
-    DebugIpcService,
-    IpcService,
+    RunDebug,
+    /// Needed to test the IPC service on aarch64 Windows,
+    /// where the Tauri MSI bundler doesn't work yet
+    Install,
+    Run,
 }
 
 impl Default for CmdIpc {
     fn default() -> Self {
-        Self::IpcService
+        Self::Run
     }
 }
 
@@ -349,8 +351,9 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::try_parse()?;
     match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(),
-        CmdIpc::IpcService => platform::run_ipc_service(cli.common),
+        CmdIpc::RunDebug => run_debug_ipc_service(),
+        CmdIpc::Install => platform::install_ipc_service(),
+        CmdIpc::Run => platform::run_ipc_service(cli.common),
     }
 }
 
@@ -676,13 +679,13 @@ mod tests {
             exe_name,
             "--log-dir",
             "bogus_log_dir",
-            "debug-ipc-service",
+            "debug",
         ]);
-        assert_eq!(actual.command, CmdIpc::DebugIpcService);
+        assert_eq!(actual.command, CmdIpc::RunDebug);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([exe_name, "ipc-service"]);
-        assert_eq!(actual.command, CmdIpc::IpcService);
+        let actual = CliIpcService::parse_from([exe_name, "run"]);
+        assert_eq!(actual.command, CmdIpc::Run);
 
         Ok(())
     }
