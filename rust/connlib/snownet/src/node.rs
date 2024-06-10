@@ -29,7 +29,7 @@ use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
 use stun_codec::rfc5389::attributes::{Realm, Username};
-use tracing::{field, info_span, Span};
+use tracing::info_span;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -429,13 +429,7 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(
-                id,
-                now,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                &mut self.pending_events,
-            );
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -1462,7 +1456,6 @@ where
         now: Instant,
         allocations: &mut HashMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
-        pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: fmt::Display + Copy,
         RId: Copy + fmt::Display,
@@ -1583,7 +1576,6 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.invalidate_candiates(id, source, pending_events);
                     self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1744,42 +1736,6 @@ where
             .expect("cannot force handshake while not connected");
 
         transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
-    }
-
-    /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
-    ///
-    /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
-    /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
-    #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
-    fn invalidate_candiates<TId>(
-        &mut self,
-        id: TId,
-        source: SocketAddr,
-        pending_events: &mut VecDeque<Event<TId>>,
-    ) where
-        TId: Copy + fmt::Display,
-    {
-        let nominated = self
-            .agent
-            .local_candidates()
-            .iter()
-            .filter(|c| !c.discarded())
-            .find(|c| c.addr() == source)
-            .expect("Local, non-discarded candidate to exist");
-
-        Span::current().record("nominated_prio", field::display(&nominated.prio()));
-
-        let irrelevant_candidates = self
-            .agent
-            .local_candidates()
-            .iter()
-            .filter(|c| c.prio() <= nominated.prio() && c != &nominated)
-            .cloned()
-            .collect::<Vec<_>>();
-
-        for candidate in irrelevant_candidates {
-            remove_local_candidate(id, &mut self.agent, &candidate, pending_events)
-        }
     }
 
     fn socket(&self) -> Option<PeerSocket<RId>> {
