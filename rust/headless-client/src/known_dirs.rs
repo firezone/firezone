@@ -27,7 +27,14 @@ mod tests {
 
     #[test]
     fn smoke() {
-        for dir in [ipc_service_config(), ipc_service_logs(), logs(), runtime(), session(), settings()] {
+        for dir in [
+            ipc_service_config(),
+            ipc_service_logs(),
+            logs(),
+            runtime(),
+            session(),
+            settings(),
+        ] {
             let dir = dir.expect("should have gotten Some(path)");
             assert!(dir
                 .components()
