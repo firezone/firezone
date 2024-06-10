@@ -226,6 +226,7 @@ COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
 COPY apps/api/mix.exs ./apps/api/mix.exs
 COPY config config
+COPY sha.exs .
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
@@ -244,7 +245,6 @@ RUN cd apps/web \
 # so we can't optimize further at this stage
 COPY priv priv
 COPY apps apps
-COPY sha.exs .
 
 # Install pipeline and compile assets for Web app
 RUN cd apps/web \
