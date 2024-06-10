@@ -359,6 +359,10 @@ locals {
       value = true
     },
     {
+      name  = "FEATURE_POLICY_CONDITIONS_ENABLED"
+      value = true
+    },
+    {
       name  = "FEATURE_MULTI_SITE_RESOURCES_ENABLED"
       value = true
     },

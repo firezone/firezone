@@ -7,6 +7,34 @@ defmodule Domain.Repo.Changeset do
 
   # Helpers
 
+  def set_action(changesets, action) when is_list(changesets) do
+    Enum.map(changesets, &set_action(&1, action))
+  end
+
+  def set_action(%Ecto.Changeset{} = changeset, action) do
+    assocs =
+      Enum.flat_map(changeset.types, fn
+        {field, {:assoc, _params}} -> [field]
+        {field, {:embed, _params}} -> [field]
+        _ -> []
+      end)
+
+    changeset =
+      Enum.reduce(changeset.changes, changeset, fn {key, value}, changeset ->
+        if key in assocs do
+          %{changeset | changes: Map.put(changeset.changes, key, set_action(value, action))}
+        else
+          changeset
+        end
+      end)
+
+    %{changeset | action: action}
+  end
+
+  def set_action(other, _action) do
+    other
+  end
+
   def has_errors?(%Ecto.Changeset{} = changeset, field) do
     Keyword.has_key?(changeset.errors, field)
   end
@@ -112,6 +140,43 @@ defmodule Domain.Repo.Changeset do
   end
 
   # Validations
+
+  def validate_list(
+        %Ecto.Changeset{} = changeset,
+        field,
+        element_type,
+        fun \\ fn changeset, _field -> changeset end
+      ) do
+    validate_change(changeset, field, fn _current_field, value ->
+      cond do
+        not is_list(value) ->
+          [{field, "must be a list"}]
+
+        Enum.empty?(value) ->
+          []
+
+        true ->
+          value
+          |> Enum.with_index()
+          |> Enum.flat_map(&validate_list_element(field, fun, element_type, &1))
+      end
+    end)
+  end
+
+  defp validate_list_element(field, fun, element_type, {value, index}) do
+    {%{}, %{value: element_type}}
+    |> Ecto.Changeset.cast(%{value: value}, [:value])
+    |> fun.(:value)
+    |> Ecto.Changeset.apply_action(:insert)
+    |> case do
+      {:ok, _} ->
+        []
+
+      {:error, %{errors: errors}} ->
+        {error, meta} = errors[:value]
+        [{field, {error, meta ++ [validated_as: :list, at: index]}}]
+    end
+  end
 
   def validate_email(%Ecto.Changeset{} = changeset, field) do
     changeset

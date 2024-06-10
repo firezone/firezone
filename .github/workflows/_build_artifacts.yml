@@ -3,10 +3,6 @@ run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
     inputs:
-      tag_name:
-        description: "The tag name of the release"
-        required: true
-        type: string
       image_prefix:
         description: |
           The prefix to prepend to the image name to prevent SHA conflicts.
@@ -38,15 +34,9 @@ on:
         description: "The gateway image that was built"
         value: ${{ jobs.data-plane.outputs.gateway_image }}
 
-env:
-  # mark:automatic-version
-  VERSION: "1.0.6"
-
 permissions:
   # write permission is required to create a github release
   contents: write
-  # autolabeler
-  pull-requests: write
   id-token: write
 
 jobs:
@@ -61,18 +51,22 @@ jobs:
             target: runtime
             build-args: |
               APPLICATION_NAME=domain
+              GIT_SHA=${{ inputs.sha }}
           - image_name: api
             target: runtime
             build-args: |
               APPLICATION_NAME=api
+              GIT_SHA=${{ inputs.sha }}
           - image_name: web
             target: runtime
             build-args: |
               APPLICATION_NAME=web
+              GIT_SHA=${{ inputs.sha }}
           - image_name: elixir
             target: compiler
             build-args: |
               APPLICATION_NAME=api
+              GIT_SHA=${{ inputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +78,7 @@ jobs:
           # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
           # We should for any updates on buildx and on the setup-buildx-action itself.
           driver-opts: |
-            image=moby/buildkit:v0.12.0
+            image=moby/buildkit:v0.13.2
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -97,7 +91,6 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
           tags: |
             type=raw,value=${{ inputs.sha }}
-            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -119,8 +112,6 @@ jobs:
           push: true
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}-${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.VERSION }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
   data-plane:
@@ -161,12 +152,20 @@ jobs:
           - package: firezone-headless-client
             artifact: firezone-client-headless-linux
             image_name: client
+            # mark:next-headless-version
+            version: 1.0.6
+            # mark:next-headless-version
+            release_name: headless-client-1.0.6
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
           - package: firezone-gateway
             artifact: firezone-gateway
             image_name: gateway
+            # mark:next-gateway-version
+            version: 1.0.6
+            # mark:next-gateway-version
+            release_name: gateway-1.0.6
           - package: snownet-tests
             artifact: snownet-tests
             image_name: snownet-tests
@@ -174,8 +173,7 @@ jobs:
             artifact: http-test-server
             image_name: http-test-server
     env:
-      # mark:automatic-version
-      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_1.0.6_${{ matrix.arch.shortname }}
+      BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
@@ -206,33 +204,26 @@ jobs:
 
           cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
-          # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
-
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -xe
 
-          # mark:automatic-version
-          if [ "${{ inputs.tag_name }}" != "1.0.6" ]; then
-            echo "Version mismatch between artifact and release. Have we bumped versions and rebased since the last release?"
-            exit 1
-          fi
-
+          # Used for release artifact
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-          gh release upload ${{ inputs.tag_name }} \
+          gh release upload ${{ matrix.name.release_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             --clobber \
             --repo ${{ github.repository }}
       - name: Authenticate to Google Cloud
         id: auth
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
@@ -240,15 +231,15 @@ jobs:
           export_environment_variables: true
           create_credentials_file: true
       - name: Copy binaries to Google Cloud Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
         run: |
           gcloud storage cp \
             ${BINARY_DEST_PATH} \
-            gs://firezone-staging-artifacts/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}
+            gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
 
           gcloud storage cp \
             ${BINARY_DEST_PATH}.sha256sum.txt \
-            gs://firezone-staging-artifacts/${{ matrix.name.artifact }}/${{ env.VERSION }}-${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
+            gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -258,7 +249,7 @@ jobs:
           # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
           # We should for any updates on buildx and on the setup-buildx-action itself.
           driver-opts: |
-            image=moby/buildkit:v0.12.0
+            image=moby/buildkit:v0.13.2
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -267,8 +258,9 @@ jobs:
         run: |
           set -xe
 
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
+          version="${{ matrix.name.version }}"
+          MAJOR_VERSION="${version%%.*}"
+          MAJOR_MINOR_VERSION="${version%.*}"
           echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
           echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
       - name: Docker meta
@@ -277,13 +269,14 @@ jobs:
         with:
           images:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
+          # We only version client and gateway
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
-            type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
-            type=raw,value=${{ env.MAJOR_VERSION }}
-            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
+            ${{ matrix.name.version && format('type=raw,value={0}', matrix.name.version) }}
+            ${{ matrix.name.version && format('type=raw,value={0}-{1}', matrix.name.version, inputs.sha) }}
+            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
+            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -327,7 +320,7 @@ jobs:
         run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
 
   merge-docker-artifacts:
-    name: merge-${{ matrix.image_name }}
+    name: merge-${{ matrix.image.name }}
     needs: data-plane
     if: ${{ always() }}
     runs-on: ubuntu-22.04
@@ -340,15 +333,19 @@ jobs:
 
         # Exclude snownet-tests and http-test-server from perf image builds
         exclude:
-          - {image_prefix: perf, image_name: snownet-tests}
-          - {image_prefix: perf, image_name: http-test-server}
+          - {image_prefix: perf, image: {name: snownet-tests}}
+          - {image_prefix: perf, image: {name: http-test-server}}
 
-        image_name:
-          - relay
-          - gateway
-          - client
-          - snownet-tests
-          - http-test-server
+        image:
+          - name: relay
+          - name: gateway
+            # mark:next-gateway-version
+            version: 1.0.6
+          - name: client
+            # mark:next-client-version
+            version: 1.0.6
+          - name: snownet-tests
+          - name: http-test-server
     steps:
       - uses: actions/checkout@v4
         with:
@@ -360,9 +357,9 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image_name }}-${{ inputs.sha }}-digest-*
+          pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ inputs.sha }}-digest-*
           merge-multiple: true
-          path: /tmp/digests/${{ matrix.image_name }}
+          path: /tmp/digests/${{ matrix.image.name }}
       - name: Display structure of downloaded artifacts
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
@@ -370,9 +367,10 @@ jobs:
       - name: Build Version Tags
         run: |
           set -xe
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
 
+          version="${{ matrix.image.version }}"
+          MAJOR_VERSION="${version%%.*}"
+          MAJOR_MINOR_VERSION="${version%.*}"
           echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
           echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
       - name: Docker meta
@@ -380,19 +378,19 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image_name }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
-            type=raw,value=${{ env.VERSION }}
-            type=raw,value=${{ env.VERSION }}-${{ inputs.sha }}
-            type=raw,value=${{ env.MAJOR_VERSION }}
-            type=raw,value=${{ env.MAJOR_MINOR_VERSION }}
+            ${{ matrix.image.version && format('type=raw,value={0}', matrix.image.version) }}
+            ${{ matrix.image.version && format('type=raw,value={0}-{1}', matrix.image.version, inputs.sha) }}
+            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
+            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Create manifest list and push
-        working-directory: /tmp/digests/${{ matrix.image_name }}
+        working-directory: /tmp/digests/${{ matrix.image.name }}
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image_name }}@sha256:%s ' *)
+          sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}@sha256:%s ' *)
           echo "$sources"
           docker buildx imagetools create $tags $sources
-          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image_name }}"
+          docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"

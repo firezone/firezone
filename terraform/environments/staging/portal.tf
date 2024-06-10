@@ -328,6 +328,10 @@ locals {
       value = true
     },
     {
+      name  = "FEATURE_POLICY_CONDITIONS_ENABLED"
+      value = true
+    },
+    {
       name  = "FEATURE_MULTI_SITE_RESOURCES_ENABLED"
       value = true
     },
@@ -338,7 +342,7 @@ locals {
     # Sign Up
     {
       name  = "SIGN_UP_WHITELISTED_DOMAINS"
-      value = "firezone.dev,firez.one"
+      value = "firezone.dev,firez.one,pentesters.oneleet.com"
     },
     {
       name  = "FEATURE_REST_API_ENABLED"

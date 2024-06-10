@@ -465,6 +465,12 @@ defmodule API.Client.Channel do
           OpenTelemetry.Tracer.set_status(:error, "not_found")
           {:reply, {:error, %{reason: :not_found}}, socket}
 
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          OpenTelemetry.Tracer.set_status(:error, "forbidden")
+
+          {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
+           socket}
+
         false ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
           {:reply, {:error, %{reason: :offline}}, socket}
@@ -520,6 +526,12 @@ defmodule API.Client.Channel do
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
           {:reply, {:error, %{reason: :not_found}}, socket}
+
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          OpenTelemetry.Tracer.set_status(:error, "forbidden")
+
+          {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
+           socket}
 
         false ->
           OpenTelemetry.Tracer.set_status(:error, "offline")

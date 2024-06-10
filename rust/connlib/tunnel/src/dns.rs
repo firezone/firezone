@@ -1,4 +1,5 @@
 use crate::client::DnsResource;
+use connlib_shared::messages::GatewayId;
 use connlib_shared::messages::{client::ResourceDescriptionDns, DnsServer};
 use connlib_shared::DomainName;
 use domain::base::RelativeName;
@@ -8,7 +9,7 @@ use domain::base::{
 };
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
-use hickory_resolver::proto::op::{Message as TrustDnsMessage, MessageType};
+use hickory_resolver::proto::op::MessageType;
 use hickory_resolver::proto::rr::RecordType;
 use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
@@ -63,6 +64,16 @@ impl<'a> DnsQuery<'a> {
     }
 }
 
+impl Clone for DnsQuery<'static> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            record_type: self.record_type,
+            query: self.query.clone(),
+        }
+    }
+}
+
 struct DnsQueryParams {
     name: DomainName,
     record_type: RecordType,
@@ -99,7 +110,7 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 /// - Otherwise, a strategy for responding to the query
 pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<IpAddr, DnsResource>,
+    dns_resources_internal_ips: &HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
     dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
@@ -131,7 +142,7 @@ pub(crate) fn parse<'a>(
             None => None,
         };
     let response = build_dns_with_answer(message, question.qname(), &resource)?;
-    let response = build_response(packet, response)?;
+    let response = build_response(packet, response);
 
     Some(ResolveStrategy::LocalResponse(response))
 }
@@ -140,7 +151,7 @@ pub(crate) fn create_local_answer<'a>(
     ips: &HashSet<IpAddr>,
     packet: IpPacket<'a>,
 ) -> Option<IpPacket<'a>> {
-    let datagram = packet.as_udp().unwrap();
+    let datagram = packet.unwrap_as_udp();
     let message = as_dns(&datagram).unwrap();
     let question = message.first_question().unwrap();
     let qtype = question.qtype();
@@ -166,17 +177,14 @@ pub(crate) fn create_local_answer<'a>(
 
     let response = build_dns_with_answer(message, question.qname(), &Some(resource))?;
 
-    build_response(packet, response)
+    Some(build_response(packet, response))
 }
 
 pub(crate) fn build_response_from_resolve_result(
     original_pkt: IpPacket<'_>,
     response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<Option<IpPacket>, hickory_resolver::error::ResolveError> {
-    let Some(mut message) = as_dns_message(&original_pkt) else {
-        debug_assert!(false, "The original message should be a DNS query for us to ever call write_dns_lookup_response");
-        return Ok(None);
-    };
+) -> Result<IpPacket, hickory_resolver::error::ResolveError> {
+    let mut message = original_pkt.unwrap_as_dns();
 
     message.set_message_type(MessageType::Response);
 
@@ -208,19 +216,16 @@ pub(crate) fn build_response_from_resolve_result(
 }
 
 /// Constructs an IP packet responding to an IP packet containing a DNS query
-fn build_response(
-    original_pkt: IpPacket<'_>,
-    mut dns_answer: Vec<u8>,
-) -> Option<IpPacket<'static>> {
+fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPacket<'static> {
     let response_len = dns_answer.len();
-    let original_dgm = original_pkt.as_udp()?;
+    let original_dgm = original_pkt.unwrap_as_udp();
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
     let mut res_buf = Vec::with_capacity(hdr_len + response_len);
 
     res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
     res_buf.append(&mut dns_answer);
 
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
+    let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
     let dgm_len = UDP_HEADER_SIZE + response_len;
     match &mut pkt {
         MutableIpPacket::Ipv4(p) => p.set_total_length((hdr_len + response_len) as u16),
@@ -228,17 +233,19 @@ fn build_response(
     }
     pkt.swap_src_dst();
 
-    let mut dgm = MutableUdpPacket::new(pkt.payload_mut())?;
+    let mut dgm = MutableUdpPacket::new(pkt.payload_mut()).unwrap();
     dgm.set_length(dgm_len as u16);
     dgm.set_source(original_dgm.get_destination());
     dgm.set_destination(original_dgm.get_source());
 
-    let mut pkt = MutableIpPacket::new(&mut res_buf)?;
-    let udp_checksum = pkt.to_immutable().udp_checksum(&pkt.as_immutable_udp()?);
-    pkt.as_udp()?.set_checksum(udp_checksum);
+    let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
+    let udp_checksum = pkt
+        .to_immutable()
+        .udp_checksum(&pkt.to_immutable().unwrap_as_udp());
+    pkt.unwrap_as_udp().set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
 
-    Some(IpPacket::owned(res_buf).unwrap())
+    IpPacket::owned(res_buf).unwrap()
 }
 
 fn build_dns_with_answer<N>(
@@ -368,7 +375,7 @@ fn get_description(
 /// If we are not connected yet, the Client should defer the response and begin connecting.
 fn resource_from_question<N: ToName>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<IpAddr, DnsResource>,
+    dns_resources_internal_ips: &HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<DomainName>, DnsQueryParams, DnsResource>> {
     let name = ToName::to_vec(question.qname());
@@ -385,7 +392,7 @@ fn resource_from_question<N: ToName>(
 
             if !dns_resources_internal_ips
                 .iter()
-                .any(|(_, r)| r == &description)
+                .any(|(_, (_, r))| r.contains(&description))
             {
                 return Some(ResolveStrategy::DeferredResponse(description));
             }
@@ -405,7 +412,7 @@ fn resource_from_question<N: ToName>(
 
             if !dns_resources_internal_ips
                 .iter()
-                .any(|(_, r)| r == &description)
+                .any(|(_, (_, r))| r.contains(&description))
             {
                 return Some(ResolveStrategy::DeferredResponse(description));
             }
@@ -421,11 +428,18 @@ fn resource_from_question<N: ToName>(
             let Some(ip) = reverse_dns_addr(&name.to_string()) else {
                 return Some(ResolveStrategy::forward(name, qtype));
             };
-            let Some(resource) = dns_resources_internal_ips.get(&ip) else {
+            let Some((_, resources)) = dns_resources_internal_ips.get(&ip) else {
                 return Some(ResolveStrategy::forward(name, qtype));
             };
             Some(ResolveStrategy::LocalResponse(RecordData::Ptr(
-                domain::rdata::Ptr::new(resource.address.clone()),
+                domain::rdata::Ptr::new(
+                    resources
+                        .iter()
+                        .next()
+                        .expect("to have at least a resource")
+                        .address
+                        .clone(),
+                ),
             )))
         }
         _ => {
@@ -439,16 +453,11 @@ fn resource_from_question<N: ToName>(
 }
 
 pub(crate) fn ips_of_resource<'a>(
-    ips: &'a HashMap<IpAddr, DnsResource>,
+    ips: &'a HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
     resource: &'a DnsResource,
 ) -> impl Iterator<Item = IpAddr> + 'a {
     ips.iter()
-        .filter_map(move |(ip, r)| (r == resource).then_some(*ip))
-}
-
-pub(crate) fn as_dns_message(pkt: &IpPacket) -> Option<TrustDnsMessage> {
-    let datagram = pkt.as_udp()?;
-    TrustDnsMessage::from_vec(datagram.payload()).ok()
+        .filter_map(move |(ip, (_, r))| (r.contains(resource)).then_some(*ip))
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {

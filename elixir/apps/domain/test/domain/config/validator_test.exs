@@ -47,7 +47,11 @@ defmodule Domain.Config.ValidatorTest do
 
       assert validate(:key, "invalid", type, []) ==
                {:error,
-                {"invalid", ["must be one of: Elixir.Domain.Types.IP, Elixir.Domain.Types.CIDR"]}}
+                {"invalid",
+                 [
+                   "must be one of: Elixir.Domain.Types.IP, Elixir.Domain.Types.CIDR",
+                   "CIDR netmask is invalid or missing"
+                 ]}}
 
       type = {:json_array, {:one_of, [:integer, :boolean]}}
 
