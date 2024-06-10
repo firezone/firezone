@@ -387,6 +387,66 @@ defmodule Web.Live.Policies.NewTest do
     assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
   end
 
+  test "removes conditions in the backend when policy_conditions is false", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Actors.create_group(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+    Domain.Config.put_env_override(:policy_conditions, false)
+
+    attrs = %{
+      actor_group_id: group.id,
+      conditions: %{
+        current_utc_datetime: %{
+          property: "current_utc_datetime",
+          operator: "is_in_day_of_week_time_ranges",
+          timezone: "US/Pacific",
+          values: %{
+            M: "true",
+            T: "",
+            W: "true",
+            R: "",
+            F: "",
+            S: "10:00:00-15:00:00",
+            U: "23:00:00-23:59:59"
+          }
+        },
+        provider_id: %{
+          property: "provider_id",
+          operator: "is_in",
+          values: [identity.provider_id]
+        },
+        remote_ip: %{
+          property: "remote_ip",
+          operator: "is_not_in_cidr",
+          values: ["0.0.0.0/0"]
+        },
+        remote_ip_location_region: %{
+          property: "remote_ip_location_region",
+          operator: "is_in",
+          values: ["US"]
+        }
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource}")
+
+    assert lv
+           |> form("form", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Domain.Policies.Policy, %{actor_group_id: group.id})
+    assert policy.resource_id == resource.id
+    assert policy.conditions == []
+
+    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+  end
+
   test "redirects back to site when a new policy is created with pre-set site_id", %{
     account: account,
     identity: identity,
