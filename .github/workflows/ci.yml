@@ -58,6 +58,7 @@ jobs:
       - uses: release-drafter/release-drafter@v6
         id: update-release-draft
         with:
+          tag_name: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
         env:
