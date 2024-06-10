@@ -1165,6 +1165,15 @@ fn add_local_candidate<TId>(
 ) where
     TId: fmt::Display,
 {
+    // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
+    if candidate.kind() == CandidateKind::ServerReflexive {
+        pending_events.push_back(Event::NewIceCandidate {
+            connection: id,
+            candidate: candidate.to_sdp_string(),
+        });
+        return;
+    }
+
     let is_new = agent.add_local_candidate(candidate.clone());
 
     if is_new {
@@ -1183,6 +1192,14 @@ fn remove_local_candidate<TId>(
 ) where
     TId: fmt::Display,
 {
+    if candidate.kind() == CandidateKind::ServerReflexive {
+        pending_events.push_back(Event::NewIceCandidate {
+            connection: id,
+            candidate: candidate.to_sdp_string(),
+        });
+        return;
+    }
+
     let was_present = agent.invalidate_candidate(candidate);
 
     if was_present {
@@ -1508,40 +1525,21 @@ where
                 IceAgentEvent::NominatedSend {
                     destination,
                     source,
-                    local: nominated_candidate,
                     ..
                 } => {
-                    dbg!(&nominated_candidate);
-
-                    let remote_socket = match nominated_candidate.kind() {
-                        CandidateKind::Relayed => {
-                            let relay = allocations.iter().find_map(|(relay, allocation)| {
-                                allocation.has_socket(source).then_some(*relay)
-                            });
-
-                            let Some(relay) = relay else {
-                                debug_assert!(
-                                    false,
-                                    "Should only nominate candidates from known relays"
-                                );
-                                continue;
-                            };
-
-                            PeerSocket::Relay {
-                                relay,
-                                dest: destination,
-                            }
-                        }
-                        CandidateKind::ServerReflexive | CandidateKind::Host => {
-                            PeerSocket::Direct {
-                                dest: destination,
-                                source,
-                            }
-                        }
-                        CandidateKind::PeerReflexive => {
-                            unreachable!("local candidate is never `PeerReflexive`")
-                        }
-                    };
+                    let remote_socket = allocations
+                        .iter()
+                        .find_map(|(relay, allocation)| {
+                            allocation.has_socket(source).then_some(*relay)
+                        })
+                        .map(|relay| PeerSocket::Relay {
+                            relay,
+                            dest: destination,
+                        })
+                        .unwrap_or(PeerSocket::Direct {
+                            source,
+                            dest: destination,
+                        });
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
@@ -1585,7 +1583,7 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.invalidate_candiates(id, nominated_candidate, pending_events);
+                    self.invalidate_candiates(id, source, pending_events);
                     self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1756,18 +1754,26 @@ where
     fn invalidate_candiates<TId>(
         &mut self,
         id: TId,
-        nominated: Candidate,
+        source: SocketAddr,
         pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: Copy + fmt::Display,
     {
+        let nominated = self
+            .agent
+            .local_candidates()
+            .iter()
+            .filter(|c| !c.discarded())
+            .find(|c| c.addr() == source)
+            .expect("Local, non-discarded candidate to exist");
+
         Span::current().record("nominated_prio", field::display(&nominated.prio()));
 
         let irrelevant_candidates = self
             .agent
             .local_candidates()
             .iter()
-            .filter(|c| c.prio() <= nominated.prio() && c != &&nominated)
+            .filter(|c| c.prio() <= nominated.prio() && c != &nominated)
             .cloned()
             .collect::<Vec<_>>();
 
