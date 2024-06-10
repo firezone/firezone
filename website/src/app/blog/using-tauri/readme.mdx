@@ -66,12 +66,32 @@ time needed for me to learn about `connlib`, and for the team to change our auth
 flow from one that worked well on macOS to one that worked on all platforms.
 This has been my first real project with Tauri.
 
+<Link href="/images/blog/using-tauri/firezone-3a4f2cf.jpeg" target="_blank">
+  <Image
+    width={1339}
+    height={555}
+    src="/images/blog/using-tauri/firezone-3a4f2cf.jpeg"
+    alt=""
+  />
+</Link>
+
+_The Windows Client, around 2024 Jan 04, commit 3a4f2cf_
+
+<Link href="/images/blog/using-tauri/firezone-926e26f57.jpeg" target="_blank">
+  <Image
+    width={2694}
+    height={1090}
+    src="/images/blog/using-tauri/firezone-926e26f57.jpeg"
+    alt=""
+  />
+</Link>
+
+_The Windows Client, at time of writing_
+
 Bringing the Linux GUI Client to MVP took another 4 months. This was longer
 because Linux's security model required us to split the Client into two
 processes, and because the Windows Client needed some changes to make the code
 sharable.
-
-(TODO: Screenshots of the Windows and Linux MVPs)
 
 Tauri makes itself easy by shipping the `create-tauri-app` tool for setting up
 boilerplate projects, and by having bundlers for Windows `.msi` installers and
@@ -401,12 +421,14 @@ in the order we originally planned.
 
 ## Web views use a whole bunch of RAM
 
-<Image
-  width={1598}
-  height={952}
-  src="/images/blog/using-tauri/lots-of-ram.png"
-  alt="Windows Task Manager showing that the webviews need about 100 MB of RAM to do nothing"
-/>
+<Link href="/images/blog/using-tauri/lots-of-ram.png" target="_blank">
+  <Image
+    width={1598}
+    height={952}
+    src="/images/blog/using-tauri/lots-of-ram.png"
+    alt="Windows Task Manager showing that the webviews need about 100 MB of RAM to do nothing"
+  />
+</Link>
 
 The GUI uses about 100 MB of RAM even with all windows hidden. This seems to be
 the minimum for keeping the web view process alive. It's okay for an MVP, but
@@ -447,12 +469,14 @@ researching.
 
 ## WebView2 just doesn't install sometimes
 
-<Image
-  width={1230}
-  height={464}
-  src="/images/blog/using-tauri/webview-install-hang.png"
-  alt="The WebView2 installer just hanging in CI for some reason"
-/>
+<Link href="/images/blog/using-tauri/webview-install-hang.png" target="_blank">
+  <Image
+    width={1230}
+    height={464}
+    src="/images/blog/using-tauri/webview-install-hang.png"
+    alt="The WebView2 installer just hanging in CI for some reason"
+  />
+</Link>
 
 https://github.com/firezone/firezone/pull/4981
 
