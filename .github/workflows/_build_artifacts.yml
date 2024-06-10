@@ -320,7 +320,7 @@ jobs:
         run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
 
   merge-docker-artifacts:
-    name: merge-${{ matrix.image_name }}
+    name: merge-${{ matrix.image.name }}
     needs: data-plane
     if: ${{ always() }}
     runs-on: ubuntu-22.04
