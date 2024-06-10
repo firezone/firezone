@@ -2,9 +2,11 @@ defmodule Web.MixProject do
   use Mix.Project
 
   def project do
+    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
+
     [
       app: :web,
-      version: String.trim(File.read!("../../VERSION")),
+      version: "0.1.0+#{sha}",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -49,6 +51,8 @@ defmodule Web.MixProject do
       # CLDR and unit conversions
       {:ex_cldr_dates_times, "~> 2.13"},
       {:ex_cldr_numbers, "~> 2.31"},
+      {:ex_cldr, "~> 2.38"},
+      {:tzdata, "~> 1.1"},
       {:sizeable, "~> 1.0"},
 
       # Asset pipeline deps

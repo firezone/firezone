@@ -647,6 +647,11 @@ defmodule Domain.Config.Definitions do
   defconfig(:feature_self_hosted_relays_enabled, :boolean, default: false)
 
   @doc """
+  Boolean flag to turn Policy Conditions functionality on/off for all accounts.
+  """
+  defconfig(:feature_policy_conditions_enabled, :boolean, default: false)
+
+  @doc """
   Boolean flag to turn Multi-Site resources functionality on/off for all accounts.
   """
   defconfig(:feature_multi_site_resources_enabled, :boolean, default: false)

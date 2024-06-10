@@ -62,6 +62,7 @@ if config_env() == :prod do
     sign_up: compile_config!(:feature_sign_up_enabled),
     flow_activities: compile_config!(:feature_flow_activities_enabled),
     self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
+    policy_conditions: compile_config!(:feature_policy_conditions_enabled),
     multi_site_resources: compile_config!(:feature_multi_site_resources_enabled),
     rest_api: compile_config!(:feature_rest_api_enabled)
 

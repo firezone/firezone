@@ -2,9 +2,11 @@ defmodule Domain.MixProject do
   use Mix.Project
 
   def project do
+    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
+
     [
       app: :domain,
-      version: String.trim(File.read!("../../VERSION")),
+      version: "0.1.0+#{sha}",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -74,6 +76,9 @@ defmodule Domain.MixProject do
       {:opentelemetry_exporter, "~> 1.5"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
+
+      # Other application deps
+      {:tzdata, "~> 1.1"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
