@@ -641,10 +641,11 @@ fn setup_ipc_service_logging(
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
     let (layer, handle) = file_logger::layer(&log_dir);
-    let filter = EnvFilter::new(crate::get_log_filter().context("Couldn't read log filter")?);
+    let log_filter = crate::get_log_filter().context("Couldn't read log filter")?;
+    let filter = EnvFilter::new(&log_filter);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
-    tracing::info!(git_version = crate::GIT_VERSION);
+    tracing::info!(git_version = crate::GIT_VERSION, ?log_filter);
     Ok(handle)
 }
 
