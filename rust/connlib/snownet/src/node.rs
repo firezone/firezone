@@ -508,7 +508,7 @@ where
                     .current_candidates()
                     .filter(|c| c.kind() == CandidateKind::Relayed)
                 {
-                    remove_local_candidate(id, agent, &candidate, &mut self.pending_events);
+                    agent.invalidate_candidate(&candidate);
                 }
             }
         }
