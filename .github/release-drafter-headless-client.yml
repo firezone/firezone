@@ -1,3 +1,4 @@
+tag-prefix: "headless-client-"
 name-template: "$RESOLVED_VERSION"
 tag-template: "$RESOLVED_VERSION"
 autolabeler:
