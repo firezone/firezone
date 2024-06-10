@@ -59,6 +59,7 @@ jobs:
         id: update-release-draft
         with:
           version: ${{ matrix.release_name }}
+          name: ${{ matrix.release_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

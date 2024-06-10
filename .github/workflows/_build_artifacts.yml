@@ -223,7 +223,7 @@ jobs:
             --repo ${{ github.repository }}
       - name: Authenticate to Google Cloud
         id: auth
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && (matrix.name.image_name == 'gateway' || matrix.name.image_name == 'client') }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["relay", "gateway", "client"]'), matrix.name.image_name) }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
