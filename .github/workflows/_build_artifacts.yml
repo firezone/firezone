@@ -223,7 +223,7 @@ jobs:
             --repo ${{ github.repository }}
       - name: Authenticate to Google Cloud
         id: auth
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["relay", "gateway", "client"]'), matrix.name.image_name) }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
@@ -231,7 +231,7 @@ jobs:
           export_environment_variables: true
           create_credentials_file: true
       - name: Copy binaries to Google Cloud Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["relay", "gateway", "client"]'), matrix.name.image_name) }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
         run: |
           gcloud storage cp \
             ${BINARY_DEST_PATH} \
