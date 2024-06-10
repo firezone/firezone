@@ -34,6 +34,9 @@ defmodule Domain.Types.IP do
   def load(%Postgrex.INET{} = inet), do: {:ok, inet}
   def load(_), do: :error
 
+  def type(address) when tuple_size(address) == 4, do: :ipv4
+  def type(address) when tuple_size(address) == 8, do: :ipv6
+
   def to_string(ip) when is_binary(ip), do: ip
   def to_string(%Postgrex.INET{} = inet), do: Domain.Types.INET.to_string(inet)
 end

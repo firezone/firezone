@@ -78,7 +78,7 @@ jobs:
           # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
           # We should for any updates on buildx and on the setup-buildx-action itself.
           driver-opts: |
-            image=moby/buildkit:v0.12.0
+            image=moby/buildkit:v0.13.2
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -249,7 +249,7 @@ jobs:
           # supports v0.11.6 https://github.com/docker/buildx/blob/b8739d74417f86aa8fc9aafb830a8ba656bdef0e/Dockerfile#L9.
           # We should for any updates on buildx and on the setup-buildx-action itself.
           driver-opts: |
-            image=moby/buildkit:v0.12.0
+            image=moby/buildkit:v0.13.2
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
