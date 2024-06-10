@@ -244,6 +244,7 @@ RUN cd apps/web \
 # so we can't optimize further at this stage
 COPY priv priv
 COPY apps apps
+COPY sha.exs .
 
 # Install pipeline and compile assets for Web app
 RUN cd apps/web \
