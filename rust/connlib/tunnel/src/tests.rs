@@ -420,12 +420,12 @@ impl ReferenceStateMachine for ReferenceState {
             .prop_filter(
                 "client, gateway and relay ip must be different",
                 |(c, g, r, _, _, _, _, _)| {
-                    let c4 = c.ip4_socket.map(|(_, ip)| ip);
-                    let g4 = g.ip4_socket.map(|(_, ip)| ip);
+                    let c4 = c.ip4_socket.map(|s| *s.ip());
+                    let g4 = g.ip4_socket.map(|s| *s.ip());
                     let r4 = r.ip_stack.as_v4().copied();
 
-                    let c6 = c.ip6_socket.map(|(_, ip)| ip);
-                    let g6 = g.ip6_socket.map(|(_, ip)| ip);
+                    let c6 = c.ip6_socket.map(|s| *s.ip());
+                    let g6 = g.ip6_socket.map(|s| *s.ip());
                     let r6 = r.ip_stack.as_v6().copied();
 
                     let c4_eq_g4 = c4.is_some_and(|c| g4.is_some_and(|g| c == g));
@@ -839,7 +839,7 @@ impl TunnelTest {
                             continue;
                         }
 
-                        // panic!("Unhandled packet: {src} -> {dst}")
+                        panic!("Unhandled packet: {src} -> {dst}")
                     }
 
                     firezone_relay::Command::CreateAllocation { port, family } => {
@@ -1027,28 +1027,14 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
 
-        if self
-            .client
-            .receiving_socket_for(dst.ip())
-            .is_some_and(|s| s == dst)
-        {
-            self.client.span.in_scope(|| {
-                tracing::debug!("Dropping packet because it is directly for host {src} -> {dst}")
-            });
-
-            return ControlFlow::Break(());
-        }
-
         if !self.client.wants(dst) {
             return ControlFlow::Continue(());
         }
 
-        let local = self.client.receiving_socket_for(dst.ip()).unwrap();
-
         if let Some(packet) = self.client.span.in_scope(|| {
             self.client
                 .state
-                .decapsulate(local, src, payload, self.now, &mut buffer)
+                .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
             self.on_client_received_packet(packet);
         };
@@ -1066,27 +1052,14 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
 
-        if self
-            .gateway
-            .receiving_socket_for(dst.ip())
-            .is_some_and(|s| s == dst)
-        {
-            self.gateway.span.in_scope(|| {
-                tracing::debug!("Dropping packet because it is directly for host {src} -> {dst}")
-            });
-            return ControlFlow::Break(());
-        }
-
         if !self.gateway.wants(dst) {
             return ControlFlow::Continue(());
         }
 
-        let local = self.gateway.receiving_socket_for(dst.ip()).unwrap();
-
         if let Some(packet) = self.gateway.span.in_scope(|| {
             self.gateway
                 .state
-                .decapsulate(local, src, payload, self.now, &mut buffer)
+                .decapsulate(dst, src, payload, self.now, &mut buffer)
         }) {
             let packet = packet.to_owned();
 
@@ -1760,8 +1733,8 @@ struct SimNode<ID, S> {
     id: ID,
     state: S,
 
-    ip4_socket: Option<(SocketAddrV4, Ipv4Addr)>,
-    ip6_socket: Option<(SocketAddrV6, Ipv6Addr)>,
+    ip4_socket: Option<SocketAddrV4>,
+    ip6_socket: Option<SocketAddrV6>,
 
     tunnel_ip4: Ipv4Addr,
     tunnel_ip6: Ipv6Addr,
@@ -1811,24 +1784,14 @@ where
 
 impl<ID, S> SimNode<ID, S> {
     fn wants(&self, dst: SocketAddr) -> bool {
-        self.ip4_socket
-            .is_some_and(|(s, external)| s.port() == dst.port() && dst.ip() == IpAddr::V4(external))
-            || self.ip6_socket.is_some_and(|(s, external)| {
-                s.port() == dst.port() && dst.ip() == IpAddr::V6(external)
-            })
+        self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
+            || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
     }
 
     fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
         Some(match dst.into() {
-            IpAddr::V4(_) => SocketAddr::new(self.ip4_socket?.1.into(), self.ip4_socket?.0.port()),
-            IpAddr::V6(_) => SocketAddr::new(self.ip6_socket?.1.into(), self.ip6_socket?.0.port()),
-        })
-    }
-
-    fn receiving_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
-        Some(match dst.into() {
-            IpAddr::V4(_) => self.ip4_socket?.0.into(),
-            IpAddr::V6(_) => self.ip6_socket?.0.into(),
+            IpAddr::V4(_) => self.ip4_socket?.into(),
+            IpAddr::V6(_) => self.ip6_socket?.into(),
         })
     }
 
@@ -2303,7 +2266,6 @@ where
         id,
         any::<[u8; 32]>(),
         firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
-        firezone_relay::proptest::dual_ip_stack(),
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         tunnel_ip4(),
@@ -2311,28 +2273,11 @@ where
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(
-                id,
-                key,
-                internal_ip_stack,
-                external_ip,
-                v4_port,
-                v6_port,
-                tunnel_ip4,
-                tunnel_ip6,
-            )| {
-                let ip4_socket = internal_ip_stack.as_v4().map(|ip| {
-                    (
-                        SocketAddrV4::new(*ip, v4_port),
-                        *external_ip.as_v4().unwrap(),
-                    )
-                });
-                let ip6_socket = internal_ip_stack.as_v6().map(|ip| {
-                    (
-                        SocketAddrV6::new(*ip, v6_port, 0, 0),
-                        *external_ip.as_v6().unwrap(),
-                    )
-                });
+            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
+                let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
+                let ip6_socket = ip_stack
+                    .as_v6()
+                    .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
 
                 Some(SimNode {
                     id,
