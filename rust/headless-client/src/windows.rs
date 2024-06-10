@@ -72,7 +72,9 @@ pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
 fn windows_service_run(arguments: Vec<OsString>) {
-    let handle = crate::setup_ipc_service_logs().expect("Should be able to set up logging");
+    // `arguments` doesn't seem to work right when running as a Windows service
+    // (even though it's meant for that) so just use the default log dir.
+    let handle = crate::setup_ipc_service_logging(None).expect("Should be able to set up logging");
     if let Err(error) = fallible_windows_service_run(arguments, handle) {
         tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }

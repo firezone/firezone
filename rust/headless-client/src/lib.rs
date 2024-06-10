@@ -623,12 +623,24 @@ pub fn debug_command_setup() -> Result<()> {
     Ok(())
 }
 
-fn setup_ipc_service_logs() -> Result<connlib_client_shared::file_logger::Handle> {
-    let log_path = crate::known_dirs::ipc_service_logs()
-        .context("Should be able to compute IPC service logs dir")?;
-    std::fs::create_dir_all(&log_path)
+/// Starts logging for the production IPC service
+///
+/// Returns: A `Handle` that must be kept alive. Dropping it stops logging
+/// and flushes the log file.
+fn setup_ipc_service_logging(
+    log_dir: Option<PathBuf>,
+) -> Result<connlib_client_shared::file_logger::Handle> {
+    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
+    let log_dir = log_dir.map_or_else(
+        || {
+            crate::known_dirs::ipc_service_logs()
+                .context("Should be able to compute IPC service logs dir")
+        },
+        Ok,
+    )?;
+    std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
-    let (layer, handle) = file_logger::layer(&log_path);
+    let (layer, handle) = file_logger::layer(&log_dir);
     let filter = EnvFilter::new(crate::get_log_filter().context("Couldn't read log filter")?);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
