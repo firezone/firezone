@@ -210,10 +210,9 @@ fn migrate_connection_to_new_relay() {
         ),
     )];
     alice = alice.with_relays("alice", HashSet::from([1]), &mut relays, clock.now);
-    bob = bob.with_relays("bob", HashSet::from([1]), &mut relays, clock.now);
 
-    // Make some progress. (the fact that we only need 22 clock ticks means we are no relying on timeouts here (22 * 100ms = 2.2s))
-    for _ in 0..22 {
+    // Make some progress. (the fact that we only need 5 clock ticks means we are no relying on timeouts here)
+    for _ in 0..5 {
         progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
 
@@ -839,11 +838,6 @@ impl<R> TestNode<R> {
             // Wasn't traffic for the relay, let's check our firewall.
             if firewall.blocked.contains(&(src, dst)) {
                 tracing::debug!(target: "firewall", %src, %dst, "Dropping packet");
-                continue;
-            }
-
-            if !other.local.contains(&dst) {
-                tracing::debug!(target: "router", %src, %dst, "Unknown destination");
                 continue;
             }
 
