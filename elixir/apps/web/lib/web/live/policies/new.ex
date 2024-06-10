@@ -1,22 +1,26 @@
 defmodule Web.Policies.New do
   use Web, :live_view
-  alias Domain.{Resources, Actors, Policies}
+  import Web.Policies.Components
+  alias Domain.{Resources, Actors, Policies, Auth}
 
   def mount(params, _session, socket) do
     # TODO: unify this dropdown and the one we use for live table filters
     resources = Resources.all_resources!(socket.assigns.subject, preload: [:gateway_groups])
     # TODO: unify this dropdown and the one we use for live table filters
     actor_groups = Actors.all_groups!(socket.assigns.subject, preload: :provider)
+    providers = Auth.all_active_providers_for_account!(socket.assigns.account)
     form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
 
     socket =
       assign(socket,
         resources: resources,
         actor_groups: actor_groups,
+        providers: providers,
         params: Map.take(params, ["site_id"]),
         resource_id: params["resource_id"],
         actor_group_id: params["actor_group_id"],
         page_title: "New Policy",
+        timezone: Map.get(socket.private.connect_params, "timezone", "UTC"),
         form: form
       )
 
@@ -35,7 +39,7 @@ defmodule Web.Policies.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Define a Policy</h2>
           <div
             :if={@actor_groups == []}
             class={[
@@ -56,40 +60,50 @@ defmodule Web.Policies.New do
           <.form :if={@actor_groups != []} for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <.input
-                field={@form[:actor_group_id]}
-                label="Group"
-                type="group_select"
-                options={Web.Groups.Components.select_options(@actor_groups)}
-                value={@actor_group_id || @form[:actor_group_id].value}
-                disabled={not is_nil(@actor_group_id)}
-                required
-              />
+              <fieldset class="flex flex-col gap-2">
+                <.input
+                  field={@form[:actor_group_id]}
+                  label="Group"
+                  type="group_select"
+                  options={Web.Groups.Components.select_options(@actor_groups)}
+                  value={@actor_group_id || @form[:actor_group_id].value}
+                  disabled={not is_nil(@actor_group_id)}
+                  required
+                />
 
-              <.input
-                field={@form[:resource_id]}
-                label="Resource"
-                type="select"
-                options={
-                  Enum.map(@resources, fn resource ->
-                    group_names = resource.gateway_groups |> Enum.map(& &1.name)
+                <.input
+                  field={@form[:resource_id]}
+                  label="Resource"
+                  type="select"
+                  options={
+                    Enum.map(@resources, fn resource ->
+                      group_names = resource.gateway_groups |> Enum.map(& &1.name)
 
-                    [
-                      key: "#{resource.name} - #{Enum.join(group_names, ",")}",
-                      value: resource.id
-                    ]
-                  end)
-                }
-                value={@resource_id || @form[:resource_id].value}
-                disabled={not is_nil(@resource_id)}
-                required
-              />
-              <.input
-                field={@form[:description]}
-                type="textarea"
-                label="Description"
-                placeholder="Enter a reason for creating a policy here"
-                phx-debounce="300"
+                      [
+                        key: "#{resource.name} - #{Enum.join(group_names, ",")}",
+                        value: resource.id
+                      ]
+                    end)
+                  }
+                  value={@resource_id || @form[:resource_id].value}
+                  disabled={not is_nil(@resource_id)}
+                  required
+                />
+
+                <.input
+                  field={@form[:description]}
+                  label="Description"
+                  type="textarea"
+                  placeholder="Optionally, enter a reason for creating a policy here."
+                  phx-debounce="300"
+                />
+              </fieldset>
+
+              <.condition_form
+                form={@form}
+                account={@account}
+                timezone={@timezone}
+                providers={@providers}
               />
             </div>
 
@@ -103,21 +117,24 @@ defmodule Web.Policies.New do
     """
   end
 
-  def handle_event("validate", %{"policy" => policy_params}, socket) do
+  def handle_event("validate", %{"policy" => params}, socket) do
     form =
-      policy_params
-      |> put_default_policy_params(socket)
+      params
+      |> put_default_params(socket)
+      |> map_condition_params(empty_values: :keep)
       |> Policies.new_policy(socket.assigns.subject)
-      |> Map.put(:action, :validate)
-      |> to_form()
+      |> to_form(action: :validate)
 
     {:noreply, assign(socket, form: form)}
   end
 
-  def handle_event("submit", %{"policy" => policy_params}, socket) do
-    policy_params = put_default_policy_params(policy_params, socket)
+  def handle_event("submit", %{"policy" => params}, socket) do
+    params =
+      params
+      |> put_default_params(socket)
+      |> map_condition_params(empty_values: :drop)
 
-    with {:ok, policy} <- Policies.create_policy(policy_params, socket.assigns.subject) do
+    with {:ok, policy} <- Policies.create_policy(params, socket.assigns.subject) do
       if site_id = socket.assigns.params["site_id"] do
         {:noreply,
          push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
@@ -126,12 +143,11 @@ defmodule Web.Policies.New do
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->
-        form = to_form(changeset)
-        {:noreply, assign(socket, form: form)}
+        {:noreply, assign(socket, form: to_form(changeset, action: :insert))}
     end
   end
 
-  defp put_default_policy_params(attrs, socket) do
+  defp put_default_params(attrs, socket) do
     if resource_id = socket.assigns.resource_id do
       Map.put(attrs, "resource_id", resource_id)
     else

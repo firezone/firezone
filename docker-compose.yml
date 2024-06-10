@@ -1,7 +1,7 @@
 services:
   # Dependencies
   postgres:
-    image: postgres:15.2
+    image: postgres:15.5
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
@@ -97,6 +97,7 @@ services:
       STATIC_SEEDS: "true"
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
@@ -165,6 +166,7 @@ services:
       STATIC_SEEDS: "true"
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
@@ -227,6 +229,7 @@ services:
       STATIC_SEEDS: "true"
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"
@@ -295,6 +298,7 @@ services:
       STATIC_SEEDS: "true"
       # Feature flags
       FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       MULTI_SITE_RESOURCES_ENABLED: "true"
       SELF_HOSTED_RELAYS_ENABLED: "true"
       IDP_SYNC_ENABLED: "true"

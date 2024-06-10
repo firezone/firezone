@@ -1,4 +1,4 @@
-name: Hotfix Production
+name: Deploy Production
 run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
         required: false
 
 concurrency:
-  group: "hotfix-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
+  group: "deploy-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:

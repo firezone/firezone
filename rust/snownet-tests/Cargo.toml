@@ -1,7 +1,6 @@
 [package]
 name = "snownet-tests"
-# mark:automatic-version
-version = "1.0.6"
+version = "0.1.0"
 edition = "2021"
 
 [dependencies]

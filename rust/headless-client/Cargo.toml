@@ -1,6 +1,6 @@
 [package]
 name = "firezone-headless-client"
-# mark:automatic-version
+# mark:next-headless-version
 version = "1.0.6"
 edition = "2021"
 authors = ["Firezone, Inc."]
