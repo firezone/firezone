@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import Post from "@/components/Blog/Post";
 import Content from "./readme.mdx";
+import gravatar from "@/lib/gravatar";
 
 export const metadata: Metadata = {
   title: "Release 0.6.0 • Firezone Blog",
@@ -13,6 +14,7 @@ export default function Page() {
       authorName="Jamil Bou Kheir"
       authorTitle="Founder & CEO"
       authorEmail="jamil@firezone.dev"
+      authorAvatarSrc={gravatar("jamil@firezone.dev")}
       title="Firezone 0.6.0 Released!"
       date="October 17, 2022"
     >
