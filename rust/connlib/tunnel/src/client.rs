@@ -669,7 +669,7 @@ impl ClientState {
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(name = %query.name, server = %query.query.destination()))] // On debug level, we can log potentially sensitive information such as domain names.
+    #[tracing::instrument(level = "debug", skip_all, fields(name = %query.name, server = %query.query.destination(), upstream))] // On debug level, we can log potentially sensitive information such as domain names.
     pub(crate) fn on_dns_result(
         &mut self,
         query: DnsQuery<'static>,
@@ -681,6 +681,14 @@ impl ClientState {
             DnsQueryError,
         >,
     ) {
+        let upstream = self
+            .dns_mapping
+            .get_by_left(&query.query.destination())
+            .expect("DNS query destination must map to upstream server")
+            .address();
+
+        tracing::Span::current().record("upstream", tracing::field::display(&upstream));
+
         let query = query.query;
         let make_error_reply = {
             let query = query.clone();
