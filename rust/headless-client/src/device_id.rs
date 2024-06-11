@@ -1,7 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
-use std::fs;
-use std::io::Write;
+use std::{fs, io::Write, path::Path};
 
 pub(crate) struct DeviceId {
     pub(crate) id: String,
@@ -18,6 +17,16 @@ pub(crate) struct DeviceId {
 pub(crate) fn get_or_create() -> Result<DeviceId> {
     let dir = crate::known_dirs::ipc_service_config()
         .context("Failed to compute path for firezone-id file")?;
+    // Make sure the dir exists, and fix its permissions so the GUI can write the
+    // log filter file
+    fs::create_dir_all(&dir).context("Failed to create dir for firezone-id")?;
+    set_permissions(&dir).with_context(|| {
+        format!(
+            "Couldn't set permissions on IPC service config dir `{}`",
+            dir.display()
+        )
+    })?;
+
     let path = dir.join("firezone-id.json");
 
     // Try to read it from the disk
@@ -33,9 +42,6 @@ pub(crate) fn get_or_create() -> Result<DeviceId> {
     // Couldn't read, it's missing or invalid, generate a new one and save it.
     let id = uuid::Uuid::new_v4();
     let j = DeviceIdJson { id };
-    // TODO: This file write has the same possible problems with power loss as described here https://github.com/firezone/firezone/pull/2757#discussion_r1416374516
-    // Since the device ID is random, typically only written once in the device's lifetime, and the read will error out if it's corrupted, it's low-risk.
-    fs::create_dir_all(&dir).context("Failed to create dir for firezone-id")?;
 
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
@@ -47,6 +53,23 @@ pub(crate) fn get_or_create() -> Result<DeviceId> {
     let id = j.device_id();
     tracing::debug!(?id, "Saved device ID to disk");
     Ok(DeviceId { id })
+}
+
+#[cfg(target_os = "linux")]
+fn set_permissions(dir: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    // user read/write, group read-write, others nothing
+    // directories need `+x` to work of course
+    let perms = fs::Permissions::from_mode(0o770);
+    std::fs::set_permissions(dir, perms)?;
+    Ok(())
+}
+
+/// Does nothing on non-Linux systems
+#[cfg(not(target_os = "linux"))]
+#[allow(clippy::unnecessary_wraps)]
+fn set_permissions(_f: &fs::File) -> Result<()> {
+    Ok(())
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]

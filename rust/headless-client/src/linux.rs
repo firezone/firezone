@@ -145,7 +145,8 @@ impl IpcServer {
     async fn new_with_path(sock_path: &Path) -> Result<Self> {
         // Remove the socket if a previous run left it there
         tokio::fs::remove_file(sock_path).await.ok();
-        let listener = UnixListener::bind(sock_path).context("Couldn't bind UDS")?;
+        let listener = UnixListener::bind(sock_path)
+            .with_context(|| format!("Couldn't bind UDS `{}`", sock_path.display()))?;
         let perms = std::fs::Permissions::from_mode(0o660);
         tokio::fs::set_permissions(sock_path, perms).await?;
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;

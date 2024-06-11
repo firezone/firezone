@@ -16,7 +16,6 @@ use std::path::PathBuf;
 /// `BUNDLE_ID` because we need our own subdir
 ///
 /// `config` to match how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
-
 #[allow(clippy::unnecessary_wraps)] // Signature must match Windows
 pub fn ipc_service_config() -> Option<PathBuf> {
     Some(PathBuf::from("/var/lib").join(BUNDLE_ID).join("config"))
