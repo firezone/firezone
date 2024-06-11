@@ -38,6 +38,7 @@ updates:
       windows:
         patterns:
           - windows
+          - windows-core
           - windows-implement
           - windows-sys
   - package-ecosystem: gradle
