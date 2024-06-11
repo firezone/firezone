@@ -174,6 +174,14 @@ impl Socket {
     }
 }
 
+#[derive(Debug, thiserror::Error, PartialEq)]
+pub enum FreeReason {
+    #[error("authentication error")]
+    AuthenticationError,
+    #[error("no response received. Is STUN blocked?")]
+    NoResponseReceived,
+}
+
 impl Allocation {
     pub fn new(
         server: RelaySocket,
@@ -715,9 +723,37 @@ impl Allocation {
 
     /// Whether this [`Allocation`] can be freed.
     ///
-    /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events.
-    pub fn can_be_freed(&self) -> bool {
-        self.credentials.is_none() && self.events.is_empty()
+    /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events or not having received a single response.
+    pub fn can_be_freed(&self) -> Option<FreeReason> {
+        let pending_work = !self.events.is_empty()
+            || !self.buffered_transmits.is_empty()
+            || !self.sent_requests.is_empty();
+
+        let no_responses = !self.received_any_response();
+        let auth_failure = !self.has_credentials();
+
+        if !pending_work && no_responses {
+            return Some(FreeReason::NoResponseReceived);
+        }
+
+        if !pending_work && auth_failure {
+            return Some(FreeReason::AuthenticationError);
+        }
+
+        debug_assert!(
+            pending_work,
+            "Expect a reason for why we don't have any pending work"
+        );
+
+        None
+    }
+
+    pub fn received_any_response(&self) -> bool {
+        self.active_socket.is_some()
+    }
+
+    pub fn has_credentials(&self) -> bool {
+        self.credentials.is_some()
     }
 
     fn log_update(&self) {
@@ -2155,7 +2191,10 @@ mod tests {
                 CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
         );
-        assert!(allocation.can_be_freed());
+        assert_eq!(
+            allocation.can_be_freed(),
+            Some(FreeReason::AuthenticationError)
+        );
     }
 
     #[test]
@@ -2183,7 +2222,7 @@ mod tests {
     fn allocation_is_not_freed_on_startup() {
         let allocation = Allocation::for_test_ip4(Instant::now());
 
-        assert!(!allocation.can_be_freed());
+        assert_eq!(allocation.can_be_freed(), None);
     }
 
     #[test]
@@ -2323,6 +2362,29 @@ mod tests {
         }
 
         assert_eq!(allocation.poll_transmit(), None);
+    }
+
+    #[test]
+    fn allocation_can_be_freed_after_all_requests_time_out() {
+        let mut allocation = Allocation::for_test_dual(Instant::now());
+
+        loop {
+            let Some(timeout) = allocation.poll_timeout() else {
+                break;
+            };
+
+            allocation.handle_timeout(timeout);
+
+            // We expect two transmits.
+            // The order is not deterministic because internally it is a `HashMap`.
+            let _ = allocation.poll_transmit().unwrap();
+            let _ = allocation.poll_transmit().unwrap();
+        }
+
+        assert_eq!(
+            allocation.can_be_freed(),
+            Some(FreeReason::NoResponseReceived)
+        );
     }
 
     fn ch(peer: SocketAddr, now: Instant) -> Channel {
