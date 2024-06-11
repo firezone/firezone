@@ -405,35 +405,10 @@ defmodule Web.Live.Policies.NewTest do
     attrs = %{
       actor_group_id: group.id,
       conditions: %{
-        current_utc_datetime: %{
-          property: "current_utc_datetime",
-          operator: "is_in_day_of_week_time_ranges",
-          timezone: "US/Pacific",
-          values: %{
-            M: "true",
-            T: "",
-            W: "true",
-            R: "",
-            F: "",
-            S: "10:00:00-15:00:00",
-            U: "23:00:00-23:59:59"
-          }
-        },
-        provider_id: %{
-          property: "provider_id",
-          operator: "is_in",
-          values: [identity.provider_id]
-        },
-        remote_ip: %{
-          property: "remote_ip",
-          operator: "is_not_in_cidr",
-          values: ["0.0.0.0/0"]
-        },
-        remote_ip_location_region: %{
-          property: "remote_ip_location_region",
-          operator: "is_in",
-          values: ["US"]
-        }
+        current_utc_datetime: %{},
+        provider_id: %{},
+        remote_ip: %{},
+        remote_ip_location_region: %{}
       }
     }
 
