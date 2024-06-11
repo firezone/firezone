@@ -47,10 +47,7 @@ pub enum Input<'a, I> {
     Network(I),
     DnsResponse(
         DnsQuery<'static>,
-        Result<
-            Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
-            futures_bounded::Timeout,
-        >,
+        Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
     ),
 }
 
@@ -81,6 +78,8 @@ impl Io {
         device_buffer: &'b mut [u8],
     ) -> Poll<io::Result<Input<'b, impl Iterator<Item = Received<'b>>>>> {
         if let Poll::Ready((response, query)) = self.forwarded_dns_queries.poll_unpin(cx) {
+            let response = response.expect("DNS query to always timeout before task timeout"); // Hickory's timeout is 5s + 2 retries which is < our 60s
+
             return Poll::Ready(Ok(Input::DnsResponse(query, response)));
         }
 
@@ -126,7 +125,7 @@ impl Io {
         self.upstream_dns_servers = create_resolvers(dns_servers);
     }
 
-    pub fn perform_dns_query(&mut self, query: DnsQuery<'static>) -> Result<(), DnsQueryError> {
+    pub fn perform_dns_query(&mut self, query: DnsQuery<'static>) {
         let upstream = query.query.destination();
         let resolver = self
             .upstream_dns_servers
@@ -147,10 +146,13 @@ impl Io {
             )
             .is_err()
         {
-            return Err(DnsQueryError::TooManyQueries);
-        }
+            tracing::warn!(
+                "Exceeded max number of concurrent DNS queries ({DNS_QUERIES_QUEUE_SIZE}), resetting all"
+            );
 
-        Ok(())
+            self.forwarded_dns_queries =
+                FuturesTupleSet::new(Duration::from_secs(60), DNS_QUERIES_QUEUE_SIZE);
+        }
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -182,12 +184,6 @@ impl Io {
 
         Ok(())
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum DnsQueryError {
-    #[error("Too many ongoing DNS queries")]
-    TooManyQueries,
 }
 
 fn create_resolvers(

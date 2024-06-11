@@ -16,7 +16,6 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
-use crate::io::DnsQueryError;
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
@@ -673,13 +672,7 @@ impl ClientState {
     pub(crate) fn on_dns_result(
         &mut self,
         query: DnsQuery<'static>,
-        response: Result<
-            Result<
-                Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
-                futures_bounded::Timeout,
-            >,
-            DnsQueryError,
-        >,
+        response: Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
     ) {
         let query = query.query;
         let make_error_reply = {
@@ -699,12 +692,8 @@ impl ClientState {
             }
         };
 
-        let dns_reply = match response {
-            Ok(Ok(response)) => match dns::build_response_from_resolve_result(query, response) {
-                Ok(dns_reply) => dns_reply,
-                Err(e) => make_error_reply(&e),
-            },
-            Ok(Err(timeout)) => make_error_reply(&timeout),
+        let dns_reply = match dns::build_response_from_resolve_result(query, response) {
+            Ok(dns_reply) => dns_reply,
             Err(e) => make_error_reply(&e),
         };
 
