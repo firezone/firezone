@@ -39,7 +39,7 @@ defmodule Web.Policies.New do
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Define a Policy</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Details</h2>
           <div
             :if={@actor_groups == []}
             class={[
@@ -133,6 +133,13 @@ defmodule Web.Policies.New do
       params
       |> put_default_params(socket)
       |> map_condition_params(empty_values: :drop)
+
+    params =
+      if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
+        params
+      else
+        Map.delete(params, "conditions")
+      end
 
     with {:ok, policy} <- Policies.create_policy(params, socket.assigns.subject) do
       if site_id = socket.assigns.params["site_id"] do
