@@ -1,6 +1,4 @@
 tag-prefix: "headless-client-"
-name-template: "$RESOLVED_VERSION"
-tag-template: "$RESOLVED_VERSION"
 autolabeler:
   - label: "area/ci"
     title:
@@ -54,4 +52,4 @@ exclude-labels:
 change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
 template: |
-  $CHANGES
+  CHANGE_ME
