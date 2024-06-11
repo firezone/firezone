@@ -195,6 +195,13 @@ export default function RootNavbar() {
             </Link>
             <SignUpButton />
             <RequestDemoButton />
+            <ActionLink
+              href="https://app.firezone.dev/"
+              className="hover:underline hidden sm:inline-flex sm:text-sm md:text-base"
+              size="ml-1 mr-1 w-5 h-5"
+            >
+              Sign in
+            </ActionLink>
           </div>
         </div>
       </nav>
