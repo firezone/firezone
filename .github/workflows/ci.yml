@@ -25,9 +25,6 @@ jobs:
   swift:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
-  tauri:
-    uses: ./.github/workflows/_tauri.yml
-    secrets: inherit
   elixir:
     uses: ./.github/workflows/_elixir.yml
   rust:
@@ -47,22 +44,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        release_name:
+        include:
           # mark:next-gateway-version
-          - gateway-1.0.6
+          - release_name: gateway-1.0.6
+            config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - headless-client-1.0.6
+          - release_name: headless-client-1.0.6
+            config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - gui-client-1.0.6
+          - release_name: gui-client-1.0.6
+            config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6
         id: update-release-draft
         with:
+          config-name: ${{ matrix.config_name }}
           tag: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  tauri:
+    needs: update-release-draft
+    uses: ./.github/workflows/_tauri.yml
+    secrets: inherit
 
   build-artifacts:
     needs: update-release-draft

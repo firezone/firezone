@@ -103,6 +103,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           # mark:next-gui-version
-          TAG_NAME: 1.0.6
+          TAG_NAME: gui-client-1.0.6
         shell: bash
         run: ${{ matrix.upload-script }}
