@@ -2,6 +2,7 @@ import Image from "next/image";
 import Post from "@/components/Blog/Post";
 import Content from "./readme.mdx";
 import { Metadata } from "next";
+import gravatar from "@/lib/gravatar";
 
 export const metadata: Metadata = {
   title: "Enterprises choose open source • Firezone Blog",
@@ -14,6 +15,7 @@ export default function Page() {
       authorName="Jeff Spencer"
       authorTitle=""
       authorEmail="jeff@firezone.dev"
+      authorAvatarSrc={gravatar("jeff@firezone.dev")}
       title="Enterprises choose open source"
       date="December 6, 2023"
     >
