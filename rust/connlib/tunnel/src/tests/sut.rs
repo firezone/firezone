@@ -28,6 +28,7 @@ use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::{rngs::StdRng, SeedableRng as _};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::collections::{BTreeMap, BTreeSet};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
@@ -346,7 +347,7 @@ impl TunnelTest {
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
-    fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
+    fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
         self.client_dns_by_sentinel
             .right_values()
             .copied()
@@ -452,7 +453,7 @@ impl TunnelTest {
         transmit: Transmit,
         sending_socket: Option<SocketAddr>,
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         let dst = transmit.dst;
         let payload = &transmit.payload;
@@ -533,7 +534,7 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
 
@@ -586,8 +587,8 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resource: &HashMap<ResourceId, ResourceDescriptionDns>,
-        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+        client_dns_resource: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
             ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
@@ -854,7 +855,7 @@ impl TunnelTest {
 
 fn map_client_resource_to_gateway_resource(
     client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    client_dns_resources: &HashMap<ResourceId, ResourceDescriptionDns>,
+    client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
     resolved_ips: Vec<IpNetwork>,
     resource_id: ResourceId,
 ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
