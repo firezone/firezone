@@ -60,7 +60,7 @@ nix = { version =  "0.28.0", features = ["user"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = "0.2.0"
-windows-core = "0.56.0"
+windows-core = "0.57.0"
 windows-implement = "0.57.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
