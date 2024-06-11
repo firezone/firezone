@@ -186,10 +186,22 @@ pub(crate) fn build_response_from_resolve_result(
 ) -> Result<IpPacket, hickory_resolver::error::ResolveError> {
     let mut message = original_pkt.unwrap_as_dns();
 
+    let name = message
+        .query()
+        .expect("Message should have at least one query")
+        .name();
+
+    let _guard =
+        tracing::debug_span!("dns_query", server = %original_pkt.destination(), %name).entered(); // Potentially sensitive information but debug logs are okay.
+
     message.set_message_type(MessageType::Response);
 
     let response = match response.map_err(|err| err.kind().clone()) {
-        Ok(response) => message.add_answers(response.records().to_vec()),
+        Ok(response) => {
+            tracing::debug!("DNS lookup succeeded");
+
+            message.add_answers(response.records().to_vec())
+        }
         Err(hickory_resolver::error::ResolveErrorKind::Proto(ProtoError { kind, .. }))
             if matches!(*kind, ProtoErrorKind::NoRecordsFound { .. }) =>
         {
@@ -203,9 +215,13 @@ pub(crate) fn build_response_from_resolve_result(
                 message.add_name_server(soa.into_record_of_rdata());
             }
 
+            tracing::debug!("DNS lookup failed: {response_code}");
+
             message.set_response_code(response_code)
         }
         Err(e) => {
+            tracing::debug!("DNS lookup failed: {e}");
+
             return Err(e.into());
         }
     };
