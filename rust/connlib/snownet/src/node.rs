@@ -451,15 +451,15 @@ where
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
-        self.allocations.retain(|id, allocation| {
-            if allocation.can_be_freed() {
-                tracing::info!(%id, "Freeing memory of allocation");
+        self.allocations
+            .retain(|id, allocation| match allocation.can_be_freed() {
+                Some(e) => {
+                    tracing::info!(%id, "Disconnecting from relay; {e}");
 
-                return false;
-            }
-
-            true
-        });
+                    false
+                }
+                None => true,
+            });
         self.connections.remove_failed(&mut self.pending_events);
     }
 
