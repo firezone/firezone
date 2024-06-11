@@ -740,16 +740,17 @@ async fn run_controller(
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
+                let tunnel_became_ready = !controller.tunnel_ready;
+                controller.tunnel_ready = true;
                 tracing::debug!("Controller notified of new resources");
                 if let Err(error) = controller.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to reload resource list");
                 }
-                if !controller.tunnel_ready {
+                if tunnel_became_ready {
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
                     )?;
-                    controller.tunnel_ready = true;
                     if let Some(instant) = controller.last_connlib_start.take() {
                         let elapsed = instant.elapsed();
                         tracing::info!(?elapsed, "Tunnel ready");
