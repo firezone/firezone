@@ -48,9 +48,9 @@ We considered several other frameworks and rejected them all for now:
 | [Electron](<https://en.wikipedia.org/wiki/Electron_(software_framework)>) | Same positives as Tauri, but even more popular             | Infamously large download sizes                                                                              |
 | [Iced](https://github.com/iced-rs/iced)                                   | Smaller downloads and less RAM usage than Tauri / Electron | Hasn't caught on yet, had some trouble with compatibility when building in Ubuntu 20.04 and running in 22.04 |
 
-# What's so good about Tauri?
+## What's so good about Tauri?
 
-## Tauri is easy to learn and use
+### Tauri is easy to learn and use
 
 Growth solves everything.
 
@@ -83,7 +83,7 @@ than Windows because Linux's security model required us to split the Client into
 two processes, and because we refactored the Windows Client to share the code
 with Linux.
 
-## We already use Rust and TypeScript
+### We already use Rust and TypeScript
 
 Firezone already uses Rust for our data plane (the Gateway, the Relay, and
 `connlib`) and TypeScript for the website and admin portal, so we didn't have to
@@ -95,6 +95,7 @@ polish and style it to match the website branding.
   <Image
     width={1339}
     height={555}
+    className="rounded shadow"
     src="/images/blog/using-tauri/firezone-3a4f2cf.jpeg"
     alt="The Windows Client shortly before MVP, 2024 Jan 04"
   />
@@ -106,6 +107,7 @@ _The Windows Client shortly before MVP, 2024 Jan 04_
   <Image
     width={2694}
     height={1090}
+    className="rounded shadow"
     src="/images/blog/using-tauri/firezone-926e26f57.jpeg"
     alt="The Windows Client at time of writing, 2024 June"
   />
@@ -168,7 +170,7 @@ pub(crate) struct AdvancedSettings {
 }
 ```
 
-## Tauri comes with batteries included
+### Tauri comes with batteries included
 
 The requirements for the beta Windows Client included:
 
@@ -202,7 +204,7 @@ Over the last 6 months Tauri's built-in features have saved us:
 - From starting from scratch for deep linking
 - From writing an updater at all
 
-# How does Tauri work for us?
+## How does Tauri work for us?
 
 ```text
 Firezone Client
@@ -219,7 +221,7 @@ connection library `connlib`. Tauri provides the GUI and bundling, and then we
 use [Tokio](https://github.com/tokio-rs/tokio), the popular async runtime for
 Rust, to glue everything together.
 
-## Tauri = TAO + WRY
+### Tauri = TAO + WRY
 
 ```text
 Tauri
@@ -295,6 +297,7 @@ Firezone is best viewed with
   <Image
     width={1024}
     height={768}
+    className="rounded shadow"
     src="/images/blog/using-tauri/konqueror.png"
     alt="The primordial soup from which the Web evolved"
   />
@@ -305,7 +308,7 @@ _The primordial soup from which the Web evolved_
 (Source:
 https://en.wikipedia.org/wiki/K_Desktop_Environment_2#/media/File:KDE_2.2.2.png)
 
-## Bundling 📦
+### Bundling 📦
 
 Tauri's bundlers were a huge selling point for us. It turns out `.deb` packages
 are easy to make, but making a good `.msi` installer requires some boilerplate.
@@ -363,7 +366,7 @@ smaller than the default ~100 MB for Electron, and still a bit smaller than the
 Another API could have made it smaller, but considering how little effort it
 takes to use Tauri, the download size is certainly near the Pareto front.
 
-# If Tauri is so great, why did the Linux port take twice as long as Windows?
+## If Tauri is so great, why did the Linux port take twice as long as Windows?
 
 The Linux port took twice as long because running a GUI with `sudo` in Linux
 doesn't seem to work, and we need root permissions to control DNS. On Windows,
@@ -427,14 +430,15 @@ change was also:
 
 So we got everything we wanted, just not in the order we wanted it.
 
-# What non-Tauri issues did we have?
+## What non-Tauri issues did we have?
 
-## Web views use a whole bunch of RAM
+### Web views use a whole bunch of RAM
 
 <Link href="/images/blog/using-tauri/lots-of-ram.png" target="_blank">
   <Image
     width={1598}
     height={952}
+    className="rounded shadow"
     src="/images/blog/using-tauri/lots-of-ram.png"
     alt="Windows Task Manager showing that the webviews need about 100 MB of RAM to do nothing"
   />
@@ -456,7 +460,7 @@ We can't fix this right now, but we have at least 3 long-term options:
 Hopefully some of that 100 MB is code pages we can share with Edge and other
 WebView2 apps, but I suspect most of it is HTML and JS overhead.
 
-## Ubuntu forwards and backwards compatibility is hard
+### Ubuntu forwards and backwards compatibility is hard
 
 Ubuntu 20.04 and 24.04 don't have any `webkit2gtk` versions in common.
 
@@ -501,7 +505,7 @@ but it's still painful:
 Or maybe we can install 4.1 on 20.04 somehow. Whatever we do, it won't be
 simple. Worst case, we can give up and use Electron.
 
-## WebView2 just doesn't install sometimes
+### WebView2 just doesn't install sometimes
 
 This is an upstream issue with WebView2 for Windows. Sometimes the installer
 times out in our GitHub CI runners and we don't know why.
@@ -510,6 +514,7 @@ times out in our GitHub CI runners and we don't know why.
   <Image
     width={1230}
     height={464}
+    className="rounded shadow"
     src="/images/blog/using-tauri/webview-install-hang.png"
     alt="The WebView2 installer just hanging in CI for some reason"
   />
@@ -517,7 +522,7 @@ times out in our GitHub CI runners and we don't know why.
 
 https://github.com/firezone/firezone/pull/4981
 
-## GNOME
+### GNOME
 
 On GNOME, if the menu is too long and the screen is too short, you can't open
 submenus. If the menu is barely too long, the submenus open but they're squashed
@@ -526,8 +531,9 @@ it look like a submenu at all:
 
 <Link href="/images/blog/using-tauri/squashed-menu.png" target="_blank">
   <Image
-    width={888}
-    height={724}
+    width={600}
+    height={500}
+    className="rounded shadow mx-auto"
     src="/images/blog/using-tauri/squashed-menu.png"
     alt="A very long menu displayed in GNOME, with the submenu being squashed"
   />
@@ -537,8 +543,9 @@ On Windows, it's fine. It's been fine since Windows 95, and it's still fine.
 
 <Link href="/images/blog/using-tauri/good-menu.png" target="_blank">
   <Image
-    width={1048}
-    height={654}
+    width={700}
+    height={600}
+    className="rounded shadow mx-auto"
     src="/images/blog/using-tauri/good-menu.png"
     alt="A normal-looking tray menu in Windows, same as it's been since Windows 95"
   />
@@ -552,9 +559,9 @@ argument to hint that it was launched from a notification, so we show a generic
 change that error to do nothing, then users will be confused if they try to run
 Firezone and don't notice it's already running.
 
-# What Tauri-related issues did we have?
+## What Tauri-related issues did we have?
 
-## The Tauri directory layout is odd
+### The Tauri directory layout is odd
 
 The root of a Tauri project, such as
 [`/rust/gui-client` in the Firezone repo](https://github.com/firezone/firezone/tree/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client),
@@ -571,7 +578,7 @@ top-level `/Cargo.toml`, with the Rust code under `/src`, and the web files
 under `/src-web` or something. There's probably a good reason why Tauri does
 this, but we aren't sure what that reason is.
 
-## Tauri's deb bundler is not very customizable
+### Tauri's deb bundler is not very customizable
 
 To install the systemd service on Linux, we need the deb package to have
 [post-install](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/src-tauri/deb_files/postinst)
@@ -626,13 +633,13 @@ to generate an MSI that installs and configures our connlib service. So in both
 cases we had to hijack the build process a little. Linux required more code,
 Windows required more "ChatGPT, tell me how Wix works, please."
 
-## You can't left-click on the tray menu in Windows
+### You can't left-click on the tray menu in Windows
 
 In Windows, you can't left-click on the tray menu. Tauri doesn't fire any event
 for it, even though other Windows apps handle left clicks just fine. You have to
 right-click on Tauri system trays in Windows.
 
-## Tauri apps can't exit gracefully
+### Tauri apps can't exit gracefully
 
 They can't. From `main` you decide when to start Tauri, but the only way to exit
 Tauri is to call `std::process::exit`, or let Tauri call it for you.
@@ -660,7 +667,7 @@ better from the underlying OSes and this causes him to
 ["cry (himself) to sleep at night 🤷"](https://github.com/tauri-apps/tauri/issues/8631#issuecomment-1898328992)
 Me too, Fabian. Me too.
 
-## Setting binary names is tricky
+### Setting binary names is tricky
 
 On Linux our GUI is named `firezone-client-gui`, and so is our package.
 
@@ -683,7 +690,7 @@ the bundler directly, like with the Wix files on Windows.
 This is a case where Tauri doesn't reach "Easy things are simple, hard things
 are possible."
 
-## Initializing Tauri is flaky in CI... maybe?
+### Initializing Tauri is flaky in CI... maybe?
 
 https://github.com/firezone/firezone/issues/3972#issuecomment-2010728424
 
@@ -700,7 +707,7 @@ It may not be Tauri's fault, but it's disappointing because it's nice to keep
 control of `main` longer before handing control to Tauri and doing everything
 inside callbacks.
 
-# Conclusion
+## Conclusion
 
 Tauri often feels like the training wheels on a bicycle. It gets you started,
 but after a while you can't go any further without replacing it.
