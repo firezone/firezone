@@ -40,6 +40,7 @@ jobs:
     secrets: inherit
 
   update-release-draft:
+    if: github.event_name == 'workflow_call'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
