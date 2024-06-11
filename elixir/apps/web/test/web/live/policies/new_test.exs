@@ -392,9 +392,15 @@ defmodule Web.Live.Policies.NewTest do
     identity: identity,
     conn: conn
   } do
+    account =
+      Fixtures.Accounts.update_account(account,
+        features: %{
+          policy_conditions: false
+        }
+      )
+
     group = Fixtures.Actors.create_group(account: account)
     resource = Fixtures.Resources.create_resource(account: account)
-    Domain.Config.put_env_override(:policy_conditions, false)
 
     attrs = %{
       actor_group_id: group.id,
