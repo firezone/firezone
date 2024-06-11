@@ -25,7 +25,7 @@ export default function Page() {
         <div className="grid divide-y">
           <SummaryCard
             title="Using Tauri to build a cross-platform security app"
-            date="Jun 3, 2024"
+            date="Jun 11, 2024"
             href="/blog/using-tauri"
             authorName="ReactorScram"
             authorAvatarSrc="/images/avatars/reactorscram.png"
