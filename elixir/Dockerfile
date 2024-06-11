@@ -221,12 +221,12 @@ RUN npm i -g pnpm
 
 # Copy only the files needed to fetch the dependencies,
 # to leverage Docker layer cache for them
-RUN echo "0.0.0" > VERSION
 COPY mix.exs mix.lock ./
 COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
 COPY apps/api/mix.exs ./apps/api/mix.exs
 COPY config config
+COPY sha.exs .
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
@@ -243,7 +243,6 @@ RUN cd apps/web \
 
 # Tailwind needs assets and app directories to look for used classes,
 # so we can't optimize further at this stage
-COPY VERSION ./
 COPY priv priv
 COPY apps apps
 
@@ -297,6 +296,10 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 # Only copy the final release from the build stage
 ARG MIX_ENV="prod"
 COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
+
+# Populate the SHA pointing to this build
+ARG GIT_SHA
+RUN echo ${GIT_SHA} > ./GIT_SHA
 
 # Change user to "default" to limit runtime privileges
 USER default
