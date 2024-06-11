@@ -96,7 +96,7 @@ polish and style it to match the website branding.
     width={1339}
     height={555}
     src="/images/blog/using-tauri/firezone-3a4f2cf.jpeg"
-    alt=""
+    alt="The Windows Client shortly before MVP, 2024 Jan 04"
   />
 </Link>
 
@@ -107,11 +107,11 @@ _The Windows Client shortly before MVP, 2024 Jan 04_
     width={2694}
     height={1090}
     src="/images/blog/using-tauri/firezone-926e26f57.jpeg"
-    alt=""
+    alt="The Windows Client at time of writing, 2024 June"
   />
 </Link>
 
-_The Windows Client, at time of writing_
+_The Windows Client, at time of writing, 2024 June_
 
 The TypeScript / JavaScript inside the web view can call into `async` Rust
 functions, and from there we have access to the usual Tokio facilities like mpsc
@@ -312,11 +312,11 @@ are easy to make, but making a good `.msi` installer requires some boilerplate.
 We originally wanted to ship a portable single-file executable, but two
 requirements made that impractical on both platforms:
 
-- Controlling DNS and running the Firezone tunnel requires admin / sudo
-  privileges. We don't want admin privilege to be a requirement for day-to-day
-  use of Firezone, so we install a service that has the right privileges, and
-  that service takes commands from the GUI. Installing a service from a portable
-  executable makes it not portable.
+- Controlling DNS and running connlib requires admin / sudo privileges. We don't
+  want admin privilege to be a requirement for day-to-day use of Firezone, so we
+  install a service that has the right privileges, and that service takes
+  commands from the GUI. Installing a service from a portable executable makes
+  it not portable.
 - The webview libraries are shared on both platforms, so if the system doesn't
   have them installed, we'd have to take admin privilege to install them on the
   first run of the GUI, which is not convenient, and doesn't match how Debian /
@@ -375,7 +375,7 @@ counting the WebView renderer processes)
 |    Tauri GUI process      |
 |                           |
 |   +-------------------+   |
-|   |   Secure tunnel   |   |
+|   |      connlib      |   |
 |   +-------------------+   |
 +---------------------------+
 ```
@@ -396,7 +396,7 @@ So we gave up on that model and split the program into 2 top-level processes:
 
 ```text
 +-----------------------+                                             +-------------------+
-|   Tauri GUI process   | <------ Inter-process communication ------> |   Secure tunnel   |
+|   Tauri GUI process   | <------ Inter-process communication ------> |      connlib      |
 +-----------------------+                                             +-------------------+
 ```
 
@@ -476,9 +476,9 @@ unless you cheat and add another repo to install the 4.0 package from. Tauri
 2.x, still in beta, won't work on 20.04 since it requires 4.1.
 
 Tauri does offer an AppImage option to bundle the webview, but this increases
-the download size from ~10 MB to ~100 MB, we can't install our tunnel service if
-we're running from an AppImage, and AppImages built on 20.04 have rendering bugs
-on 24.04 anyway.
+the download size from ~10 MB to ~100 MB, we can't install our connlib service
+if we're running from an AppImage, and AppImages built on 20.04 have rendering
+bugs on 24.04 anyway.
 
 Switching to another GUI framework might work, but since GTK+ is already
 involved in this incompatibility issue, it's likely that GTK+ itself has some
@@ -533,14 +533,14 @@ it look like a submenu at all:
   />
 </Link>
 
-On Windows it's fine. It's been fine since Windows 95, and it's still fine.
+On Windows, it's fine. It's been fine since Windows 95, and it's still fine.
 
 <Link href="/images/blog/using-tauri/good-menu.png" target="_blank">
   <Image
     width={1048}
     height={654}
     src="/images/blog/using-tauri/good-menu.png"
-    alt="A very long menu displayed in GNOME, with the submenu being squashed"
+    alt="A normal-looking tray menu in Windows, same as it's been since Windows 95"
   />
 </Link>
 
@@ -622,7 +622,7 @@ but Tauri's bundler is based on
 
 I'm surprised these scripts are not in Tauri's use cases. On Windows, we
 [override Tauri's Wix files](https://github.com/firezone/firezone/blob/2a1187bd9c4d12960ef0000df1b6bd9bb361bf10/rust/gui-client/src-tauri/tauri.conf.json#L44-L45)
-to generate an MSI that installs and configures our tunnel service. So in both
+to generate an MSI that installs and configures our connlib service. So in both
 cases we had to hijack the build process a little. Linux required more code,
 Windows required more "ChatGPT, tell me how Wix works, please."
 
