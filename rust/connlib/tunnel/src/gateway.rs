@@ -137,10 +137,10 @@ pub struct GatewayState {
 }
 
 impl GatewayState {
-    pub(crate) fn new(private_key: StaticSecret) -> Self {
+    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key),
+            node: ServerNode::new(private_key.into()),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
