@@ -68,7 +68,7 @@ fn set_permissions(dir: &Path) -> Result<()> {
 /// Does nothing on non-Linux systems
 #[cfg(not(target_os = "linux"))]
 #[allow(clippy::unnecessary_wraps)]
-fn set_permissions(_f: &fs::File) -> Result<()> {
+fn set_permissions(_: &Path) -> Result<()> {
     Ok(())
 }
 
