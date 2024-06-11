@@ -387,6 +387,47 @@ defmodule Web.Live.Policies.NewTest do
     assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
   end
 
+  test "removes conditions in the backend when policy_conditions is false", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account =
+      Fixtures.Accounts.update_account(account,
+        features: %{
+          policy_conditions: false
+        }
+      )
+
+    group = Fixtures.Actors.create_group(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    attrs = %{
+      actor_group_id: group.id,
+      conditions: %{
+        current_utc_datetime: %{},
+        provider_id: %{},
+        remote_ip: %{},
+        remote_ip_location_region: %{}
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource}")
+
+    assert lv
+           |> form("form", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Domain.Policies.Policy, %{actor_group_id: group.id})
+    assert policy.resource_id == resource.id
+    assert policy.conditions == []
+
+    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+  end
+
   test "redirects back to site when a new policy is created with pre-set site_id", %{
     account: account,
     identity: identity,
