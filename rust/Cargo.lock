@@ -1288,9 +1288,9 @@ dependencies = [
 
 [[package]]
 name = "crash-handler"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed56890cb467e9ff5e6fe95254571beebb301990b5c7df5e97a7b203e4f0c4f0"
+checksum = "ff62668cee357a18a67b5ce55bdef533d2c108d8eded362408f08face8731a71"
 dependencies = [
  "cfg-if",
  "crash-context",
