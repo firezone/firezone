@@ -203,7 +203,7 @@ dependencies {
     implementation("com.squareup.moshi:moshi:1.15.1")
 
     // Gson
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
