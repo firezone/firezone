@@ -740,11 +740,6 @@ impl Allocation {
             return Some(FreeReason::AuthenticationError);
         }
 
-        debug_assert!(
-            pending_work,
-            "Expect a reason for why we don't have any pending work"
-        );
-
         None
     }
 
