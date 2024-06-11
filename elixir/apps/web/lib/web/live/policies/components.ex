@@ -12,7 +12,7 @@ defmodule Web.Policies.Components do
     {"U", "Sunday"}
   ]
 
-  attr :policy, :map, required: true
+  attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
     ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
@@ -285,11 +285,19 @@ defmodule Web.Policies.Components do
             to: "#policy_conditions_remote_ip_location_region_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_remote_ip_location_region_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_remote_ip_location_region_chevron"
+          )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           Client location
-          <.icon id="policy_conditions_remote_ip_location_region_chevron" name="hero-bars-3" />
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <.icon id="policy_conditions_remote_ip_location_region_chevron" name="hero-chevron-down" class="w-5 h-5" />
+        </span>
         </legend>
       </div>
 
@@ -358,10 +366,19 @@ defmodule Web.Policies.Components do
             to: "#policy_conditions_remote_ip_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_remote_ip_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_remote_ip_chevron"
+          )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
-          IP address <.icon id="policy_conditions_remote_ip_chevron" name="hero-bars-3" />
+          IP address
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+            <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
+          </span>
         </legend>
       </div>
 
@@ -430,11 +447,19 @@ defmodule Web.Policies.Components do
             to: "#policy_conditions_provider_id_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_provider_id_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_provider_id_chevron"
+          )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           Authentication Provider
-          <.icon id="policy_conditions_provider_id_chevron" name="hero-bars-3" />
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <.icon id="policy_conditions_provider_id_chevron" name="hero-chevron-down" class="w-5 h-5" />
+        </span>
         </legend>
       </div>
 
@@ -513,11 +538,19 @@ defmodule Web.Policies.Components do
             to: "#policy_conditions_current_utc_datetime_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_current_utc_datetime_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_current_utc_datetime_chevron"
+          )
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
           Current time
-          <.icon id="policy_conditions_current_utc_datetime_chevron" name="hero-bars-3" />
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+          <.icon id="policy_conditions_current_utc_datetime_chevron" name="hero-chevron-down" class="w-5 h-5" />
+        </span>
         </legend>
       </div>
 
