@@ -23,7 +23,11 @@ use std::{
 };
 
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
-const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long we will wait for the upstream DNS server to respond.
+///
+/// This matches the default of `dig`: <https://linux.die.net/man/1/dig>.
+const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
