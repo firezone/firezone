@@ -195,6 +195,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
             .with(1, cidr_resource(8).prop_map(Transition::AddCidrResource))
+            .with(1, roam_client())
             .with(
                 1,
                 prop_oneof![
@@ -363,6 +364,16 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
+            Transition::RoamClient {
+                ip4_socket,
+                ip6_socket,
+            } => {
+                state.client.ip4_socket.clone_from(ip4_socket);
+                state.client.ip6_socket.clone_from(ip6_socket);
+
+                // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
+                state.client_connected_cidr_resources.clear();
+            }
         };
 
         state
@@ -480,6 +491,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.client_cidr_resources.iter().any(|(_, r)| &r.id == id)
                     || state.client_dns_resources.contains_key(id)
             }
+            Transition::RoamClient { .. } => true,
         }
     }
 }

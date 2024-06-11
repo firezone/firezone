@@ -760,6 +760,7 @@ impl<R> TestNode<R> {
             )),
             Event::InvalidateIceCandidate { .. }
             | Event::ConnectionEstablished(_)
+            | Event::ConnectionsCleared(_)
             | Event::ConnectionFailed(_) => None,
         })
     }
@@ -773,9 +774,10 @@ impl<R> TestNode<R> {
     fn failed_connections(&self) -> impl Iterator<Item = (u64, Instant)> + '_ {
         self.events.iter().filter_map(|(e, instant)| match e {
             Event::ConnectionFailed(id) => Some((*id, *instant)),
-            Event::NewIceCandidate { .. } => None,
-            Event::InvalidateIceCandidate { .. } => None,
-            Event::ConnectionEstablished(_) => None,
+            Event::NewIceCandidate { .. }
+            | Event::InvalidateIceCandidate { .. }
+            | Event::ConnectionEstablished(_)
+            | Event::ConnectionsCleared(_) => None,
         })
     }
 
@@ -809,8 +811,9 @@ impl<R> TestNode<R> {
                 } => other
                     .span
                     .in_scope(|| other.node.remove_remote_candidate(connection, candidate)),
-                Event::ConnectionEstablished(_) => {}
-                Event::ConnectionFailed(_) => {}
+                Event::ConnectionEstablished(_)
+                | Event::ConnectionFailed(_)
+                | Event::ConnectionsCleared(_) => {}
             };
         }
     }

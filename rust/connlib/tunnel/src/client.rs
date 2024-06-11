@@ -818,6 +818,15 @@ impl ClientState {
                             resources: self.resources(),
                         });
                 }
+                snownet::Event::ConnectionsCleared(ids) => {
+                    for id in ids {
+                        self.cleanup_connected_gateway(&id);
+                    }
+                    self.buffered_events
+                        .push_back(ClientEvent::ResourcesChanged {
+                            resources: self.resources(),
+                        });
+                }
                 snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
@@ -863,8 +872,9 @@ impl ClientState {
     }
 
     pub(crate) fn reconnect(&mut self, now: Instant) {
-        tracing::info!("Network change detected, refreshing connections");
-        self.node.reconnect(now)
+        tracing::info!("Network change detected");
+        self.node.reconnect(now);
+        self.handle_timeout(now); // Ensure we process all events.
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {

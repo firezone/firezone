@@ -210,6 +210,10 @@ impl StateMachineTest for TunnelTest {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.client.update_upstream_dns(servers);
             }
+            Transition::RoamClient {
+                ip4_socket,
+                ip6_socket,
+            } => state.client.roam(ip4_socket, ip6_socket, state.now),
         };
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
@@ -502,6 +506,11 @@ impl TunnelTest {
         payload: &[u8],
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
+
+        if self.client.old_sockets.contains(&dst) {
+            tracing::debug!("Dropping packet to {dst} because the client roamed away from this network interface");
+            return ControlFlow::Break(());
+        }
 
         if !self.client.wants(dst) {
             return ControlFlow::Continue(());
