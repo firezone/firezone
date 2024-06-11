@@ -366,7 +366,7 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(private_key: StaticSecret) -> Self {
+    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
         Self {
             awaiting_connection: Default::default(),
             resources_gateways: Default::default(),
@@ -383,7 +383,7 @@ impl ClientState {
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
             next_dns_refresh: Default::default(),
-            node: ClientNode::new(private_key),
+            node: ClientNode::new(private_key.into()),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
