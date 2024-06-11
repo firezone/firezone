@@ -138,7 +138,7 @@ defmodule Web.Policies.New do
       if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
         params
       else
-        Map.delete(params, "conditions")
+        Map.put(params, "conditions", [])
       end
 
     with {:ok, policy} <- Policies.create_policy(params, socket.assigns.subject) do

@@ -296,8 +296,12 @@ defmodule Web.Policies.Components do
         <legend class="flex justify-between items-center text-neutral-700">
           Client location
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
-          <.icon id="policy_conditions_remote_ip_location_region_chevron" name="hero-chevron-down" class="w-5 h-5" />
-        </span>
+            <.icon
+              id="policy_conditions_remote_ip_location_region_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
         </legend>
       </div>
 
@@ -458,8 +462,12 @@ defmodule Web.Policies.Components do
         <legend class="flex justify-between items-center text-neutral-700">
           Authentication Provider
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
-          <.icon id="policy_conditions_provider_id_chevron" name="hero-chevron-down" class="w-5 h-5" />
-        </span>
+            <.icon
+              id="policy_conditions_provider_id_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
         </legend>
       </div>
 
@@ -549,8 +557,12 @@ defmodule Web.Policies.Components do
         <legend class="flex justify-between items-center text-neutral-700">
           Current time
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
-          <.icon id="policy_conditions_current_utc_datetime_chevron" name="hero-chevron-down" class="w-5 h-5" />
-        </span>
+            <.icon
+              id="policy_conditions_current_utc_datetime_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
         </legend>
       </div>
 
