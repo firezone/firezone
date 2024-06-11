@@ -17,7 +17,7 @@ plugins {
     id("com.android.application") version "8.3.0" apply false
     id("com.google.firebase.appdistribution") version "4.2.0" apply false
     id("com.google.dagger.hilt.android") version "2.51.1" apply false
-    id("com.google.gms.google-services") version "4.4.1" apply false
+    id("com.google.gms.google-services") version "4.4.2" apply false
     id("org.mozilla.rust-android-gradle.rust-android") version "0.9.4" apply false
     id("com.google.firebase.crashlytics") version "3.0.1" apply false
 }
