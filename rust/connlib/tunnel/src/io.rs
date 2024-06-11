@@ -23,6 +23,7 @@ use std::{
 };
 
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
+const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
@@ -66,10 +67,7 @@ impl Io {
             timeout: None,
             sockets,
             upstream_dns_servers: HashMap::default(),
-            forwarded_dns_queries: FuturesTupleSet::new(
-                Duration::from_secs(60),
-                DNS_QUERIES_QUEUE_SIZE,
-            ),
+            forwarded_dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, DNS_QUERIES_QUEUE_SIZE),
         })
     }
 
@@ -122,7 +120,7 @@ impl Io {
         tracing::info!("Setting new DNS resolvers");
 
         self.forwarded_dns_queries =
-            FuturesTupleSet::new(Duration::from_secs(60), DNS_QUERIES_QUEUE_SIZE);
+            FuturesTupleSet::new(DNS_QUERY_TIMEOUT, DNS_QUERIES_QUEUE_SIZE);
         self.upstream_dns_servers = create_resolvers(dns_servers);
     }
 
