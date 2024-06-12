@@ -13,7 +13,7 @@ resource "google_dns_record_set" "dns-caa" {
   ttl = 3600
 }
 
-# Website
+# Website -- these redirect to firezone.dev
 
 resource "google_dns_record_set" "website-ipv6" {
   project      = module.google-cloud-project.project.project_id
@@ -45,29 +45,7 @@ resource "google_dns_record_set" "website-www-redirect" {
   ttl     = 3600
 }
 
-# Our team's Firezone instance(s)
-
-resource "google_dns_record_set" "dogfood" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "A"
-  name    = "dogfood.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["45.63.56.50"]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "awsfz1" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "awsfz1.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["ec2-52-200-241-107.compute-1.amazonaws.com."]
-  ttl     = 3600
-}
-
-# Our MAIN discourse instance, do not change this!
+# Our community forum, discourse
 
 resource "google_dns_record_set" "discourse" {
   project      = module.google-cloud-project.project.project_id
@@ -77,50 +55,6 @@ resource "google_dns_record_set" "discourse" {
   name    = "discourse.${module.google-cloud-dns.dns_name}"
   rrdatas = ["45.77.86.150"]
   ttl     = 300
-}
-
-# VPN-protected DNS records
-
-resource "google_dns_record_set" "metabase" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "A"
-  name    = "metabase.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["10.5.96.5"]
-  ttl     = 3600
-}
-
-# Wireguard test servers
-
-resource "google_dns_record_set" "wg0" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "A"
-  name    = "wg0.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["54.151.104.17"]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "wg1" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "A"
-  name    = "wg1.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["54.183.57.227"]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "wg2" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "A"
-  name    = "wg2.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["54.177.212.45"]
-  ttl     = 3600
 }
 
 # Connectivity check servers
@@ -157,16 +91,6 @@ resource "google_dns_record_set" "ping-ipv6" {
 }
 
 # Telemetry servers
-
-resource "google_dns_record_set" "old-ipv4" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "A"
-  name    = "old-telemetry.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["143.244.211.244"]
-  ttl     = 3600
-}
 
 resource "google_dns_record_set" "t-ipv4" {
   project      = module.google-cloud-project.project.project_id
@@ -210,56 +134,7 @@ resource "google_dns_record_set" "telemetry-ipv6" {
 
 # Third-party services
 
-## Sendgrid
-resource "google_dns_record_set" "sendgrid-project" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "23539796.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["sendgrid.net."]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "sendgrid-return-1" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "em3706.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["u23539796.wl047.sendgrid.net."]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "sendgrid-return-2" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "url6320.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["sendgrid.net."]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "sendgrid-domainkey1" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "s1._domainkey.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["s1.domainkey.u23539796.wl047.sendgrid.net."]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "sendgrid-domainkey2" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "s2._domainkey.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["s2.domainkey.u23539796.wl047.sendgrid.net."]
-  ttl     = 3600
-}
+# Mailgun
 
 resource "google_dns_record_set" "mailgun-dkim" {
   project      = module.google-cloud-project.project.project_id
@@ -276,31 +151,6 @@ resource "google_dns_record_set" "mailgun-dkim" {
   rrdatas = [
     "\"k=rsa;\" \"p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwYyTkBcuzLi1l+bHezuxJlmmpSdabjHY67YxWG8chz7pd12IfbE7JDM4Qi+AYq6Wp6ZDqEukFHIMJjz2PceHuf/5sgJazWLwBWp6DN6J2/WXgs2vWBWYJ0Kpj6l+p2t8jNrPNNVZrkO7BT2AmJAV5c9bemXkY801XkATAvAzvHs7pMsvjVmALWhh9eQoflVjYZUBwSDWjItd\" \"flK4IlrU5+yM5xHRIshazUmWiM8b6lBzV7WKLrDir+Td8NdBAwkFnlxIuqePlfXqIA3190Mk03PqOjlqhuqjZVg441e4A2TwlSShOv9EWtwseKwO1uWiky5uKGo4mlNPU4aZAi/UFwIDAQAB\""
   ]
-}
-
-# Postmark
-
-resource "google_dns_record_set" "postmark-dkim" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  name = "20230606183724pm._domainkey.${module.google-cloud-dns.dns_name}"
-  type = "TXT"
-  ttl  = 3600
-
-  rrdatas = [
-    "k=rsa;p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCGB97X54FpoXNFuuPpI2u18ymEHBvNGfaRVXn9KEKAnSIfayJ6V3m5C5WGmfv579gyvfdDm04NAVBMcxe6mkjZHsZwds7mPjOYmRlsCClcy6ITqHwPdGSqP0f4zes1AT3Sr1GCQkl/2CdjWzc7HLoyViPxcH17yJN8HlfCYg5waQIDAQAB"
-  ]
-}
-
-resource "google_dns_record_set" "postmark-return" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "CNAME"
-  name    = "pm-bounces.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["pm.mtasv.net."]
-  ttl     = 3600
 }
 
 # Google Workspace
