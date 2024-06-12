@@ -263,7 +263,7 @@ locals {
     # Auth
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
-      value = "email,openid_connect,google_workspace,token,microsoft_entra,okta"
+      value = "email,openid_connect,google_workspace,token,microsoft_entra,okta,jumpcloud"
     },
     # Directory Sync
     {
