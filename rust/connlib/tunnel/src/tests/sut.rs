@@ -158,20 +158,12 @@ impl StateMachineTest for TunnelTest {
                 .client
                 .add_resource(ResourceDescription::Dns(resource)),
             Transition::SendICMPPacketToNonResourceIp {
+                src,
                 dst,
                 seq,
                 identifier,
-            } => {
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
-
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToCidrResource {
+            | Transition::SendICMPPacketToCidrResource {
                 src,
                 dst,
                 seq,

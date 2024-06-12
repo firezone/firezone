@@ -268,10 +268,28 @@ impl ReferenceStateMachine for ReferenceState {
 
         let resolved_non_resource_ips = state.resolved_ips_for_non_resources();
 
-        if !resolved_non_resource_ips.is_empty() {
+        if !resolved_non_resource_ips.is_empty()
+            && resolved_non_resource_ips.iter().any(|ip| ip.is_ipv4())
+        {
             strategies.push((
                 1,
-                ping_random_ip(sample::select(resolved_non_resource_ips)).boxed(),
+                ping_random_ip(
+                    packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
+                    sample::select(resolved_non_resource_ips.clone()),
+                )
+                .boxed(),
+            ));
+        }
+        if !resolved_non_resource_ips.is_empty()
+            && resolved_non_resource_ips.iter().any(|ip| ip.is_ipv6())
+        {
+            strategies.push((
+                1,
+                ping_random_ip(
+                    packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
+                    sample::select(resolved_non_resource_ips),
+                )
+                .boxed(),
             ));
         }
 
@@ -443,6 +461,7 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                ..
             } => {
                 let is_valid_icmp_packet = state.is_valid_icmp_packet(seq, identifier);
                 let is_cidr_resource = state.cidr_resource_by_ip(*dst).is_some();

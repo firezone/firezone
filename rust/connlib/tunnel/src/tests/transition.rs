@@ -23,6 +23,7 @@ pub(crate) enum Transition {
     AddCidrResource(ResourceDescriptionCidr),
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
+        src: IpAddr,
         dst: IpAddr,
         seq: u16,
         identifier: u16,
@@ -71,10 +72,12 @@ pub(crate) enum Transition {
 }
 
 pub(crate) fn ping_random_ip(
-    ip: impl Strategy<Value = IpAddr>,
+    src: impl Strategy<Value = IpAddr>,
+    dst: impl Strategy<Value = IpAddr>,
 ) -> impl Strategy<Value = Transition> {
-    (ip, any::<u16>(), any::<u16>()).prop_map(|(dst, seq, identifier)| {
+    (src, dst, any::<u16>(), any::<u16>()).prop_map(|(src, dst, seq, identifier)| {
         Transition::SendICMPPacketToNonResourceIp {
+            src,
             dst,
             seq,
             identifier,
