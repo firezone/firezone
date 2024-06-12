@@ -204,7 +204,6 @@ jobs:
 
           # Override version by setting it inside cross container if it's provided
           ${{ matrix.name.version && format('CROSS_CONTAINER_OPTS="--env FIREZONE_PACKAGE_VERSION={0}"', matrix.name.version) }} \
-            FIREZONE_PACKAGE_NAME="${{ matrix.name.package }}" \
             cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for Docker images

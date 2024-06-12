@@ -33,7 +33,6 @@ jobs:
             syms-artifact: rust/gui-client/firezone-client-gui-linux_1.0.7_x86_64.dwp
             # mark:next-gui-version
             pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.0.7_x86_64.deb
-            firezone-package-name: linux-gui
           - runs-on: windows-2019
             # mark:next-gui-version
             binary-dest-path: firezone-client-gui-windows_1.0.7_x86_64
@@ -43,7 +42,6 @@ jobs:
             syms-artifact: rust/gui-client/firezone-client-gui-windows_1.0.7_x86_64.pdb
             # mark:next-gui-version
             pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.0.7_x86_64.msi
-            firezone-package-name: windows-gui
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
@@ -53,7 +51,6 @@ jobs:
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
       # mark:next-gui-version
       FIREZONE_PACKAGE_VERSION: 1.0.7
-      FIREZONE_PACKAGE_NAME: ${{ matrix.firezone-package-name }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
