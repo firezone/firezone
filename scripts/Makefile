@@ -37,8 +37,8 @@ endif
 
 # Update website changelog and docs to current version and Xcode project file to next version
 apple-version:
-	@find website -path website/node_modules -prune -o -path website/.next -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-apple-version)/g;}' {} \;
-	@find swift -type f -name "project.pbxproj" -exec sed $(SEDARG) -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(next-apple-version);/' {} \;
+	@find ./website -path ./website/node_modules -prune -o -path ./website/.next -prune -o -type f -o -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-apple-version)/g;}' {} \;
+	@find swift -type f -name "project.pbxproj" -o -exec sed $(SEDARG) -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(next-apple-version);/' {} \;
 
 # Update website changelog to current version and Gradle files to next version
 android-version:
