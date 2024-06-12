@@ -136,12 +136,7 @@ impl StateMachineTest for TunnelTest {
         this
     }
 
-    /// Apply a generated state transition to our system under test and assert against the reference state machine.
-    ///
-    /// This is equivalent to "arrange - act - assert" of a regular test:
-    /// 1. We start out in a certain state (arrange)
-    /// 2. We apply a [`Transition`] (act)
-    /// 3. We assert against the reference state (assert)
+    /// Apply a generated state transition to our system under test.
     fn apply(
         mut state: Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
@@ -230,16 +225,22 @@ impl StateMachineTest for TunnelTest {
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
+        state
+    }
+
+    // Assert against the reference state machine.
+    fn check_invariants(
+        state: &Self::SystemUnderTest,
+        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
+    ) {
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        assert_icmp_packets_properties(&mut state, ref_state);
-        assert_dns_packets_properties(&state, ref_state);
+        assert_icmp_packets_properties(state, ref_state);
+        assert_dns_packets_properties(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
-
-        state
     }
 }
 
