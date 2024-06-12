@@ -42,8 +42,6 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 pub const DEFAULT_MTU: u32 = 1280;
 
-const LIB_NAME: &str = env!("CARGO_PRIMARY_PACKAGE");
-
 pub fn keypair() -> (StaticSecret, PublicKey) {
     let private_key = StaticSecret::random_from_rng(OsRng);
     let public_key = PublicKey::from(&private_key);
@@ -67,9 +65,10 @@ pub fn get_user_agent(os_version_override: Option<String>) -> String {
 
     let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
-    let lib_version = option_env!("FIREZONE_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-    let lib_name = LIB_NAME;
-    format!("{os_type}/{os_version}{additional_info}{lib_name}/{lib_version}")
+
+    let name = option_env!("FIREZONE_PACKAGE_NAME").unwrap_or(env!("CARGO_PKG_NAME"));
+    let version = option_env!("FIREZONE_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    format!("{os_type}/{os_version}{additional_info}{name}/{version}")
 }
 
 fn additional_info() -> String {

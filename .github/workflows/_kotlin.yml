@@ -52,6 +52,7 @@ jobs:
         env:
           # mark:next-android-version
           FIREZONE_PACKAGE_VERSION: 1.0.4
+          FIREZONE_PACKAGE_NAME: android
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
