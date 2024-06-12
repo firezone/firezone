@@ -135,12 +135,7 @@ impl StateMachineTest for TunnelTest {
         this
     }
 
-    /// Apply a generated state transition to our system under test and assert against the reference state machine.
-    ///
-    /// This is equivalent to "arrange - act - assert" of a regular test:
-    /// 1. We start out in a certain state (arrange)
-    /// 2. We apply a [`Transition`] (act)
-    /// 3. We assert against the reference state (assert)
+    /// Apply a generated state transition to our system under test.
     fn apply(
         mut state: Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
@@ -232,6 +227,7 @@ impl StateMachineTest for TunnelTest {
         state
     }
 
+    // Assert against the reference state machine.
     fn check_invariants(
         state: &Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
