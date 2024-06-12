@@ -94,13 +94,6 @@ export default function Team() {
       linkedinUrl: new URL("https://www.linkedin.com/in/thomas-eizinger"),
     },
     {
-      name: "Roopesh Chander",
-      title: "Apple Platform Engineer",
-      imgSrc: gravatar("roop@roopc.net", 200),
-      xUrl: new URL("https://x.com/roopcnet"),
-      githubUrl: new URL("https://github.com/roop"),
-    },
-    {
       name: "Brian Manifold",
       title: "Senior Full-stack Engineer",
       imgSrc: "/images/avatars/brian.png",
@@ -110,9 +103,9 @@ export default function Team() {
       ),
     },
     {
-      name: "Trisha",
+      name: "ReactorScram",
       title: "Senior Systems Engineer",
-      imgSrc: gravatar("trish@firezone.dev", 200),
+      imgSrc: "/images/avatars/reactorscram.png",
       githubUrl: new URL("https://github.com/ReactorScram"),
     },
     {

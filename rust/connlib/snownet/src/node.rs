@@ -29,7 +29,7 @@ use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
 use stun_codec::rfc5389::attributes::{Realm, Username};
-use tracing::{field, info_span, Span};
+use tracing::info_span;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -429,13 +429,7 @@ where
         self.bindings_and_allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(
-                id,
-                now,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                &mut self.pending_events,
-            );
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -457,15 +451,15 @@ where
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
-        self.allocations.retain(|id, allocation| {
-            if allocation.can_be_freed() {
-                tracing::info!(%id, "Freeing memory of allocation");
+        self.allocations
+            .retain(|id, allocation| match allocation.can_be_freed() {
+                Some(e) => {
+                    tracing::info!(%id, "Disconnecting from relay; {e}");
 
-                return false;
-            }
-
-            true
-        });
+                    false
+                }
+                None => true,
+            });
         self.connections.remove_failed(&mut self.pending_events);
     }
 
@@ -514,7 +508,7 @@ where
                     .current_candidates()
                     .filter(|c| c.kind() == CandidateKind::Relayed)
                 {
-                    agent.invalidate_candidate(&candidate);
+                    remove_local_candidate(id, agent, &candidate, &mut self.pending_events);
                 }
             }
         }
@@ -1165,6 +1159,15 @@ fn add_local_candidate<TId>(
 ) where
     TId: fmt::Display,
 {
+    // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
+    if candidate.kind() == CandidateKind::ServerReflexive {
+        pending_events.push_back(Event::NewIceCandidate {
+            connection: id,
+            candidate: candidate.to_sdp_string(),
+        });
+        return;
+    }
+
     let is_new = agent.add_local_candidate(candidate.clone());
 
     if is_new {
@@ -1183,6 +1186,14 @@ fn remove_local_candidate<TId>(
 ) where
     TId: fmt::Display,
 {
+    if candidate.kind() == CandidateKind::ServerReflexive {
+        pending_events.push_back(Event::NewIceCandidate {
+            connection: id,
+            candidate: candidate.to_sdp_string(),
+        });
+        return;
+    }
+
     let was_present = agent.invalidate_candidate(candidate);
 
     if was_present {
@@ -1445,7 +1456,6 @@ where
         now: Instant,
         allocations: &mut HashMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
-        pending_events: &mut VecDeque<Event<TId>>,
     ) where
         TId: fmt::Display + Copy,
         RId: Copy + fmt::Display,
@@ -1510,40 +1520,19 @@ where
                     source,
                     ..
                 } => {
-                    let nominated_candidate = self
-                        .local_candidate(source)
-                        .expect("to only nominate existing candidates")
-                        .clone();
-
-                    let remote_socket = match nominated_candidate.kind() {
-                        CandidateKind::Relayed => {
-                            let relay = allocations.iter().find_map(|(relay, allocation)| {
-                                allocation.has_socket(source).then_some(*relay)
-                            });
-
-                            let Some(relay) = relay else {
-                                debug_assert!(
-                                    false,
-                                    "Should only nominate candidates from known relays"
-                                );
-                                continue;
-                            };
-
-                            PeerSocket::Relay {
-                                relay,
-                                dest: destination,
-                            }
-                        }
-                        CandidateKind::ServerReflexive | CandidateKind::Host => {
-                            PeerSocket::Direct {
-                                dest: destination,
-                                source,
-                            }
-                        }
-                        CandidateKind::PeerReflexive => {
-                            unreachable!("local candidate is never `PeerReflexive`")
-                        }
-                    };
+                    let remote_socket = allocations
+                        .iter()
+                        .find_map(|(relay, allocation)| {
+                            allocation.has_socket(source).then_some(*relay)
+                        })
+                        .map(|relay| PeerSocket::Relay {
+                            relay,
+                            dest: destination,
+                        })
+                        .unwrap_or(PeerSocket::Direct {
+                            source,
+                            dest: destination,
+                        });
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting {
@@ -1587,7 +1576,6 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.invalidate_candiates(id, nominated_candidate, pending_events);
                     self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -1748,42 +1736,6 @@ where
             .expect("cannot force handshake while not connected");
 
         transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
-    }
-
-    /// Invalidates all local candidates with a lower or equal priority compared to the nominated one.
-    ///
-    /// Each time we nominate a candidate pair, we don't really want to keep all the others active because it creates a lot of noise.
-    /// At the same time, we want to retain trickle ICE and allow the ICE agent to find a _better_ pair, hence we invalidate by priority.
-    #[tracing::instrument(level = "debug", skip_all, fields(nominated_prio))]
-    fn invalidate_candiates<TId>(
-        &mut self,
-        id: TId,
-        nominated: Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
-    ) where
-        TId: Copy + fmt::Display,
-    {
-        Span::current().record("nominated_prio", field::display(&nominated.prio()));
-
-        let irrelevant_candidates = self
-            .agent
-            .local_candidates()
-            .iter()
-            .filter(|c| c.prio() <= nominated.prio() && c != &&nominated)
-            .cloned()
-            .collect::<Vec<_>>();
-
-        for candidate in irrelevant_candidates {
-            remove_local_candidate(id, &mut self.agent, &candidate, pending_events)
-        }
-    }
-
-    fn local_candidate(&self, source: SocketAddr) -> Option<&Candidate> {
-        self.agent
-            .local_candidates()
-            .iter()
-            .filter(|c| !c.discarded())
-            .find(|c| c.addr() == source)
     }
 
     fn socket(&self) -> Option<PeerSocket<RId>> {

@@ -24,6 +24,19 @@ export default function Page() {
         </div>
         <div className="grid divide-y">
           <SummaryCard
+            title="Using Tauri to build a cross-platform security app"
+            date="Jun 11, 2024"
+            href="/blog/using-tauri"
+            authorName="ReactorScram"
+            authorAvatarSrc="/images/avatars/reactorscram.png"
+            type="Learn"
+          >
+            <p className="mb-2">
+              We chose Tauri over other frameworks because it was the fastest
+              way to get the Firezone Client working on Linux and Windows.
+            </p>
+          </SummaryCard>
+          <SummaryCard
             title="How DNS Works in Firezone"
             date="May 8, 2024"
             href="/blog/how-dns-works-in-firezone"

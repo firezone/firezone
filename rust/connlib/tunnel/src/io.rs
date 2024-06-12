@@ -126,14 +126,13 @@ impl Io {
         self.upstream_dns_servers = create_resolvers(dns_servers);
     }
 
-    pub fn perform_dns_query(&mut self, query: DnsQuery<'static>) {
+    pub fn perform_dns_query(&mut self, query: DnsQuery<'static>) -> Result<(), DnsQueryError> {
         let upstream = query.query.destination();
-        let Some(resolver) = self.upstream_dns_servers.get(&upstream).cloned() else {
-            tracing::warn!(%upstream, "Dropping DNS query because of unknown upstream DNS server");
-            return;
-        };
-
-        let query = query.into_owned();
+        let resolver = self
+            .upstream_dns_servers
+            .get(&upstream)
+            .cloned()
+            .expect("Only DNS queries to known upstream servers should be forwarded to `Io`");
 
         if self
             .forwarded_dns_queries
@@ -148,8 +147,10 @@ impl Io {
             )
             .is_err()
         {
-            tracing::warn!("Too many DNS queries, dropping existing one");
+            return Err(DnsQueryError::TooManyQueries);
         }
+
+        Ok(())
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -181,6 +182,12 @@ impl Io {
 
         Ok(())
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DnsQueryError {
+    #[error("Too many ongoing DNS queries")]
+    TooManyQueries,
 }
 
 fn create_resolvers(

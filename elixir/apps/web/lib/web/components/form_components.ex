@@ -39,6 +39,7 @@ defmodule Web.FormComponents do
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
 
   attr :errors, :list, default: []
+  attr :value_index, :integer, default: nil
 
   attr :inline_errors, :boolean,
     default: false,
@@ -58,9 +59,20 @@ defmodule Web.FormComponents do
   slot :inner_block
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
+    errors =
+      if assigns.value_index do
+        Enum.filter(field.errors, fn {_error, meta} ->
+          Keyword.get(meta, :validated_as) == :list and
+            Keyword.get(meta, :at) == assigns.value_index
+        end)
+      else
+        field.errors
+      end
+      |> Enum.map(&translate_error(&1))
+
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
-    |> assign(:errors, Enum.map(field.errors, &translate_error(&1)))
+    |> assign(:errors, errors)
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
       if assigns.value_id do
@@ -144,7 +156,7 @@ defmodule Web.FormComponents do
     <div phx-feedback-for={@name}>
       <.label :if={@label} for={@id}><%= @label %></.label>
       <input
-        :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
+        :if={not is_nil(@value) and @rest[:disabled] == true}
         type="hidden"
         name={@name}
         value={@value}
@@ -183,9 +195,9 @@ defmodule Web.FormComponents do
   def input(%{type: "select"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <input
-        :if={not is_nil(@value) and not is_nil(@rest[:disabled])}
+        :if={@rest[:disabled] in [true, "true"] and not is_nil(@value)}
         type="hidden"
         name={@name}
         value={@value}
@@ -215,7 +227,7 @@ defmodule Web.FormComponents do
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <textarea
         id={@id}
         name={@name}
@@ -251,7 +263,7 @@ defmodule Web.FormComponents do
   def input(%{type: "readonly"} = assigns) do
     ~H"""
     <div>
-      <.label><%= @label %></.label>
+      <.label :if={@label}><%= @label %></.label>
       <div class="border border-solid rounded p-2 text-sm text-neutral-500">
         <%= assigns.value %>
       </div>
@@ -273,7 +285,7 @@ defmodule Web.FormComponents do
   def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
     ~H"""
     <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <div class={[
         "flex",
         "text-sm text-neutral-900 bg-neutral-50",
@@ -317,7 +329,7 @@ defmodule Web.FormComponents do
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         type={@type}
         name={@name}
@@ -542,7 +554,7 @@ defmodule Web.FormComponents do
     [text[size], spacing[size]]
   end
 
-  defp icon_size(size) do
+  def icon_size(size) do
     icon_size = %{
       "xs" => "w-3 h-3",
       "sm" => "w-3 h-3",

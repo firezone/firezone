@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euox pipefail
 
-FZ_GROUP="firezone-client"
 SERVICE_NAME=firezone-client-ipc
 
 function debug_exit() {
@@ -33,8 +32,6 @@ make_hash "$BINARY_DEST_PATH.deb"
 # Test the deb package, since this script is the easiest place to get a release build
 DEB_PATH=$(realpath "$BINARY_DEST_PATH.deb")
 sudo apt-get install "$DEB_PATH"
-# Update users / groups
-sudo systemd-sysusers
 
 # Debug-print the files. The icons and both binaries should be in here
 dpkg --listfiles firezone-client-gui
@@ -47,6 +44,5 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 # knows its own name
 firezone-client-gui --help | grep "Usage: firezone-client-gui"
 
-# Try to start the IPC service
-sudo groupadd --force "$FZ_GROUP"
-sudo systemctl start "$SERVICE_NAME" || debug_exit
+# Make sure the IPC service is running
+systemctl status "$SERVICE_NAME" || debug_exit

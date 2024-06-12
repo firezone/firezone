@@ -32,7 +32,6 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      assert is_nil(fetched_resource.authorized_by_policy)
     end
 
     test "returns authorized resource for account user", %{
@@ -58,7 +57,7 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, fetched_resource} = fetch_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      assert fetched_resource.authorized_by_policy.id == policy.id
+      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
     end
 
     test "returns deleted resources", %{account: account, subject: subject} do
@@ -135,7 +134,7 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      assert fetched_resource.authorized_by_policy.id == policy.id
+      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
     end
 
     test "returns authorized resource for account user", %{
@@ -161,7 +160,7 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      assert fetched_resource.authorized_by_policy.id == policy.id
+      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
     end
 
     test "returns authorized resource using one of multiple policies for account user", %{
@@ -194,7 +193,10 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
       assert fetched_resource.id == resource.id
-      assert fetched_resource.authorized_by_policy.id in [policy1.id, policy2.id]
+
+      authorized_by_policy_ids = Enum.map(fetched_resource.authorized_by_policies, & &1.id)
+      policy_ids = [policy1.id, policy2.id]
+      assert Enum.sort(authorized_by_policy_ids) == Enum.sort(policy_ids)
     end
 
     test "does not return deleted resources", %{account: account, actor: actor, subject: subject} do
@@ -418,7 +420,7 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 1
-      assert hd(resources).authorized_by_policy.id == policy.id
+      assert Enum.map(hd(resources).authorized_by_policies, & &1.id) == [policy.id]
 
       policy2 =
         Fixtures.Policies.create_policy(
@@ -430,7 +432,7 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resources2} = all_authorized_resources(subject)
       assert length(resources2) == 2
 
-      assert hd(resources2 -- resources).authorized_by_policy.id == policy2.id
+      assert hd(hd(resources2 -- resources).authorized_by_policies).id == policy2.id
     end
 
     test "returns authorized resources for account admin subject", %{
@@ -472,7 +474,7 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, resources} = all_authorized_resources(subject)
       assert length(resources) == 1
-      assert hd(resources).authorized_by_policy.id == policy.id
+      assert Enum.map(hd(resources).authorized_by_policies, & &1.id) == [policy.id]
 
       Fixtures.Policies.create_policy(
         account: account,
