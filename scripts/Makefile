@@ -13,7 +13,7 @@
 # the relevant versions in order to push to a newly drafted release.
 
 # Tracks the current version to use for generating download links and changelogs
-current-apple-version = 1.0.4
+current-apple-version = 1.0.6
 current-android-version = 1.0.2
 current-gateway-version = 1.0.6
 current-gui-version = 1.0.6
@@ -28,16 +28,16 @@ next-headless-version = 1.0.7
 
 # macOS uses a slightly different sed syntax
 ifeq ($(shell uname),Darwin)
-SEDARG := -i ''
+  SEDARG := -i ''
 else
-SEDARG := -i
+  SEDARG := -i
 endif
 
 .PHONY: apple-version android-version gateway-version gui-version headless-version version
 
 # Update website changelog and docs to current version and Xcode project file to next version
 apple-version:
-	@find ./website -path ./website/node_modules -prune -o -path ./website/.next -prune -o -type f -o -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-apple-version)/g;}' {} \;
+	@find website -type f -o -path website/node_modules -prune -o -path website/.next -prune -o -path website/public/images -prune -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-apple-version)/g;}' {} \;
 	@find swift -type f -name "project.pbxproj" -o -exec sed $(SEDARG) -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(next-apple-version);/' {} \;
 
 # Update website changelog to current version and Gradle files to next version
