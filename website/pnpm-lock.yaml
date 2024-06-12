@@ -52,7 +52,7 @@ dependencies:
     version: 2.3.0
   flowbite-react:
     specifier: ^0.9.0
-    version: 0.9.0(react-dom@18.3.1)(react@18.3.1)(tailwindcss@3.4.3)
+    version: 0.9.0(react-dom@18.3.1)(react@18.3.1)(tailwindcss@3.4.4)
   framer-motion:
     specifier: ^11.2.4
     version: 11.2.10(react-dom@18.3.1)(react@18.3.1)
@@ -120,13 +120,13 @@ dependencies:
     specifier: ^11.0.0
     version: 11.0.0
   tailwindcss:
-    specifier: 3.4.3
-    version: 3.4.3
+    specifier: 3.4.4
+    version: 3.4.4
 
 devDependencies:
   flowbite-typography:
     specifier: ^1.0.3
-    version: 1.0.3(tailwindcss@3.4.3)
+    version: 1.0.3(tailwindcss@3.4.4)
   hastscript:
     specifier: ^9.0.0
     version: 9.0.0
@@ -703,12 +703,6 @@ packages:
 
   /@types/ms@0.7.34:
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
-    dev: false
-
-  /@types/node@20.12.7:
-    resolution: {integrity: sha512-wq0cICSkRLVaf3UGLMGItu/PtdY7oaXaI/RVU+xliKVOtRna3PRY57ZDfztpDL0n11vfymMUnXv8QwYCO7L1wg==}
-    dependencies:
-      undici-types: 5.26.5
     dev: false
 
   /@types/node@20.14.2:
@@ -1356,7 +1350,7 @@ packages:
     dependencies:
       to-regex-range: 5.0.1
 
-  /flowbite-react@0.9.0(react-dom@18.3.1)(react@18.3.1)(tailwindcss@3.4.3):
+  /flowbite-react@0.9.0(react-dom@18.3.1)(react@18.3.1)(tailwindcss@3.4.4):
     resolution: {integrity: sha512-wRGzTPHaEuRSXiAFhdTuksezABE/AjI/iyOOBGZpsFAz/sq7zuorAqjRud9FWgy3TlFPtldl7kL93wNY2nOnKQ==}
     peerDependencies:
       react: '>=18'
@@ -1372,10 +1366,10 @@ packages:
       react-dom: 18.3.1(react@18.3.1)
       react-icons: 5.0.1(react@18.3.1)
       tailwind-merge: 2.2.2
-      tailwindcss: 3.4.3
+      tailwindcss: 3.4.4
     dev: false
 
-  /flowbite-typography@1.0.3(tailwindcss@3.4.3):
+  /flowbite-typography@1.0.3(tailwindcss@3.4.4):
     resolution: {integrity: sha512-UbdQFIIOb7xx2TS+QQrqr79B6ZSkSZurxYWzV0npth6Wns3/j7KfeDJoH9QFU+Zs7zjrvejNtyzgzWLWyCrdiA==}
     peerDependencies:
       tailwindcss: '>=3.0.0 || insiders'
@@ -1383,7 +1377,7 @@ packages:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.4.3
+      tailwindcss: 3.4.4
     dev: true
 
   /flowbite@2.3.0:
@@ -1783,7 +1777,7 @@ packages:
     resolution: {integrity: sha512-7vuh85V5cdDofPyxn58nrPjBktZo0u9x1g8WtjQol+jZDaE+fhN+cIvTj11GndBnMnyfrUOG1sZQxCdjKh+DKg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/node': 20.12.7
+      '@types/node': 20.14.2
       merge-stream: 2.0.0
       supports-color: 8.1.1
     dev: false
@@ -3189,8 +3183,8 @@ packages:
       '@babel/runtime': 7.24.7
     dev: false
 
-  /tailwindcss@3.4.3:
-    resolution: {integrity: sha512-U7sxQk/n397Bmx4JHbJx/iSOOv5G+II3f1kpLpY2QeUv5DcPdcTsYLlusZfq1NthHS1c1cZoyFmmkex1rzke0A==}
+  /tailwindcss@3.4.4:
+    resolution: {integrity: sha512-ZoyXOdJjISB7/BcLTR6SEsLgKtDStYyYZVLsUtWChO4Ps20CBad7lfJKVDiejocV4ME1hLmyY0WJE3hSDcmQ2A==}
     engines: {node: '>=14.0.0'}
     hasBin: true
     dependencies:
