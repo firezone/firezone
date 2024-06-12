@@ -46,6 +46,7 @@ pretty_assertions = "1.4.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 rand = "0.8"
 hickory-proto = { workspace = true }
+derivative = "2.2.0"
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]

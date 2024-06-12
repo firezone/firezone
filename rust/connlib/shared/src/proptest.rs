@@ -44,7 +44,7 @@ pub fn resource(sites: Vec<Site>) -> impl Strategy<Value = ResourceDescription> 
                 .prop_map(ResourceDescription::Dns)
                 .boxed()
         } else {
-            cidr_resource_with_sites(8, sites.clone())
+            cidr_resource_with_sites(ip_network(8), sites.clone())
                 .prop_map(ResourceDescription::Cidr)
                 .boxed()
         }
@@ -70,13 +70,13 @@ pub fn dns_resource_with_sites(sites: Vec<Site>) -> impl Strategy<Value = Resour
 }
 
 pub fn cidr_resource_with_sites(
-    host_mask_bits: usize,
+    ip_network: impl Strategy<Value = IpNetwork>,
     sites: Vec<Site>,
 ) -> impl Strategy<Value = ResourceDescriptionCidr> {
     (
         resource_id(),
         resource_name(),
-        ip_network(host_mask_bits),
+        ip_network,
         address_description(),
     )
         .prop_map(
@@ -95,7 +95,19 @@ pub fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
 }
 
 pub fn cidr_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    sites().prop_flat_map(move |sites| cidr_resource_with_sites(host_mask_bits, sites))
+    sites().prop_flat_map(move |sites| cidr_resource_with_sites(ip_network(host_mask_bits), sites))
+}
+
+pub fn cidr_v4_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    sites().prop_flat_map(move |sites| {
+        cidr_resource_with_sites(ip4_network(host_mask_bits).prop_map(IpNetwork::V4), sites)
+    })
+}
+
+pub fn cidr_v6_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    sites().prop_flat_map(move |sites| {
+        cidr_resource_with_sites(ip6_network(host_mask_bits).prop_map(IpNetwork::V6), sites)
+    })
 }
 
 pub fn address_description() -> impl Strategy<Value = String> {
