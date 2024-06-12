@@ -37,24 +37,24 @@ endif
 
 # Update website changelog and docs to current version and Xcode project file to next version
 apple-version:
-	@find website -type d \( -path website/node_modules -o -path website/.next \) -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-apple-version)/g;}' {} \;
+	@find website -path website/node_modules -prune -o -path website/.next -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-apple-version)/g;}' {} \;
 	@find swift -type f -name "project.pbxproj" -exec sed $(SEDARG) -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(next-apple-version);/' {} \;
 
 # Update website changelog to current version and Gradle files to next version
 android-version:
-	@find website -type d \( -path website/node_modules -o -path website/.next \) -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-android-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-android-version)/g;}' {} \;
+	@find website -path website/node_modules -prune -o -path website/.next -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-android-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-android-version)/g;}' {} \;
 	@find kotlin -type f -name "*.gradle.kts" -exec sed $(SEDARG) -e '/mark:next-android-version/{n;s/versionName =.*/versionName = "$(next-android-version)"/;}' {} \;
 
 # Update website changelog and DL links to current version and cargo files, CI release to next version
 gateway-version:
 	@# The website hosts permalinks to our published packages and binaries
-	@find website -type d \( -path website/node_modules -o -path website/.next \) -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-gateway-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-gateway-version)/g;}' {} \;
+	@find website -path website/node_modules -prune -o -path website/.next -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-gateway-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-gateway-version)/g;}' {} \;	
 	@find .github -type f -exec sed $(SEDARG) -e '/mark:next-gateway-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(next-gateway-version)/g;}' {} \;
 
 # Update website changelog and DL links to current version and cargo files, CI release to next version
 gui-version:
 	@# The website hosts permalinks to our published packages and binaries
-	@find website -type d \( -path website/node_modules -o -path website/.next \) -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-gui-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-gui-version)/g;}' {} \;
+	@find website -path website/node_modules -prune -o -path website/.next -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-gui-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-gui-version)/g;}' {} \;
 	@find .github -type f -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(next-gui-version)/g;}' {} \;
 	@find rust -type f -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(next-gui-version)/;}' {} \;
 	@cd rust && cargo update --workspace
@@ -62,7 +62,7 @@ gui-version:
 # Update website changelog and DL links to current version and cargo files, CI release to next version
 headless-version:
 	@# The website hosts permalinks to our published packages and binaries
-	@find website -type d \( -path website/node_modules -o -path website/.next \) -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-headless-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-headless-version)/g;}' {} \;
+	@find website -path website/node_modules -prune -o -path website/.next -prune -o -type f -exec sed $(SEDARG) -e '/mark:current-headless-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(current-headless-version)/g;}' {} \;
 	@find .github -type f -exec sed $(SEDARG) -e '/mark:next-headless-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(next-headless-version)/g;}' {} \;
 	@find rust -type f -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-headless-version/{n;s/[0-9]+\.[0-9]+\.[0-9]+/$(next-headless-version)/;}' {} \;
 	@cd rust && cargo update --workspace
