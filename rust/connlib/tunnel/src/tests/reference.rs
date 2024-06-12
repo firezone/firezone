@@ -266,28 +266,25 @@ impl ReferenceStateMachine for ReferenceState {
             strategies.push((1, dns_query_to_v6_server(domains, v6_dns_servers).boxed()));
         }
 
-        let resolved_non_resource_ips = state.resolved_ips_for_non_resources();
-
-        if !resolved_non_resource_ips.is_empty()
-            && resolved_non_resource_ips.iter().any(|ip| ip.is_ipv4())
-        {
+        let resolved_non_resource_ip4s = state.resolved_ip4_for_non_resources();
+        if !resolved_non_resource_ip4s.is_empty() {
             strategies.push((
                 1,
                 ping_random_ip(
                     packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
-                    sample::select(resolved_non_resource_ips.clone()),
+                    sample::select(resolved_non_resource_ip4s).prop_map(IpAddr::V4),
                 )
                 .boxed(),
             ));
         }
-        if !resolved_non_resource_ips.is_empty()
-            && resolved_non_resource_ips.iter().any(|ip| ip.is_ipv6())
-        {
+
+        let resolved_non_resource_ip6s = state.resolved_ip6_for_non_resources();
+        if !resolved_non_resource_ip6s.is_empty() {
             strategies.push((
                 1,
                 ping_random_ip(
                     packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
-                    sample::select(resolved_non_resource_ips),
+                    sample::select(resolved_non_resource_ip6s).prop_map(IpAddr::V6),
                 )
                 .boxed(),
             ));
@@ -458,6 +455,7 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
+                src,
                 dst,
                 seq,
                 identifier,
@@ -685,7 +683,25 @@ impl ReferenceState {
             .map(|(_, r)| r.id)
     }
 
-    fn resolved_ips_for_non_resources(&self) -> Vec<IpAddr> {
+    fn resolved_ip4_for_non_resources(&self) -> Vec<Ipv4Addr> {
+        self.resolved_ips_for_non_resources()
+            .filter_map(|ip| match ip {
+                IpAddr::V4(v4) => Some(v4),
+                IpAddr::V6(_) => None,
+            })
+            .collect()
+    }
+
+    fn resolved_ip6_for_non_resources(&self) -> Vec<Ipv6Addr> {
+        self.resolved_ips_for_non_resources()
+            .filter_map(|ip| match ip {
+                IpAddr::V6(v6) => Some(v6),
+                IpAddr::V4(_) => None,
+            })
+            .collect()
+    }
+
+    fn resolved_ips_for_non_resources(&self) -> impl Iterator<Item = IpAddr> + '_ {
         self.client_dns_records
             .iter()
             .filter_map(|(domain, ips)| {
@@ -693,7 +709,6 @@ impl ReferenceState {
             })
             .flatten()
             .copied()
-            .collect()
     }
 
     /// Returns the CIDR resource we will forward the DNS query for the given name to.
