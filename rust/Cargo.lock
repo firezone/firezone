@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.1.0"
+version = "1.0.7"
 dependencies = [
  "anyhow",
  "async-trait",
