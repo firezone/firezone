@@ -229,16 +229,21 @@ impl StateMachineTest for TunnelTest {
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
+        state
+    }
+
+    fn check_invariants(
+        state: &Self::SystemUnderTest,
+        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
+    ) {
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        assert_icmp_packets_properties(&mut state, ref_state);
-        assert_dns_packets_properties(&state, ref_state);
+        assert_icmp_packets_properties(state, ref_state);
+        assert_dns_packets_properties(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
-
-        state
     }
 }
 
