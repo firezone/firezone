@@ -14,7 +14,7 @@ use std::{
 ///     - For CIDR resources, that is the actual CIDR resource IP.
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-pub(crate) fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
+pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_state.expected_icmp_handshakes,
         &state.client_received_icmp_replies,
