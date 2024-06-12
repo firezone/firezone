@@ -440,10 +440,11 @@ defmodule Domain.Config.Definitions do
       google_workspace
       microsoft_entra
       okta
+      jumpcloud
       userpass
       token
     ]a)}},
-    default: ~w[email openid_connect google_workspace microsoft_entra okta token]a
+    default: ~w[email openid_connect google_workspace microsoft_entra okta jumpcloud token]a
   )
 
   ##############################################
@@ -598,6 +599,13 @@ defmodule Domain.Config.Definitions do
   defconfig(:stripe_secret_key, :string, sensitive: true, default: nil)
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
+
+  ##############################################
+  ## WorkOS flags
+  ##############################################
+
+  defconfig(:workos_api_key, :string, sensitive: true, default: "")
+  defconfig(:workos_client_id, :string, default: "")
 
   ##############################################
   ## Local development and Staging Helpers

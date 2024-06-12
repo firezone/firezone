@@ -1132,6 +1132,12 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def provider_icon(%{adapter: :jumpcloud} = assigns) do
+    ~H"""
+    <img src={~p"/images/jumpcloud-logo.svg"} alt="JumpCloud Logo" {@rest} />
+    """
+  end
+
   def provider_icon(%{adapter: :email} = assigns) do
     ~H"""
     <.icon name="hero-envelope" {@rest} />

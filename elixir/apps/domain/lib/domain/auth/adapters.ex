@@ -8,6 +8,7 @@ defmodule Domain.Auth.Adapters do
     google_workspace: Domain.Auth.Adapters.GoogleWorkspace,
     microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra,
     okta: Domain.Auth.Adapters.Okta,
+    jumpcloud: Domain.Auth.Adapters.JumpCloud,
     userpass: Domain.Auth.Adapters.UserPass
   }
 

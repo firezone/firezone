@@ -297,6 +297,19 @@ locals {
       name  = "DOCKER_REGISTRY"
       value = "ghcr.io/firezone"
     },
+    # Directory Sync
+    {
+      name  = "WORKOS_API_KEY"
+      value = var.workos_api_key
+    },
+    {
+      name  = "WORKOS_CLIENT_ID"
+      value = var.workos_client_id
+    },
+    {
+      name  = "WORKOS_BASE_URL"
+      value = var.workos_base_url
+    },
     # Billing system
     {
       name  = "BILLING_ENABLED"

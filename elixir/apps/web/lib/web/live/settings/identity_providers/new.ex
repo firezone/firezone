@@ -119,12 +119,21 @@ defmodule Web.Settings.IdentityProviders.New do
     end
   end
 
+  def next_step_path("jumpcloud" = provider, account) do
+    if Domain.Accounts.idp_sync_enabled?(account) do
+      ~p"/#{account}/settings/identity_providers/jumpcloud/new"
+    else
+      ~p"/#{account}/settings/identity_providers/openid_connect/new?provider=#{provider}"
+    end
+  end
+
   def pretty_print_provider(adapter) do
     case adapter do
       :openid_connect -> "OpenID Connect"
       :google_workspace -> "Google Workspace"
       :microsoft_entra -> "Microsoft EntraID"
       :okta -> "Okta"
+      :jumpcloud -> "JumpCloud"
     end
   end
 end

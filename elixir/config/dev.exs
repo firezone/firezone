@@ -103,3 +103,8 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :web, Web.Mailer, adapter: Swoosh.Adapters.Local
+
+config :workos, WorkOS.Client,
+  api_key: System.get_env("WORKOS_API_KEY"),
+  client_id: System.get_env("WORKOS_CLIENT_ID"),
+  baseurl: System.get_env("WORKOS_BASE_URL", "https://api.workos.com")
