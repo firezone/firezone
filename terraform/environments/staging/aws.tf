@@ -265,24 +265,6 @@ module "sg_allow_subnet_ingress" {
   ]
 }
 
-module "sg_allow_ssh_ingress" {
-  source = "terraform-aws-modules/security-group/aws"
-
-  name        = "allow SSH ingress from the internet"
-  description = "Security group to allow SSH ingress from the internet"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress_with_cidr_blocks = [
-    {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      description = "SSH access from the internet"
-      cidr_blocks = "0.0.0.0/0"
-    }
-  ]
-}
-
 ################################################################################
 # SSH Keys
 ################################################################################
