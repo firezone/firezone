@@ -70,12 +70,6 @@ pub(crate) enum Transition {
     Tick { millis: u64 },
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum ResourceDst {
-    Cidr(IpAddr),
-    Dns(DomainName),
-}
-
 pub(crate) fn ping_random_ip(
     ip: impl Strategy<Value = IpAddr>,
 ) -> impl Strategy<Value = Transition> {

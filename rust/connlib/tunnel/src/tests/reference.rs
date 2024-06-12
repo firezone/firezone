@@ -67,6 +67,12 @@ pub(crate) struct ReferenceState {
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum ResourceDst {
+    Cidr(IpAddr),
+    Dns(DomainName),
+}
+
 /// Implementation of our reference state machine.
 ///
 /// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
@@ -483,6 +489,28 @@ impl ReferenceStateMachine for ReferenceState {
     }
 }
 
+/// Pub(crate) functions used across the test suite.
+impl ReferenceState {
+    /// Returns the DNS servers that we expect connlib to use.
+    ///
+    /// If there are upstream DNS servers configured in the portal, it should use those.
+    /// Otherwise it should use whatever was configured on the system prior to connlib starting.
+    pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
+        if !self.upstream_dns_resolvers.is_empty() {
+            return self
+                .upstream_dns_resolvers
+                .iter()
+                .map(|s| s.address())
+                .collect();
+        }
+
+        self.system_dns_resolvers
+            .iter()
+            .map(|ip| SocketAddr::new(*ip, 53))
+            .collect()
+    }
+}
+
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -533,7 +561,7 @@ impl ReferenceState {
         }
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
+    fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
         let mut ips = vec![];
 
         // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
@@ -550,7 +578,7 @@ impl ReferenceState {
         ips
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Addr> {
+    fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Addr> {
         let mut ips = vec![];
 
         // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
@@ -570,19 +598,19 @@ impl ReferenceState {
         ips
     }
 
-    pub(crate) fn resolved_v4_domains(&self) -> Vec<DomainName> {
+    fn resolved_v4_domains(&self) -> Vec<DomainName> {
         self.resolved_domains()
             .filter_map(|(domain, ips)| ips.iter().any(|ip| ip.is_ipv4()).then_some(domain))
             .collect()
     }
 
-    pub(crate) fn resolved_v6_domains(&self) -> Vec<DomainName> {
+    fn resolved_v6_domains(&self) -> Vec<DomainName> {
         self.resolved_domains()
             .filter_map(|(domain, ips)| ips.iter().any(|ip| ip.is_ipv6()).then_some(domain))
             .collect()
     }
 
-    pub(crate) fn all_domains(&self) -> Vec<DomainName> {
+    fn all_domains(&self) -> Vec<DomainName> {
         self.global_dns_records.keys().cloned().collect()
     }
 
@@ -602,26 +630,7 @@ impl ReferenceState {
             })
     }
 
-    /// Returns the DNS servers that we expect connlib to use.
-    ///
-    /// If there are upstream DNS servers configured in the portal, it should use those.
-    /// Otherwise it should use whatever was configured on the system prior to connlib starting.
-    pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
-        if !self.upstream_dns_resolvers.is_empty() {
-            return self
-                .upstream_dns_resolvers
-                .iter()
-                .map(|s| s.address())
-                .collect();
-        }
-
-        self.system_dns_resolvers
-            .iter()
-            .map(|ip| SocketAddr::new(*ip, 53))
-            .collect()
-    }
-
-    pub(crate) fn v4_dns_servers(&self) -> Vec<SocketAddrV4> {
+    fn v4_dns_servers(&self) -> Vec<SocketAddrV4> {
         self.expected_dns_servers()
             .into_iter()
             .filter_map(|s| match s {
@@ -631,7 +640,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn v6_dns_servers(&self) -> Vec<SocketAddrV6> {
+    fn v6_dns_servers(&self) -> Vec<SocketAddrV6> {
         self.expected_dns_servers()
             .into_iter()
             .filter_map(|s| match s {
