@@ -23,12 +23,13 @@ defmodule Domain.Relays.Relay.Changeset do
                               updated_at]a
 
   def upsert_conflict_target(%{account_id: nil}) do
-    {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6)) WHERE deleted_at IS NULL AND account_id IS NULL/}
+    {:unsafe_fragment,
+     ~s/(COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NULL/}
   end
 
   def upsert_conflict_target(%{account_id: _account_id}) do
     {:unsafe_fragment,
-     ~s/(account_id, COALESCE(ipv4, ipv6)) WHERE deleted_at IS NULL AND account_id IS NOT NULL/}
+     ~s/(account_id, COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NOT NULL/}
   end
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
@@ -41,8 +42,10 @@ defmodule Domain.Relays.Relay.Changeset do
     |> validate_number(:port, greater_than_or_equal_to: 1, less_than_or_equal_to: 65_535)
     |> unique_constraint(:ipv4, name: :relays_unique_address_index)
     |> unique_constraint(:ipv6, name: :relays_unique_address_index)
+    |> unique_constraint(:port, name: :relays_unique_address_index)
     |> unique_constraint(:ipv4, name: :global_relays_unique_address_index)
     |> unique_constraint(:ipv6, name: :global_relays_unique_address_index)
+    |> unique_constraint(:port, name: :global_relays_unique_address_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, context.remote_ip)
