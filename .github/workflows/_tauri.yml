@@ -49,6 +49,8 @@ jobs:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+      # mark:next-gui-version
+      FIREZONE_PACKAGE_VERSION: 1.0.7
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node

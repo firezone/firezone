@@ -46,6 +46,7 @@ for var in $(env | awk -F= '{print $1}'); do
         [[ "$var" != "ACTIONS_RUNTIME_TOKEN" ]] &&
         [[ "$var" != "CARGO_INCREMENTAL" ]] &&
         [[ "$var" != "CARGO_TERM_COLOR" ]] &&
+        [[ "$var" != "FIREZONE_PACKAGE_VERSION" ]] &&
         [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
         unset "$var"
     fi
