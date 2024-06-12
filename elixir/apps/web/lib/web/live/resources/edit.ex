@@ -58,16 +58,15 @@ defmodule Web.Resources.Edit do
               required
             />
 
-            <div class="hidden">
+            <div>
               <.input
                 field={@form[:address_description]}
                 type="text"
                 label="Address Description"
-                placeholder={@form[:address].value || "http://example.com/"}
-                required
+                placeholder="Enter a description or URL"
               />
               <p class="mt-2 text-xs text-neutral-500">
-                This will be displayed in client applications to assist users in understanding how to access the resource.
+                Optional description or URL to show in Clients to help users access this Resource.
               </p>
             </div>
 

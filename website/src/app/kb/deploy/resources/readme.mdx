@@ -2,6 +2,8 @@ import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
 import PlanBadge from "@/components/PlanBadge";
+import Image from "next/image";
+import Link from "next/link";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
@@ -37,6 +39,31 @@ From there, you can select the type of Resource you want to create:
   cannot be changed. Double-check to ensure the address entered is correct
   before creating the Resource.
 </Alert>
+
+### Address description
+
+When creating a Resource, you'll be given the option to add an
+`address_description`. If given, this will be displayed in the Client's Resource
+list to help identify the Resource. If a URL is entered, it will be displayed as
+a clickable link.
+
+<Link
+  target="_blank"
+  href="/images/kb/deploy/resources/address_description.png"
+>
+  <Image
+    src="/images/kb/deploy/resources/address_description.png"
+    alt="Address description field"
+    width={600}
+    height={600}
+    className="mx-auto"
+  />
+</Link>
+
+This is commonly used to show a different address to end users than the one used
+for routing, where field validations are more restrictive. This can be useful to
+provide a bookmark to a service like `https://gitlab.company.com`, or give hints
+for accessing the service, like `10.0.0.1:2222`.
 
 <PlanBadge plans={["team", "enterprise"]}>
 

@@ -5,7 +5,7 @@ defmodule Domain.Resources.Resource.Changeset do
 
   @fields ~w[address address_description name type]a
   @update_fields ~w[name address_description]a
-  @required_fields ~w[name address address_description type]a
+  @required_fields ~w[name address type]a
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{connections: []}
@@ -152,8 +152,6 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 512)
-    # TODO: remove once address_description is visible again
-    |> copy_change(:address, :address_description)
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
