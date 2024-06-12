@@ -950,6 +950,41 @@ defmodule Domain.RelaysTest do
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
+
+    test "creates multiple relays when only port changes", %{
+      account: account,
+      group: group
+    } do
+      ipv4 = Domain.Fixture.unique_ipv4()
+      ipv6 = Domain.Fixture.unique_ipv6()
+      first_port = Domain.Fixture.unique_integer()
+      second_port = Domain.Fixture.unique_integer()
+
+      first_relay =
+        Fixtures.Relays.create_relay(
+          ipv4: ipv4,
+          ipv6: ipv6,
+          port: first_port,
+          account: account,
+          group: group
+        )
+
+      second_relay =
+        Fixtures.Relays.create_relay(
+          ipv4: ipv4,
+          ipv6: ipv6,
+          port: second_port,
+          account: account,
+          group: group
+        )
+
+      assert first_relay.ipv4 == second_relay.ipv4
+      assert first_relay.ipv6 == second_relay.ipv6
+      assert first_relay.port == first_port
+      assert second_relay.port == second_port
+
+      assert Repo.aggregate(Relays.Relay, :count, :id) == 2
+    end
   end
 
   describe "delete_relay/2" do
