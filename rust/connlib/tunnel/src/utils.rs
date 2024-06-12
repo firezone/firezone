@@ -38,7 +38,7 @@ pub fn turn(relays: &[Relay]) -> HashSet<(RelayId, RelaySocket, String, String, 
                 None
             }
         })
-        .group_by(|(id, _, _, _, _)| *id)
+        .chunk_by(|(id, _, _, _, _)| *id)
         .into_iter()
         .filter_map(|(_, grouped)| {
             grouped.reduce(
