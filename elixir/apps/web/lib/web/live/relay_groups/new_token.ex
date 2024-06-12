@@ -221,16 +221,6 @@ defmodule Web.RelayGroups.NewToken do
     """
   end
 
-  defp major_minor_version do
-    vsn =
-      Application.spec(:domain)
-      |> Keyword.fetch!(:vsn)
-      |> List.to_string()
-      |> Version.parse!()
-
-    "#{vsn.major}.#{vsn.minor}"
-  end
-
   defp env(encoded_token) do
     api_url_override =
       if api_url = Domain.Config.get_env(:web, :api_url_override) do
@@ -279,7 +269,7 @@ defmodule Web.RelayGroups.NewToken do
       "--device=\"/dev/net/tun:/dev/net/tun\"",
       Enum.map(env, fn {key, value} -> "--env #{key}=\"#{value}\"" end),
       "--env FIREZONE_NAME=$(hostname)",
-      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/relay:#{major_minor_version()}"
+      "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/relay:latest"
     ]
     |> List.flatten()
     |> Enum.join(" \\\n  ")
