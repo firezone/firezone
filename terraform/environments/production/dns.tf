@@ -1,4 +1,4 @@
-# Allow Google Cloud and Let's Encrypt to issue certificates for our domain
+# Allow Google Cloud to issue certificates for our domain
 resource "google_dns_record_set" "dns-caa" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
@@ -6,8 +6,7 @@ resource "google_dns_record_set" "dns-caa" {
   type = "CAA"
   name = module.google-cloud-dns.dns_name
   rrdatas = [
-    "0 issue \"letsencrypt.org\"",
-    "0 issue \"pki.goog\"",
+    "0 issue \"pki.goog;validationmethods=dns-01\"",
     "0 iodef \"mailto:security@firezone.dev\""
   ]
   ttl = 3600
