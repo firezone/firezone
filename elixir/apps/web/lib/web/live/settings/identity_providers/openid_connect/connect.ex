@@ -5,21 +5,43 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
   """
   use Web, :controller
   alias Domain.Auth.Adapters.OpenIDConnect
+  require Logger
 
   def redirect_to_idp(conn, %{"provider_id" => provider_id}) do
     account = conn.assigns.account
 
-    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject) do
-      redirect_url =
-        url(
-          ~p"/#{provider.account_id}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
-        )
-
-      Web.AuthController.redirect_to_idp(conn, redirect_url, provider)
+    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id, conn.assigns.subject),
+         redirect_url =
+           url(
+             ~p"/#{provider.account_id}/settings/identity_providers/openid_connect/#{provider.id}/handle_callback"
+           ),
+         {:ok, conn} <- Web.AuthController.redirect_to_idp(conn, redirect_url, provider) do
+      conn
     else
       {:error, :not_found} ->
         conn
         |> put_flash(:error, "Provider does not exist.")
+        |> redirect(to: ~p"/#{account}/settings/identity_providers")
+
+      {:error, {status, body}} ->
+        Logger.warning("Failed to redirect to IdP", status: status, body: inspect(body))
+
+        conn
+        |> put_flash(:error, "Your identity provider returned #{status} HTTP code.")
+        |> redirect(to: ~p"/#{account}/settings/identity_providers")
+
+      {:error, %{reason: :timeout}} ->
+        Logger.warning("Failed to redirect to IdP", reason: :timeout)
+
+        conn
+        |> put_flash(:error, "Your identity provider took too long to respond.")
+        |> redirect(to: ~p"/#{account}/settings/identity_providers")
+
+      {:error, reason} ->
+        Logger.warning("Failed to redirect to IdP", reason: inspect(reason))
+
+        conn
+        |> put_flash(:error, "Your identity provider is not available right now.")
         |> redirect(to: ~p"/#{account}/settings/identity_providers")
     end
   end
