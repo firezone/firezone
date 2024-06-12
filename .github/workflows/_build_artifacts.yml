@@ -202,7 +202,9 @@ jobs:
             PROFILE=""
           fi
 
-          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          # Override version by setting it inside cross container if it's provided
+          ${{ matrix.name.version && format('CROSS_CONTAINER_OPTS="--env FIREZONE_PACKAGE_VERSION={0}"', matrix.name.version) }} \
+            cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}

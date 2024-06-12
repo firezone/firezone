@@ -37,11 +37,17 @@ endif
 
 apple-version:
 	@find website -name "redirects.js" -exec sed $(SEDARG) -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(current-apple-version)/g;}' {} \;
+	@find .github -type f -exec sed $(SEDARG) -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-apple-version)/g;}' {} \;
 	@find swift -type f -name "project.pbxproj" -exec sed $(SEDARG) -e 's/MARKETING_VERSION = .*;/MARKETING_VERSION = $(next-apple-version);/' {} \;
+	@find rust -path rust/gui-client/node_modules -prune -o -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-apple-version)/;}' {} \;
+	@cd rust && cargo update --workspace
 
 android-version:
 	@find website -name "redirects.js" -exec sed $(SEDARG) -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(current-android-version)/g;}' {} \;
+	@find .github -type f -exec sed $(SEDARG) -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-android-version)/g;}' {} \;
 	@find kotlin -type f -name "*.gradle.kts" -exec sed $(SEDARG) -e '/mark:next-android-version/{n;s/versionName =.*/versionName = "$(next-android-version)"/;}' {} \;
+	@find rust -path rust/gui-client/node_modules -prune -o -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-android-version)/;}' {} \;
+	@cd rust && cargo update --workspace
 
 gateway-version:
 	@find website -name "redirects.js" -exec sed $(SEDARG) -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(current-gateway-version)/g;}' {} \;
