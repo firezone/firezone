@@ -55,28 +55,28 @@ resource "aws_route" "private_nat_instance" {
   }
 }
 
+################################################################################
+# EC2 Instance Connect Endpoint
+################################################################################
+
+resource "aws_ec2_instance_connect_endpoint" "this" {
+  subnet_id          = module.vpc.public_subnets[0]
+  preserve_client_ip = false
+  security_group_ids = [
+    module.sg_allow_vpc_egress.security_group_id
+  ]
+
+  tags = merge(
+    local.tags,
+    {
+      Name = "staging-ec2-instance-connect"
+    }
+  )
+}
 
 ################################################################################
 # Compute
 ################################################################################
-
-module "aws_bastion" {
-  source = "../../modules/aws/bastion"
-
-  ami  = data.aws_ami.ubuntu.id
-  name = "bastion - ${local.environment}"
-
-  associate_public_ip_address = true
-  instance_type               = "t3.micro"
-  key_name                    = aws_key_pair.staging.id
-  vpc_security_group_ids = [
-    module.sg_allow_all_egress.security_group_id,
-    module.sg_allow_ssh_ingress.security_group_id
-  ]
-  subnet_id = element(module.vpc.public_subnets, 0)
-
-  tags = local.tags
-}
 
 module "aws_nat" {
   source = "../../modules/aws/nat"
@@ -231,6 +231,21 @@ module "sg_allow_all_egress" {
   ]
 }
 
+module "sg_allow_vpc_egress" {
+  source = "terraform-aws-modules/security-group/aws"
+
+  name        = "allow egress to all vpc subnets"
+  description = "Security group to egress to all vpc subnets. Created for use with EC2 Instance Connect Endpoint."
+  vpc_id      = module.vpc.vpc_id
+
+  egress_with_cidr_blocks = [
+    {
+      rule        = "all-all"
+      cidr_blocks = local.vpc_cidr
+    },
+  ]
+}
+
 module "sg_allow_subnet_ingress" {
   source = "terraform-aws-modules/security-group/aws"
 
@@ -246,24 +261,6 @@ module "sg_allow_subnet_ingress" {
     {
       rule        = "all-all",
       cidr_blocks = join(",", module.vpc.private_subnets_cidr_blocks)
-    }
-  ]
-}
-
-module "sg_allow_ssh_ingress" {
-  source = "terraform-aws-modules/security-group/aws"
-
-  name        = "allow SSH ingress from the internet"
-  description = "Security group to allow SSH ingress from the internet"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress_with_cidr_blocks = [
-    {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      description = "SSH access from the internet"
-      cidr_blocks = "0.0.0.0/0"
     }
   ]
 }
