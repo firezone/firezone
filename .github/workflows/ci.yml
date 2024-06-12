@@ -56,8 +56,8 @@ jobs:
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6
-        # workflow_call event is named workflow_dispatch
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        # Only draft releases on merges to main
+        if: ${{ github.ref_name == 'main' }}
         id: update-release-draft
         with:
           config-name: ${{ matrix.config_name }}
