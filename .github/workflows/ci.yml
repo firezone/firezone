@@ -56,7 +56,8 @@ jobs:
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6
-        if: github.event_name == 'workflow_call'
+        # workflow_call event is named workflow_dispatch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         id: update-release-draft
         with:
           config-name: ${{ matrix.config_name }}
