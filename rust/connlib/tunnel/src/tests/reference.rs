@@ -255,7 +255,11 @@ impl ReferenceStateMachine for ReferenceState {
         {
             strategies.push((
                 1,
-                dns_query_to_v4_server(domains.clone(), v4_dns_servers).boxed(),
+                dns_query(
+                    sample::select(domains.clone()),
+                    sample::select(v4_dns_servers).prop_map(SocketAddr::V4),
+                )
+                .boxed(),
             ));
         }
 
@@ -263,7 +267,14 @@ impl ReferenceStateMachine for ReferenceState {
             && !state.v6_dns_servers().is_empty()
             && state.client.ip6_socket.is_some()
         {
-            strategies.push((1, dns_query_to_v6_server(domains, v6_dns_servers).boxed()));
+            strategies.push((
+                1,
+                dns_query(
+                    sample::select(domains),
+                    sample::select(v6_dns_servers).prop_map(SocketAddr::V6),
+                )
+                .boxed(),
+            ));
         }
 
         let resolved_non_resource_ip4s = state.resolved_ip4_for_non_resources();
@@ -455,7 +466,6 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
-                src,
                 dst,
                 seq,
                 identifier,

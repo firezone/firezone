@@ -11,7 +11,7 @@ use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddr},
 };
 
 /// The possible transitions of the state machine.
@@ -121,6 +121,26 @@ pub(crate) fn icmp_to_dns_resource(
         })
 }
 
+pub(crate) fn dns_query(
+    domain: impl Strategy<Value = DomainName>,
+    dns_server: impl Strategy<Value = SocketAddr>,
+) -> impl Strategy<Value = Transition> {
+    (
+        domain,
+        dns_server,
+        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
+        any::<u16>(),
+    )
+        .prop_map(
+            move |(domain, dns_server, r_type, query_id)| Transition::SendDnsQuery {
+                domain,
+                r_type,
+                query_id,
+                dns_server,
+            },
+        )
+}
+
 pub(crate) fn add_dns_resource() -> impl Strategy<Value = Transition> {
     prop_oneof![
         non_wildcard_dns_resource(),
@@ -166,44 +186,4 @@ fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
         (resource, records)
             .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
     })
-}
-
-pub(crate) fn dns_query_to_v4_server(
-    domains: Vec<DomainName>,
-    dns_servers: Vec<SocketAddrV4>,
-) -> impl Strategy<Value = Transition> {
-    dns_query(
-        sample::select(domains),
-        sample::select(dns_servers).prop_map(SocketAddr::V4),
-    )
-}
-
-pub(crate) fn dns_query_to_v6_server(
-    domains: Vec<DomainName>,
-    dns_servers: Vec<SocketAddrV6>,
-) -> impl Strategy<Value = Transition> {
-    dns_query(
-        sample::select(domains),
-        sample::select(dns_servers).prop_map(SocketAddr::V6),
-    )
-}
-
-fn dns_query(
-    domain: impl Strategy<Value = DomainName>,
-    dns_server: impl Strategy<Value = SocketAddr>,
-) -> impl Strategy<Value = Transition> {
-    (
-        domain,
-        dns_server,
-        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
-        any::<u16>(),
-    )
-        .prop_map(
-            move |(domain, dns_server, r_type, query_id)| Transition::SendDnsQuery {
-                domain,
-                r_type,
-                query_id,
-                dns_server,
-            },
-        )
 }
