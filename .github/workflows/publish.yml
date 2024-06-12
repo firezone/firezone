@@ -4,6 +4,13 @@ on:
   release:
     types:
       - published
+  workflow_call:
+    inputs:
+      tag:
+        description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
+        type: string
+        default: ${{ github.sha }}
+        required: false
 
 concurrency:
   group: "publish-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
@@ -22,7 +29,8 @@ jobs:
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
-          project: firezone-prod
+          # Deploy from staging artifacts since it what was built on main
+          project: firezone-staging
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
