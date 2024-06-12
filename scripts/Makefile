@@ -62,4 +62,3 @@ headless-version:
 	@cd rust && cargo update --workspace
 
 version: apple-version android-version gateway-version gui-version headless-version
-
