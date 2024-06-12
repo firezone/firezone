@@ -15,7 +15,7 @@ use ip_network_table::IpNetworkTable;
 use proptest::{prelude::*, sample, strategy::Union};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -39,7 +39,7 @@ pub(crate) struct ReferenceState {
     /// The CIDR resources the client is aware of.
     pub(crate) client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// The DNS resources the client is aware of.
-    pub(crate) client_dns_resources: HashMap<ResourceId, ResourceDescriptionDns>,
+    pub(crate) client_dns_resources: BTreeMap<ResourceId, ResourceDescriptionDns>,
 
     /// The IPs the client knows about.
     ///
@@ -50,7 +50,7 @@ pub(crate) struct ReferenceState {
     /// On a repeated query, we will access those previously resolved IPs.
     ///
     /// Essentially, the client's DNS records represents the addresses a client application (like a browser) would _actually_ know about.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    client_dns_records: BTreeMap<DomainName, Vec<IpAddr>>,
 
     /// The CIDR resources the client is connected to.
     client_connected_cidr_resources: HashSet<ResourceId>,
@@ -58,7 +58,7 @@ pub(crate) struct ReferenceState {
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
-    pub(crate) global_dns_records: HashMap<DomainName, HashSet<IpAddr>>,
+    pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
     /// The expected ICMP handshakes.
     pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
@@ -472,31 +472,18 @@ impl ReferenceState {
         }
     }
 
-    pub(crate) fn sample_resolved_non_resource_dst(&self, idx: &sample::Index) -> Option<IpAddr> {
-        if self.client_dns_records.is_empty()
-            || self.client_dns_records.values().all(|ips| ips.is_empty())
-        {
-            return None;
-        }
-
-        let mut dsts = self.resolved_ips_for_non_resources();
-        dsts.sort();
-
-        Some(*idx.get(&dsts))
+    pub(crate) fn sample_resolved_non_resource_dst(
+        &self,
+        idx: &sample::Selector,
+    ) -> Option<IpAddr> {
+        idx.try_select(self.resolved_ips_for_non_resources())
     }
 
     pub(crate) fn sample_resource_dst(
         &self,
-        idx: &sample::Index,
+        idx: &sample::Selector,
         src: PacketSource,
     ) -> Option<ResourceDst> {
-        if self.client_cidr_resources.is_empty()
-            && (self.client_dns_records.is_empty()
-                || self.client_dns_records.values().all(|ips| ips.is_empty()))
-        {
-            return None;
-        }
-
         let mut dsts = Vec::new();
         dsts.extend(
             self.sample_cidr_resource_dst(idx, src)
@@ -504,88 +491,51 @@ impl ReferenceState {
         );
         dsts.extend(self.sample_resolved_domain(idx, src).map(ResourceDst::Dns));
 
-        if dsts.is_empty() {
-            return None;
-        }
-
-        Some(idx.get(&dsts).clone())
+        idx.try_select(dsts)
     }
 
-    fn sample_cidr_resource_dst(&self, idx: &sample::Index, src: PacketSource) -> Option<IpAddr> {
-        if self.client_cidr_resources.is_empty() {
-            return None;
-        }
-
-        let (num_ip4_resources, num_ip6_resources) = self.client_cidr_resources.len();
-
+    fn sample_cidr_resource_dst(
+        &self,
+        idx: &sample::Selector,
+        src: PacketSource,
+    ) -> Option<IpAddr> {
         let mut ips = Vec::new();
 
-        if num_ip4_resources > 0 && src.is_ipv4() {
-            ips.push(self.sample_ipv4_cidr_resource_dst(idx).into())
+        if src.is_ipv4() {
+            ips.extend(self.sample_ipv4_cidr_resource_dst(idx).map(IpAddr::V4))
         }
 
-        if num_ip6_resources > 0 && src.is_ipv6() {
-            ips.push(self.sample_ipv6_cidr_resource_dst(idx).into())
+        if src.is_ipv6() {
+            ips.extend(self.sample_ipv6_cidr_resource_dst(idx).map(IpAddr::V6))
         }
 
-        if ips.is_empty() {
-            return None;
-        }
-
-        Some(*idx.get(&ips))
+        idx.try_select(ips)
     }
 
     /// Samples an [`Ipv4Addr`] from _any_ of our IPv4 CIDR resources.
-    fn sample_ipv4_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv4Addr {
-        let num_ip4_resources = self.client_cidr_resources.len().0;
-        debug_assert!(num_ip4_resources > 0, "cannot sample without any resources");
-        let r_idx = idx.index(num_ip4_resources);
-        let (network, _) = self
-            .client_cidr_resources
-            .iter_ipv4()
-            .nth(r_idx)
-            .expect("index to be in range");
+    fn sample_ipv4_cidr_resource_dst(&self, idx: &sample::Selector) -> Option<Ipv4Addr> {
+        let (network, _) = idx.try_select(self.client_cidr_resources.iter_ipv4())?;
 
-        let num_hosts = network.hosts().len();
-
-        if num_hosts == 0 {
+        Some(idx.try_select(network.hosts()).unwrap_or_else(|| {
             debug_assert!(network.netmask() == 31 || network.netmask() == 32); // /31 and /32 don't have any hosts
 
-            return network.network_address();
-        }
-
-        let addr_idx = idx.index(num_hosts);
-
-        network.hosts().nth(addr_idx).expect("index to be in range")
+            network.network_address()
+        }))
     }
 
     /// Samples an [`Ipv6Addr`] from _any_ of our IPv6 CIDR resources.
-    fn sample_ipv6_cidr_resource_dst(&self, idx: &sample::Index) -> Ipv6Addr {
-        let num_ip6_resources = self.client_cidr_resources.len().1;
-        debug_assert!(num_ip6_resources > 0, "cannot sample without any resources");
-        let r_idx = idx.index(num_ip6_resources);
-        let (network, _) = self
-            .client_cidr_resources
-            .iter_ipv6()
-            .nth(r_idx)
-            .expect("index to be in range");
+    fn sample_ipv6_cidr_resource_dst(&self, idx: &sample::Selector) -> Option<Ipv6Addr> {
+        let (network, _) = idx.try_select(self.client_cidr_resources.iter_ipv6())?;
 
-        let num_hosts = network.subnets_with_prefix(128).len();
+        let network = idx
+            .try_select(network.subnets_with_prefix(128))
+            .unwrap_or_else(|| {
+                debug_assert!(network.netmask() == 127 || network.netmask() == 128); // /127 and /128 don't have any hosts
 
-        let network = if num_hosts == 0 {
-            debug_assert!(network.netmask() == 127 || network.netmask() == 128); // /127 and /128 don't have any hosts
+                network
+            });
 
-            network
-        } else {
-            let addr_idx = idx.index(num_hosts);
-
-            network
-                .subnets_with_prefix(128)
-                .nth(addr_idx)
-                .expect("index to be in range")
-        };
-
-        network.network_address()
+        Some(network.network_address())
     }
 
     /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq and identifier.
@@ -601,7 +551,7 @@ impl ReferenceState {
     ///
     /// If there are upstream DNS servers configured in the portal, it should use those.
     /// Otherwise it should use whatever was configured on the system prior to connlib starting.
-    pub(crate) fn expected_dns_servers(&self) -> HashSet<SocketAddr> {
+    pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
         if !self.upstream_dns_resolvers.is_empty() {
             return self
                 .upstream_dns_resolvers
@@ -616,47 +566,30 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn sample_domain(&self, idx: &sample::Index) -> (DomainName, HashSet<IpAddr>) {
-        let mut domains = self
-            .global_dns_records
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>();
-        domains.sort_by_key(|(domain, _)| domain.clone());
-
-        idx.get(&domains).clone()
+    pub(crate) fn sample_domain(&self, idx: &sample::Selector) -> (DomainName, HashSet<IpAddr>) {
+        idx.select(self.global_dns_records.clone())
     }
 
-    pub(crate) fn sample_dns_server(&self, idx: &sample::Index) -> SocketAddr {
-        let mut dns_servers = Vec::from_iter(self.expected_dns_servers());
-        dns_servers.sort();
-
-        *idx.get(&dns_servers)
+    pub(crate) fn sample_dns_server(&self, idx: &sample::Selector) -> SocketAddr {
+        idx.select(self.expected_dns_servers())
     }
 
     /// Sample a [`DomainName`] that has been resolved to addresses compatible with the [`PacketSource`] (e.g. has IPv4 addresses if we want to send from an IPv4 address).
-    fn sample_resolved_domain(&self, idx: &sample::Index, src: PacketSource) -> Option<DomainName> {
-        if self.client_dns_records.is_empty() {
-            return None;
-        }
+    fn sample_resolved_domain(
+        &self,
+        idx: &sample::Selector,
+        src: PacketSource,
+    ) -> Option<DomainName> {
+        let (name, mut ips) = idx.try_select(
+            self.client_dns_records
+                .iter()
+                .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
+                .map(|(domain, ips)| (domain.clone(), ips.clone())),
+        )?;
 
-        let mut resource_records = self
-            .client_dns_records
-            .iter()
-            .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
-            .map(|(domain, ips)| (domain.clone(), ips.clone()))
-            .collect::<Vec<_>>();
-        if resource_records.is_empty() {
-            return None;
-        }
+        ips.retain(|ip| ip.is_ipv4() == src.is_ipv4());
 
-        resource_records.sort();
-
-        let (name, mut addr) = idx.get(&resource_records).clone();
-
-        addr.retain(|ip| ip.is_ipv4() == src.is_ipv4());
-
-        if addr.is_empty() {
+        if ips.is_empty() {
             return None;
         }
 

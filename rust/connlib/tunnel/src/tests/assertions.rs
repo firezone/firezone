@@ -4,7 +4,7 @@ use connlib_shared::DomainName;
 use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     net::IpAddr,
 };
 
@@ -173,7 +173,7 @@ fn assert_destination_is_cdir_resource(
 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket<'_>,
-    global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+    global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     expected_resource: &DomainName,
 ) {
     let actual_destination = gateway_received_request.destination();

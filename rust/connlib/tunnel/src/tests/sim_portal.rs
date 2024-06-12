@@ -3,7 +3,7 @@ use connlib_shared::messages::{
     ClientId, GatewayId, RelayId, ResourceId,
 };
 use ip_network_table::IpNetworkTable;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 /// Stub implementation of the portal.
 ///
@@ -30,7 +30,7 @@ impl SimPortal {
         resource: ResourceId,
         _connected_gateway_ids: HashSet<GatewayId>,
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resources: &HashMap<ResourceId, ResourceDescriptionDns>,
+        client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
     ) -> (GatewayId, SiteId) {
         // TODO: Should we somehow vary how many gateways we connect to?
         // TODO: Should we somehow pick, which site to use?
