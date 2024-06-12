@@ -116,25 +116,19 @@ defmodule Web.Resources.Show do
               <%= @resource.address %>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={@resource.address_description}>
             <:label>
               Address Description
             </:label>
             <:value>
-              <a
-                href={
-                  if String.starts_with?(@resource.address_description, ["http", "ftp", "//"]) do
-                    @resource.address_description
-                  else
-                    "//" <> @resource.address_description
-                  end
-                }
-                target="_blank"
-                class={link_style()}
-              >
+              <%= if http_link?(@resource.address_description) do %>
+                <.link class={link_style()} navigate={@resource.address_description} target="_blank">
+                  <%= @resource.address_description %>
+                  <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
+                </.link>
+              <% else %>
                 <%= @resource.address_description %>
-                <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
-              </a>
+              <% end %>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -338,6 +332,16 @@ defmodule Web.Resources.Show do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}
     else
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
+    end
+  end
+
+  defp http_link?(address_description) do
+    uri = URI.parse(address_description)
+
+    if not is_nil(uri.scheme) and not is_nil(uri.host) and String.starts_with?(uri.scheme, "http") do
+      true
+    else
+      false
     end
   end
 end
