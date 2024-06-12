@@ -18,6 +18,20 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       }
     end
 
+    test "returns error when IdP sync is not enabled", %{account: account, provider: provider} do
+      {:ok, _account} = Domain.Accounts.update_account(account, %{features: %{idp_sync: false}})
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
+      refute updated_provider.last_synced_at
+      assert updated_provider.last_syncs_failed == 1
+
+      assert updated_provider.last_sync_error ==
+               "IdP sync is not enabled in your subscription plan"
+    end
+
     test "syncs IdP data", %{provider: provider, bypass: bypass} do
       # bypass = Bypass.open(port: bypass.port)
 

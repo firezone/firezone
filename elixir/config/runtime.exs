@@ -214,4 +214,8 @@ if config_env() == :prod do
            adapter: compile_config!(:outbound_email_adapter),
            from_email: compile_config!(:outbound_email_from)
          ] ++ compile_config!(:outbound_email_adapter_opts)
+
+  config :workos, WorkOS.Client,
+    api_key: compile_config!(:workos_api_key),
+    client_id: compile_config!(:workos_client_id)
 end
