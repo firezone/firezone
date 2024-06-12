@@ -1,4 +1,3 @@
-use crate::tests::PacketSource;
 use connlib_shared::{messages::DnsServer, proptest::domain_name, DomainName};
 use proptest::{collection, prelude::*};
 use std::{
@@ -62,16 +61,16 @@ pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName,
     )
 }
 
-pub(crate) fn packet_source_v4() -> impl Strategy<Value = PacketSource> {
+pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
     prop_oneof![
-        10 => Just(PacketSource::TunnelIp4),
-        1 => any::<Ipv4Addr>().prop_map(IpAddr::V4).prop_map(PacketSource::Other)
+        10 => Just(client),
+        1 => any::<Ipv4Addr>()
     ]
 }
 
-pub(crate) fn packet_source_v6() -> impl Strategy<Value = PacketSource> {
+pub(crate) fn packet_source_v6(client: Ipv6Addr) -> impl Strategy<Value = Ipv6Addr> {
     prop_oneof![
-        10 => Just(PacketSource::TunnelIp6),
-        1 => any::<Ipv6Addr>().prop_map(IpAddr::V6).prop_map(PacketSource::Other)
+        10 => Just(client),
+        1 => any::<Ipv6Addr>()
     ]
 }

@@ -1,4 +1,4 @@
-use super::{strategies::*, PacketSource};
+use super::strategies::*;
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
@@ -29,14 +29,14 @@ pub(crate) enum Transition {
     },
     /// Send an ICMP packet to a CIDR resource.
     SendICMPPacketToCidrResource {
-        src: PacketSource,
+        src: IpAddr,
         dst: IpAddr,
         seq: u16,
         identifier: u16,
     },
     /// Send an ICMP packet to a DNS resource.
     SendICMPPacketToDnsResource {
-        src: PacketSource,
+        src: IpAddr,
         dst: DomainName,
         #[derivative(Debug = "ignore")]
         resolved_ip: sample::Selector,
@@ -83,7 +83,7 @@ pub(crate) fn ping_random_ip(
 }
 
 pub(crate) fn icmp_to_cidr_resource(
-    src: impl Strategy<Value = PacketSource>,
+    src: impl Strategy<Value = IpAddr>,
     dst: impl Strategy<Value = IpAddr>,
 ) -> impl Strategy<Value = Transition> {
     (dst, any::<u16>(), any::<u16>(), src).prop_map(|(dst, seq, identifier, src)| {
@@ -97,7 +97,7 @@ pub(crate) fn icmp_to_cidr_resource(
 }
 
 pub(crate) fn icmp_to_dns_resource(
-    src: impl Strategy<Value = PacketSource>,
+    src: impl Strategy<Value = IpAddr>,
     dst: impl Strategy<Value = DomainName>,
 ) -> impl Strategy<Value = Transition> {
     (

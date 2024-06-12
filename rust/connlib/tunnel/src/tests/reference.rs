@@ -1,6 +1,5 @@
 use super::{
-    sim_node::*, sim_relay::*, strategies::*, transition::*, IcmpIdentifier, IcmpSeq, PacketSource,
-    QueryId,
+    sim_node::*, sim_relay::*, strategies::*, transition::*, IcmpIdentifier, IcmpSeq, QueryId,
 };
 use chrono::{DateTime, Utc};
 use connlib_shared::{
@@ -203,7 +202,7 @@ impl ReferenceStateMachine for ReferenceState {
             strategies.push((
                 1,
                 icmp_to_cidr_resource(
-                    packet_source_v4(),
+                    packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
                     sample::select(ip4_resources).prop_map(IpAddr::V4),
                 )
                 .boxed(),
@@ -215,7 +214,7 @@ impl ReferenceStateMachine for ReferenceState {
             strategies.push((
                 1,
                 icmp_to_cidr_resource(
-                    packet_source_v6(),
+                    packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
                     sample::select(ip6_resources).prop_map(IpAddr::V6),
                 )
                 .boxed(),
@@ -226,7 +225,11 @@ impl ReferenceStateMachine for ReferenceState {
         if !dns_v4_domains.is_empty() {
             strategies.push((
                 1,
-                icmp_to_dns_resource(packet_source_v4(), sample::select(dns_v4_domains)).boxed(),
+                icmp_to_dns_resource(
+                    packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
+                    sample::select(dns_v4_domains),
+                )
+                .boxed(),
             ));
         }
 
@@ -234,7 +237,11 @@ impl ReferenceStateMachine for ReferenceState {
         if !dns_v6_domains.is_empty() {
             strategies.push((
                 1,
-                icmp_to_dns_resource(packet_source_v6(), sample::select(dns_v6_domains)).boxed(),
+                icmp_to_dns_resource(
+                    packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
+                    sample::select(dns_v6_domains),
+                )
+                .boxed(),
             ));
         }
 
@@ -514,13 +521,7 @@ impl ReferenceState {
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet_to_cidr(
-        &mut self,
-        src: PacketSource,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
-    ) {
+    fn on_icmp_packet_to_cidr(&mut self, src: IpAddr, dst: IpAddr, seq: u16, identifier: u16) {
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
         // Second, if we are not yet connected, check if we have a resource for this IP.
@@ -530,7 +531,7 @@ impl ReferenceState {
         };
 
         if self.client_connected_cidr_resources.contains(&resource.id)
-            && src.originates_from_client()
+            && self.client.is_tunnel_ip(src)
         {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
@@ -544,16 +545,10 @@ impl ReferenceState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet_to_dns(
-        &mut self,
-        src: PacketSource,
-        dst: DomainName,
-        seq: u16,
-        identifier: u16,
-    ) {
+    fn on_icmp_packet_to_dns(&mut self, src: IpAddr, dst: DomainName, seq: u16, identifier: u16) {
         tracing::Span::current().record("dst", tracing::field::display(&dst));
 
-        if self.client_dns_records.contains_key(&dst) && src.originates_from_client() {
+        if self.client_dns_records.contains_key(&dst) && self.client.is_tunnel_ip(src) {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .push_back((ResourceDst::Dns(dst), seq, identifier));

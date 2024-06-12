@@ -177,8 +177,6 @@ impl StateMachineTest for TunnelTest {
                 seq,
                 identifier,
             } => {
-                let src = src.into_ip(state.client.tunnel_ip4, state.client.tunnel_ip6);
-
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
@@ -197,11 +195,10 @@ impl StateMachineTest for TunnelTest {
                         .unwrap()
                         .iter()
                         .filter(|ip| match ip {
-                            IpAddr::V4(_) => src.is_v4(),
-                            IpAddr::V6(_) => src.is_v6(),
+                            IpAddr::V4(_) => src.is_ipv4(),
+                            IpAddr::V6(_) => src.is_ipv6(),
                         });
                 let dst = *resolved_ip.select(available_ips);
-                let src = src.into_ip(state.client.tunnel_ip4, state.client.tunnel_ip6);
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
