@@ -910,6 +910,10 @@ mod proptests {
         ranges: Vec<RangeInclusive<u16>>,
         empty_protocol: ProtocolKind,
     ) -> impl Strategy<Value = Filters> + Clone {
+        if ranges.is_empty() {
+            return Just(vec![]).boxed();
+        }
+
         collection::vec(
             select(ranges.clone()).prop_flat_map(move |r| {
                 let range = r.clone();
@@ -919,6 +923,7 @@ mod proptests {
             }),
             1..=ranges.len(),
         )
+        .boxed()
     }
 
     fn filters() -> impl Strategy<Value = Filters> {
