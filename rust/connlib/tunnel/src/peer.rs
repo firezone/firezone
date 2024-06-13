@@ -186,11 +186,10 @@ impl ClientOnGateway {
             return;
         };
 
-        let old_ips: HashSet<&IpAddr> = HashSet::from_iter(
-            self.permanent_translations
-                .values()
-                .filter_map(|(ip, id, n, _, _)| (*n == name && *id == resource_id).then_some(ip)),
-        );
+        let old_ips: HashSet<&IpAddr> =
+            HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
+                (state.name == name && state.resource_id == resource_id).then_some(&state.real_ip)
+            }));
         let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
         if old_ips == new_ips {
             return;
@@ -206,7 +205,9 @@ impl ClientOnGateway {
         let proxy_ips = self
             .permanent_translations
             .iter()
-            .filter_map(|(k, (_, id, n, _, _))| (*n == name && *id == resource_id).then_some(*k))
+            .filter_map(|(k, state)| {
+                (state.name == name && state.resource_id == resource_id).then_some(*k)
+            })
             .collect_vec();
 
         self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now);
@@ -236,10 +237,16 @@ impl ClientOnGateway {
 
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
-        for (proxy_ip, real_address) in ip_maps {
+        for (proxy_ip, real_ip) in ip_maps {
             self.permanent_translations.insert(
                 *proxy_ip,
-                (real_address, resource_id, name.clone(), now, false),
+                TranslationState {
+                    real_ip,
+                    resource_id,
+                    name: name.clone(),
+                    last_response: now,
+                    slated_for_refresh: false,
+                },
             );
         }
     }
@@ -283,20 +290,26 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .values()
-            .filter(|(_, _, _, _, slated_for_refresh)| *slated_for_refresh);
+            .filter(|state| state.slated_for_refresh);
         let mut for_refresh = HashSet::new();
-        for (_, id, name, _, _) in expired_translations {
+        for expired_state in expired_translations {
             if self
                 .permanent_translations
                 .values()
-                .filter_map(|(_, r_id, n, last_seen, slated_for_refresh)| {
-                    (r_id == id && *n == name).then_some((last_seen, slated_for_refresh))
+                .filter_map(|state| {
+                    (state.resource_id == expired_state.resource_id
+                        && state.name == expired_state.name)
+                        .then_some((state.last_response, state.slated_for_refresh))
                 })
                 .all(|(last_seen, slated_for_refresh)| {
-                    *slated_for_refresh || now.duration_since(*last_seen) > Duration::from_secs(30)
+                    slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
                 })
             {
-                for_refresh.insert((name.clone(), self.id, *id));
+                for_refresh.insert((
+                    expired_state.name.clone(),
+                    self.id,
+                    expired_state.resource_id,
+                ));
             }
         }
 
@@ -381,15 +394,13 @@ impl ClientOnGateway {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
-        if let Some((ip, _, _, last, slated_for_refresh)) =
-            self.permanent_translations.get_mut(&packet.destination())
-        {
+        if let Some(state) = self.permanent_translations.get_mut(&packet.destination()) {
             let (source_protocol, real_ip) = self
                 .nat_table
-                .translate(&packet.as_immutable(), *ip, now)
+                .translate_outgoing(&packet.as_immutable(), state.real_ip, now)
                 .ok_or(connlib_shared::Error::ExhaustedNat)?;
-            if now.duration_since(*last) >= Duration::from_secs(30) {
-                *slated_for_refresh = true;
+            if now.duration_since(state.last_response) >= Duration::from_secs(30) {
+                state.slated_for_refresh = true;
             }
             let mut packet = packet
                 .translate_destination(self.ipv4, self.ipv6, real_ip)
@@ -424,15 +435,15 @@ impl ClientOnGateway {
         // TODO: re-establish old source port
         if let Some((proto, ip)) = self
             .nat_table
-            .revert_translation(&packet.as_immutable(), now)
+            .translate_incoming(&packet.as_immutable(), now)
         {
             let mut packet = packet.translate_source(self.ipv4, self.ipv6, ip)?;
-            let (_, _, _, last, slated_for_refresh) = self
+            let state = self
                 .permanent_translations
                 .get_mut(&ip)
                 .expect("inconsistent state");
-            *last = now;
-            *slated_for_refresh = false;
+            state.last_response = now;
+            state.slated_for_refresh = false;
             packet.set_destination_protocol(proto.value());
             packet.update_checksum();
             return Some(packet);
@@ -528,6 +539,16 @@ struct ResourceOnGateway {
     domain: Option<DomainName>,
 }
 
+// Current state of a translation for a given proxy ip
+#[derive(Debug)]
+struct TranslationState {
+    resource_id: ResourceId,
+    real_ip: IpAddr,
+    name: DomainName,
+    last_response: Instant,
+    slated_for_refresh: bool,
+}
+
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
@@ -535,7 +556,7 @@ pub struct ClientOnGateway {
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, Vec<ResourceOnGateway>>,
     filters: IpNetworkTable<FilterEngine>,
-    permanent_translations: HashMap<IpAddr, (IpAddr, ResourceId, DomainName, Instant, bool)>,
+    permanent_translations: HashMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 }
@@ -561,7 +582,7 @@ impl NatTable {
         }
     }
 
-    fn translate(
+    fn translate_outgoing(
         &mut self,
         outgoing_pkt: &IpPacket,
         real_address: IpAddr,
@@ -601,7 +622,7 @@ impl NatTable {
         None
     }
 
-    fn revert_translation(
+    fn translate_incoming(
         &mut self,
         incoming_packet: &IpPacket,
         now: Instant,

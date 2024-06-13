@@ -60,7 +60,7 @@ pub enum ConnlibError {
     #[error("exhausted nat")]
     ExhaustedNat,
     // TODO: we might want to log some extra parameters on these failed translations
-    /// Exhausted nat table
+    /// Packet translation failed
     #[error("failed packet translation")]
     FailedTranslation,
     /// Connection is still being established, retry later
