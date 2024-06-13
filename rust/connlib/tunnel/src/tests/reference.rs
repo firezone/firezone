@@ -1,5 +1,6 @@
 use super::{
-    sim_node::*, sim_relay::*, strategies::*, transition::*, IcmpIdentifier, IcmpSeq, QueryId,
+    composite_strategy::CompositeStrategy, sim_node::*, sim_relay::*, strategies::*, transition::*,
+    IcmpIdentifier, IcmpSeq, QueryId,
 };
 use chrono::{DateTime, Utc};
 use connlib_shared::{
@@ -178,130 +179,87 @@ impl ReferenceStateMachine for ReferenceState {
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
-        let tick = (0..=1000u64).prop_map(|millis| Transition::Tick { millis });
-        let set_system_dns_servers =
-            system_dns_servers().prop_map(|servers| Transition::UpdateSystemDnsServers { servers });
-        let set_upstream_dns_servers = upstream_dns_servers()
-            .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers });
-
-        let mut strategies = vec![
-            (
-                1,
-                cidr_resource(8)
-                    .prop_map(Transition::AddCidrResource)
-                    .boxed(),
-            ),
-            (1, add_dns_resource().boxed()),
-            (1, tick.boxed()),
-            (1, set_system_dns_servers.boxed()),
-            (1, set_upstream_dns_servers.boxed()),
-        ];
-
-        let ip4_resources = state.ipv4_cidr_resource_dsts();
-        if !ip4_resources.is_empty() {
-            strategies.push((
-                1,
+        CompositeStrategy::default()
+            .with((0..=1000u64).prop_map(|millis| Transition::Tick { millis }))
+            .with(
+                system_dns_servers()
+                    .prop_map(|servers| Transition::UpdateSystemDnsServers { servers }),
+            )
+            .with(
+                upstream_dns_servers()
+                    .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
+            )
+            .with(cidr_resource(8).prop_map(Transition::AddCidrResource))
+            .with(add_dns_resource())
+            .with_if_not_empty(state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
                     packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
                     sample::select(ip4_resources).prop_map(IpAddr::V4),
                 )
-                .boxed(),
-            ));
-        }
-
-        let ip6_resources = state.ipv6_cidr_resource_dsts();
-        if !ip6_resources.is_empty() {
-            strategies.push((
-                1,
+            })
+            .with_if_not_empty(state.ipv6_cidr_resource_dsts(), |ip6_resources| {
                 icmp_to_cidr_resource(
                     packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
                     sample::select(ip6_resources).prop_map(IpAddr::V6),
                 )
-                .boxed(),
-            ));
-        }
-
-        let dns_v4_domains = state.resolved_v4_domains();
-        if !dns_v4_domains.is_empty() {
-            strategies.push((
-                1,
+            })
+            .with_if_not_empty(state.resolved_v4_domains(), |dns_v4_domains| {
                 icmp_to_dns_resource(
                     packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
                     sample::select(dns_v4_domains),
                 )
-                .boxed(),
-            ));
-        }
-
-        let dns_v6_domains = state.resolved_v6_domains();
-        if !dns_v6_domains.is_empty() {
-            strategies.push((
-                1,
+            })
+            .with_if_not_empty(state.resolved_v6_domains(), |dns_v6_domains| {
                 icmp_to_dns_resource(
                     packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
                     sample::select(dns_v6_domains),
                 )
-                .boxed(),
-            ));
-        }
-
-        let domains = state.all_domains();
-        let v4_dns_servers = state.v4_dns_servers();
-        let v6_dns_servers = state.v6_dns_servers();
-
-        if !domains.is_empty()
-            && !state.v4_dns_servers().is_empty()
-            && state.client.ip4_socket.is_some()
-        {
-            strategies.push((
-                1,
-                dns_query(
-                    sample::select(domains.clone()),
-                    sample::select(v4_dns_servers).prop_map(SocketAddr::V4),
-                )
-                .boxed(),
-            ));
-        }
-
-        if !domains.is_empty()
-            && !state.v6_dns_servers().is_empty()
-            && state.client.ip6_socket.is_some()
-        {
-            strategies.push((
-                1,
-                dns_query(
-                    sample::select(domains),
-                    sample::select(v6_dns_servers).prop_map(SocketAddr::V6),
-                )
-                .boxed(),
-            ));
-        }
-
-        let resolved_non_resource_ip4s = state.resolved_ip4_for_non_resources();
-        if !resolved_non_resource_ip4s.is_empty() {
-            strategies.push((
-                1,
-                ping_random_ip(
-                    packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
-                    sample::select(resolved_non_resource_ip4s).prop_map(IpAddr::V4),
-                )
-                .boxed(),
-            ));
-        }
-
-        let resolved_non_resource_ip6s = state.resolved_ip6_for_non_resources();
-        if !resolved_non_resource_ip6s.is_empty() {
-            strategies.push((
-                1,
-                ping_random_ip(
-                    packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
-                    sample::select(resolved_non_resource_ip6s).prop_map(IpAddr::V6),
-                )
-                .boxed(),
-            ));
-        }
-
-        Union::new_weighted(strategies).boxed()
+            })
+            .with_if_not_empty(
+                (
+                    state.all_domains(),
+                    state.v4_dns_servers(),
+                    state.client.ip4_socket,
+                ),
+                |(domains, v4_dns_servers, _)| {
+                    dns_query(
+                        sample::select(domains),
+                        sample::select(v4_dns_servers).prop_map(SocketAddr::V4),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                (
+                    state.all_domains(),
+                    state.v6_dns_servers(),
+                    state.client.ip6_socket,
+                ),
+                |(domains, v6_dns_servers, _)| {
+                    dns_query(
+                        sample::select(domains),
+                        sample::select(v6_dns_servers).prop_map(SocketAddr::V6),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                state.resolved_ip4_for_non_resources(),
+                |resolved_non_resource_ip4s| {
+                    ping_random_ip(
+                        packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
+                        sample::select(resolved_non_resource_ip4s).prop_map(IpAddr::V4),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                state.resolved_ip6_for_non_resources(),
+                |resolved_non_resource_ip6s| {
+                    ping_random_ip(
+                        packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
+                        sample::select(resolved_non_resource_ip6s).prop_map(IpAddr::V6),
+                    )
+                },
+            )
+            .boxed()
     }
 
     /// Apply the transition to our reference state.
