@@ -116,7 +116,7 @@ defmodule Web.Resources.Show do
               <%= @resource.address %>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={@resource.address_description}>
+          <.vertical_table_row>
             <:label>
               Address Description
             </:label>
@@ -334,6 +334,8 @@ defmodule Web.Resources.Show do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
     end
   end
+
+  defp http_link?(nil), do: false
 
   defp http_link?(address_description) do
     uri = URI.parse(address_description)

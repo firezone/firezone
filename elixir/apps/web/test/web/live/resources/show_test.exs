@@ -143,7 +143,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    refute table["address description"]
+    assert table["address description"] == ""
   end
 
   test "renders link for address_descriptions that look like links", %{
