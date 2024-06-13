@@ -51,13 +51,13 @@ pub trait IsEmpty {
 
 impl<T> IsEmpty for Vec<T> {
     fn is_empty(&self) -> bool {
-        Vec::is_empty(&self)
+        Vec::is_empty(self)
     }
 }
 
 impl<T> IsEmpty for Option<T> {
     fn is_empty(&self) -> bool {
-        Option::is_none(&self)
+        Option::is_none(self)
     }
 }
 
