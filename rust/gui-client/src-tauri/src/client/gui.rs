@@ -27,18 +27,18 @@ mod system_tray_menu;
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
 #[allow(clippy::unnecessary_wraps)]
-mod os;
+pub(crate) mod os;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
 #[allow(clippy::unnecessary_wraps)]
-mod os;
+pub(crate) mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
 #[allow(clippy::unnecessary_wraps)]
-mod os;
+pub(crate) mod os;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 

@@ -2,6 +2,10 @@ use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 
+pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
+    todo!()
+}
+
 /// Since clickable notifications don't work on Linux yet, the update text
 /// must be different on different platforms
 pub(crate) fn show_update_notification(

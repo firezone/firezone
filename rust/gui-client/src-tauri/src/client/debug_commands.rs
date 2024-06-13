@@ -5,12 +5,19 @@ use crate::client;
 use anyhow::Result;
 
 #[derive(clap::Subcommand)]
-pub enum Cmd {
+pub(crate) enum Cmd {
     CheckForUpdates,
     Crash,
     DnsChanges,
     Hostname,
     NetworkChanges,
+    SetAutostart(SetAutostartArgs),
+}
+
+#[derive(clap::Parser)]
+pub(crate) struct SetAutostartArgs {
+    #[clap(action=clap::ArgAction::Set)]
+    enabled: bool,
 }
 
 pub fn run(cmd: Cmd) -> Result<()> {
@@ -20,7 +27,8 @@ pub fn run(cmd: Cmd) -> Result<()> {
         Cmd::DnsChanges => client::network_changes::run_dns_debug()?,
         Cmd::Hostname => hostname(),
         Cmd::NetworkChanges => client::network_changes::run_debug()?,
-    };
+        Cmd::SetAutostart(SetAutostartArgs { enabled }) => set_autostart(enabled)?,
+    }
 
     Ok(())
 }
@@ -49,4 +57,11 @@ fn hostname() {
         "{:?}",
         hostname::get().ok().and_then(|x| x.into_string().ok())
     );
+}
+
+fn set_autostart(enabled: bool) -> Result<()> {
+    firezone_headless_client::debug_command_setup()?;
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(client::gui::os::set_autostart(enabled))?;
+    Ok(())
 }
