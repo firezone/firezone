@@ -47,7 +47,6 @@ fn crash() -> Result<()> {
 fn hostname() {
     println!(
         "{:?}",
-        hostname::get().ok().and_then(|x|
-x.into_string().ok())
+        hostname::get().ok().and_then(|x| x.into_string().ok())
     );
 }
