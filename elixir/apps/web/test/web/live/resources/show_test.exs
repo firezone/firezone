@@ -118,10 +118,51 @@ defmodule Web.Live.Resources.ShowTest do
     assert table["name"] =~ resource.name
     assert table["address"] =~ resource.address
     assert table["created"] =~ actor.name
+    assert table["address description"] =~ resource.address_description
 
     for filter <- resource.filters do
       assert String.downcase(table["traffic restriction"]) =~ Atom.to_string(filter.protocol)
     end
+  end
+
+  test "omits address_description row if null", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource = Fixtures.Resources.create_resource(account: account, address_description: nil)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    table =
+      lv
+      |> element("#resource")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["address description"] == ""
+  end
+
+  test "renders link for address_descriptions that look like links", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        address_description: "http://example.com"
+      )
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    assert Floki.find(html, "a[href='https://example.com']")
   end
 
   test "renders traffic filters on show page even when traffic filters disabled", %{
