@@ -42,8 +42,7 @@ fn crash() -> Result<()> {
 }
 
 /// Wintun stress test to shake out issue #4765
-///
-/// Should work on other platforms but won't do anything useful
+#[cfg(target_os = "windows")]
 fn wintun() -> Result<()> {
     firezone_headless_client::debug_command_setup()?;
 
@@ -53,4 +52,9 @@ fn wintun() -> Result<()> {
         let _tunnel = firezone_tunnel::device_channel::Tun::new()?;
     }
     Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wintun() -> Result<()> {
+    anyhow::bail!("`debug wintun` is only implemented on Windows");
 }
