@@ -15,16 +15,16 @@
 # Tracks the current version to use for generating download links and changelogs
 current-apple-version = 1.0.4
 current-android-version = 1.0.3
-current-gateway-version = 1.0.6
-current-gui-version = 1.0.6
-current-headless-version = 1.0.6
+current-gateway-version = 1.0.7
+current-gui-version = 1.0.7
+current-headless-version = 1.0.7
 
 # Tracks the next version to release for each platform
 next-apple-version = 1.0.5
 next-android-version = 1.0.4
-next-gateway-version = 1.0.7
-next-gui-version = 1.0.7
-next-headless-version = 1.0.7
+next-gateway-version = 1.0.8
+next-gui-version = 1.0.8
+next-headless-version = 1.0.8
 
 # macOS uses a slightly different sed syntax
 ifeq ($(shell uname),Darwin)
