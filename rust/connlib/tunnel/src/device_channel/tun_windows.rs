@@ -12,8 +12,6 @@ use std::{
     str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
-    thread::sleep,
-    time::Duration,
 };
 use tokio::sync::mpsc;
 use windows::Win32::{
@@ -37,7 +35,7 @@ pub struct Tun {
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
     packet_rx: mpsc::Receiver<wintun::Packet>,
-    _recv_thread: std::thread::JoinHandle<()>,
+    recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
     routes: HashSet<IpNetwork>,
 }
@@ -46,6 +44,13 @@ impl Drop for Tun {
     fn drop(&mut self) {
         if let Err(e) = self.session.shutdown() {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
+        }
+        if let Some(recv_thread) = self.recv_thread.take() {
+            if let Err(error) = recv_thread.join() {
+                tracing::error!(?error, "Couldn't join `recv_thread`");
+            }
+        } else {
+            tracing::error!("No `recv_thread` in `Tun`");
         }
     }
 }
@@ -60,14 +65,12 @@ impl Tun {
         let path = connlib_shared::windows::wintun_dll_path()?;
         let wintun = unsafe { wintun::load_from_path(path) }?;
 
-        delete_old_adapter(&wintun);
-
         // Create wintun adapter
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
             .expect("static UUID should always parse correctly")
             .as_u128();
-        let adapter = create_adapter(&wintun, uuid);
-        let iface_idx = get_adapter_index(&adapter);
+        let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
+        let iface_idx = adapter.get_adapter_index()?;
 
         // Remove any routes that were previously associated with us
         // TODO: Pick a more elegant way to do this
@@ -83,14 +86,12 @@ impl Tun {
         set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
-
         let (packet_tx, packet_rx) = mpsc::channel(5);
-
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
 
         Ok(Self {
             iface_idx,
-            _recv_thread: recv_thread,
+            recv_thread: Some(recv_thread),
             packet_rx,
             session: Arc::clone(&session),
             routes: HashSet::new(),
@@ -222,73 +223,6 @@ impl Tun {
 
         row
     }
-}
-
-/// Delete old wintun adapter if needed
-///
-/// We delete it because `get_adapter_index` doesn't work on adapters opened by
-/// `open`, per wintun docs.
-fn delete_old_adapter(wintun: &wintun::Wintun) {
-    if let Ok(adapter) = Adapter::open(wintun, ADAPTER_NAME) {
-        tracing::warn!("Deleting existing wintun adapter");
-        let adapter = Arc::into_inner(adapter)
-            .expect("Nobody else should have a handle to this wintun adapter");
-        if let Err(error) = adapter.delete() {
-            tracing::error!(?error, "Error while deleting existing wintun adapter");
-        } else {
-            tracing::debug!("Deleted existing wintun adapter");
-        }
-    } else {
-        tracing::debug!("No existing wintun adapter, good");
-    }
-}
-
-/// Try multiple times to create an adapter
-///
-/// Panics if it fails enough times
-fn create_adapter(wintun: &wintun::Wintun, uuid: u128) -> Arc<Adapter> {
-    let loops = 10;
-    for i in 0..10 {
-        match Adapter::create(wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid)) {
-            Ok(x) => {
-                if i == 0 {
-                    tracing::debug!("Created wintun adapter on the first loop");
-                } else {
-                    tracing::warn!(?i, "Had to retry to create wintun adapter");
-                }
-                return x;
-            }
-            Err(error) => {
-                tracing::warn!(?error, "Adapter::create failed, see <https://github.com/firezone/firezone/issues/4765>");
-            }
-        }
-        sleep(Duration::from_secs(1));
-    }
-    panic!("Tried {loops} times to create wintun adapter and failed");
-}
-
-/// Try multiple times to get the adapter index
-///
-/// It seems like the synchronization between userspace and kernel space is poor here
-fn get_adapter_index(adapter: &Adapter) -> u32 {
-    let loops = 10;
-    for i in 0..10 {
-        match adapter.get_adapter_index() {
-            Ok(x) => {
-                if i == 0 {
-                    tracing::debug!("Got adapter index on the first loop");
-                } else {
-                    tracing::warn!(?i, "Had to retry to get adapter index");
-                }
-                return x;
-            }
-            Err(error) => {
-                tracing::error!(?error, "`Adapter::get_adapter_index` failed, see <https://github.com/firezone/firezone/issues/4765>");
-            }
-        }
-        sleep(Duration::from_secs(1));
-    }
-    panic!("Tried {loops} times to get adapter index and failed");
 }
 
 /// Flush Windows' system-wide DNS cache
