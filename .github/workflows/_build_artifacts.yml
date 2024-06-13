@@ -215,13 +215,21 @@ jobs:
         run: |
           set -xe
 
+          # Only clobber existing release assets if the release is a draft
+          is_draft=$(gh release view ${{ matrix.name.release_name }} --json isDraft --jq '.isDraft' | tr -d '\n')
+          if [[ "$is_draft" == "true" ]]; then
+            clobber="--clobber"
+          else
+            clobber=""
+          fi
+
           # Used for release artifact
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
           sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
           gh release upload ${{ matrix.name.release_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            --clobber \
+            $clobber \
             --repo ${{ github.repository }}
       - name: Authenticate to Google Cloud
         id: auth
