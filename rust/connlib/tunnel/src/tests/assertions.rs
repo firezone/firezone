@@ -1,5 +1,5 @@
 use super::{reference::ReferenceState, TunnelTest};
-use crate::tests::transition::ResourceDst;
+use crate::tests::reference::ResourceDst;
 use connlib_shared::DomainName;
 use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;

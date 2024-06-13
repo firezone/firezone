@@ -2067,6 +2067,7 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-shared",
+ "derivative",
  "domain",
  "firezone-relay",
  "futures",
