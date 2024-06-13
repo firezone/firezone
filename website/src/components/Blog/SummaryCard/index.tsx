@@ -22,7 +22,7 @@ export default function SummaryCard({
   type: string;
 }) {
   return (
-    <article className="p-6">
+    <article className="py-6">
       <div className="flex justify-between items-center mb-5">
         <span className="text-neutral-500 font-semibold text-xs inline-flex items-center">
           {type.toUpperCase()}
