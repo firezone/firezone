@@ -141,6 +141,10 @@ impl<ID, S> SimNode<ID, S> {
             IpAddr::V6(_) => IpAddr::from(self.tunnel_ip6),
         }
     }
+
+    pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
+        self.tunnel_ip(ip) == ip
+    }
 }
 
 impl<ID: fmt::Debug, S: fmt::Debug> fmt::Debug for SimNode<ID, S> {

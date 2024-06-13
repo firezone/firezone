@@ -60,3 +60,17 @@ pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName,
         0..15,
     )
 }
+
+pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
+    prop_oneof![
+        10 => Just(client),
+        1 => any::<Ipv4Addr>()
+    ]
+}
+
+pub(crate) fn packet_source_v6(client: Ipv6Addr) -> impl Strategy<Value = Ipv6Addr> {
+    prop_oneof![
+        10 => Just(client),
+        1 => any::<Ipv6Addr>()
+    ]
+}
