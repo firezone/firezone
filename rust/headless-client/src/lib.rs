@@ -135,9 +135,9 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
-    #[command(hide = true)]
     DebugIpcService,
     IpcService,
+    Wintun,
 }
 
 impl Default for CmdIpc {
@@ -343,6 +343,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     match cli.command {
         CmdIpc::DebugIpcService => run_debug_ipc_service(),
         CmdIpc::IpcService => platform::run_ipc_service(cli.common),
+        CmdIpc::Wintun => run_wintun(),
     }
 }
 
@@ -369,6 +370,24 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
             future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
         }
     })
+}
+
+/// Wintun stress test to shake out issue #4765
+#[cfg(target_os = "windows")]
+fn run_wintun() -> Result<()> {
+    debug_command_setup()?;
+
+    let iters = 20;
+    for i in 0..iters {
+        tracing::info!(?i, "Loop");
+        let _tunnel = firezone_tunnel::device_channel::Tun::new()?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_wintun() -> Result<()> {
+    anyhow::bail!("`debug wintun` is only implemented on Windows");
 }
 
 #[derive(Clone)]
