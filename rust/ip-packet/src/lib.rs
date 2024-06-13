@@ -2,6 +2,9 @@ pub mod make;
 
 pub use pnet_packet::*;
 
+#[cfg(all(test, feature = "proptest"))]
+mod proptests;
+
 use pnet_packet::{
     icmp::{
         echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpTypes,

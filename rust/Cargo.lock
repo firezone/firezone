@@ -3171,6 +3171,8 @@ version = "0.1.0"
 dependencies = [
  "hickory-proto",
  "pnet_packet",
+ "proptest",
+ "test-strategy",
 ]
 
 [[package]]

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 28493c42d9a80886807dbafa94ceb96ca9ac11e25c5f5e907a507468039b19e4 # shrinks to input = _CanTranslateDstPacketArgs { packet: Ipv6(ConvertibleIpv6Packet { buf: Owned([96, 0, 0, 0, 0, 8, 17, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 255, 222]) }), src_v4: 0.0.0.0, src_v6: ::ffff:127.0.0.1, dst: ::ffff:0.0.0.0 }
