@@ -13,7 +13,7 @@ use connlib_shared::{
 };
 use hickory_proto::rr::RecordType;
 use ip_network_table::IpNetworkTable;
-use proptest::{prelude::*, sample, strategy::Union};
+use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
