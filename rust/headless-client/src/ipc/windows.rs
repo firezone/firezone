@@ -1,10 +1,6 @@
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
-use std::{
-    ffi::c_void,
-    os::windows::io::AsRawHandle,
-    time::Duration,
-};
+use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
     Foundation::HANDLE, Security as WinSec, System::Pipes::GetNamedPipeClientProcessId,

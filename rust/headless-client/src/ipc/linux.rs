@@ -1,3 +1,7 @@
+use anyhow::{Context as _, Result};
+use std::{os::unix::fs::PermissionsExt, path::Path};
+use tokio::net::{UnixListener, UnixStream};
+
 pub(crate) struct IpcServer {
     listener: UnixListener,
 }
@@ -8,7 +12,7 @@ pub(crate) type IpcStream = UnixStream;
 impl IpcServer {
     /// Platform-specific setup
     pub(crate) async fn new() -> Result<Self> {
-        Self::new_with_path(&sock_path()).await
+        Self::new_with_path(&crate::platform::sock_path()).await
     }
 
     /// Uses a test path instead of what prod uses

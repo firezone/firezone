@@ -6,14 +6,10 @@ use connlib_client_shared::file_logger;
 use firezone_cli_utils::setup_global_subscriber;
 use futures::future::{select, Either};
 use std::{
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     pin::pin,
 };
-use tokio::{
-    net::{UnixListener, UnixStream},
-    signal::unix::{signal, Signal, SignalKind as TokioSignalKind},
-};
+use tokio::signal::unix::{signal, Signal, SignalKind as TokioSignalKind};
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
