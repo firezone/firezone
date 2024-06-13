@@ -21,6 +21,7 @@ connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.2"
 firezone-headless-client = { path = "../../headless-client" }
+firezone-tunnel = { workspace = true }
 futures = { version = "0.3", default-features = false }
 git-version = "0.3.9"
 hex = "0.4.3"

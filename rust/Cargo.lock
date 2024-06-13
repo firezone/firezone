@@ -1938,6 +1938,7 @@ dependencies = [
  "crash-handler",
  "dirs",
  "firezone-headless-client",
+ "firezone-tunnel",
  "futures",
  "git-version",
  "hex",
