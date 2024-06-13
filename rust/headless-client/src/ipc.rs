@@ -8,4 +8,4 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
 
-pub(crate) use platform::{IpcServer, IpcStream};
+pub(crate) use platform::{Server, Stream};

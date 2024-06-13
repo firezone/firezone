@@ -51,7 +51,7 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub(crate) use windows as platform;
 
-use ipc::{IpcServer, IpcStream};
+use ipc::{Server as IpcServer, Stream as IpcStream};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
