@@ -16,7 +16,9 @@
 use anyhow::{Context as _, Result};
 use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use std::{net::IpAddr, os::windows::process::CommandExt, process::Command};
+use tracing::instrument;
 
+#[instrument(ret, skip_all)]
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers()
 }
@@ -49,6 +51,7 @@ impl DnsController {
     ///
     /// Must be async to match the Linux signature
     #[allow(clippy::unused_async)]
+    #[instrument(ret, skip_all)]
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         deactivate().context("Failed to deactivate DNS control")?;
         activate(dns_config).context("Failed to activate DNS control")?;
@@ -56,6 +59,7 @@ impl DnsController {
     }
 }
 
+#[instrument]
 pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
@@ -76,6 +80,7 @@ pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
 ///
 /// Parameters:
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
+#[instrument(skip_all)]
 pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
     let dns_config_string = dns_config
         .iter()
@@ -114,6 +119,7 @@ pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 // Must be `sync` so we can call it from `Drop`
+#[instrument]
 pub(crate) fn deactivate() -> Result<()> {
     Command::new("powershell")
         .creation_flags(CREATE_NO_WINDOW)

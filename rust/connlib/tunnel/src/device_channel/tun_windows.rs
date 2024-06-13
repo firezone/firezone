@@ -14,6 +14,7 @@ use std::{
     task::{ready, Context, Poll},
 };
 use tokio::sync::mpsc;
+use tracing::instrument;
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
@@ -45,6 +46,7 @@ impl Drop for Tun {
 }
 
 impl Tun {
+    #[instrument(skip_all)]
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
@@ -97,6 +99,7 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
+    #[instrument(ret, skip_all)]
     pub fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
@@ -224,8 +227,10 @@ impl Tun {
 }
 
 /// Flush Windows' system-wide DNS cache
-pub(crate) fn flush_dns() -> Result<()> {
-    tracing::info!("Flushing Windows DNS cache");
+///
+/// Takes about 400 ms on the dev laptop
+#[instrument(ret, skip_all)]
+fn flush_dns() -> Result<()> {
     Command::new("powershell")
         .creation_flags(CREATE_NO_WINDOW)
         .args(["-Command", "Clear-DnsClientCache"])
@@ -261,6 +266,7 @@ fn start_recv_thread(
 
 /// Sets MTU on the interface
 /// TODO: Set IP and other things in here too, so the code is more organized
+#[instrument(ret, skip_all)]
 fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
     // the u64 value and re-wrapping it, since wintun doesn't refer to the windows

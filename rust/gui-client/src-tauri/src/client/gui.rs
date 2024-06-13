@@ -736,6 +736,7 @@ async fn run_controller(
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
     let mut dns_listener = network_changes::DnsListener::new()?;
+    let mut last_resolvers_sent = vec![];
 
     loop {
         tokio::select! {
@@ -770,10 +771,14 @@ async fn run_controller(
                 }
             },
             resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
-                if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(resolvers).await?;
+                let mut resolvers = resolvers?;
+                resolvers.sort();
+                if resolvers != last_resolvers_sent {
+                    last_resolvers_sent = resolvers.clone();
+                    if let Some(session) = controller.session.as_mut() {
+                        tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                        session.connlib.set_dns(resolvers).await?;
+                    }
                 }
             },
             req = rx.recv() => {
