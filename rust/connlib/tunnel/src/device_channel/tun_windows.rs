@@ -46,6 +46,7 @@ impl Drop for Tun {
             tracing::error!("wintun::Session::shutdown: {e:#?}");
         }
         if let Some(recv_thread) = self.recv_thread.take() {
+            // We must join the worker thread here to prevent issue #4765
             if let Err(error) = recv_thread.join() {
                 tracing::error!(?error, "Couldn't join `recv_thread`");
             }

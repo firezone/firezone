@@ -109,7 +109,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
 }
 
 pub(crate) fn run_wintun() -> Result<()> {
-    anyhow::bail!("`debug wintun` is only implemented on Windows");
+    anyhow::bail!("`wintun` is only implemented on Windows");
 }
 
 pub fn firezone_group() -> Result<nix::unistd::Group> {
