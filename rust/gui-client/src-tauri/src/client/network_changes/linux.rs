@@ -5,16 +5,6 @@ use firezone_headless_client::dns_control::system_resolvers_for_gui;
 use std::net::IpAddr;
 use tokio::time::Interval;
 
-pub(crate) fn run_dns_debug() -> Result<()> {
-    tracing::warn!("network_changes not implemented yet on Linux");
-    Ok(())
-}
-
-pub(crate) fn run_debug() -> Result<()> {
-    tracing::warn!("network_changes not implemented yet on Linux");
-    Ok(())
-}
-
 /// TODO: Implement for Linux
 pub(crate) fn check_internet() -> Result<bool> {
     Ok(true)
