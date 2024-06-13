@@ -112,6 +112,10 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn run_wintun() -> Result<()> {
+    anyhow::bail!("`debug wintun` is only implemented on Windows");
+}
+
 pub fn firezone_group() -> Result<nix::unistd::Group> {
     let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
         .context("can't get group by name")?

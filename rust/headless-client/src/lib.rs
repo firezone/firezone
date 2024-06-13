@@ -25,7 +25,7 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
+use tracing_subscriber::{fmt::{format::FmtSpan, SubscriberBuilder}, EnvFilter};
 use url::Url;
 
 use platform::default_token_path;
@@ -343,7 +343,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     match cli.command {
         CmdIpc::DebugIpcService => run_debug_ipc_service(),
         CmdIpc::IpcService => platform::run_ipc_service(cli.common),
-        CmdIpc::Wintun => run_wintun(),
+        CmdIpc::Wintun => platform::run_wintun(),
     }
 }
 
@@ -370,24 +370,6 @@ pub(crate) fn run_debug_ipc_service() -> Result<()> {
             future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
         }
     })
-}
-
-/// Wintun stress test to shake out issue #4765
-#[cfg(target_os = "windows")]
-fn run_wintun() -> Result<()> {
-    debug_command_setup()?;
-
-    let iters = 20;
-    for i in 0..iters {
-        tracing::info!(?i, "Loop");
-        let _tunnel = firezone_tunnel::device_channel::Tun::new()?;
-    }
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn run_wintun() -> Result<()> {
-    anyhow::bail!("`debug wintun` is only implemented on Windows");
 }
 
 #[derive(Clone)]
@@ -597,8 +579,10 @@ pub fn debug_command_setup() -> Result<()> {
     let filter = EnvFilter::builder()
         .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
         .from_env_lossy();
-    let layer = fmt::layer().with_filter(filter);
-    let subscriber = Registry::default().with(layer);
+    let subscriber = SubscriberBuilder::default()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_env_filter(filter)
+        .finish();
     set_global_default(subscriber)?;
     Ok(())
 }

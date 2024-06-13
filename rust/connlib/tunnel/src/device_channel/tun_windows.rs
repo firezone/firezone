@@ -51,6 +51,7 @@ impl Drop for Tun {
 }
 
 impl Tun {
+    #[tracing::instrument]
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
@@ -66,7 +67,7 @@ impl Tun {
             .expect("static UUID should always parse correctly")
             .as_u128();
         let adapter = create_adapter(&wintun, uuid);
-        let iface_idx = adapter.get_adapter_index()?;
+        let iface_idx = get_adapter_index(&adapter);
 
         // Remove any routes that were previously associated with us
         // TODO: Pick a more elegant way to do this
@@ -229,16 +230,16 @@ impl Tun {
 /// `open`, per wintun docs.
 fn delete_old_adapter(wintun: &wintun::Wintun) {
     if let Ok(adapter) = Adapter::open(wintun, ADAPTER_NAME) {
-        tracing::warn!("Found an existing wintun adapter, trying to delete it");
+        tracing::warn!("Deleting existing wintun adapter");
         let adapter = Arc::into_inner(adapter)
             .expect("Nobody else should have a handle to this wintun adapter");
         if let Err(error) = adapter.delete() {
             tracing::error!(?error, "Error while deleting existing wintun adapter");
         } else {
-            tracing::info!("Deleted existing wintun adapter");
+            tracing::debug!("Deleted existing wintun adapter");
         }
     } else {
-        tracing::info!("No existing wintun adapter, good");
+        tracing::debug!("No existing wintun adapter, good");
     }
 }
 
@@ -250,18 +251,44 @@ fn create_adapter(wintun: &wintun::Wintun, uuid: u128) -> Arc<Adapter> {
     for i in 0..10 {
         match Adapter::create(wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid)) {
             Ok(x) => {
-                if i > 0 {
+                if i == 0 {
+                    tracing::debug!("Created wintun adapter on the first loop");
+                } else {
                     tracing::warn!(?i, "Had to retry to create wintun adapter");
                 }
                 return x;
             }
             Err(error) => {
-                tracing::error!(?error, "Adapter::create failed, see <https://github.com/firezone/firezone/issues/4765>");
+                tracing::warn!(?error, "Adapter::create failed, see <https://github.com/firezone/firezone/issues/4765>");
             }
-        };
+        }
         sleep(Duration::from_secs(1));
     }
     panic!("Tried {loops} times to create wintun adapter and failed");
+}
+
+/// Try multiple times to get the adapter index
+///
+/// It seems like the synchronization between userspace and kernel space is poor here
+fn get_adapter_index(adapter: &Adapter) -> u32 {
+    let loops = 10;
+    for i in 0..10 {
+        match adapter.get_adapter_index() {
+            Ok(x) => {
+                if i == 0 {
+                    tracing::debug!("Got adapter index on the first loop");
+                } else {
+                    tracing::warn!(?i, "Had to retry to get adapter index");
+                }
+                return x;
+            }
+            Err(error) => {
+                tracing::error!(?error, "`Adapter::get_adapter_index` failed, see <https://github.com/firezone/firezone/issues/4765>");
+            }
+        }
+        sleep(Duration::from_secs(1));
+    }
+    panic!("Tried {loops} times to get adapter index and failed");
 }
 
 /// Flush Windows' system-wide DNS cache
