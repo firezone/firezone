@@ -24,6 +24,7 @@ use windows::Win32::{
     },
     Networking::WinSock::{AF_INET, AF_INET6},
 };
+use wintun::Adapter;
 
 // TODO: Double-check that all these get dropped gracefully on disconnect
 pub struct Tun {
@@ -47,22 +48,39 @@ impl Drop for Tun {
 impl Tun {
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
+        // Not sure how this and `TUNNEL_NAME` differ
+        const ADAPTER_NAME: &str = "Firezone";
 
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
         let path = connlib_shared::windows::wintun_dll_path()?;
         let wintun = unsafe { wintun::load_from_path(path) }?;
+
+        // Open and delete old wintun adapter if needed
+        // We delete it because `get_adapter_index` doesn't work on adapters opened by
+        // `open`, per wintun docs.
+        if let Ok(adapter) = Adapter::open(&wintun, ADAPTER_NAME) {
+            tracing::warn!("Found an existing wintun adapter, trying to delete it");
+            let adapter = Arc::into_inner(adapter)
+                .expect("Nobody else should have a handle to this wintun adapter");
+            if let Err(error) = adapter.delete() {
+                tracing::error!(?error, "Error while deleting existing wintun adapter");
+            } else {
+                tracing::info!("Deleted existing wintun adapter");
+            }
+        } else {
+            tracing::info!("No existing wintun adapter, good");
+        }
+
+        // Create wintun adapter
         let uuid =
             uuid::Uuid::from_str(TUNNEL_UUID).expect("static UUID should always parse correctly");
         let adapter =
-            match wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())) {
+            match Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid.as_u128())) {
                 Ok(x) => x,
-                Err(e) => {
-                    tracing::error!(
-                        "wintun::Adapter::create failed, probably need admin powers: {}",
-                        e
-                    );
-                    return Err(e.into());
+                Err(error) => {
+                    tracing::error!(?error, "Adapter::create failed, probably need admin powers");
+                    Err(error)?
                 }
             };
 
