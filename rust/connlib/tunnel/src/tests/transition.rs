@@ -175,7 +175,7 @@ pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
 }
 
 pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    (dns_resource()).prop_flat_map(move |r| {
+    dns_resource().prop_flat_map(move |r| {
         let wildcard_address = format!("*.{}", r.address);
 
         let records = subdomain_records(r.address, domain_name(1..3));
