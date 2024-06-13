@@ -78,7 +78,6 @@ pub(crate) fn run_wintun() -> Result<()> {
     let iters = 1000;
     for i in 0..iters {
         tracing::info!(?i, "Loop");
-        //wintun::Tun::new().context("`Tun::new` failed")?;
         let _tun = firezone_tunnel::device_channel::Tun::new()?;
     }
     Ok(())
