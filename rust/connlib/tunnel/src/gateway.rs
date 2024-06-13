@@ -343,7 +343,7 @@ impl GatewayState {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
                 self.peers.iter_mut().for_each(|p| {
                     p.expire_resources(utc_now);
-                    p.expire_nat(now)
+                    p.handle_timeout(now)
                 });
                 self.peers.retain(|_, p| !p.is_emptied());
 

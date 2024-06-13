@@ -12,13 +12,17 @@ use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::ip::IpNextHeaderProtocols;
-use ip_packet::{IpPacket, MutableIpPacket, Protocol};
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
+
+use nat_table::NatTable;
+
+mod nat_table;
 
 #[derive(Debug)]
 enum FilterEngine {
@@ -238,6 +242,8 @@ impl ClientOnGateway {
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
         for (proxy_ip, real_ip) in ip_maps {
+            tracing::debug!(%proxy_ip, %real_ip, %name, "Assigned translation");
+
             self.permanent_translations.insert(
                 *proxy_ip,
                 TranslationState {
@@ -286,13 +292,13 @@ impl ClientOnGateway {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn expire_nat(&mut self, now: Instant) {
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let expired_translations = self
             .permanent_translations
-            .values()
-            .filter(|state| state.slated_for_refresh);
+            .iter()
+            .filter(|(_, state)| state.slated_for_refresh);
         let mut for_refresh = HashSet::new();
-        for expired_state in expired_translations {
+        for (proxy_ip, expired_state) in expired_translations {
             if self
                 .permanent_translations
                 .values()
@@ -305,22 +311,20 @@ impl ClientOnGateway {
                     slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
                 })
             {
-                for_refresh.insert((
-                    expired_state.name.clone(),
-                    self.id,
-                    expired_state.resource_id,
-                ));
+                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.real_ip, %proxy_ip , "Refreshing DNS");
+
+                for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
             }
         }
 
-        for (name, conn_id, resource_id) in for_refresh {
+        for (name, resource_id) in for_refresh {
             self.buffered_events.push_back(GatewayEvent::RefreshDns {
                 name,
-                conn_id,
+                conn_id: self.id,
                 resource_id,
             });
         }
-        self.nat_table.expire(now);
+        self.nat_table.handle_timeout(now);
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
@@ -394,21 +398,24 @@ impl ClientOnGateway {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
-        if let Some(state) = self.permanent_translations.get_mut(&packet.destination()) {
-            let (source_protocol, real_ip) = self
-                .nat_table
-                .translate_outgoing(&packet.as_immutable(), state.real_ip, now)
-                .ok_or(connlib_shared::Error::ExhaustedNat)?;
-            if now.duration_since(state.last_response) >= Duration::from_secs(30) {
-                state.slated_for_refresh = true;
-            }
-            let mut packet = packet
-                .translate_destination(self.ipv4, self.ipv6, real_ip)
-                .ok_or(connlib_shared::Error::FailedTranslation)?;
-            packet.set_source_protocol(source_protocol.value());
-            packet.update_checksum();
+        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(packet);
+        };
+
+        let (source_protocol, real_ip) = self
+            .nat_table
+            .translate_outgoing(&packet.as_immutable(), state.real_ip, now)
+            .ok_or(connlib_shared::Error::ExhaustedNat)?;
+
+        if now.duration_since(state.last_response) >= Duration::from_secs(30) {
+            state.slated_for_refresh = true;
         }
+
+        let mut packet = packet
+            .translate_destination(self.ipv4, self.ipv6, real_ip)
+            .ok_or(connlib_shared::Error::FailedTranslation)?;
+        packet.set_source_protocol(source_protocol.value());
+        packet.update_checksum();
 
         Ok(packet)
     }
@@ -432,22 +439,24 @@ impl ClientOnGateway {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Option<MutableIpPacket<'a>> {
-        // TODO: re-establish old source port
-        if let Some((proto, ip)) = self
+        let Some((proto, ip)) = self
             .nat_table
             .translate_incoming(&packet.as_immutable(), now)
-        {
-            let mut packet = packet.translate_source(self.ipv4, self.ipv6, ip)?;
-            let state = self
-                .permanent_translations
-                .get_mut(&ip)
-                .expect("inconsistent state");
-            state.last_response = now;
-            state.slated_for_refresh = false;
-            packet.set_destination_protocol(proto.value());
-            packet.update_checksum();
+        else {
             return Some(packet);
-        }
+        };
+
+        let mut packet = packet.translate_source(self.ipv4, self.ipv6, ip)?;
+        let state = self
+            .permanent_translations
+            .get_mut(&ip)
+            .expect("inconsistent state");
+
+        state.last_response = now;
+        state.slated_for_refresh = false;
+
+        packet.set_destination_protocol(proto.value());
+        packet.update_checksum();
 
         Some(packet)
     }
@@ -559,84 +568,6 @@ pub struct ClientOnGateway {
     permanent_translations: HashMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
-}
-
-#[derive(Default, Debug)]
-struct NatTable {
-    table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
-    last_seen: HashMap<(Protocol, IpAddr), Instant>,
-}
-
-impl NatTable {
-    fn expire(&mut self, now: Instant) {
-        let mut removed = Vec::new();
-        for (r, e) in self.last_seen.iter() {
-            if now.duration_since(*e) >= Duration::from_secs(60) {
-                self.table.remove_by_right(r);
-                removed.push(*r);
-            }
-        }
-
-        for r in removed {
-            self.last_seen.remove(&r);
-        }
-    }
-
-    fn translate_outgoing(
-        &mut self,
-        outgoing_pkt: &IpPacket,
-        real_address: IpAddr,
-        now: Instant,
-    ) -> Option<(Protocol, IpAddr)> {
-        let source_protocol = outgoing_pkt.source_protocol()?;
-        if let Some(res) = self
-            .table
-            .get_by_left(&(source_protocol, outgoing_pkt.destination()))
-        {
-            if res.1 == real_address {
-                self.last_seen.insert(*res, now);
-                return Some(*res);
-            }
-        }
-
-        let mut occupied_ports = self
-            .table
-            .iter()
-            .filter(|(_, (proto, ip))| *ip == real_address && proto.same_type(&source_protocol))
-            .map(|(_, (proto, _))| proto.value())
-            .sorted_unstable();
-
-        for p in 1.. {
-            if !occupied_ports.contains(&p) {
-                let proxy_protocol = source_protocol.with_value(p);
-                self.table.insert(
-                    (source_protocol, outgoing_pkt.destination()),
-                    (proxy_protocol, real_address),
-                );
-                self.last_seen.insert((proxy_protocol, real_address), now);
-                return Some((proxy_protocol, real_address));
-            }
-        }
-
-        tracing::warn!("available nat ports exhausted");
-        None
-    }
-
-    fn translate_incoming(
-        &mut self,
-        incoming_packet: &IpPacket,
-        now: Instant,
-    ) -> Option<(Protocol, IpAddr)> {
-        if let Some((destination_protocol, src)) = self.table.get_by_right(&(
-            incoming_packet.destination_protocol()?,
-            incoming_packet.source(),
-        )) {
-            self.last_seen.insert((*destination_protocol, *src), now);
-            return Some((*destination_protocol, *src));
-        }
-
-        None
-    }
 }
 
 #[cfg(test)]
