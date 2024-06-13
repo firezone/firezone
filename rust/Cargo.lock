@@ -1941,6 +1941,7 @@ dependencies = [
  "futures",
  "git-version",
  "hex",
+ "hostname 0.4.0",
  "keyring",
  "minidumper",
  "native-dialog",

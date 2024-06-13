@@ -9,16 +9,20 @@ pub enum Cmd {
     CheckForUpdates,
     Crash,
     DnsChanges,
+    Hostname,
     NetworkChanges,
 }
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
-        Cmd::CheckForUpdates => check_for_updates(),
-        Cmd::Crash => crash(),
-        Cmd::DnsChanges => client::network_changes::run_dns_debug(),
-        Cmd::NetworkChanges => client::network_changes::run_debug(),
-    }
+        Cmd::CheckForUpdates => check_for_updates()?,
+        Cmd::Crash => crash()?,
+        Cmd::DnsChanges => client::network_changes::run_dns_debug()?,
+        Cmd::Hostname => hostname(),
+        Cmd::NetworkChanges => client::network_changes::run_debug()?,
+    };
+
+    Ok(())
 }
 
 fn check_for_updates() -> Result<()> {
@@ -37,4 +41,13 @@ fn crash() -> Result<()> {
     tracing::info!("started log (DebugCrash)");
 
     panic!("purposely panicking to see if it shows up in logs");
+}
+
+#[allow(clippy::print_stdout)]
+fn hostname() {
+    println!(
+        "{:?}",
+        hostname::get().ok().and_then(|x|
+x.into_string().ok())
+    );
 }
