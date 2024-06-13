@@ -61,6 +61,16 @@ pub(crate) enum Transition {
         query_id: u16,
         dns_server: SocketAddr,
     },
+    ChangeRecordsOfDnsResource {
+        domain: DomainName,
+        new_ips: HashSet<IpAddr>,
+
+        src: IpAddr,
+        #[derivative(Debug = "ignore")]
+        resolved_ip: sample::Selector,
+        seq: u16,
+        identifier: u16,
+    },
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
@@ -141,6 +151,33 @@ where
                 resolved_ip,
                 seq,
                 identifier,
+            }
+        })
+}
+
+pub(crate) fn change_records_of_dns_resource<I>(
+    domain: impl Strategy<Value = DomainName>,
+    src: impl Strategy<Value = I>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
+    (
+        domain,
+        any::<u16>(),
+        any::<u16>(),
+        src.prop_map(Into::into),
+        any::<sample::Selector>(),
+        resolved_ips(),
+    )
+        .prop_map(|(domain, seq, identifier, src, resolved_ip, new_ips)| {
+            Transition::ChangeRecordsOfDnsResource {
+                domain,
+                src,
+                resolved_ip,
+                seq,
+                identifier,
+                new_ips,
             }
         })
 }

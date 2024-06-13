@@ -23,6 +23,7 @@ use hickory_proto::{
 use hickory_resolver::lookup::Lookup;
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use itertools::Itertools as _;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::{rngs::StdRng, SeedableRng as _};
 use secrecy::ExposeSecret as _;
@@ -210,6 +211,32 @@ impl StateMachineTest for TunnelTest {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.client.update_upstream_dns(servers);
             }
+            Transition::ChangeRecordsOfDnsResource {
+                domain,
+                src,
+                seq,
+                identifier,
+                resolved_ip,
+                ..
+            } => {
+                // Connlib automatically refreshes the resolved IPs for a DNS resource if we don't see traffic for 30s.
+                // Thus, to maintain the state that we are connected to a DNS resource, we first wait for 30s, then simulate traffic that gets lost but triggers a refresh.
+
+                state = Self::apply(state, ref_state, Transition::Tick { millis: 30_000 });
+                state = Self::apply(
+                    state,
+                    ref_state,
+                    Transition::SendICMPPacketToDnsResource {
+                        src,
+                        dst: domain,
+                        resolved_ip,
+                        seq,
+                        identifier,
+                    },
+                );
+                // Need an additional tick to trigger the DNS refresh.
+                state = Self::apply(state, ref_state, Transition::Tick { millis: 1_000 });
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
@@ -252,6 +279,7 @@ impl TunnelTest {
                     transmit,
                     sending_socket,
                     buffered_transmits,
+                    &ref_state.client_cidr_resources,
                     &ref_state.global_dns_records,
                 );
                 continue;
@@ -289,7 +317,7 @@ impl TunnelTest {
                 continue;
             }
             if let Some(event) = self.gateway.state.poll_event() {
-                self.on_gateway_event(self.gateway.id, event);
+                self.on_gateway_event(self.gateway.id, event, &ref_state.global_dns_records);
                 continue;
             }
             if let Some(message) = self.relay.state.next_command() {
@@ -310,6 +338,7 @@ impl TunnelTest {
                             src,
                             &payload,
                             buffered_transmits,
+                            &ref_state.client_cidr_resources,
                             &ref_state.global_dns_records,
                         ) {
                             continue;
@@ -443,6 +472,7 @@ impl TunnelTest {
         transmit: Transmit,
         sending_socket: Option<SocketAddr>,
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         let dst = transmit.dst;
@@ -469,7 +499,14 @@ impl TunnelTest {
         }
 
         if self
-            .try_handle_gateway(dst, src, payload, buffered_transmits, global_dns_records)
+            .try_handle_gateway(
+                dst,
+                src,
+                payload,
+                buffered_transmits,
+                client_cidr_resources,
+                global_dns_records,
+            )
             .is_break()
         {
             return;
@@ -524,6 +561,7 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
@@ -540,13 +578,22 @@ impl TunnelTest {
             let packet = packet.to_owned();
 
             if packet.as_icmp().is_some() {
+                let dst = packet.destination();
+
+                // FIXME: We only assert against successful ICMP handshakes, thus we only record the packet if we are producing a response.
                 self.gateway_received_icmp_requests
                     .push_back(packet.clone());
 
-                let echo_response = ip_packet::make::icmp_response_packet(packet);
-                let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
+                if client_cidr_resources.longest_match(dst).is_some()
+                    || global_dns_records.values().flatten().contains(&dst)
+                {
+                    let echo_response = ip_packet::make::icmp_response_packet(packet);
+                    let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
 
-                buffered_transmits.extend(maybe_transmit);
+                    buffered_transmits.extend(maybe_transmit);
+                } else {
+                    tracing::warn!(%dst, "Dropping ICMP packet because resource is down / changed IPs.");
+                }
 
                 return ControlFlow::Break(());
             }
@@ -749,7 +796,12 @@ impl TunnelTest {
         }
     }
 
-    fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
+    fn on_gateway_event(
+        &mut self,
+        src: GatewayId,
+        event: GatewayEvent,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+    ) {
         match event {
             GatewayEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
                 self.client
@@ -760,7 +812,28 @@ impl TunnelTest {
                 .client
                 .span
                 .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
-            GatewayEvent::RefreshDns { .. } => todo!(),
+            GatewayEvent::RefreshDns {
+                name,
+                conn_id,
+                resource_id,
+            } => {
+                let resolved_ips = global_dns_records
+                    .get(&name)
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .collect();
+
+                self.gateway.span.in_scope(|| {
+                    self.gateway.state.refresh_translation(
+                        conn_id,
+                        resource_id,
+                        name,
+                        resolved_ips,
+                        self.now,
+                    )
+                });
+            }
         }
     }
 

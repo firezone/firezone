@@ -60,8 +60,8 @@ pub(crate) struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
-    /// The expected ICMP handshakes.
-    pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
+    /// The expected ICMP handshakes (and whether we expect a response).
+    pub(crate) expected_icmp_packets: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier, bool)>,
     /// The expected DNS handshakes.
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
 }
@@ -164,7 +164,7 @@ impl ReferenceStateMachine for ReferenceState {
                     global_dns_records,
                     client_cidr_resources: IpNetworkTable::new(),
                     client_connected_cidr_resources: Default::default(),
-                    expected_icmp_handshakes: Default::default(),
+                    expected_icmp_packets: Default::default(),
                     client_dns_resources: Default::default(),
                     client_dns_records: Default::default(),
                     expected_dns_handshakes: Default::default(),
@@ -225,6 +225,18 @@ impl ReferenceStateMachine for ReferenceState {
                 icmp_to_dns_resource(
                     packet_source_v6(state.client.tunnel_ip6),
                     sample::select(dns_v6_domains),
+                )
+            })
+            .with_if_not_empty(1, state.resolved_v4_domains(), |dns_v4_domains| {
+                change_records_of_dns_resource(
+                    sample::select(dns_v4_domains),
+                    packet_source_v4(state.client.tunnel_ip4),
+                )
+            })
+            .with_if_not_empty(1, state.resolved_v6_domains(), |dns_v6_domains| {
+                change_records_of_dns_resource(
+                    sample::select(dns_v6_domains),
+                    packet_source_v6(state.client.tunnel_ip6),
                 )
             })
             .with_if_not_empty(
@@ -337,6 +349,27 @@ impl ReferenceStateMachine for ReferenceState {
                     state.expected_dns_handshakes.push_back(*query_id);
                 }
             },
+            Transition::ChangeRecordsOfDnsResource {
+                domain,
+                new_ips,
+                seq,
+                identifier,
+                ..
+            } => {
+                let ips = state.global_dns_records.get_mut(domain).unwrap();
+
+                tracing::debug!(%domain, old = ?ips, new = ?new_ips, "Changing DNS records");
+
+                ips.clear();
+                ips.extend(new_ips);
+
+                state.expected_icmp_packets.push_back((
+                    ResourceDst::Dns(domain.clone()),
+                    *seq,
+                    *identifier,
+                    false,
+                ));
+            }
             Transition::SendICMPPacketToNonResourceIp { .. } => {
                 // Packets to non-resources are dropped, no state change required.
             }
@@ -437,14 +470,12 @@ impl ReferenceStateMachine for ReferenceState {
                 src,
                 ..
             } => {
-                state.is_valid_icmp_packet(seq, identifier)
-                    && state
-                        .client_dns_records
-                        .get(dst)
-                        .is_some_and(|r| match src {
-                            IpAddr::V4(_) => r.contains(&RecordType::A),
-                            IpAddr::V6(_) => r.contains(&RecordType::AAAA),
-                        })
+                let has_resolved_correct_ip_version = match src {
+                    IpAddr::V4(_) => state.resolved_v4_domains().contains(dst),
+                    IpAddr::V6(_) => state.resolved_v6_domains().contains(dst),
+                };
+
+                state.is_valid_icmp_packet(seq, identifier) && has_resolved_correct_ip_version
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
@@ -475,6 +506,25 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 state.global_dns_records.contains_key(domain)
                     && state.expected_dns_servers().contains(dns_server)
+            }
+            Transition::ChangeRecordsOfDnsResource {
+                domain,
+                src,
+                seq,
+                identifier,
+                ..
+            } => {
+                let domain_is_resolved = match src {
+                    IpAddr::V4(_) => state.resolved_v4_domains().contains(domain),
+                    IpAddr::V6(_) => state.resolved_v6_domains().contains(domain),
+                };
+                let is_connected = state.dns_resource_by_domain(domain).is_some_and(|r| {
+                    state
+                        .client_connected_dns_resources
+                        .contains(&(r, domain.clone()))
+                });
+
+                domain_is_resolved && is_connected && state.is_valid_icmp_packet(seq, identifier)
             }
             Transition::RemoveResource(id) => {
                 state.client_cidr_resources.iter().any(|(_, r)| &r.id == id)
@@ -523,8 +573,8 @@ impl ReferenceState {
             && self.client.is_tunnel_ip(src)
         {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .push_back((ResourceDst::Cidr(dst), seq, identifier));
+            self.expected_icmp_packets
+                .push_back((ResourceDst::Cidr(dst), seq, identifier, true));
             return;
         }
 
@@ -550,8 +600,8 @@ impl ReferenceState {
             && self.client.is_tunnel_ip(src)
         {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .push_back((ResourceDst::Dns(dst), seq, identifier));
+            self.expected_icmp_packets
+                .push_back((ResourceDst::Dns(dst), seq, identifier, true));
             return;
         }
 
@@ -636,9 +686,9 @@ impl ReferenceState {
 
     /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq and identifier.
     fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16) -> bool {
-        self.expected_icmp_handshakes
+        self.expected_icmp_packets
             .iter()
-            .all(|(_, existing_seq, existing_identifer)| {
+            .all(|(_, existing_seq, existing_identifer, _)| {
                 existing_seq != seq && existing_identifer != identifier
             })
     }

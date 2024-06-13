@@ -4,7 +4,7 @@ use connlib_shared::DomainName;
 use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     net::IpAddr,
 };
 
@@ -16,9 +16,12 @@ use std::{
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
 pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_state.expected_icmp_handshakes,
+        ref_state
+            .expected_icmp_packets
+            .iter()
+            .filter(|(_, _, _, expect_reply)| *expect_reply),
         &state.client_received_icmp_replies,
-        |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        |(_, seq_a, id_a, _), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
     assert_eq!(
         unexpected_icmp_replies,
@@ -27,7 +30,7 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
     );
 
     assert_eq!(
-        ref_state.expected_icmp_handshakes.len(),
+        ref_state.expected_icmp_packets.len(),
         state.gateway_received_icmp_requests.len(),
         "Unexpected ICMP requests on gateway"
     );
@@ -36,8 +39,8 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
 
     let mut mapping = HashMap::new();
 
-    for ((resource_dst, seq, identifier), gateway_received_request) in ref_state
-        .expected_icmp_handshakes
+    for ((resource_dst, seq, identifier, expect_reply), gateway_received_request) in ref_state
+        .expected_icmp_packets
         .iter()
         .zip(state.gateway_received_icmp_requests.iter())
     {
@@ -47,12 +50,15 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
             .client_sent_icmp_requests
             .get(&(*seq, *identifier))
             .expect("to have ICMP request on client");
-        let client_received_reply = &state
-            .client_received_icmp_replies
-            .get(&(*seq, *identifier))
-            .expect("to have ICMP reply on client");
 
-        assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+        if *expect_reply {
+            let client_received_reply = &state
+                .client_received_icmp_replies
+                .get(&(*seq, *identifier))
+                .expect("to have ICMP reply on client");
+
+            assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+        }
 
         assert_eq!(
             gateway_received_request.source(),
@@ -67,12 +73,13 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
                 assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
             }
             ResourceDst::Dns(domain) => {
-                assert_destination_is_dns_resource(
-                    gateway_received_request,
-                    &ref_state.global_dns_records,
-                    domain,
-                );
-
+                if *expect_reply {
+                    assert_destination_is_dns_resource(
+                        gateway_received_request,
+                        &ref_state.global_dns_records,
+                        domain,
+                    );
+                }
                 assert_proxy_ip_mapping_is_stable(
                     client_sent_request,
                     gateway_received_request,
@@ -85,9 +92,9 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
 
 pub(crate) fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_state.expected_dns_handshakes,
+        ref_state.expected_dns_handshakes.iter(),
         &state.client_received_dns_responses,
-        |id_a, id_b| id_a == id_b,
+        |id_a, id_b| **id_a == *id_b,
     );
 
     assert_eq!(
@@ -117,13 +124,12 @@ fn assert_correct_src_and_dst_ips(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
 ) {
-    assert_eq!(
-        client_sent_request.destination(),
-        client_received_reply.source(),
-        "request destination == reply source"
-    );
-
-    tracing::info!(target: "assertions", "✅ dst IP of request matches src IP of response: {}", client_sent_request.destination());
+    if client_sent_request.destination() != client_received_reply.source() {
+        tracing::error!(target: "assertions", dst = %client_sent_request.destination(), src = %client_received_reply.source(), "dst IP of request does not match src IP of response");
+        panic!()
+    } else {
+        tracing::info!(target: "assertions", "✅ dst IP of request matches src IP of response: {}", client_sent_request.destination());
+    }
 
     assert_eq!(
         client_sent_request.source(),
@@ -177,17 +183,17 @@ fn assert_destination_is_dns_resource(
     global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     expected_resource: &DomainName,
 ) {
-    let actual_destination = gateway_received_request.destination();
-    let possible_resource_ips = global_dns_records
+    let dst = gateway_received_request.destination();
+    let resource_ips = global_dns_records
         .get(expected_resource)
         .expect("ICMP packet for DNS resource to target known domain");
 
-    assert!(
-        possible_resource_ips.contains(&actual_destination),
-        "ICMP request on gateway to target a known resource IP"
-    );
+    if !resource_ips.contains(&dst) {
+        tracing::error!(target: "assertions", ?resource_ips, %dst, "Packet does not target a known resource IP");
+        panic!()
+    }
 
-    tracing::info!(target: "assertions", "✅ {actual_destination} is a valid IP for {expected_resource}");
+    tracing::info!(target: "assertions", "✅ {dst} is a valid IP for {expected_resource}");
 }
 
 /// Assert that the mapping of proxy IP to resource destination is stable.
@@ -220,14 +226,14 @@ fn assert_proxy_ip_mapping_is_stable(
     }
 }
 
-fn find_unexpected_entries<'a, E, K, V>(
-    expected: &VecDeque<E>,
-    actual: &'a HashMap<K, V>,
+fn find_unexpected_entries<E, K, V>(
+    expected: impl Iterator<Item = E> + Clone,
+    actual: &HashMap<K, V>,
     is_equal: impl Fn(&E, &K) -> bool,
-) -> Vec<&'a V> {
+) -> Vec<&V> {
     actual
         .iter()
-        .filter(|(k, _)| !expected.iter().any(|e| is_equal(e, k)))
+        .filter(|(k, _)| !expected.clone().any(|e| is_equal(&e, k)))
         .map(|(_, v)| v)
         .collect()
 }
