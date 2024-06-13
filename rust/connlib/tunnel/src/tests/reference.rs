@@ -190,7 +190,11 @@ impl ReferenceStateMachine for ReferenceState {
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
             .with(cidr_resource(8).prop_map(Transition::AddCidrResource))
-            .with(add_dns_resource())
+            .with(prop_oneof![
+                non_wildcard_dns_resource(),
+                star_wildcard_dns_resource(),
+                question_mark_wildcard_dns_resource(),
+            ])
             .with_if_not_empty(state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
                     packet_source_v4(state.client.tunnel_ip4),

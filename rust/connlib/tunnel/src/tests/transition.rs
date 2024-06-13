@@ -165,15 +165,7 @@ where
         )
 }
 
-pub(crate) fn add_dns_resource() -> impl Strategy<Value = Transition> {
-    prop_oneof![
-        non_wildcard_dns_resource(),
-        star_wildcard_dns_resource(),
-        question_mark_wildcard_dns_resource(),
-    ]
-}
-
-fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
         Transition::AddDnsResource {
             records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
@@ -182,7 +174,7 @@ fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     })
 }
 
-fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     (dns_resource()).prop_flat_map(move |r| {
         let wildcard_address = format!("*.{}", r.address);
 
@@ -197,7 +189,7 @@ fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     })
 }
 
-fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     dns_resource().prop_flat_map(move |r| {
         let wildcard_address = format!("?.{}", r.address);
 
