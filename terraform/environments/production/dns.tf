@@ -1,5 +1,5 @@
 # Allow Google Cloud to issue certificates for our domain
-resource "google_dns_record_set" "dns-caa" {
+resource "google_dns_record_set" "default-dns-caa" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
@@ -11,6 +11,46 @@ resource "google_dns_record_set" "dns-caa" {
   ]
   ttl = 3600
 }
+
+resource "google_dns_record_set" "www-dns-caa" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type = "CAA"
+  name = "www.${module.google-cloud-dns.dns_name}"
+  rrdatas = [
+    "0 issue \"letsencrypt.org\"",
+    "0 iodef \"mailto:security@firezone.dev\""
+  ]
+  ttl = 3600
+}
+
+resource "google_dns_record_set" "blog-dns-caa" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type = "CAA"
+  name = "blog.${module.google-cloud-dns.dns_name}"
+  rrdatas = [
+    "0 issue \"letsencrypt.org\"",
+    "0 iodef \"mailto:security@firezone.dev\""
+  ]
+  ttl = 3600
+}
+
+resource "google_dns_record_set" "docs-dns-caa" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type = "CAA"
+  name = "docs.${module.google-cloud-dns.dns_name}"
+  rrdatas = [
+    "0 issue \"letsencrypt.org\"",
+    "0 iodef \"mailto:security@firezone.dev\""
+  ]
+  ttl = 3600
+}
+
 
 # Website
 
