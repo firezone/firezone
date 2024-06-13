@@ -1,6 +1,7 @@
+use crate::MTU;
 use connlib_shared::{
     windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    Callbacks, Result, DEFAULT_MTU,
+    Callbacks, Result,
 };
 use ip_network::IpNetwork;
 use std::{
@@ -79,7 +80,7 @@ impl Tun {
             .stdout(Stdio::null())
             .status()?;
 
-        set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
+        set_iface_config(adapter.get_luid(), MTU as u32)?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 

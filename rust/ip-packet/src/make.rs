@@ -61,11 +61,11 @@ fn icmp_packet(
                 MutablePacket as _, Packet as _,
             };
 
-            let mut buf = vec![0u8; 60];
+            let mut buf = vec![0u8; 60 + 20];
 
-            ipv4_header(src, dst, IpNextHeaderProtocols::Icmp, &mut buf[..]);
+            ipv4_header(src, dst, IpNextHeaderProtocols::Icmp, &mut buf[20..]);
 
-            let mut icmp_packet = MutableIcmpPacket::new(&mut buf[20..]).unwrap();
+            let mut icmp_packet = MutableIcmpPacket::new(&mut buf[40..]).unwrap();
 
             match kind {
                 IcmpKind::Request => {
@@ -101,11 +101,11 @@ fn icmp_packet(
                 MutablePacket as _,
             };
 
-            let mut buf = vec![0u8; 128];
+            let mut buf = vec![0u8; 128 + 20];
 
-            ipv6_header(src, dst, IpNextHeaderProtocols::Icmpv6, &mut buf);
+            ipv6_header(src, dst, IpNextHeaderProtocols::Icmpv6, &mut buf[20..]);
 
-            let mut icmp_packet = MutableIcmpv6Packet::new(&mut buf[40..]).unwrap();
+            let mut icmp_packet = MutableIcmpv6Packet::new(&mut buf[60..]).unwrap();
 
             match kind {
                 IcmpKind::Request => {
@@ -148,22 +148,22 @@ pub fn tcp_packet(
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
 
-            let len = 20 + 20 + payload.len();
+            let len = 20 + 20 + payload.len() + 20;
             let mut buf = vec![0u8; len];
 
-            ipv4_header(src, dst, IpNextHeaderProtocols::Tcp, &mut buf);
+            ipv4_header(src, dst, IpNextHeaderProtocols::Tcp, &mut buf[20..]);
 
-            tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[20..]);
+            tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
             MutableIpPacket::owned(buf).unwrap()
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
 
-            let mut buf = vec![0u8; 40 + 20 + payload.len()];
+            let mut buf = vec![0u8; 40 + 20 + payload.len() + 20];
 
-            ipv6_header(src, dst, IpNextHeaderProtocols::Tcp, &mut buf);
+            ipv6_header(src, dst, IpNextHeaderProtocols::Tcp, &mut buf[20..]);
 
-            tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
+            tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[60..]);
             MutableIpPacket::owned(buf).unwrap()
         }
         (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
@@ -183,22 +183,22 @@ pub fn udp_packet(
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
 
-            let len = 20 + 8 + payload.len();
+            let len = 20 + 8 + payload.len() + 20;
             let mut buf = vec![0u8; len];
 
-            ipv4_header(src, dst, IpNextHeaderProtocols::Udp, &mut buf);
+            ipv4_header(src, dst, IpNextHeaderProtocols::Udp, &mut buf[20..]);
 
-            udp_header(saddr, daddr, sport, dport, &payload, &mut buf[20..]);
+            udp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
             MutableIpPacket::owned(buf).unwrap()
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
 
-            let mut buf = vec![0u8; 40 + 8 + payload.len()];
+            let mut buf = vec![0u8; 40 + 8 + payload.len() + 20];
 
-            ipv6_header(src, dst, IpNextHeaderProtocols::Udp, &mut buf);
+            ipv6_header(src, dst, IpNextHeaderProtocols::Udp, &mut buf[20..]);
 
-            udp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
+            udp_header(saddr, daddr, sport, dport, &payload, &mut buf[60..]);
             MutableIpPacket::owned(buf).unwrap()
         }
         (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
