@@ -41,7 +41,8 @@ sudo usermod -aG firezone-client "$USER"
 reboot
 ```
 
-To auto-start the Client when you log in, run `firezone-client-gui debug set-autostart true`
+To auto-start the Client when you log in, run
+`firezone-client-gui debug set-autostart true`
 
 ## Usage
 
@@ -116,8 +117,7 @@ To export or clear your logs:
 
 ## Uninstalling
 
-1. Remove the auto-start link:
-   `firezone-client-gui debug set-autostart false`
+1. Remove the auto-start link: `firezone-client-gui debug set-autostart false`
 1. Quit `firezone-client-gui` if it's running.
 1. Remove the package: `sudo apt-get remove firezone-client-gui`
 

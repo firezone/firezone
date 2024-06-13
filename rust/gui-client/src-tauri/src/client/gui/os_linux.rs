@@ -15,18 +15,16 @@ pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
             .await
             .context("Can't create autostart link")?;
         tracing::info!("Enabled autostart.");
-    } else {
-        if tokio::fs::try_exists(&link)
+    } else if tokio::fs::try_exists(&link) // I think this else-if is less intuitive, but Clippy insisted
+        .await
+        .context("Can't check if autostart link exists")?
+    {
+        tokio::fs::remove_file(&link)
             .await
-            .context("Can't check if autostart link exists")?
-        {
-            tokio::fs::remove_file(&link)
-                .await
-                .context("Can't remove autostart link")?;
-            tracing::info!("Disabled autostart.");
-        } else {
-            tracing::info!("Autostart is already disabled.");
-        }
+            .context("Can't remove autostart link")?;
+        tracing::info!("Disabled autostart.");
+    } else {
+        tracing::info!("Autostart is already disabled.");
     }
     Ok(())
 }
