@@ -28,6 +28,7 @@ use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::{rngs::StdRng, SeedableRng as _};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::collections::{BTreeMap, BTreeSet};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
@@ -135,12 +136,7 @@ impl StateMachineTest for TunnelTest {
         this
     }
 
-    /// Apply a generated state transition to our system under test and assert against the reference state machine.
-    ///
-    /// This is equivalent to "arrange - act - assert" of a regular test:
-    /// 1. We start out in a certain state (arrange)
-    /// 2. We apply a [`Transition`] (act)
-    /// 3. We assert against the reference state (assert)
+    /// Apply a generated state transition to our system under test.
     fn apply(
         mut state: Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
@@ -157,61 +153,50 @@ impl StateMachineTest for TunnelTest {
                 .client
                 .add_resource(ResourceDescription::Dns(resource)),
             Transition::SendICMPPacketToNonResourceIp {
+                src,
+                dst,
+                seq,
+                identifier,
+            }
+            | Transition::SendICMPPacketToCidrResource {
+                src,
                 dst,
                 seq,
                 identifier,
             } => {
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
+                let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToResolvedNonResourceIp {
-                idx,
-                seq,
-                identifier,
-            } => {
-                let dst = ref_state
-                    .sample_resolved_non_resource_dst(&idx)
-                    .expect("Transition to only be sampled if we have at least one non-resource resolved domain");
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
-
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
-            }
-            Transition::SendICMPPacketToResource {
-                idx,
-                seq,
-                identifier,
+            Transition::SendICMPPacketToDnsResource {
                 src,
+                dst,
+                seq,
+                identifier,
+                resolved_ip,
             } => {
-                let dst = ref_state
-                    .sample_resource_dst(&idx, src)
-                    .expect("Transition to only be sampled if we have at least one resource");
-                let dst = dst.into_actual_packet_dst(idx, src, &state.client_dns_records);
-                let src = src.into_ip(state.client.tunnel_ip4, state.client.tunnel_ip6);
+                let available_ips =
+                    state
+                        .client_dns_records
+                        .get(&dst)
+                        .unwrap()
+                        .iter()
+                        .filter(|ip| match ip {
+                            IpAddr::V4(_) => src.is_ipv4(),
+                            IpAddr::V6(_) => src.is_ipv6(),
+                        });
+                let dst = *resolved_ip.select(available_ips);
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
             Transition::SendDnsQuery {
-                r_idx,
+                domain,
                 r_type,
                 query_id,
-                dns_server_idx,
+                dns_server,
             } => {
-                let (domain, _) = ref_state.sample_domain(&r_idx);
-                let dns_server = ref_state.sample_dns_server(&dns_server_idx);
-
                 let transmit = state.send_dns_query_for(domain, r_type, query_id, dns_server);
 
                 buffered_transmits.extend(transmit)
@@ -229,16 +214,22 @@ impl StateMachineTest for TunnelTest {
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
+        state
+    }
+
+    // Assert against the reference state machine.
+    fn check_invariants(
+        state: &Self::SystemUnderTest,
+        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
+    ) {
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        assert_icmp_packets_properties(&mut state, ref_state);
-        assert_dns_packets_properties(&state, ref_state);
+        assert_icmp_packets_properties(state, ref_state);
+        assert_dns_packets_properties(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
-
-        state
     }
 }
 
@@ -346,7 +337,7 @@ impl TunnelTest {
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
-    fn effective_dns_servers(&self) -> HashSet<SocketAddr> {
+    fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
         self.client_dns_by_sentinel
             .right_values()
             .copied()
@@ -452,7 +443,7 @@ impl TunnelTest {
         transmit: Transmit,
         sending_socket: Option<SocketAddr>,
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         let dst = transmit.dst;
         let payload = &transmit.payload;
@@ -533,7 +524,7 @@ impl TunnelTest {
         src: SocketAddr,
         payload: &[u8],
         buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
 
@@ -586,8 +577,8 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resource: &HashMap<ResourceId, ResourceDescriptionDns>,
-        global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+        client_dns_resource: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
             ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
@@ -854,7 +845,7 @@ impl TunnelTest {
 
 fn map_client_resource_to_gateway_resource(
     client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    client_dns_resources: &HashMap<ResourceId, ResourceDescriptionDns>,
+    client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
     resolved_ips: Vec<IpNetwork>,
     resource_id: ResourceId,
 ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {

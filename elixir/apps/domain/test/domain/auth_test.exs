@@ -12,6 +12,7 @@ defmodule Domain.AuthTest do
 
       assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: true, sync: true],
+               jumpcloud: [enabled: true, sync: true],
                microsoft_entra: [enabled: true, sync: true],
                okta: [enabled: true, sync: true],
                openid_connect: [enabled: true, sync: false]
@@ -21,6 +22,7 @@ defmodule Domain.AuthTest do
 
       assert Enum.sort(all_user_provisioned_provider_adapters!(account)) == [
                google_workspace: [enabled: false, sync: true],
+               jumpcloud: [enabled: false, sync: true],
                microsoft_entra: [enabled: false, sync: true],
                okta: [enabled: false, sync: true],
                openid_connect: [enabled: true, sync: false]

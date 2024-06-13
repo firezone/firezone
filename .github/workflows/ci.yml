@@ -46,16 +46,18 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.0.6
+          - release_name: gateway-1.0.8
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.0.6
+          - release_name: headless-client-1.0.8
             config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - release_name: gui-client-1.0.6
+          - release_name: gui-client-1.0.8
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6
+        # Only draft releases on merges to main
+        if: ${{ github.ref_name == 'main' }}
         id: update-release-draft
         with:
           config-name: ${{ matrix.config_name }}
