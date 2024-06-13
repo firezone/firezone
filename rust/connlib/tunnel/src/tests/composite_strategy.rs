@@ -25,14 +25,19 @@ where
     T: fmt::Debug,
 {
     /// Adds a strategy to this [`CompositeStrategy`].
-    pub fn with(mut self, strategy: impl Strategy<Value = T> + 'static) -> Self {
-        self.options.push((1, strategy.boxed()));
+    pub fn with(mut self, prob: u32, strategy: impl Strategy<Value = T> + 'static) -> Self {
+        self.options.push((prob, strategy.boxed()));
 
         self
     }
 
     /// Adds a strategy based on some input element if the element is not empty.
-    pub fn with_if_not_empty<S, E>(self, element: E, make_strategy: impl Fn(E) -> S) -> Self
+    pub fn with_if_not_empty<S, E>(
+        self,
+        prob: u32,
+        element: E,
+        make_strategy: impl Fn(E) -> S,
+    ) -> Self
     where
         S: Strategy<Value = T> + 'static,
         E: IsEmpty,
@@ -41,7 +46,7 @@ where
             return self;
         }
 
-        self.with(make_strategy(element))
+        self.with(prob, make_strategy(element))
     }
 }
 

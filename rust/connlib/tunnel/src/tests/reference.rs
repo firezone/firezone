@@ -180,46 +180,55 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> proptest::prelude::BoxedStrategy<Self::Transition> {
         CompositeStrategy::default()
-            .with((0..=1000u64).prop_map(|millis| Transition::Tick { millis }))
             .with(
+                1,
+                (0..=1000u64).prop_map(|millis| Transition::Tick { millis }),
+            )
+            .with(
+                1,
                 system_dns_servers()
                     .prop_map(|servers| Transition::UpdateSystemDnsServers { servers }),
             )
             .with(
+                1,
                 upstream_dns_servers()
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
-            .with(cidr_resource(8).prop_map(Transition::AddCidrResource))
-            .with(prop_oneof![
-                non_wildcard_dns_resource(),
-                star_wildcard_dns_resource(),
-                question_mark_wildcard_dns_resource(),
-            ])
-            .with_if_not_empty(state.ipv4_cidr_resource_dsts(), |ip4_resources| {
+            .with(1, cidr_resource(8).prop_map(Transition::AddCidrResource))
+            .with(
+                1,
+                prop_oneof![
+                    non_wildcard_dns_resource(),
+                    star_wildcard_dns_resource(),
+                    question_mark_wildcard_dns_resource(),
+                ],
+            )
+            .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
                     packet_source_v4(state.client.tunnel_ip4),
                     sample::select(ip4_resources),
                 )
             })
-            .with_if_not_empty(state.ipv6_cidr_resource_dsts(), |ip6_resources| {
+            .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |ip6_resources| {
                 icmp_to_cidr_resource(
                     packet_source_v6(state.client.tunnel_ip6),
                     sample::select(ip6_resources),
                 )
             })
-            .with_if_not_empty(state.resolved_v4_domains(), |dns_v4_domains| {
+            .with_if_not_empty(10, state.resolved_v4_domains(), |dns_v4_domains| {
                 icmp_to_dns_resource(
                     packet_source_v4(state.client.tunnel_ip4),
                     sample::select(dns_v4_domains),
                 )
             })
-            .with_if_not_empty(state.resolved_v6_domains(), |dns_v6_domains| {
+            .with_if_not_empty(10, state.resolved_v6_domains(), |dns_v6_domains| {
                 icmp_to_dns_resource(
                     packet_source_v6(state.client.tunnel_ip6),
                     sample::select(dns_v6_domains),
                 )
             })
             .with_if_not_empty(
+                10,
                 (
                     state.all_domains(),
                     state.v4_dns_servers(),
@@ -230,6 +239,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
+                10,
                 (
                     state.all_domains(),
                     state.v6_dns_servers(),
@@ -240,6 +250,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
+                1,
                 state.resolved_ip4_for_non_resources(),
                 |resolved_non_resource_ip4s| {
                     ping_random_ip(
@@ -249,6 +260,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
+                1,
                 state.resolved_ip6_for_non_resources(),
                 |resolved_non_resource_ip6s| {
                     ping_random_ip(
