@@ -47,19 +47,10 @@ fn crash() -> Result<()> {
 fn wintun() -> Result<()> {
     firezone_headless_client::debug_command_setup()?;
 
-    let iters = 10;
+    let iters = 20;
     for i in 0..iters {
         tracing::info!(?i, "Loop");
-        {
-            let _tunnel = firezone_tunnel::device_channel::Tun::new()?;
-        }
-        std::thread::sleep(std::time::Duration::from_secs(2));
-    }
-    for i in 0..iters {
-        tracing::info!(?i, "Loop");
-        {
-            let _tunnel = firezone_tunnel::device_channel::Tun::new()?;
-        }
+        let _tunnel = firezone_tunnel::device_channel::Tun::new()?;
     }
     Ok(())
 }
