@@ -183,7 +183,7 @@ where
 
             ipv4_header(src, dst, IpNextHeaderProtocols::Tcp, 5, &mut buf[20..]);
 
-            tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
+            tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[60..]);
             MutableIpPacket::owned(buf).unwrap()
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {

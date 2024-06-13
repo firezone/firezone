@@ -12,7 +12,7 @@ use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::ip::IpNextHeaderProtocols;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::{IpPacket, MutableIpPacket, Protocol};
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
