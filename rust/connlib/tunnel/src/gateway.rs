@@ -6,15 +6,14 @@ use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId,
-    ConnectionAccepted, DomainResponse, Interface as InterfaceConfig, Key, Offer, Relay, RelayId,
-    ResourceId,
+    Interface as InterfaceConfig, Key, Offer, Relay, RelayId, ResourceId,
 };
 use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
 use std::collections::{HashSet, VecDeque};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
@@ -49,10 +48,10 @@ where
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         relays: Vec<Relay>,
-        domain: Option<DomainName>,
+        domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
-    ) -> Result<ConnectionAccepted> {
+    ) -> Result<Answer> {
         self.role_state.accept(
             client_id,
             snownet::Offer {
@@ -83,10 +82,21 @@ where
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
-        domain: Option<DomainName>,
-    ) -> Option<DomainResponse> {
+        domain: Option<(DomainName, Vec<IpAddr>)>,
+    ) -> Result<()> {
         self.role_state
-            .allow_access(resource, client, expires_at, domain)
+            .allow_access(resource, client, expires_at, domain, Instant::now())
+    }
+
+    pub fn refresh_translation(
+        &mut self,
+        client: ClientId,
+        resource_id: ResourceId,
+        name: DomainName,
+        resolved_ips: Vec<IpAddr>,
+    ) {
+        self.role_state
+            .refresh_translation(client, resource_id, name, resolved_ips, Instant::now())
     }
 
     pub fn update_resource(&mut self, resource: ResourceDescription) {
@@ -160,6 +170,8 @@ impl GatewayState {
 
         let peer = self.peers.peer_by_ip_mut(dest)?;
 
+        let packet = peer.encapsulate(packet, now)?;
+
         let transmit = self
             .node
             .encapsulate(peer.id(), packet.as_immutable(), now)
@@ -197,13 +209,13 @@ impl GatewayState {
             return None;
         };
 
-        if let Err(e) = peer.ensure_allowed(&packet) {
-            // Note: this can happen with apps such as cURL that if started before the tunnel routes are address
-            // source ips can be sticky.
-            tracing::warn!(%conn_id, %local, %from, "Packet not allowed: {e}");
-
-            return None;
-        }
+        let packet = match peer.decapsulate(packet, now) {
+            Ok(packet) => packet,
+            Err(e) => {
+                tracing::warn!(%conn_id, %local, %from, "Invalid packet: {e}");
+                return None;
+            }
+        };
 
         tracing::trace!("Decapsulated packet");
 
@@ -229,13 +241,13 @@ impl GatewayState {
         ipv6: Ipv6Addr,
         stun_servers: HashSet<SocketAddr>,
         turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
-        domain: Option<DomainName>,
+        domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
-    ) -> Result<ConnectionAccepted> {
+    ) -> Result<Answer> {
         match (&domain, &resource) {
-            (Some(domain), ResourceDescription::Dns(r)) => {
+            (Some((domain, _)), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(domain, &r.domain) {
                     return Err(Error::InvalidResource);
                 }
@@ -255,24 +267,32 @@ impl GatewayState {
             resource.id(),
             resource.filters(),
             expires_at,
+            domain.clone().map(|(n, _)| n),
         );
+
+        peer.assign_proxies(&resource, domain, now)?;
 
         self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
 
-        Ok(ConnectionAccepted {
-            ice_parameters: Answer {
-                username: answer.credentials.username,
-                password: answer.credentials.password,
-            },
-            domain_response: domain.map(|domain| DomainResponse {
-                domain,
-                address: resource
-                    .addresses()
-                    .into_iter()
-                    .map(|ip| ip.network_address())
-                    .collect(),
-            }),
+        Ok(Answer {
+            username: answer.credentials.username,
+            password: answer.credentials.password,
         })
+    }
+
+    pub fn refresh_translation(
+        &mut self,
+        client: ClientId,
+        resource_id: ResourceId,
+        name: DomainName,
+        resolved_ips: Vec<IpAddr>,
+        now: Instant,
+    ) {
+        let Some(peer) = self.peers.get_mut(&client) else {
+            return;
+        };
+
+        peer.refresh_translation(name, resource_id, resolved_ips, now);
     }
 
     pub fn allow_access(
@@ -280,50 +300,35 @@ impl GatewayState {
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
-        domain: Option<DomainName>,
-    ) -> Option<DomainResponse> {
+        domain: Option<(DomainName, Vec<IpAddr>)>,
+        now: Instant,
+    ) -> Result<()> {
         match (&domain, &resource) {
-            (Some(domain), ResourceDescription::Dns(r)) => {
+            (Some((domain, _)), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return None;
+                    return Err(Error::InvalidResource);
                 }
             }
-            (None, ResourceDescription::Dns(_)) => return None,
+            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
             _ => {}
         }
 
-        let peer = self.peers.get_mut(&client)?;
-
-        let (addresses, resource_id) = match &resource {
-            ResourceDescription::Dns(r) => {
-                let domain = domain.clone()?;
-
-                if !crate::dns::is_subdomain(&domain, &r.domain) {
-                    return None;
-                }
-
-                (r.addresses.clone(), r.id)
-            }
-            ResourceDescription::Cidr(cidr) => (vec![cidr.address], cidr.id),
+        let Some(peer) = self.peers.get_mut(&client) else {
+            return Err(Error::ControlProtocolError);
         };
+
+        peer.assign_proxies(&resource, domain.clone(), now)?;
 
         peer.add_resource(
             resource.addresses(),
             resource.id(),
             resource.filters(),
             expires_at,
+            domain.map(|(n, _)| n),
         );
 
-        tracing::info!(%client, resource = %resource_id, expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
-
-        if let Some(domain) = domain {
-            return Some(DomainResponse {
-                domain,
-                address: addresses.iter().map(|i| i.network_address()).collect(),
-            });
-        }
-
-        None
+        tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+        Ok(())
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
@@ -336,9 +341,10 @@ impl GatewayState {
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
-                self.peers
-                    .iter_mut()
-                    .for_each(|p| p.expire_resources(utc_now));
+                self.peers.iter_mut().for_each(|p| {
+                    p.expire_resources(utc_now);
+                    p.expire_nat(now)
+                });
                 self.peers.retain(|_, p| !p.is_emptied());
 
                 self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
@@ -382,7 +388,17 @@ impl GatewayState {
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
-        self.buffered_events.pop_front()
+        if let Some(ev) = self.buffered_events.pop_front() {
+            return Some(ev);
+        }
+
+        for peer in self.peers.iter_mut() {
+            if let Some(ev) = peer.poll_event() {
+                return Some(ev);
+            }
+        }
+
+        None
     }
 
     pub fn update_relays(
