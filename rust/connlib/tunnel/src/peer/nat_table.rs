@@ -1,7 +1,6 @@
 //! a stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP
 use bimap::BiMap;
 use ip_packet::{IpPacket, Protocol};
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -28,7 +27,7 @@ impl NatTable {
         for (r, e) in self.last_seen.iter() {
             if now.duration_since(*e) >= Duration::from_secs(60) {
                 let inside = self.table.remove_by_right(r);
-                tracing::trace!(?inside, outside = ?r, "NAT session expired");
+                tracing::debug!(?inside, outside = ?r, "NAT session expired");
                 removed.push(*r);
             }
         }
@@ -57,31 +56,29 @@ impl NatTable {
             tracing::trace!(?inside, ?outside, "Outgoing packet for expired translation");
         }
 
-        let mut occupied_ports = self
-            .table
-            .iter()
-            .filter(|(_, (proto, ip))| *ip == real_address && proto.same_type(&source_protocol))
-            .map(|(_, (proto, _))| proto.value())
-            .sorted_unstable();
+        let Some(p) = (source_protocol.value()..)
+            .chain(1..source_protocol.value())
+            .find(|p| {
+                !self
+                    .table
+                    .contains_right(&(source_protocol.with_value(*p), real_address))
+            })
+        else {
+            tracing::warn!("available nat ports exhausted");
+            return None;
+        };
 
-        for p in 1.. {
-            if !occupied_ports.contains(&p) {
-                let proxy_protocol = source_protocol.with_value(p);
+        let proxy_protocol = source_protocol.with_value(p);
 
-                let inside = (source_protocol, outgoing_pkt.destination());
-                let outside = (proxy_protocol, real_address);
+        let inside = (source_protocol, outgoing_pkt.destination());
+        let outside = (proxy_protocol, real_address);
 
-                self.table.insert(inside, outside);
-                self.last_seen.insert(outside, now);
+        self.table.insert(inside, outside);
+        self.last_seen.insert(outside, now);
 
-                tracing::trace!(?inside, ?outside, "New NAT session");
+        tracing::trace!(?inside, ?outside, "New NAT session");
 
-                return Some((proxy_protocol, real_address));
-            }
-        }
-
-        tracing::warn!("available nat ports exhausted");
-        None
+        Some(outside)
     }
 
     pub(crate) fn translate_incoming(
@@ -100,6 +97,8 @@ impl NatTable {
             self.last_seen.insert(*inside, now);
             return Some(*inside);
         }
+
+        tracing::trace!(?outside, "Incoming packet not translated");
 
         None
     }
