@@ -2,7 +2,8 @@ use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 
-pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
+#[allow(clippy::unused_async)]
+pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
     todo!()
 }
 
