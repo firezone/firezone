@@ -153,61 +153,50 @@ impl StateMachineTest for TunnelTest {
                 .client
                 .add_resource(ResourceDescription::Dns(resource)),
             Transition::SendICMPPacketToNonResourceIp {
+                src,
+                dst,
+                seq,
+                identifier,
+            }
+            | Transition::SendICMPPacketToCidrResource {
+                src,
                 dst,
                 seq,
                 identifier,
             } => {
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
+                let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
-            Transition::SendICMPPacketToResolvedNonResourceIp {
-                idx,
-                seq,
-                identifier,
-            } => {
-                let dst = ref_state
-                    .sample_resolved_non_resource_dst(&idx)
-                    .expect("Transition to only be sampled if we have at least one non-resource resolved domain");
-                let packet = ip_packet::make::icmp_request_packet(
-                    state.client.tunnel_ip(dst),
-                    dst,
-                    seq,
-                    identifier,
-                );
-
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
-            }
-            Transition::SendICMPPacketToResource {
-                idx,
-                seq,
-                identifier,
+            Transition::SendICMPPacketToDnsResource {
                 src,
+                dst,
+                seq,
+                identifier,
+                resolved_ip,
             } => {
-                let dst = ref_state
-                    .sample_resource_dst(&idx, src)
-                    .expect("Transition to only be sampled if we have at least one resource");
-                let dst = dst.into_actual_packet_dst(idx, src, &state.client_dns_records);
-                let src = src.into_ip(state.client.tunnel_ip4, state.client.tunnel_ip6);
+                let available_ips =
+                    state
+                        .client_dns_records
+                        .get(&dst)
+                        .unwrap()
+                        .iter()
+                        .filter(|ip| match ip {
+                            IpAddr::V4(_) => src.is_ipv4(),
+                            IpAddr::V6(_) => src.is_ipv6(),
+                        });
+                let dst = *resolved_ip.select(available_ips);
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
                 buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
             }
             Transition::SendDnsQuery {
-                r_idx,
+                domain,
                 r_type,
                 query_id,
-                dns_server_idx,
+                dns_server,
             } => {
-                let (domain, _) = ref_state.sample_domain(&r_idx);
-                let dns_server = ref_state.sample_dns_server(&dns_server_idx);
-
                 let transmit = state.send_dns_query_for(domain, r_type, query_id, dns_server);
 
                 buffered_transmits.extend(transmit)

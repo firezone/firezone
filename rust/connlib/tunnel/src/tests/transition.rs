@@ -11,33 +11,39 @@ use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, SocketAddr},
 };
 
 /// The possible transitions of the state machine.
-#[derive(Clone, Debug)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Add a new CIDR resource to the client.
     AddCidrResource(ResourceDescriptionCidr),
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
+        src: IpAddr,
         dst: IpAddr,
         seq: u16,
         identifier: u16,
     },
-    /// Send an ICMP packet to an IP we resolved via DNS but is not a resource.
-    SendICMPPacketToResolvedNonResourceIp {
-        idx: sample::Selector,
+    /// Send an ICMP packet to a CIDR resource.
+    SendICMPPacketToCidrResource {
+        src: IpAddr,
+        dst: IpAddr,
         seq: u16,
         identifier: u16,
     },
-    /// Send an ICMP packet to a resource.
-    SendICMPPacketToResource {
-        idx: sample::Selector,
+    /// Send an ICMP packet to a DNS resource.
+    SendICMPPacketToDnsResource {
+        src: IpAddr,
+        dst: DomainName,
+        #[derivative(Debug = "ignore")]
+        resolved_ip: sample::Selector,
+
         seq: u16,
         identifier: u16,
-        src: PacketSource,
     },
 
     /// Add a new DNS resource to the client.
@@ -48,14 +54,12 @@ pub(crate) enum Transition {
     },
     /// Send a DNS query.
     SendDnsQuery {
-        /// The index into the list of global DNS names (includes all DNS resources).
-        r_idx: sample::Selector,
+        domain: DomainName,
         /// The type of DNS query we should send.
         r_type: RecordType,
         /// The DNS query ID.
         query_id: u16,
-        /// The index into our list of DNS servers.
-        dns_server_idx: sample::Selector,
+        dns_server: SocketAddr,
     },
 
     /// The system's DNS servers changed.
@@ -67,86 +71,13 @@ pub(crate) enum Transition {
     Tick { millis: u64 },
 }
 
-/// The source of the packet that should be sent through the tunnel.
-///
-/// In normal operation, this will always be either the tunnel's IPv4 or IPv6 address.
-/// A malicious client could send packets with a mangled IP but those must be dropped by gateway.
-/// To test this case, we also sometimes send packest from a different IP.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum PacketSource {
-    TunnelIp4,
-    TunnelIp6,
-    Other(IpAddr),
-}
-
-impl PacketSource {
-    pub(crate) fn into_ip(self, tunnel_v4: Ipv4Addr, tunnel_v6: Ipv6Addr) -> IpAddr {
-        match self {
-            PacketSource::TunnelIp4 => tunnel_v4.into(),
-            PacketSource::TunnelIp6 => tunnel_v6.into(),
-            PacketSource::Other(ip) => ip,
-        }
-    }
-
-    pub(crate) fn originates_from_client(&self) -> bool {
-        matches!(self, PacketSource::TunnelIp4 | PacketSource::TunnelIp6)
-    }
-
-    pub(crate) fn is_ipv4(&self) -> bool {
-        matches!(
-            self,
-            PacketSource::TunnelIp4 | PacketSource::Other(IpAddr::V4(_))
-        )
-    }
-
-    pub(crate) fn is_ipv6(&self) -> bool {
-        matches!(
-            self,
-            PacketSource::TunnelIp6 | PacketSource::Other(IpAddr::V6(_))
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum ResourceDst {
-    Cidr(IpAddr),
-    Dns(DomainName),
-}
-
-impl ResourceDst {
-    /// Translates a randomly sampled [`ResourceDst`] into the [`IpAddr`] to be used for the packet.
-    ///
-    /// For CIDR resources, we use the IP directly.
-    /// For DNS resources, we need to pick any of the proxy IPs that connlib gave us for the domain name.
-    pub(crate) fn into_actual_packet_dst(
-        self,
-        idx: sample::Selector,
-        src: PacketSource,
-        client_dns_records: &HashMap<DomainName, Vec<IpAddr>>,
-    ) -> IpAddr {
-        match self {
-            ResourceDst::Cidr(ip) => ip,
-            ResourceDst::Dns(domain) => {
-                let mut ips = client_dns_records
-                    .get(&domain)
-                    .expect("DNS records to contain domain name")
-                    .clone();
-
-                ips.retain(|ip| ip.is_ipv4() == src.is_ipv4());
-
-                idx.select(ips)
-            }
-        }
-    }
-}
-
-/// Generates a [`Transition`] that sends an ICMP packet to a random IP.
-///
-/// By chance, it could be that we pick a resource IP here.
-/// That is okay as our reference state machine checks separately whether we are pinging a resource here.
-pub(crate) fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
-    (any::<IpAddr>(), any::<u16>(), any::<u16>()).prop_map(|(dst, seq, identifier)| {
+pub(crate) fn ping_random_ip(
+    src: impl Strategy<Value = IpAddr>,
+    dst: impl Strategy<Value = IpAddr>,
+) -> impl Strategy<Value = Transition> {
+    (src, dst, any::<u16>(), any::<u16>()).prop_map(|(src, dst, seq, identifier)| {
         Transition::SendICMPPacketToNonResourceIp {
+            src,
             dst,
             seq,
             identifier,
@@ -154,46 +85,71 @@ pub(crate) fn icmp_to_random_ip() -> impl Strategy<Value = Transition> {
     })
 }
 
-pub(crate) fn icmp_to_cidr_resource() -> impl Strategy<Value = Transition> {
+pub(crate) fn icmp_to_cidr_resource(
+    src: impl Strategy<Value = IpAddr>,
+    dst: impl Strategy<Value = IpAddr>,
+) -> impl Strategy<Value = Transition> {
+    (dst, any::<u16>(), any::<u16>(), src).prop_map(|(dst, seq, identifier, src)| {
+        Transition::SendICMPPacketToCidrResource {
+            src,
+            dst,
+            seq,
+            identifier,
+        }
+    })
+}
+
+pub(crate) fn icmp_to_dns_resource(
+    src: impl Strategy<Value = IpAddr>,
+    dst: impl Strategy<Value = DomainName>,
+) -> impl Strategy<Value = Transition> {
     (
+        dst,
+        any::<u16>(),
+        any::<u16>(),
+        src,
         any::<sample::Selector>(),
-        any::<u16>(),
-        any::<u16>(),
-        packet_source(),
     )
-        .prop_map(
-            move |(r_idx, seq, identifier, src)| Transition::SendICMPPacketToResource {
-                idx: r_idx,
+        .prop_map(|(dst, seq, identifier, src, resolved_ip)| {
+            Transition::SendICMPPacketToDnsResource {
+                src,
+                dst,
+                resolved_ip,
                 seq,
                 identifier,
-                src,
+            }
+        })
+}
+
+pub(crate) fn dns_query(
+    domain: impl Strategy<Value = DomainName>,
+    dns_server: impl Strategy<Value = SocketAddr>,
+) -> impl Strategy<Value = Transition> {
+    (
+        domain,
+        dns_server,
+        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
+        any::<u16>(),
+    )
+        .prop_map(
+            move |(domain, dns_server, r_type, query_id)| Transition::SendDnsQuery {
+                domain,
+                r_type,
+                query_id,
+                dns_server,
             },
         )
 }
 
-/// Sample a random [`PacketSource`].
-///
-/// Packets from random source addresses are tested less frequently.
-/// Those are dropped by the gateway so this transition only ensures we have this safe-guard.
-fn packet_source() -> impl Strategy<Value = PacketSource> {
+pub(crate) fn add_dns_resource() -> impl Strategy<Value = Transition> {
     prop_oneof![
-        10 => Just(PacketSource::TunnelIp4),
-        10 => Just(PacketSource::TunnelIp6),
-        1 => any::<IpAddr>().prop_map(PacketSource::Other)
+        non_wildcard_dns_resource(),
+        star_wildcard_dns_resource(),
+        question_mark_wildcard_dns_resource(),
     ]
 }
 
-pub(crate) fn icmp_to_resolved_non_resource() -> impl Strategy<Value = Transition> {
-    (any::<sample::Selector>(), any::<u16>(), any::<u16>()).prop_map(
-        move |(idx, seq, identifier)| Transition::SendICMPPacketToResolvedNonResourceIp {
-            idx,
-            seq,
-            identifier,
-        },
-    )
-}
-
-pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
         Transition::AddDnsResource {
             records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
@@ -202,8 +158,8 @@ pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     })
 }
 
-pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    dns_resource().prop_flat_map(|r| {
+fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+    (dns_resource()).prop_flat_map(move |r| {
         let wildcard_address = format!("*.{}", r.address);
 
         let records = subdomain_records(r.address, domain_name(1..3));
@@ -217,8 +173,8 @@ pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> 
     })
 }
 
-pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    dns_resource().prop_flat_map(|r| {
+fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+    dns_resource().prop_flat_map(move |r| {
         let wildcard_address = format!("?.{}", r.address);
 
         let records = subdomain_records(r.address, domain_label());
@@ -230,21 +186,4 @@ pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Tra
         (resource, records)
             .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
     })
-}
-
-pub(crate) fn dns_query() -> impl Strategy<Value = Transition> {
-    (
-        any::<sample::Selector>(),
-        any::<sample::Selector>(),
-        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
-        any::<u16>(),
-    )
-        .prop_map(
-            move |(r_idx, dns_server_idx, r_type, query_id)| Transition::SendDnsQuery {
-                r_idx,
-                r_type,
-                query_id,
-                dns_server_idx,
-            },
-        )
 }
