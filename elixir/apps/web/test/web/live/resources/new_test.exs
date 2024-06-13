@@ -302,6 +302,7 @@ defmodule Web.Live.Resources.NewTest do
     attrs = %{
       name: "foobar.com",
       address: "",
+      address_description: String.duplicate("a", 513),
       filters: %{
         tcp: %{ports: "80, 443", enabled: true},
         udp: %{ports: "100", enabled: true}
@@ -318,7 +319,10 @@ defmodule Web.Live.Resources.NewTest do
     |> form("form")
     # Generate onchange to trigger visible elements, otherwise the form won't be valid
     |> render_change(
-      resource: %{type: :dns, filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}}
+      resource: %{
+        type: :dns,
+        filters: %{tcp: %{enabled: true}, udp: %{enabled: true}}
+      }
     )
 
     assert lv
@@ -326,7 +330,7 @@ defmodule Web.Live.Resources.NewTest do
            |> render_submit()
            |> form_validation_errors() == %{
              "resource[address]" => ["can't be blank"],
-             "resource[address_description]" => ["can't be blank"]
+             "resource[address_description]" => ["should be at most 512 character(s)"]
            }
   end
 

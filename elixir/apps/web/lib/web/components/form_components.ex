@@ -195,7 +195,7 @@ defmodule Web.FormComponents do
   def input(%{type: "select"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         :if={@rest[:disabled] in [true, "true"] and not is_nil(@value)}
         type="hidden"
@@ -227,7 +227,7 @@ defmodule Web.FormComponents do
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <textarea
         id={@id}
         name={@name}
@@ -263,7 +263,7 @@ defmodule Web.FormComponents do
   def input(%{type: "readonly"} = assigns) do
     ~H"""
     <div>
-      <.label><%= @label %></.label>
+      <.label :if={@label}><%= @label %></.label>
       <div class="border border-solid rounded p-2 text-sm text-neutral-500">
         <%= assigns.value %>
       </div>
@@ -285,7 +285,7 @@ defmodule Web.FormComponents do
   def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
     ~H"""
     <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <div class={[
         "flex",
         "text-sm text-neutral-900 bg-neutral-50",
@@ -329,7 +329,7 @@ defmodule Web.FormComponents do
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={not is_nil(@label)} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         type={@type}
         name={@name}

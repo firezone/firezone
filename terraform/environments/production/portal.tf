@@ -290,12 +290,25 @@ locals {
     # Auth
     {
       name  = "AUTH_PROVIDER_ADAPTERS"
-      value = "email,openid_connect,google_workspace,token,microsoft_entra,okta"
+      value = "email,openid_connect,google_workspace,token,microsoft_entra,okta,jumpcloud"
     },
     # Registry from which Docker install scripts pull from
     {
       name  = "DOCKER_REGISTRY"
       value = "ghcr.io/firezone"
+    },
+    # Directory Sync
+    {
+      name  = "WORKOS_API_KEY"
+      value = var.workos_api_key
+    },
+    {
+      name  = "WORKOS_CLIENT_ID"
+      value = var.workos_client_id
+    },
+    {
+      name  = "WORKOS_BASE_URL"
+      value = var.workos_base_url
     },
     # Billing system
     {

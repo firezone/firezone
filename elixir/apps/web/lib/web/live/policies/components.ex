@@ -12,7 +12,7 @@ defmodule Web.Policies.Components do
     {"U", "Sunday"}
   ]
 
-  attr :policy, :map, required: true
+  attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
     ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
@@ -232,9 +232,9 @@ defmodule Web.Policies.Components do
       end)
 
     ~H"""
-    <fieldset class="flex flex-col gap-2">
+    <fieldset class="flex flex-col gap-2 mt-4">
       <div class="flex items-center justify-between">
-        <legend class="text-lg mb-4">Conditions</legend>
+        <legend class="text-xl mb-2">Conditions</legend>
         <%= if @policy_conditions_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
@@ -244,28 +244,30 @@ defmodule Web.Policies.Components do
         <% end %>
       </div>
 
-      <.remote_ip_location_region_condition_form
-        form={@form}
-        disabled={@policy_conditions_enabled? == false}
-      />
-      <.remote_ip_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
-      <.provider_id_condition_form
-        form={@form}
-        providers={@providers}
-        disabled={@policy_conditions_enabled? == false}
-      />
-      <.current_utc_datetime_condition_form
-        form={@form}
-        timezone={@timezone}
-        disabled={@policy_conditions_enabled? == false}
-      />
+      <div class={@policy_conditions_enabled? == false && "opacity-50"}>
+        <.remote_ip_location_region_condition_form
+          form={@form}
+          disabled={@policy_conditions_enabled? == false}
+        />
+        <.remote_ip_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
+        <.provider_id_condition_form
+          form={@form}
+          providers={@providers}
+          disabled={@policy_conditions_enabled? == false}
+        />
+        <.current_utc_datetime_condition_form
+          form={@form}
+          timezone={@timezone}
+          disabled={@policy_conditions_enabled? == false}
+        />
+      </div>
     </fieldset>
     """
   end
 
   defp remote_ip_location_region_condition_form(assigns) do
     ~H"""
-    <fieldset class="mb-2">
+    <fieldset class="mb-4">
       <% condition_form = find_condition_form(@form[:conditions], :remote_ip_location_region) %>
 
       <.input
@@ -277,11 +279,12 @@ defmodule Web.Policies.Components do
       />
 
       <div
-        class="cursor-pointer"
+        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
             to: "#policy_conditions_remote_ip_location_region_condition"
           )
+          |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("hero-chevron-down",
             to: "#policy_conditions_remote_ip_location_region_chevron"
           )
@@ -290,51 +293,58 @@ defmodule Web.Policies.Components do
           )
         }
       >
-        <legend>
-          <.icon id="policy_conditions_remote_ip_location_region_chevron" name="hero-chevron-down" />
+        <legend class="flex justify-between items-center text-neutral-700">
           Client location
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+            <.icon
+              id="policy_conditions_remote_ip_location_region_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
         </legend>
-
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the location of the Client.
-        </p>
       </div>
 
       <div
         id="policy_conditions_remote_ip_location_region_condition"
         class={[
-          "grid gap-2 sm:grid-cols-5 sm:gap-4",
+          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <.input
-          type="select"
-          name="policy[conditions][remote_ip_location_region][operator]"
-          id="policy_conditions_remote_ip_location_region_operator"
-          field={condition_form[:operator]}
-          disabled={@disabled}
-          options={condition_operator_options(:remote_ip_location_region)}
-          value={get_in(condition_form, [:operator, Access.key!(:value)])}
-        />
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the location of the Client.
+        </p>
+        <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
+          <.input
+            type="select"
+            name="policy[conditions][remote_ip_location_region][operator]"
+            id="policy_conditions_remote_ip_location_region_operator"
+            field={condition_form[:operator]}
+            disabled={@disabled}
+            options={condition_operator_options(:remote_ip_location_region)}
+            value={get_in(condition_form, [:operator, Access.key!(:value)])}
+          />
 
-        <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
-          <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
-            or
-          </div>
+          <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
+            <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
+              or
+            </div>
 
-          <div class="col-span-4">
-            <.input
-              type="select"
-              field={condition_form[:values]}
-              name="policy[conditions][remote_ip_location_region][values][]"
-              id={"policy_conditions_remote_ip_location_region_values_#{index}"}
-              options={[{"Select Country", nil}] ++ Domain.Geo.all_country_options!()}
-              disabled={@disabled}
-              value_index={index}
-              value={value}
-            />
-          </div>
-        <% end %>
+            <div class="col-span-4">
+              <.input
+                type="select"
+                field={condition_form[:values]}
+                name="policy[conditions][remote_ip_location_region][values][]"
+                id={"policy_conditions_remote_ip_location_region_values_#{index}"}
+                options={[{"Select Country", nil}] ++ Domain.Geo.all_country_options!()}
+                disabled={@disabled}
+                value_index={index}
+                value={value}
+              />
+            </div>
+          <% end %>
+        </div>
       </div>
     </fieldset>
     """
@@ -342,7 +352,7 @@ defmodule Web.Policies.Components do
 
   defp remote_ip_condition_form(assigns) do
     ~H"""
-    <fieldset class="mb-2">
+    <fieldset class="mb-4">
       <% condition_form = find_condition_form(@form[:conditions], :remote_ip) %>
 
       <.input
@@ -354,11 +364,12 @@ defmodule Web.Policies.Components do
       />
 
       <div
-        class="cursor-pointer"
+        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
             to: "#policy_conditions_remote_ip_condition"
           )
+          |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("hero-chevron-down",
             to: "#policy_conditions_remote_ip_chevron"
           )
@@ -367,51 +378,54 @@ defmodule Web.Policies.Components do
           )
         }
       >
-        <legend>
-          <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
+        <legend class="flex justify-between items-center text-neutral-700">
           IP address
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+            <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
+          </span>
         </legend>
-
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the Client's IP address or CIDR range.
-        </p>
       </div>
 
       <div
         id="policy_conditions_remote_ip_condition"
         class={[
-          "grid gap-2 sm:grid-cols-5 sm:gap-4",
+          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <.input
-          type="select"
-          name="policy[conditions][remote_ip][operator]"
-          id="policy_conditions_remote_ip_operator"
-          field={condition_form[:operator]}
-          options={condition_operator_options(:remote_ip)}
-          disabled={@disabled}
-          value={get_in(condition_form, [:operator, Access.key!(:value)])}
-        />
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the Client's IP address or CIDR range.
+        </p>
+        <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
+          <.input
+            type="select"
+            name="policy[conditions][remote_ip][operator]"
+            id="policy_conditions_remote_ip_operator"
+            field={condition_form[:operator]}
+            disabled={@disabled}
+            options={condition_operator_options(:remote_ip)}
+            value={get_in(condition_form, [:operator, Access.key!(:value)])}
+          />
 
-        <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
-          <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
-            or
-          </div>
+          <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
+            <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
+              or
+            </div>
 
-          <div class="col-span-4">
-            <.input
-              type="text"
-              field={condition_form[:values]}
-              name="policy[conditions][remote_ip][values][]"
-              id={"policy_conditions_remote_ip_values_#{index}"}
-              placeholder="E.g. 189.172.0.0/24 or 10.10.10.1"
-              disabled={@disabled}
-              value_index={index}
-              value={value}
-            />
-          </div>
-        <% end %>
+            <div class="col-span-4">
+              <.input
+                type="text"
+                field={condition_form[:values]}
+                name="policy[conditions][remote_ip][values][]"
+                id={"policy_conditions_remote_ip_values_#{index}"}
+                placeholder="E.g. 189.172.0.0/24 or 10.10.10.1"
+                disabled={@disabled}
+                value_index={index}
+                value={value}
+              />
+            </div>
+          <% end %>
+        </div>
       </div>
     </fieldset>
     """
@@ -419,7 +433,7 @@ defmodule Web.Policies.Components do
 
   defp provider_id_condition_form(assigns) do
     ~H"""
-    <fieldset class="mb-2">
+    <fieldset class="mb-4">
       <% condition_form = find_condition_form(@form[:conditions], :provider_id) %>
 
       <.input
@@ -431,11 +445,12 @@ defmodule Web.Policies.Components do
       />
 
       <div
-        class="cursor-pointer"
+        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
             to: "#policy_conditions_provider_id_condition"
           )
+          |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("hero-chevron-down",
             to: "#policy_conditions_provider_id_chevron"
           )
@@ -444,51 +459,58 @@ defmodule Web.Policies.Components do
           )
         }
       >
-        <legend>
-          <.icon id="policy_conditions_provider_id_chevron" name="hero-chevron-down" class="w-5 h-5" />
+        <legend class="flex justify-between items-center text-neutral-700">
           Authentication Provider
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+            <.icon
+              id="policy_conditions_provider_id_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
         </legend>
-
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the identity provider that was used to sign in.
-        </p>
       </div>
 
       <div
         id="policy_conditions_provider_id_condition"
         class={[
-          "grid gap-2 sm:grid-cols-5 sm:gap-4",
+          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <.input
-          type="select"
-          name="policy[conditions][provider_id][operator]"
-          id="policy_conditions_provider_id_operator"
-          field={condition_form[:operator]}
-          options={condition_operator_options(:provider_id)}
-          disabled={@disabled}
-          value={get_in(condition_form, [:operator, Access.key!(:value)])}
-        />
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the identity provider that was used to sign in.
+        </p>
+        <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
+          <.input
+            type="select"
+            name="policy[conditions][provider_id][operator]"
+            id="policy_conditions_provider_id_operator"
+            field={condition_form[:operator]}
+            disabled={@disabled}
+            options={condition_operator_options(:provider_id)}
+            value={get_in(condition_form, [:operator, Access.key!(:value)])}
+          />
 
-        <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
-          <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
-            or
-          </div>
+          <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
+            <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
+              or
+            </div>
 
-          <div class="col-span-4">
-            <.input
-              type="select"
-              field={condition_form[:values]}
-              name="policy[conditions][provider_id][values][]"
-              id={"policy_conditions_provider_id_values_#{index}"}
-              options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
-              disabled={@disabled}
-              value_index={index}
-              value={value}
-            />
-          </div>
-        <% end %>
+            <div class="col-span-4">
+              <.input
+                type="select"
+                field={condition_form[:values]}
+                name="policy[conditions][provider_id][values][]"
+                id={"policy_conditions_provider_id_values_#{index}"}
+                options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
+                disabled={@disabled}
+                value_index={index}
+                value={value}
+              />
+            </div>
+          <% end %>
+        </div>
       </div>
     </fieldset>
     """
@@ -498,7 +520,7 @@ defmodule Web.Policies.Components do
     assigns = assign_new(assigns, :days_of_week, fn -> @days_of_week end)
 
     ~H"""
-    <fieldset>
+    <fieldset class="mb-2">
       <% condition_form = find_condition_form(@form[:conditions], :current_utc_datetime) %>
 
       <.input
@@ -518,11 +540,12 @@ defmodule Web.Policies.Components do
       />
 
       <div
-        class="cursor-pointer"
+        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
             to: "#policy_conditions_current_utc_datetime_condition"
           )
+          |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("hero-chevron-down",
             to: "#policy_conditions_current_utc_datetime_chevron"
           )
@@ -531,44 +554,48 @@ defmodule Web.Policies.Components do
           )
         }
       >
-        <legend>
-          <.icon
-            id="policy_conditions_current_utc_datetime_chevron"
-            name="hero-chevron-down"
-            class="w-5 h-5"
-          /> Current time
+        <legend class="flex justify-between items-center text-neutral-700">
+          Current time
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+            <.icon
+              id="policy_conditions_current_utc_datetime_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
         </legend>
-
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
-        </p>
       </div>
 
       <div
         id="policy_conditions_current_utc_datetime_condition"
         class={[
-          "space-y-2",
+          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <.input
-          type="select"
-          label="Timezone"
-          name="policy[conditions][current_utc_datetime][timezone]"
-          id="policy_conditions_current_utc_datetime_timezone"
-          field={condition_form[:timezone]}
-          options={Tzdata.zone_list()}
-          disabled={@disabled}
-          value={condition_form[:timezone].value || @timezone}
-        />
-
+        <p class="text-sm text-neutral-500 mb-2">
+          Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
+        </p>
         <div class="space-y-2">
-          <.current_utc_datetime_condition_day_input
-            :for={{code, _name} <- @days_of_week}
+          <.input
+            type="select"
+            label="Timezone"
+            name="policy[conditions][current_utc_datetime][timezone]"
+            id="policy_conditions_current_utc_datetime_timezone"
+            field={condition_form[:timezone]}
+            options={Tzdata.zone_list()}
             disabled={@disabled}
-            condition_form={condition_form}
-            day={code}
+            value={condition_form[:timezone].value || @timezone}
           />
+
+          <div class="space-y-2">
+            <.current_utc_datetime_condition_day_input
+              :for={{code, _name} <- @days_of_week}
+              disabled={@disabled}
+              condition_form={condition_form}
+              day={code}
+            />
+          </div>
         </div>
       </div>
     </fieldset>

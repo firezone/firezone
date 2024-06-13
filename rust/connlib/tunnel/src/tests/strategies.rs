@@ -1,7 +1,7 @@
 use connlib_shared::{messages::DnsServer, proptest::domain_name, DomainName};
 use proptest::{collection, prelude::*};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
@@ -53,10 +53,24 @@ pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
     collection::vec(any::<IpAddr>(), 1..4) // Always need at least 1 system DNS server. TODO: Should we test what happens if we don't?
 }
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
-    collection::hash_map(
+pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, HashSet<IpAddr>>> {
+    collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
         collection::hash_set(any::<IpAddr>(), 1..6),
         0..15,
     )
+}
+
+pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
+    prop_oneof![
+        10 => Just(client),
+        1 => any::<Ipv4Addr>()
+    ]
+}
+
+pub(crate) fn packet_source_v6(client: Ipv6Addr) -> impl Strategy<Value = Ipv6Addr> {
+    prop_oneof![
+        10 => Just(client),
+        1 => any::<Ipv6Addr>()
+    ]
 }

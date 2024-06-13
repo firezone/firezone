@@ -103,9 +103,9 @@ export default function Team() {
       ),
     },
     {
-      name: "Trisha",
+      name: "ReactorScram",
       title: "Senior Systems Engineer",
-      imgSrc: gravatar("trish@firezone.dev", 200),
+      imgSrc: "/images/avatars/reactorscram.png",
       githubUrl: new URL("https://github.com/ReactorScram"),
     },
     {

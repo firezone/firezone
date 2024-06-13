@@ -373,7 +373,7 @@ defmodule Web.Live.Actors.ShowTest do
       )
     end
 
-    test "allows sending welcome email", %{
+    test "allows sending welcome email with email identity", %{
       account: account,
       actor: actor,
       provider: provider,
@@ -398,6 +398,45 @@ defmodule Web.Live.Actors.ShowTest do
              |> render_click()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Welcome email sent to #{email_identity.provider_identifier}"
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Welcome to Firezone"
+        assert email.text_body =~ account.slug
+      end)
+    end
+
+    test "allows sending welcome email with oidc identity", %{
+      account: account,
+      actor: actor,
+      identity: admin_identity,
+      conn: conn
+    } do
+      oidc_email = Fixtures.Auth.email()
+
+      oidc_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider_state: %{
+            "userinfo" => %{"email" => oidc_email}
+          }
+        )
+        |> Ecto.Changeset.change(
+          created_by: :identity,
+          created_by_identity_id: admin_identity.id
+        )
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      assert lv
+             |> element("#identity-#{oidc_identity.id} button", "Send Welcome Email")
+             |> render_click()
+             |> Floki.find(".flash-info")
+             |> element_to_text() =~ "Welcome email sent to #{oidc_email}"
 
       assert_email_sent(fn email ->
         assert email.subject == "Welcome to Firezone"

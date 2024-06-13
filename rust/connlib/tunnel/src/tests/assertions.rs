@@ -1,10 +1,10 @@
 use super::{reference::ReferenceState, TunnelTest};
-use crate::tests::transition::ResourceDst;
+use crate::tests::reference::ResourceDst;
 use connlib_shared::DomainName;
 use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     net::IpAddr,
 };
 
@@ -14,7 +14,7 @@ use std::{
 ///     - For CIDR resources, that is the actual CIDR resource IP.
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-pub(crate) fn assert_icmp_packets_properties(state: &mut TunnelTest, ref_state: &ReferenceState) {
+pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_state.expected_icmp_handshakes,
         &state.client_received_icmp_replies,
@@ -173,7 +173,7 @@ fn assert_destination_is_cdir_resource(
 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket<'_>,
-    global_dns_records: &HashMap<DomainName, HashSet<IpAddr>>,
+    global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     expected_resource: &DomainName,
 ) {
     let actual_destination = gateway_received_request.destination();
