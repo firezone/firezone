@@ -71,43 +71,64 @@ pub(crate) enum Transition {
     Tick { millis: u64 },
 }
 
-pub(crate) fn ping_random_ip(
-    src: impl Strategy<Value = IpAddr>,
-    dst: impl Strategy<Value = IpAddr>,
-) -> impl Strategy<Value = Transition> {
-    (src, dst, any::<u16>(), any::<u16>()).prop_map(|(src, dst, seq, identifier)| {
-        Transition::SendICMPPacketToNonResourceIp {
-            src,
-            dst,
-            seq,
-            identifier,
-        }
-    })
+pub(crate) fn ping_random_ip<I>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = I>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
+    (
+        src.prop_map(Into::into),
+        dst.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
+    )
+        .prop_map(
+            |(src, dst, seq, identifier)| Transition::SendICMPPacketToNonResourceIp {
+                src,
+                dst,
+                seq,
+                identifier,
+            },
+        )
 }
 
-pub(crate) fn icmp_to_cidr_resource(
-    src: impl Strategy<Value = IpAddr>,
-    dst: impl Strategy<Value = IpAddr>,
-) -> impl Strategy<Value = Transition> {
-    (dst, any::<u16>(), any::<u16>(), src).prop_map(|(dst, seq, identifier, src)| {
-        Transition::SendICMPPacketToCidrResource {
-            src,
-            dst,
-            seq,
-            identifier,
-        }
-    })
+pub(crate) fn icmp_to_cidr_resource<I>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = I>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
+    (
+        dst.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
+        src.prop_map(Into::into),
+    )
+        .prop_map(
+            |(dst, seq, identifier, src)| Transition::SendICMPPacketToCidrResource {
+                src,
+                dst,
+                seq,
+                identifier,
+            },
+        )
 }
 
-pub(crate) fn icmp_to_dns_resource(
-    src: impl Strategy<Value = IpAddr>,
+pub(crate) fn icmp_to_dns_resource<I>(
+    src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = DomainName>,
-) -> impl Strategy<Value = Transition> {
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
     (
         dst,
         any::<u16>(),
         any::<u16>(),
-        src,
+        src.prop_map(Into::into),
         any::<sample::Selector>(),
     )
         .prop_map(|(dst, seq, identifier, src, resolved_ip)| {
@@ -121,13 +142,16 @@ pub(crate) fn icmp_to_dns_resource(
         })
 }
 
-pub(crate) fn dns_query(
+pub(crate) fn dns_query<S>(
     domain: impl Strategy<Value = DomainName>,
-    dns_server: impl Strategy<Value = SocketAddr>,
-) -> impl Strategy<Value = Transition> {
+    dns_server: impl Strategy<Value = S>,
+) -> impl Strategy<Value = Transition>
+where
+    S: Into<SocketAddr>,
+{
     (
         domain,
-        dns_server,
+        dns_server.prop_map(Into::into),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
     )

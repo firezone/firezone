@@ -193,25 +193,25 @@ impl ReferenceStateMachine for ReferenceState {
             .with(add_dns_resource())
             .with_if_not_empty(state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
-                    sample::select(ip4_resources).prop_map(IpAddr::V4),
+                    packet_source_v4(state.client.tunnel_ip4),
+                    sample::select(ip4_resources),
                 )
             })
             .with_if_not_empty(state.ipv6_cidr_resource_dsts(), |ip6_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
-                    sample::select(ip6_resources).prop_map(IpAddr::V6),
+                    packet_source_v6(state.client.tunnel_ip6),
+                    sample::select(ip6_resources),
                 )
             })
             .with_if_not_empty(state.resolved_v4_domains(), |dns_v4_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
+                    packet_source_v4(state.client.tunnel_ip4),
                     sample::select(dns_v4_domains),
                 )
             })
             .with_if_not_empty(state.resolved_v6_domains(), |dns_v6_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
+                    packet_source_v6(state.client.tunnel_ip6),
                     sample::select(dns_v6_domains),
                 )
             })
@@ -222,10 +222,7 @@ impl ReferenceStateMachine for ReferenceState {
                     state.client.ip4_socket,
                 ),
                 |(domains, v4_dns_servers, _)| {
-                    dns_query(
-                        sample::select(domains),
-                        sample::select(v4_dns_servers).prop_map(SocketAddr::V4),
-                    )
+                    dns_query(sample::select(domains), sample::select(v4_dns_servers))
                 },
             )
             .with_if_not_empty(
@@ -235,18 +232,15 @@ impl ReferenceStateMachine for ReferenceState {
                     state.client.ip6_socket,
                 ),
                 |(domains, v6_dns_servers, _)| {
-                    dns_query(
-                        sample::select(domains),
-                        sample::select(v6_dns_servers).prop_map(SocketAddr::V6),
-                    )
+                    dns_query(sample::select(domains), sample::select(v6_dns_servers))
                 },
             )
             .with_if_not_empty(
                 state.resolved_ip4_for_non_resources(),
                 |resolved_non_resource_ip4s| {
                     ping_random_ip(
-                        packet_source_v4(state.client.tunnel_ip4).prop_map(IpAddr::V4),
-                        sample::select(resolved_non_resource_ip4s).prop_map(IpAddr::V4),
+                        packet_source_v4(state.client.tunnel_ip4),
+                        sample::select(resolved_non_resource_ip4s),
                     )
                 },
             )
@@ -254,8 +248,8 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip6_for_non_resources(),
                 |resolved_non_resource_ip6s| {
                     ping_random_ip(
-                        packet_source_v6(state.client.tunnel_ip6).prop_map(IpAddr::V6),
-                        sample::select(resolved_non_resource_ip6s).prop_map(IpAddr::V6),
+                        packet_source_v6(state.client.tunnel_ip6),
+                        sample::select(resolved_non_resource_ip6s),
                     )
                 },
             )
