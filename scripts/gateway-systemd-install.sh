@@ -11,7 +11,9 @@ RUST_LOG=${RUST_LOG:-str0m=warn,info}
 
 # Can be used to download a specific version of the gateway from a custom URL
 FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
-FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway}
+# See https://github.com/firezone/firezone/issues/5370
+# FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway}
+FIREZONE_ARTIFACT_URL=https://www.firezone.dev/dl/firezone-gateway
 
 # Optional environment variables to configure logging and tracing
 FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
