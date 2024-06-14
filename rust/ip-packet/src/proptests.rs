@@ -81,7 +81,7 @@ fn icmp_packet_v4_header_options() -> impl Strategy<Value = MutableIpPacket<'sta
         (5u8..15),
     )
         .prop_map(|(src, dst, id, seq, kind, header_length)| {
-            icmp4_packet_with_options(src.into(), dst.into(), id, seq, kind, header_length)
+            icmp4_packet_with_options(src, dst, id, seq, kind, header_length)
         })
 }
 
