@@ -7,7 +7,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
     arbitrary::{any, any_with},
-    collection, sample,
+    collection, prop_oneof, sample,
     strategy::{Just, Strategy},
 };
 use std::{
@@ -110,8 +110,11 @@ pub fn cidr_v6_resource(host_mask_bits: usize) -> impl Strategy<Value = Resource
     })
 }
 
-pub fn address_description() -> impl Strategy<Value = String> {
-    any_with::<String>("[a-z]{4,10}".into())
+pub fn address_description() -> impl Strategy<Value = Option<String>> {
+    prop_oneof![
+        any_with::<String>("[a-z]{4,10}".into()).prop_map(Some),
+        Just(None),
+    ]
 }
 
 pub fn sites() -> impl Strategy<Value = Vec<Site>> {

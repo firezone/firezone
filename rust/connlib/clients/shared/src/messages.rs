@@ -235,7 +235,17 @@ mod test {
                         id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
-                        address_description: "cidr resource".to_string(),
+                        address_description: Some("cidr resource".to_string()),
+                        sites: vec![Site {
+                            name: "test".to_string(),
+                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
+                        }],
+                    }),
+                    ResourceDescription::Cidr(ResourceDescriptionCidr {
+                        id: "73037362-715d-4a83-a749-f18eadd970e7".parse().unwrap(),
+                        address: "172.173.0.0/16".parse().unwrap(),
+                        name: "172.173.0.0/16".to_string(),
+                        address_description: None,
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -245,7 +255,17 @@ mod test {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
-                        address_description: "dns resource".to_string(),
+                        address_description: Some("dns resource".to_string()),
+                        sites: vec![Site {
+                            name: "test".to_string(),
+                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
+                        }],
+                    }),
+                    ResourceDescription::Dns(ResourceDescriptionDns {
+                        id: "03000143-e25e-45c7-aafb-144990e57dce".parse().unwrap(),
+                        address: "github.mycorp.com".to_string(),
+                        name: "github.mycorp.com".to_string(),
+                        address_description: None,
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -274,12 +294,27 @@ mod test {
                         "type": "cidr"
                     },
                     {
+                        "address": "172.173.0.0/16",
+                        "id": "73037362-715d-4a83-a749-f18eadd970e7",
+                        "name": "172.173.0.0/16",
+                        "address_description": null,
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "cidr"
+                    },
+                    {
                         "address": "gitlab.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dcd",
                         "ipv4": "100.126.44.50",
                         "ipv6": "fd00:2021:1111::e:7758",
                         "name": "gitlab.mycorp.com",
                         "address_description": "dns resource",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    },
+                    {
+                        "address": "github.mycorp.com",
+                        "id": "03000143-e25e-45c7-aafb-144990e57dce",
+                        "name": "github.mycorp.com",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     }
@@ -308,7 +343,7 @@ mod test {
                         id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
-                        address_description: "cidr resource".to_string(),
+                        address_description: Some("cidr resource".to_string()),
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -318,7 +353,7 @@ mod test {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
-                        address_description: "dns resource".to_string(),
+                        address_description: Some("dns resource".to_string()),
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
