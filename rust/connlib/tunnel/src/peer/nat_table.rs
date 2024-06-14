@@ -21,11 +21,13 @@ pub(crate) struct NatTable {
     pub(crate) last_seen: HashMap<(Protocol, IpAddr), Instant>,
 }
 
+const TTL: Duration = Duration::from_secs(60);
+
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let mut removed = Vec::new();
         for (outside, e) in self.last_seen.iter() {
-            if now.duration_since(*e) >= Duration::from_secs(60) {
+            if now.duration_since(*e) >= TTL {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
                     tracing::debug!(?inside, ?outside, "NAT session expired");
                 }
@@ -103,5 +105,108 @@ impl NatTable {
         tracing::trace!(?outside, "No active NAT session; skipping translation");
 
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ip_packet::{proptest::*, MutableIpPacket};
+    use proptest::prelude::*;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+
+    #[test_strategy::proptest]
+    fn translates_back_and_forth_packet(
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet: MutableIpPacket<'static>,
+        #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
+        #[strategy(0..120u64)] response_delay: u64,
+    ) {
+        proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
+
+        let _set_default = tracing_subscriber::fmt()
+            .with_env_filter("trace")
+            .set_default();
+        let sent_at = Instant::now();
+        let mut table = NatTable::default();
+        let response_delay = Duration::from_secs(response_delay);
+
+        // Remember original src_p and dst
+        let src = packet.as_immutable().source_protocol().unwrap();
+        let dst = packet.destination();
+
+        // Translate out
+        let (new_source_protocol, new_dst_ip) = table
+            .translate_outgoing(packet.as_immutable(), outside_dst, sent_at)
+            .unwrap();
+
+        // Pretend we are getting a response.
+        let mut response = packet.clone();
+        response.set_destination_protocol(new_source_protocol.value());
+        response.set_src(new_dst_ip);
+
+        // Update time.
+        table.handle_timeout(sent_at + response_delay);
+
+        // Translate in
+        let translate_incoming = table
+            .translate_incoming(packet.as_immutable(), sent_at + response_delay)
+            .unwrap();
+
+        // Assert
+        if response_delay >= Duration::from_secs(60) {
+            assert!(translate_incoming.is_none());
+        } else {
+            assert_eq!(translate_incoming, Some((src, dst)));
+        }
+    }
+
+    #[test_strategy::proptest]
+    fn can_handle_multiple_packets(
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: MutableIpPacket<'static>,
+        #[strategy(any::<IpAddr>())] outside_dst1: IpAddr,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: MutableIpPacket<'static>,
+        #[strategy(any::<IpAddr>())] outside_dst2: IpAddr,
+    ) {
+        proptest::prop_assume!(packet1.destination().is_ipv4() == outside_dst1.is_ipv4()); // Required for our test to simulate a response.
+        proptest::prop_assume!(packet2.destination().is_ipv4() == outside_dst2.is_ipv4()); // Required for our test to simulate a response.
+        proptest::prop_assume!(
+            packet1.as_immutable().source_protocol().unwrap()
+                != packet2.as_immutable().source_protocol().unwrap()
+        );
+
+        let _set_default = tracing_subscriber::fmt()
+            .with_env_filter("trace")
+            .set_default();
+        let mut table = NatTable::default();
+
+        let mut packets = [(packet1, outside_dst1), (packet2, outside_dst2)];
+
+        // Remember original src_p and dst
+        let original_src_p_and_dst = packets
+            .clone()
+            .map(|(p, _)| (p.as_immutable().source_protocol().unwrap(), p.destination()));
+
+        // Translate out
+        let new_src_p_and_dst = packets.clone().map(|(p, d)| {
+            table
+                .translate_outgoing(p.as_immutable(), d, Instant::now())
+                .unwrap()
+        });
+
+        // Pretend we are getting a response.
+        for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
+            p.set_destination_protocol(new_src_p.value());
+            p.set_src(new_d);
+        }
+
+        // Translate in
+        let responses = packets.map(|(p, _)| {
+            table
+                .translate_incoming(p.as_immutable(), Instant::now())
+                .unwrap()
+                .unwrap()
+        });
+
+        assert_eq!(responses, original_src_p_and_dst);
     }
 }

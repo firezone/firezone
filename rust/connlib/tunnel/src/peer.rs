@@ -621,16 +621,16 @@ mod tests {
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
-            source_v4_addr().into(),
-            cidr_v4_resource().hosts().next().unwrap().into(),
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
             vec![0; 100],
         );
 
         let udp_packet = ip_packet::make::udp_packet(
-            source_v4_addr().into(),
-            cidr_v4_resource().hosts().next().unwrap().into(),
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
             vec![0; 100],
