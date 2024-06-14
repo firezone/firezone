@@ -21,7 +21,7 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 backoff = { workspace = true }
 url = { version = "2.4.1", features = ["serde"] }
 time = { version = "0.3.36", features = ["formatting"] }
-tokio-tungstenite = { version = "0.23", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 bimap = "0.6"
 ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }
