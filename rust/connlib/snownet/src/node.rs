@@ -9,9 +9,9 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
-use ip_packet::ipv4::MutableIpv4Packet;
-use ip_packet::ipv6::MutableIpv6Packet;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{
+    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
+};
 use rand::random;
 use secrecy::{ExposeSecret, Secret};
 use std::borrow::Cow;
@@ -1643,7 +1643,7 @@ where
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
-        match self.tunnel.decapsulate(None, packet, buffer) {
+        match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
@@ -1652,15 +1652,20 @@ where
             // In our API, we parse the packets directly as an IpPacket.
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
-                let ipv4_packet =
-                    MutableIpv4Packet::new(packet).expect("boringtun verifies validity");
+                let packet_len = packet.len();
+                let ipv4_packet = ConvertibleIpv4Packet::new(&mut buffer[..(packet_len + 20)])
+                    .expect("boringtun verifies validity");
                 debug_assert_eq!(ipv4_packet.get_source(), ip);
 
                 ControlFlow::Continue(ipv4_packet.into())
             }
             TunnResult::WriteToTunnelV6(packet, ip) => {
-                let ipv6_packet =
-                    MutableIpv6Packet::new(packet).expect("boringtun verifies validity");
+                // For ipv4 we need to use buffer to create the ip packet because we need the extra 20 bytes at the beginning
+                // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
+                // as `'b` for all branches.
+                let packet_len = packet.len();
+                let ipv6_packet = ConvertibleIpv6Packet::new(&mut buffer[20..(packet_len + 20)])
+                    .expect("boringtun verifies validity");
                 debug_assert_eq!(ipv6_packet.get_source(), ip);
 
                 ControlFlow::Continue(ipv6_packet.into())

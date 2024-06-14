@@ -10,26 +10,18 @@ use connlib_client_shared::file_logger;
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},
-    str::FromStr,
     time::Duration,
 };
-use tracing::subscriber::set_global_default;
-use tracing_subscriber::{layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 use windows_service::{
     service::{
-        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
-        ServiceType,
+        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
+        ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
     },
     service_control_handler::{self, ServiceControlHandlerResult},
+    service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
 mod wintun_install;
-
-#[cfg(debug_assertions)]
-const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
-
-#[cfg(not(debug_assertions))]
-const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
@@ -64,6 +56,37 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
     PathBuf::from("token.txt")
 }
 
+pub(crate) fn install_ipc_service() -> Result<()> {
+    let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
+    let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
+
+    let name = OsString::from("FirezoneClientIpcServiceDebug");
+
+    // Un-install existing one first if needed
+    {
+        let service_access = ServiceAccess::DELETE;
+        let service = service_manager.open_service(&name, service_access)?;
+        service.delete()?;
+    }
+
+    let executable_path = std::env::current_exe()?;
+    let service_info = ServiceInfo {
+        name,
+        display_name: OsString::from("Firezone Client IPC (Debug)"),
+        service_type: ServiceType::OWN_PROCESS,
+        start_type: ServiceStartType::AutoStart,
+        error_control: ServiceErrorControl::Normal,
+        executable_path,
+        launch_arguments: vec!["run".into()],
+        dependencies: vec![],
+        account_name: None,
+        account_password: None,
+    };
+    let service = service_manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG)?;
+    service.set_description("Description")?;
+    Ok(())
+}
+
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
@@ -75,15 +98,9 @@ pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 
 fn windows_service_run(arguments: Vec<OsString>) {
-    let log_path = crate::known_dirs::ipc_service_logs()
-        .expect("Should be able to compute IPC service logs dir");
-    std::fs::create_dir_all(&log_path).expect("We should have permissions to create our log dir");
-    let (layer, handle) = file_logger::layer(&log_path);
-    let filter = EnvFilter::from_str(SERVICE_RUST_LOG)
-        .expect("Hard-coded log filter should always be parsable");
-    let subscriber = Registry::default().with(layer.with_filter(filter));
-    set_global_default(subscriber).expect("`set_global_default` should always work)");
-    tracing::info!(git_version = crate::GIT_VERSION);
+    // `arguments` doesn't seem to work right when running as a Windows service
+    // (even though it's meant for that) so just use the default log dir.
+    let handle = crate::setup_ipc_service_logging(None).expect("Should be able to set up logging");
     if let Err(error) = fallible_windows_service_run(arguments, handle) {
         tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }
