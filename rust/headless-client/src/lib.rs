@@ -475,7 +475,8 @@ async fn handle_ipc_client(stream: IpcStream) -> Result<()> {
             IpcClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 assert!(connlib.is_none());
-                let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+                let device_id =
+                    device_id::get_or_create().context("Failed to read / create device ID")?;
                 let (private_key, public_key) = keypair();
 
                 let login = LoginUrl::client(
@@ -609,12 +610,8 @@ mod tests {
         assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([
-            exe_name,
-            "--log-dir",
-            "bogus_log_dir",
-            "run-debug",
-        ]);
+        let actual =
+            CliIpcService::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
         assert_eq!(actual.command, CmdIpc::RunDebug);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
