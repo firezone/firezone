@@ -2,8 +2,6 @@
 
 use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
 use anyhow::{bail, Context as _, Result};
-use connlib_client_shared::file_logger;
-use firezone_cli_utils::setup_global_subscriber;
 use futures::future::{select, Either};
 use std::{
     path::{Path, PathBuf},
@@ -91,12 +89,7 @@ pub fn sock_path() -> PathBuf {
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
-    tracing::info!("run_ipc_service");
-    // systemd supplies this but maybe we should hard-code a better default
-    let (layer, _handle) = cli.log_dir.as_deref().map(file_logger::layer).unzip();
-    setup_global_subscriber(layer);
-    tracing::info!(git_version = crate::GIT_VERSION);
-
+    let _handle = crate::setup_ipc_service_logging(cli.log_dir)?;
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
@@ -113,6 +106,10 @@ pub fn firezone_group() -> Result<nix::unistd::Group> {
         .context("can't get group by name")?
         .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
     Ok(group)
+}
+
+pub(crate) fn install_ipc_service() -> Result<()> {
+    bail!("`install_ipc_service` not implemented and not needed on Linux")
 }
 
 pub(crate) fn notify_service_controller() -> Result<()> {
