@@ -11,6 +11,8 @@ pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
             .await
             .context("Can't create autostart dir")?;
         let target = std::path::Path::new("/usr/share/applications/firezone-client-gui.desktop");
+        // If the link already exists, delete it
+        tokio::fs::remove_file(&link).await.ok();
         tokio::fs::symlink(target, link)
             .await
             .context("Can't create autostart link")?;
