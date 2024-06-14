@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[allow(clippy::unnecessary_wraps)]
 pub fn ipc_service_logs() -> Option<PathBuf> {
     // TODO: This is magic, it must match the systemd file
-    Some(PathBuf::from("/var/log").join(connlib_shared::BUNDLE_ID))
+    Some(PathBuf::from("/var/log").join(BUNDLE_ID))
 }
 
 /// e.g. `/home/alice/.cache/dev.firezone.client/data/logs`

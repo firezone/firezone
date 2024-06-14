@@ -14,7 +14,7 @@ pub(crate) struct DeviceId {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub(crate) fn get() -> Result<DeviceId> {
+pub(crate) fn get_or_create() -> Result<DeviceId> {
     let dir = platform::path().context("Failed to compute path for firezone-id file")?;
     let path = dir.join("firezone-id.json");
 

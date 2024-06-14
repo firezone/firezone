@@ -138,14 +138,13 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
-    #[command(hide = true)]
-    DebugIpcService,
-    IpcService,
+    Run,
+    RunDebug,
 }
 
 impl Default for CmdIpc {
     fn default() -> Self {
-        Self::IpcService
+        Self::Run
     }
 }
 
@@ -253,7 +252,7 @@ pub fn run_only_headless_client() -> Result<()> {
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
         Some(id) => id,
-        None => device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
+        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let (private_key, public_key) = keypair();
@@ -344,8 +343,8 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::try_parse()?;
     match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(),
-        CmdIpc::IpcService => platform::run_ipc_service(cli.common),
+        CmdIpc::Run => platform::run_ipc_service(cli.common),
+        CmdIpc::RunDebug => run_debug_ipc_service(),
     }
 }
 
@@ -476,7 +475,7 @@ async fn handle_ipc_client(stream: IpcStream) -> Result<()> {
             IpcClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 assert!(connlib.is_none());
-                let device_id = device_id::get().context("Failed to read / create device ID")?;
+                let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
                 let (private_key, public_key) = keypair();
 
                 let login = LoginUrl::client(
@@ -614,13 +613,13 @@ mod tests {
             exe_name,
             "--log-dir",
             "bogus_log_dir",
-            "debug-ipc-service",
+            "run-debug",
         ]);
-        assert_eq!(actual.command, CmdIpc::DebugIpcService);
+        assert_eq!(actual.command, CmdIpc::RunDebug);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([exe_name, "ipc-service"]);
-        assert_eq!(actual.command, CmdIpc::IpcService);
+        let actual = CliIpcService::parse_from([exe_name, "run"]);
+        assert_eq!(actual.command, CmdIpc::Run);
 
         Ok(())
     }
