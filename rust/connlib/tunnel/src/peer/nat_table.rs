@@ -24,11 +24,13 @@ pub(crate) struct NatTable {
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let mut removed = Vec::new();
-        for (r, e) in self.last_seen.iter() {
+        for (outside, e) in self.last_seen.iter() {
             if now.duration_since(*e) >= Duration::from_secs(60) {
-                let inside = self.table.remove_by_right(r);
-                tracing::debug!(?inside, outside = ?r, "NAT session expired");
-                removed.push(*r);
+                if let Some((inside, _)) = self.table.remove_by_right(outside) {
+                    tracing::debug!(?inside, ?outside, "NAT session expired");
+                }
+
+                removed.push(*outside);
             }
         }
 
