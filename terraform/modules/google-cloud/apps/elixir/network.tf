@@ -271,7 +271,7 @@ resource "google_compute_ssl_policy" "application" {
   name = local.application_name
 
   min_tls_version = "TLS_1_2"
-  profile         = "MODERN"
+  profile         = "RESTRICTED"
 
   depends_on = [
     google_project_service.compute,
