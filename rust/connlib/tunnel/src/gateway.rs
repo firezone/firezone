@@ -209,13 +209,10 @@ impl GatewayState {
             return None;
         };
 
-        let packet = match peer.decapsulate(packet, now) {
-            Ok(packet) => packet,
-            Err(e) => {
-                tracing::warn!(%conn_id, %local, %from, "Invalid packet: {e}");
-                return None;
-            }
-        };
+        let packet = peer
+            .decapsulate(packet, now)
+            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "Invalid packet: {e}"))
+            .ok()?;
 
         tracing::trace!("Decapsulated packet");
 
