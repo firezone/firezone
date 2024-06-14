@@ -2,7 +2,7 @@ use super::strategies::*;
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        DnsServer,
+        DnsServer, ResourceId,
     },
     proptest::*,
     DomainName,
@@ -69,6 +69,9 @@ pub(crate) enum Transition {
 
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
+
+    /// Remove a resource from the client.
+    RemoveResource(ResourceId),
 }
 
 pub(crate) fn ping_random_ip<I>(

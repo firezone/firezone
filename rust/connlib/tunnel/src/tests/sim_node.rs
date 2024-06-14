@@ -1,7 +1,9 @@
 use super::sim_relay::SimRelay;
 use crate::{ClientState, GatewayState};
 use connlib_shared::{
-    messages::{client::ResourceDescription, ClientId, DnsServer, GatewayId, Interface},
+    messages::{
+        client::ResourceDescription, ClientId, DnsServer, GatewayId, Interface, ResourceId,
+    },
     StaticSecret,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -102,6 +104,12 @@ impl SimNode<ClientId, ClientState> {
     pub(crate) fn add_resource(&mut self, resource: ResourceDescription) {
         self.span.in_scope(|| {
             self.state.add_resources(&[resource]);
+        })
+    }
+
+    pub(crate) fn remove_resource(&mut self, resource: ResourceId) {
+        self.span.in_scope(|| {
+            self.state.remove_resources(&[resource]);
         })
     }
 }

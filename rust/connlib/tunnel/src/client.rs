@@ -1112,7 +1112,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?ids))]
-    fn remove_resources(&mut self, ids: &[ResourceId]) {
+    pub(crate) fn remove_resources(&mut self, ids: &[ResourceId]) {
         for id in ids {
             self.awaiting_connection.remove(id);
             self.dns_resources_internal_ips
