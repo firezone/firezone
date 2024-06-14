@@ -30,7 +30,10 @@ use tokio::{
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
+use tracing_subscriber::{
+    fmt::{format::FmtSpan, SubscriberBuilder},
+    EnvFilter,
+};
 use url::Url;
 
 use platform::default_token_path;
@@ -660,8 +663,10 @@ pub fn debug_command_setup() -> Result<()> {
     let filter = EnvFilter::builder()
         .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
         .from_env_lossy();
-    let layer = fmt::layer().with_filter(filter);
-    let subscriber = Registry::default().with(layer);
+    let subscriber = SubscriberBuilder::default()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_env_filter(filter)
+        .finish();
     set_global_default(subscriber)?;
     Ok(())
 }
