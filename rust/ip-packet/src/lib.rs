@@ -111,6 +111,18 @@ enum MaybeOwned<'a> {
     Owned(Vec<u8>),
 }
 
+impl<'a> MaybeOwned<'a> {
+    fn remove_from_head(self, bytes: usize) -> MaybeOwned<'a> {
+        match self {
+            MaybeOwned::RefMut(ref_mut) => MaybeOwned::RefMut(&mut ref_mut[bytes..]),
+            MaybeOwned::Owned(mut owned) => {
+                owned.drain(0..bytes);
+                MaybeOwned::Owned(owned)
+            }
+        }
+    }
+}
+
 impl<'a> Deref for MaybeOwned<'a> {
     type Target = [u8];
 
@@ -212,8 +224,9 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         let ttl = self.as_ipv4().get_ttl();
         let next_level_protocol = self.as_ipv4().get_next_level_protocol();
 
-        self.buf[0..40].fill(0);
-        let mut pkt = ConvertibleIpv6Packet { buf: self.buf };
+        let mut buf = self.buf.remove_from_head(header_length - 20);
+        buf[0..40].fill(0);
+        let mut pkt = ConvertibleIpv6Packet { buf };
 
         // TODO:
         /*
@@ -1238,6 +1251,13 @@ impl<'a> IcmpPacket<'a> {
 
     pub fn is_echo_request(&self) -> bool {
         self.as_echo_request().is_some()
+    }
+
+    pub fn checksum(&self) -> u16 {
+        match self {
+            IcmpPacket::Ipv4(p) => p.get_checksum(),
+            IcmpPacket::Ipv6(p) => p.get_checksum(),
+        }
     }
 
     pub fn sequence(&self) -> Option<u16> {
