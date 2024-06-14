@@ -146,11 +146,11 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
-    RunDebug,
     /// Needed to test the IPC service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
     Install,
     Run,
+    RunDebug,
 }
 
 impl Default for CmdIpc {
@@ -354,9 +354,9 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::try_parse()?;
     match cli.command {
-        CmdIpc::RunDebug => run_debug_ipc_service(),
         CmdIpc::Install => platform::install_ipc_service(),
         CmdIpc::Run => platform::run_ipc_service(cli.common),
+        CmdIpc::RunDebug => run_debug_ipc_service(),
     }
 }
 
