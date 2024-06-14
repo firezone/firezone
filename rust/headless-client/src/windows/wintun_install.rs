@@ -41,7 +41,7 @@ pub(crate) fn ensure_dll() -> Result<PathBuf, Error> {
     let dir = path.parent().ok_or(Error::DllPathInvalid)?;
     std::fs::create_dir_all(dir).map_err(|_| Error::CreateDirAll)?;
 
-    tracing::info!(?path, "wintun.dll path");
+    tracing::debug!(?path, "wintun.dll path");
 
     // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
     // `tun_windows.rs` in connlib, and `elevation.rs`, rely on thia.
