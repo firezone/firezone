@@ -23,6 +23,7 @@ pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers()
 }
 
+#[derive(Default)]
 pub(crate) struct DnsController {}
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -38,10 +39,6 @@ impl Drop for DnsController {
 }
 
 impl DnsController {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-
     /// Set the computer's system-wide DNS servers
     ///
     /// There's a gap in this because on Windows we deactivate and re-activate control.

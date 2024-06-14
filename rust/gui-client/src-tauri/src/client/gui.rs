@@ -45,6 +45,8 @@ mod os;
 #[allow(clippy::unnecessary_wraps)]
 mod os;
 
+pub(crate) use os::set_autostart;
+
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 /// All managed state that we might need to access from odd places like Tauri commands.
