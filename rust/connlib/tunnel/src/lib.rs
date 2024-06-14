@@ -25,7 +25,7 @@ pub use sockets::Sockets;
 use utils::turn;
 
 mod client;
-pub mod device_channel;
+mod device_channel;
 mod dns;
 mod gateway;
 mod io;

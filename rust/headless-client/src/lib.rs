@@ -143,7 +143,6 @@ struct CliIpcService {
 enum CmdIpc {
     DebugIpcService,
     IpcService,
-    Wintun,
 }
 
 impl Default for CmdIpc {
@@ -349,7 +348,6 @@ pub fn run_only_ipc_service() -> Result<()> {
     match cli.command {
         CmdIpc::DebugIpcService => run_debug_ipc_service(),
         CmdIpc::IpcService => platform::run_ipc_service(cli.common),
-        CmdIpc::Wintun => platform::run_wintun(),
     }
 }
 

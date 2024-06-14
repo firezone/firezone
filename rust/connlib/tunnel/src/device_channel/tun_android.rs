@@ -12,7 +12,7 @@ use std::{
 use tokio::io::unix::AsyncFd;
 
 #[derive(Debug)]
-pub struct Tun {
+pub(crate) struct Tun {
     fd: AsyncFd<RawFd>,
     name: String,
 }

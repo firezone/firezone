@@ -29,8 +29,7 @@ use wintun::Adapter;
 // Not sure how this and `TUNNEL_NAME` differ
 const ADAPTER_NAME: &str = "Firezone";
 
-// TODO: Double-check that all these get dropped gracefully on disconnect
-pub struct Tun {
+pub(crate) struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
@@ -42,8 +41,8 @@ pub struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        if let Err(e) = self.session.shutdown() {
-            tracing::error!("wintun::Session::shutdown: {e:#?}");
+        if let Err(error) = self.session.shutdown() {
+            tracing::error!(?error, "wintun::Session::shutdown");
         }
         if let Some(recv_thread) = self.recv_thread.take() {
             // We must join the worker thread here to prevent issue #4765
@@ -316,14 +315,14 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     Ok(())
 }
 
-#[cfg(sudotests)] // Custom `cfg` so we don't run this locally using regular `cargo test` by default. CI activates this.
 mod tests {
-    use super::*;
-
+    /// Checks for regressions in issue #4765, un-initializing Wintun
     #[test]
+    #[ignore = "Needs admin privileges"]
     fn resource_management() {
-        for _ in 0..1000 {
-            let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+        // Each cycle takes about half a second, so this will need over a minute to run.
+        for _ in 0..150 {
+            let _tun = super::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
 }

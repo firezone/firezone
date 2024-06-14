@@ -71,18 +71,6 @@ pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
-/// Wintun stress test to shake out issue #4765
-pub(crate) fn run_wintun() -> Result<()> {
-    crate::debug_command_setup()?;
-
-    let iters = 1000;
-    for i in 0..iters {
-        tracing::info!(?i, "Loop");
-        let _tun = firezone_tunnel::device_channel::Tun::new()?;
-    }
-    Ok(())
-}
-
 // Generates `ffi_service_run` from `service_run`
 windows_service::define_windows_service!(ffi_service_run, windows_service_run);
 

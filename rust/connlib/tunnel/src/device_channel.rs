@@ -30,7 +30,7 @@ use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
-pub use tun::Tun;
+use tun::Tun;
 
 pub struct Device {
     tun: Option<Tun>,
