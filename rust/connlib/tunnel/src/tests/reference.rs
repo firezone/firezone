@@ -269,6 +269,9 @@ impl ReferenceStateMachine for ReferenceState {
                     )
                 },
             )
+            .with_if_not_empty(1, state.all_resources(), |resources| {
+                sample::select(resources).prop_map(Transition::RemoveResource)
+            })
             .boxed()
     }
 
@@ -279,6 +282,11 @@ impl ReferenceStateMachine for ReferenceState {
         match transition {
             Transition::AddCidrResource(r) => {
                 state.client_cidr_resources.insert(r.address, r.clone());
+            }
+            Transition::RemoveResource(id) => {
+                state.client_cidr_resources.retain(|_, r| &r.id != id);
+                state.client_connected_cidr_resources.remove(id);
+                state.client_dns_resources.remove(id);
             }
             Transition::AddDnsResource {
                 resource: new_resource,
@@ -486,6 +494,10 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 state.global_dns_records.contains_key(domain)
                     && state.expected_dns_servers().contains(dns_server)
+            }
+            Transition::RemoveResource(id) => {
+                state.client_cidr_resources.iter().any(|(_, r)| &r.id == id)
+                    || state.client_dns_resources.contains_key(id)
             }
         }
     }
@@ -703,6 +715,13 @@ impl ReferenceState {
         }
 
         self.cidr_resource_by_ip(dns_server)
+    }
+
+    fn all_resources(&self) -> Vec<ResourceId> {
+        let cidr_resources = self.client_cidr_resources.iter().map(|(_, r)| r.id);
+        let dns_resources = self.client_dns_resources.keys().copied();
+
+        Vec::from_iter(cidr_resources.chain(dns_resources))
     }
 }
 
