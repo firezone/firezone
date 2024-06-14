@@ -25,6 +25,6 @@ pub fn run(cmd: Cmd) -> Result<()> {
 fn set_autostart(enabled: bool) -> Result<()> {
     firezone_headless_client::debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(client::gui::set_autostart(enabled))?;
+    rt.block_on(crate::client::gui::set_autostart(enabled))?;
     Ok(())
 }
