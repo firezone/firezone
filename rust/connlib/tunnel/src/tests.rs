@@ -2,6 +2,7 @@ use crate::tests::sut::TunnelTest;
 use proptest::test_runner::Config;
 
 mod assertions;
+mod composite_strategy;
 mod reference;
 mod sim_node;
 mod sim_portal;
