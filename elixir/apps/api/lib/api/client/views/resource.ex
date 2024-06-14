@@ -15,7 +15,7 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :cidr,
       address: address,
-      # FIXME: This is a workaround due to clients expecting address_description not
+      # TODO: This is a workaround due to clients expecting address_description not
       # to be null. Remove this to send null address_description on or after 8/13/24
       # once we can reasonably expect clients to have upgraded.
       address_description: resource.address_description || address,
