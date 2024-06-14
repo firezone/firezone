@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn resource_management() {
-        for i in 0..1000 {
+        for _ in 0..1000 {
             let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
