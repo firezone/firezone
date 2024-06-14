@@ -1,8 +1,7 @@
 "use client";
 
-import { DocSearch } from "@docsearch/react";
-import "@docsearch/css";
 import Link from "next/link";
+import KbSearch from "@/components/KbSearch";
 
 export default function SupportOptions() {
   return (
@@ -10,7 +9,13 @@ export default function SupportOptions() {
       <hr />
       <div className="mb-8">
         <h2 id="need-additional-help">Need additional help?</h2>
-        <p>Try asking on one of our community-powered support channels:</p>
+        <p>
+          See{" "}
+          <Link href="/support" className="text-accent-500 hover:underline">
+            all support options
+          </Link>{" "}
+          or try asking on one of our community-powered support channels:
+        </p>
         <ul>
           <li>
             <Link href="https://discourse.firez.one/?utm_source=docs.firezone.dev">
@@ -29,13 +34,8 @@ export default function SupportOptions() {
         </ul>
         <div className="flex">
           <span className="self-center">Or try searching the docs:</span>
-          <span className="ml-2">
-            <DocSearch
-              insights
-              appId="XXPZ9QVGFB"
-              apiKey="66664e8765e1645ea0b500acebb0b0c2"
-              indexName="firezone"
-            />
+          <span className="ml-6 w-64">
+            <KbSearch />
           </span>
         </div>
       </div>
