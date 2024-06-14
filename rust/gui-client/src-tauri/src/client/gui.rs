@@ -12,7 +12,12 @@ use crate::client::{
 };
 use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::{Duration, Instant}};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -774,7 +779,7 @@ async fn run_controller(
                 let mut resolvers = resolvers?;
                 resolvers.sort();
                 if resolvers != last_resolvers_sent {
-                    last_resolvers_sent = resolvers.clone();
+                    last_resolvers_sent.clone_from(&resolvers);
                     if let Some(session) = controller.session.as_mut() {
                         tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                         session.connlib.set_dns(resolvers).await?;

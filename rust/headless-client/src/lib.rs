@@ -25,7 +25,11 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
-use tracing_subscriber::{fmt::{SubscriberBuilder, format::FmtSpan}, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
+use tracing_subscriber::{
+    fmt::{format::FmtSpan, SubscriberBuilder},
+    layer::SubscriberExt,
+    EnvFilter, Layer as _, Registry,
+};
 use url::Url;
 
 use platform::default_token_path;
@@ -620,7 +624,10 @@ fn get_log_filter() -> Result<String> {
 /// Sets up logging for stderr only, with INFO level by default
 pub fn debug_command_setup() -> Result<()> {
     let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
-    let subscriber = SubscriberBuilder::default().with_span_events(FmtSpan::CLOSE).with_env_filter(filter).finish();
+    let subscriber = SubscriberBuilder::default()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_env_filter(filter)
+        .finish();
     set_global_default(subscriber)?;
     Ok(())
 }
