@@ -1931,6 +1931,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "arc-swap",
+ "atomicwrites",
  "chrono",
  "clap",
  "connlib-client-shared",

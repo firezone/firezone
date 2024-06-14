@@ -1,3 +1,7 @@
+pub fn ipc_service_config() -> Option<PathBuf> {
+    unimplemented!()
+}
+
 pub fn ipc_service_logs() -> Option<PathBuf> {
     unimplemented!()
 }

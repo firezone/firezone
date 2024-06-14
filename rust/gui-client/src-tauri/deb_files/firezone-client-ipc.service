@@ -39,10 +39,9 @@ UMask=077
 
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
 Environment="LOG_DIR=/var/log/dev.firezone.client"
-Environment="RUST_LOG=info"
 EnvironmentFile="/etc/default/firezone-client-ipc"
 
-ExecStart=firezone-client-ipc ipc-service
+ExecStart=firezone-client-ipc run
 Type=notify
 # Unfortunately we may need root to control DNS
 User=root
