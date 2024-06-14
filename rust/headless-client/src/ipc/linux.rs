@@ -2,14 +2,14 @@ use anyhow::{Context as _, Result};
 use std::{os::unix::fs::PermissionsExt, path::Path};
 use tokio::net::{UnixListener, UnixStream};
 
-pub(crate) struct IpcServer {
+pub(crate) struct Server {
     listener: UnixListener,
 }
 
 /// Opaque wrapper around platform-specific IPC stream
-pub(crate) type IpcStream = UnixStream;
+pub(crate) type Stream = UnixStream;
 
-impl IpcServer {
+impl Server {
     /// Platform-specific setup
     pub(crate) async fn new() -> Result<Self> {
         Self::new_with_path(&crate::platform::sock_path()).await
@@ -38,7 +38,7 @@ impl IpcServer {
         Ok(Self { listener })
     }
 
-    pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
+    pub(crate) async fn next_client(&mut self) -> Result<Stream> {
         tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;

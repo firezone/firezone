@@ -6,14 +6,14 @@ use windows::Win32::{
     Foundation::HANDLE, Security as WinSec, System::Pipes::GetNamedPipeClientProcessId,
 };
 
-pub(crate) struct IpcServer {
+pub(crate) struct Server {
     pipe_path: String,
 }
 
 /// Opaque wrapper around platform-specific IPC stream
-pub(crate) type IpcStream = named_pipe::NamedPipeServer;
+pub(crate) type Stream = named_pipe::NamedPipeServer;
 
-impl IpcServer {
+impl Server {
     /// Platform-specific setup
     ///
     /// This is async on Linux
@@ -41,7 +41,7 @@ impl IpcServer {
     }
 
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<IpcStream> {
+    pub(crate) async fn next_client(&mut self) -> Result<Stream> {
         // Fixes #5143. In the IPC service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -70,7 +70,7 @@ impl IpcServer {
         Ok(server)
     }
 
-    async fn bind_to_pipe(&self) -> Result<IpcStream> {
+    async fn bind_to_pipe(&self) -> Result<Stream> {
         const NUM_ITERS: usize = 10;
         // This loop is defense-in-depth. The `yield_now` in `next_client` is enough
         // to fix #5143, but Tokio doesn't guarantee any behavior when yielding, so
