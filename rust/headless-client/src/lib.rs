@@ -566,7 +566,8 @@ impl Handler {
             IpcClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 assert!(self.connlib.is_none());
-                let device_id = device_id::get().context("Failed to read / create device ID")?;
+                let device_id =
+                    device_id::get_or_create().context("Failed to read / create device ID")?;
                 let (private_key, public_key) = keypair();
 
                 let login = LoginUrl::client(

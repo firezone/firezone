@@ -72,6 +72,10 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn install_ipc_service() -> Result<()> {
+    unimplemented!()
+}
+
 /// The path for our Unix Domain Socket
 ///
 /// Docker keeps theirs in `/run` and also appears to use filesystem permissions
