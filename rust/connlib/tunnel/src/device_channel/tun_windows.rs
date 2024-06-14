@@ -315,3 +315,14 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(sudotests)] // Custom `cfg` so we don't run this locally using regular `cargo test` by default. CI activates this.
+mod tests {
+
+    #[test]
+    fn resource_management() {
+        for i in 0..1000 {
+            let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+        }
+    }
+}
