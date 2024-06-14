@@ -87,6 +87,22 @@ pub enum IcmpPacket<'a> {
     Ipv6(icmpv6::Icmpv6Packet<'a>),
 }
 
+impl<'a> IcmpPacket<'a> {
+    pub fn identifier(&self) -> Option<u16> {
+        let request_id = self.as_echo_request().map(|r| r.identifier());
+        let reply_id = self.as_echo_reply().map(|r| r.identifier());
+
+        request_id.or(reply_id)
+    }
+
+    pub fn sequence(&self) -> Option<u16> {
+        let request_id = self.as_echo_request().map(|r| r.sequence());
+        let reply_id = self.as_echo_reply().map(|r| r.sequence());
+
+        request_id.or(reply_id)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum IcmpEchoRequest<'a> {
     Ipv4(icmp::echo_request::EchoRequestPacket<'a>),
@@ -1060,40 +1076,44 @@ impl<'a> IpPacket<'a> {
         }
     }
 
-    pub fn source_protocol(&self) -> Option<Protocol> {
+    pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
         if let Some(p) = self.as_tcp() {
-            return Some(Protocol::Tcp(p.get_source()));
+            return Ok(Protocol::Tcp(p.get_source()));
         }
 
         if let Some(p) = self.as_udp() {
-            return Some(Protocol::Udp(p.get_source()));
+            return Ok(Protocol::Udp(p.get_source()));
         }
 
-        self.icmp_identifier()
-    }
-
-    pub fn destination_protocol(&self) -> Option<Protocol> {
-        if let Some(p) = self.as_tcp() {
-            return Some(Protocol::Tcp(p.get_destination()));
-        }
-
-        if let Some(p) = self.as_udp() {
-            return Some(Protocol::Udp(p.get_destination()));
-        }
-
-        self.icmp_identifier()
-    }
-
-    fn icmp_identifier(&self) -> Option<Protocol> {
         if let Some(p) = self.as_icmp() {
-            if let Some(p) = p.as_echo_request() {
-                return Some(Protocol::Icmp(p.identifier()));
-            }
+            let id = p
+                .identifier()
+                .ok_or(UnsupportedProtocol(self.next_header()))?;
 
-            return Some(Protocol::Icmp(p.as_echo_reply()?.identifier()));
+            return Ok(Protocol::Icmp(id));
         }
 
-        None
+        Err(UnsupportedProtocol(self.next_header()))
+    }
+
+    pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
+        if let Some(p) = self.as_tcp() {
+            return Ok(Protocol::Tcp(p.get_destination()));
+        }
+
+        if let Some(p) = self.as_udp() {
+            return Ok(Protocol::Udp(p.get_destination()));
+        }
+
+        if let Some(p) = self.as_icmp() {
+            let id = p
+                .identifier()
+                .ok_or(UnsupportedProtocol(self.next_header()))?;
+
+            return Ok(Protocol::Icmp(id));
+        }
+
+        Err(UnsupportedProtocol(self.next_header()))
     }
 
     pub fn source(&self) -> IpAddr {
@@ -1259,28 +1279,6 @@ impl<'a> IcmpPacket<'a> {
             IcmpPacket::Ipv6(p) => p.get_checksum(),
         }
     }
-
-    pub fn sequence(&self) -> Option<u16> {
-        if let Some(req) = self.as_echo_request() {
-            return Some(req.sequence());
-        }
-        if let Some(reply) = self.as_echo_reply() {
-            return Some(reply.sequence());
-        }
-
-        None
-    }
-
-    pub fn identifier(&self) -> Option<u16> {
-        if let Some(req) = self.as_echo_request() {
-            return Some(req.identifier());
-        }
-        if let Some(reply) = self.as_echo_reply() {
-            return Some(reply.identifier());
-        }
-
-        None
-    }
 }
 
 impl<'a> IcmpEchoRequest<'a> {
@@ -1374,3 +1372,7 @@ impl<'a> PacketSize for IpPacket<'a> {
         }
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Unsupported IP protocol: {0}")]
+pub struct UnsupportedProtocol(IpNextHeaderProtocol);

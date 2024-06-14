@@ -3173,6 +3173,7 @@ dependencies = [
  "pnet_packet",
  "proptest",
  "test-strategy",
+ "thiserror",
 ]
 
 [[package]]
