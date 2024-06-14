@@ -28,6 +28,24 @@ pub(crate) enum Window {
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
+fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
+    let submenu = SystemTrayMenu::new();
+
+    let Some(address_description) = res.address_description() else {
+        return submenu.copyable(&res.pastable());
+    };
+
+    if address_description.is_empty() {
+        return submenu.copyable(&res.pastable());
+    }
+
+    let Ok(url) = Url::parse(address_description) else {
+        return submenu.copyable(address_description);
+    };
+
+    submenu.item(Event::Url(url), address_description)
+}
+
 pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .disabled(format!("Signed in as {user_name}"))
@@ -36,16 +54,7 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
         .disabled("Resources");
 
     for res in resources {
-        let submenu = SystemTrayMenu::new();
-
-        let address_description = res.address_description();
-        let submenu = if address_description.is_empty() {
-            submenu.copyable(&res.pastable())
-        } else if let Ok(url) = Url::parse(address_description) {
-            submenu.item(Event::Url(url), address_description)
-        } else {
-            submenu.copyable(address_description)
-        };
+        let submenu = get_submenu(res);
 
         let submenu = submenu
             .separator()
