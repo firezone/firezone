@@ -1,6 +1,7 @@
 use proptest::strategy::{BoxedStrategy, Strategy, Union};
 use std::fmt;
 
+/// A custom [`Strategy`] that selects from a list of other, weighted strategies.
 #[derive(Debug)]
 pub struct CompositeStrategy<T>
 where
