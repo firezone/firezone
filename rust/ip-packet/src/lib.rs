@@ -1231,6 +1231,36 @@ impl<'a> IcmpPacket<'a> {
             IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,
         }
     }
+
+    pub fn is_echo_reply(&self) -> bool {
+        self.as_echo_reply().is_some()
+    }
+
+    pub fn is_echo_request(&self) -> bool {
+        self.as_echo_request().is_some()
+    }
+
+    pub fn sequence(&self) -> Option<u16> {
+        if let Some(req) = self.as_echo_request() {
+            return Some(req.sequence());
+        }
+        if let Some(reply) = self.as_echo_reply() {
+            return Some(reply.sequence());
+        }
+
+        None
+    }
+
+    pub fn identifier(&self) -> Option<u16> {
+        if let Some(req) = self.as_echo_request() {
+            return Some(req.identifier());
+        }
+        if let Some(reply) = self.as_echo_reply() {
+            return Some(reply.identifier());
+        }
+
+        None
+    }
 }
 
 impl<'a> IcmpEchoRequest<'a> {

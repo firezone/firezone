@@ -23,6 +23,15 @@ pub fn icmp_request_packet(
     icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Request)
 }
 
+pub fn icmp_reply_packet(
+    src: IpAddr,
+    dst: impl Into<IpAddr>,
+    seq: u16,
+    identifier: u16,
+) -> MutableIpPacket<'static> {
+    icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Response)
+}
+
 pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
     let icmp = packet
         .as_icmp()
