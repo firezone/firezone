@@ -170,7 +170,10 @@ impl GatewayState {
 
         let peer = self.peers.peer_by_ip_mut(dest)?;
 
-        let packet = peer.encapsulate(packet, now)?;
+        let packet = peer
+            .encapsulate(packet, now)
+            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .ok()??;
 
         let transmit = self
             .node

@@ -403,10 +403,9 @@ impl ClientOnGateway {
             return Ok(packet);
         };
 
-        let (source_protocol, real_ip) = self
-            .nat_table
-            .translate_outgoing(&packet.as_immutable(), state.resolved_ip, now)
-            .ok_or(connlib_shared::Error::ExhaustedNat)?;
+        let (source_protocol, real_ip) =
+            self.nat_table
+                .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
 
         if now.duration_since(state.last_response) >= Duration::from_secs(30) {
             state.slated_for_refresh = true;
@@ -439,15 +438,17 @@ impl ClientOnGateway {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Option<MutableIpPacket<'a>> {
+    ) -> Result<Option<MutableIpPacket<'a>>, connlib_shared::Error> {
         let Some((proto, ip)) = self
             .nat_table
-            .translate_incoming(&packet.as_immutable(), now)
+            .translate_incoming(packet.as_immutable(), now)?
         else {
-            return Some(packet);
+            return Ok(Some(packet));
         };
 
-        let mut packet = packet.translate_source(self.ipv4, self.ipv6, ip)?;
+        let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
+            return Ok(None);
+        };
         let state = self
             .permanent_translations
             .get_mut(&ip)
@@ -459,7 +460,7 @@ impl ClientOnGateway {
         packet.set_destination_protocol(proto.value());
         packet.update_checksum();
 
-        Some(packet)
+        Ok(Some(packet))
     }
 
     fn ensure_allowed_source(

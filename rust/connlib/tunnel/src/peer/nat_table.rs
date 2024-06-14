@@ -41,18 +41,23 @@ impl NatTable {
 
     pub(crate) fn translate_outgoing(
         &mut self,
-        outgoing_pkt: &IpPacket,
-        real_address: IpAddr,
+        packet: IpPacket,
+        outside_dst: IpAddr,
         now: Instant,
-    ) -> Option<(Protocol, IpAddr)> {
-        let source_protocol = outgoing_pkt.source_protocol()?;
-        let inside = (source_protocol, outgoing_pkt.destination());
+    ) -> Result<(Protocol, IpAddr), connlib_shared::Error> {
+        let src = packet
+            .source_protocol()
+            .map_err(connlib_shared::Error::UnsupportedProtocol)?;
+        let dst = packet.destination();
+
+        let inside = (src, dst);
+
         if let Some(outside) = self.table.get_by_left(&inside) {
-            if outside.1 == real_address {
+            if outside.1 == outside_dst {
                 tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
                 self.last_seen.insert(*outside, now);
-                return Some(*outside);
+                return Ok(*outside);
             }
 
             tracing::trace!(?inside, ?outside, "Outgoing packet for expired translation");
@@ -60,44 +65,43 @@ impl NatTable {
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
         // This will re-assign the same port in most cases, even after the mapping expires.
-        let Some(outside) = (source_protocol.value()..)
-            .chain(1..source_protocol.value())
-            .map(|p| (source_protocol.with_value(p), real_address))
+        let outside = (src.value()..)
+            .chain(1..src.value())
+            .map(|p| (src.with_value(p), outside_dst))
             .find(|outside| !self.table.contains_right(outside))
-        else {
-            tracing::warn!("available nat ports exhausted");
-            return None;
-        };
+            .ok_or(connlib_shared::Error::ExhaustedNat)?;
 
-        let inside = (source_protocol, outgoing_pkt.destination());
+        let inside = (src, dst);
 
         self.table.insert(inside, outside);
         self.last_seen.insert(outside, now);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
 
-        Some(outside)
+        Ok(outside)
     }
 
     pub(crate) fn translate_incoming(
         &mut self,
-        incoming_packet: &IpPacket,
+        packet: IpPacket,
         now: Instant,
-    ) -> Option<(Protocol, IpAddr)> {
+    ) -> Result<Option<(Protocol, IpAddr)>, connlib_shared::Error> {
         let outside = (
-            incoming_packet.destination_protocol()?,
-            incoming_packet.source(),
+            packet
+                .destination_protocol()
+                .map_err(connlib_shared::Error::UnsupportedProtocol)?,
+            packet.source(),
         );
 
         if let Some(inside) = self.table.get_by_right(&outside) {
             tracing::trace!(?inside, ?outside, "Translating incoming packet");
 
             self.last_seen.insert(*inside, now);
-            return Some(*inside);
+            return Ok(Some(*inside));
         }
 
         tracing::trace!(?outside, "No active NAT session; skipping translation");
 
-        None
+        Ok(None)
     }
 }

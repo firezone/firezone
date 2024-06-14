@@ -1179,6 +1179,7 @@ dependencies = [
  "domain",
  "futures",
  "futures-util",
+ "ip-packet",
  "ip_network",
  "itertools 0.13.0",
  "known-folders",
