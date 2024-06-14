@@ -310,7 +310,7 @@ mod test {
                         "address_description": "dns resource",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
-                    }
+                    },
                     {
                         "address": "github.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dce",
