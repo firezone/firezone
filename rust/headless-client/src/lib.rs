@@ -30,10 +30,7 @@ use tokio::{
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
-use tracing_subscriber::{
-    fmt::{format::FmtSpan, SubscriberBuilder},
-    EnvFilter,
-};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
 
 use platform::default_token_path;
