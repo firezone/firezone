@@ -56,22 +56,18 @@ impl NatTable {
             tracing::trace!(?inside, ?outside, "Outgoing packet for expired translation");
         }
 
-        let Some(p) = (source_protocol.value()..)
+        // Find the first available public port, starting from the port of the to-be-mapped packet.
+        // This will re-assign the same port in most cases, even after the mapping expires.
+        let Some(outside) = (source_protocol.value()..)
             .chain(1..source_protocol.value())
-            .find(|p| {
-                !self
-                    .table
-                    .contains_right(&(source_protocol.with_value(*p), real_address))
-            })
+            .map(|p| (source_protocol.with_value(p), real_address))
+            .find(|outside| !self.table.contains_right(outside))
         else {
             tracing::warn!("available nat ports exhausted");
             return None;
         };
 
-        let proxy_protocol = source_protocol.with_value(p);
-
         let inside = (source_protocol, outgoing_pkt.destination());
-        let outside = (proxy_protocol, real_address);
 
         self.table.insert(inside, outside);
         self.last_seen.insert(outside, now);
