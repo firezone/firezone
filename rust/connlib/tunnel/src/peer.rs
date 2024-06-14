@@ -192,7 +192,8 @@ impl ClientOnGateway {
 
         let old_ips: HashSet<&IpAddr> =
             HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
-                (state.name == name && state.resource_id == resource_id).then_some(&state.real_ip)
+                (state.name == name && state.resource_id == resource_id)
+                    .then_some(&state.resolved_ip)
             }));
         let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
         if old_ips == new_ips {
@@ -247,7 +248,7 @@ impl ClientOnGateway {
             self.permanent_translations.insert(
                 *proxy_ip,
                 TranslationState {
-                    real_ip,
+                    resolved_ip: real_ip,
                     resource_id,
                     name: name.clone(),
                     last_response: now,
@@ -311,7 +312,7 @@ impl ClientOnGateway {
                     slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
                 })
             {
-                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.real_ip, %proxy_ip , "Refreshing DNS");
+                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.resolved_ip, %proxy_ip , "Refreshing DNS");
 
                 for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
             }
@@ -404,7 +405,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) = self
             .nat_table
-            .translate_outgoing(&packet.as_immutable(), state.real_ip, now)
+            .translate_outgoing(&packet.as_immutable(), state.resolved_ip, now)
             .ok_or(connlib_shared::Error::ExhaustedNat)?;
 
         if now.duration_since(state.last_response) >= Duration::from_secs(30) {
@@ -551,9 +552,13 @@ struct ResourceOnGateway {
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
 struct TranslationState {
+    /// Which (DNS) resource we belong to.
     resource_id: ResourceId,
-    real_ip: IpAddr,
+    /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
     name: DomainName,
+    /// The IP we have resolved for the domain.
+    resolved_ip: IpAddr,
+    /// When we've last seen a packet from the resolved IP.
     last_response: Instant,
     slated_for_refresh: bool,
 }
