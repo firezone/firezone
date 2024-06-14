@@ -149,7 +149,7 @@ mod tests {
 
         // Translate in
         let translate_incoming = table
-            .translate_incoming(packet.as_immutable(), sent_at + response_delay)
+            .translate_incoming(response.as_immutable(), sent_at + response_delay)
             .unwrap();
 
         // Assert
