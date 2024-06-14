@@ -7,9 +7,17 @@ publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+proptest = ["dep:proptest"]
+
 [dependencies]
 pnet_packet = { version = "0.34" }
 hickory-proto = { workspace = true }
+proptest = { version = "1.4.0", optional = true }
+thiserror = "1"
+
+[dev-dependencies]
+test-strategy = "0.3.1"
 
 [lints]
 workspace = true

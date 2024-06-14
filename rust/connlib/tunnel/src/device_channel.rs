@@ -133,7 +133,7 @@ impl Device {
             return Poll::Pending;
         };
 
-        let n = std::task::ready!(tun.poll_read(buf, cx))?;
+        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -142,7 +142,7 @@ impl Device {
             )));
         }
 
-        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",
@@ -167,7 +167,7 @@ impl Device {
             return Poll::Pending;
         };
 
-        let n = std::task::ready!(tun.poll_read(buf, cx))?;
+        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -176,7 +176,7 @@ impl Device {
             )));
         }
 
-        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",

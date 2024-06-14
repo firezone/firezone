@@ -220,8 +220,11 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
     let response_len = dns_answer.len();
     let original_dgm = original_pkt.unwrap_as_udp();
     let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
-    let mut res_buf = Vec::with_capacity(hdr_len + response_len);
+    let mut res_buf = Vec::with_capacity(hdr_len + response_len + 20);
 
+    // TODO: this is some weirdness due to how MutableIpPacket is implemented
+    // we need an extra 20 bytes padding.
+    res_buf.extend_from_slice(&[0; 20]);
     res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
     res_buf.append(&mut dns_answer);
 
@@ -245,6 +248,8 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
     pkt.unwrap_as_udp().set_checksum(udp_checksum);
     pkt.set_ipv4_checksum();
 
+    // TODO: more of this weirdness
+    res_buf.drain(0..20);
     IpPacket::owned(res_buf).unwrap()
 }
 
