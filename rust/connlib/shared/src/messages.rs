@@ -337,7 +337,7 @@ mod tests {
             id: ResourceId::from_str(uuid).unwrap(),
             name: name.to_string(),
             address: "unused.example.com".to_string(),
-            address_description: "test description".to_string(),
+            address_description: Some("test description".to_string()),
             sites: vec![Site {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),

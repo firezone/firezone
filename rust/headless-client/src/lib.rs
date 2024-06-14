@@ -38,6 +38,7 @@ use platform::Signals;
 pub(crate) mod device_id;
 pub mod dns_control;
 pub mod heartbeat;
+pub mod ipc;
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
@@ -49,6 +50,8 @@ pub use linux as platform;
 pub mod windows;
 #[cfg(target_os = "windows")]
 pub(crate) use windows as platform;
+
+use ipc::{Server as IpcServer, Stream as IpcStream};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -437,8 +440,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
-
-    let mut server = platform::IpcServer::new().await?;
+    let mut server = IpcServer::new().await?;
     loop {
         dns_control::deactivate()?;
         let stream = server
@@ -451,7 +453,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     }
 }
 
-async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
+async fn handle_ipc_client(stream: IpcStream) -> Result<()> {
     let (rx, tx) = tokio::io::split(stream);
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
@@ -692,7 +694,7 @@ mod tests {
     async fn ipc_server() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
-        let mut server = crate::platform::IpcServer::new_for_test().await?;
+        let mut server = crate::IpcServer::new_for_test().await?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {
