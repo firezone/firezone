@@ -43,8 +43,11 @@ macro_rules! swap_src_dst {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Protocol {
+    /// Contains either the source or destination port.
     Tcp(u16),
+    /// Contains either the source or destination port.
     Udp(u16),
+    /// Contains the `identifier` of the ICMP packet.
     Icmp(u16),
 }
 
