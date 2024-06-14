@@ -42,7 +42,6 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 pub const DEFAULT_MTU: u32 = 1280;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LIB_NAME: &str = "connlib";
 
 pub fn keypair() -> (StaticSecret, PublicKey) {
@@ -68,9 +67,9 @@ pub fn get_user_agent(os_version_override: Option<String>) -> String {
 
     let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
-    let lib_version = VERSION;
+    let version = option_env!("FIREZONE_PACKAGE_VERSION").unwrap_or("development");
     let lib_name = LIB_NAME;
-    format!("{os_type}/{os_version}{additional_info}{lib_name}/{lib_version}")
+    format!("{os_type}/{os_version}{additional_info}{lib_name}/{version}")
 }
 
 fn additional_info() -> String {

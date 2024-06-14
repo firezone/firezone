@@ -2,9 +2,11 @@ defmodule Domain.MixProject do
   use Mix.Project
 
   def project do
+    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
+
     [
       app: :domain,
-      version: String.trim(File.read!("../../VERSION")),
+      version: "0.1.0+#{sha}",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -54,8 +56,9 @@ defmodule Domain.MixProject do
       # Auth-related deps
       {:plug_crypto, "~> 2.0"},
       {:openid_connect,
-       github: "firezone/openid_connect", ref: "dee689382699fce7a6ca70084ccbc8bc351d3246"},
+       github: "firezone/openid_connect", ref: "e4d9dca8ae43c765c00a7d3dfa12d6f24f5b3418"},
       {:argon2_elixir, "~> 4.0"},
+      {:workos, git: "https://github.com/firezone/workos-elixir.git", branch: "main"},
 
       # Erlang Clustering
       {:libcluster, "~> 3.3"},

@@ -92,7 +92,7 @@ defmodule Domain.Ops do
     |> Domain.Accounts.Account.Query.disabled()
     |> Domain.Accounts.Account.Query.by_id(id)
     |> Domain.Repo.one!()
-    |> Domain.Repo.delete()
+    |> Domain.Repo.delete(timeout: :infinity)
 
     :ok
   end

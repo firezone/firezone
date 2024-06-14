@@ -1,13 +1,13 @@
 defmodule Firezone.MixProject do
   use Mix.Project
 
-  @version "VERSION" |> File.read!() |> String.trim()
-
   def project do
+    {sha, _} = Code.eval_file(Path.join([__DIR__, "sha.exs"]))
+
     [
       name: :firezone,
       apps_path: "apps",
-      version: @version,
+      version: "0.1.0+#{sha}",
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [

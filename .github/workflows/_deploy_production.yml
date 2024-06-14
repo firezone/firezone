@@ -9,10 +9,6 @@ on:
         default: ${{ github.sha }}
         required: false
 
-env:
-  # mark:automatic-version
-  VERSION: "1.0.6"
-
 concurrency:
   group: "production-deploy"
   cancel-in-progress: false
@@ -37,6 +33,10 @@ jobs:
     permissions:
       packages: write
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [domain, api, web, gateway, relay, client]
     steps:
       - uses: actions/checkout@v4
       - name: Login to staging registry
@@ -53,21 +53,11 @@ jobs:
         run: |
           set -xe
 
-          IMAGES=(domain api web gateway relay client)
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
+          SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image }}:${{ inputs.tag }}
 
-          for image in "${IMAGES[@]}"; do
-            SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${image}:${{ inputs.tag }}
-
-            docker buildx imagetools create \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ inputs.tag }} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${{ env.VERSION }}-${{ inputs.tag }} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_VERSION} \
-              -t ${{ steps.login-production.outputs.registry }}/firezone/${image}:${MAJOR_MINOR_VERSION} \
-              $SOURCE_TAG
-          done
+          docker buildx imagetools create \
+            -t ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image }}:${{ inputs.tag }} \
+            $SOURCE_TAG
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
@@ -77,42 +67,28 @@ jobs:
           export_environment_variables: true
           create_credentials_file: true
       - name: Copy Google Cloud Storage binaries to "latest" version
+        if: ${{ contains(fromJSON('["client", "relay", "gateway"]'), matrix.image) }}
         run: |
           set -xe
 
-          IMAGES=(firezone-gateway)
           ARCHITECTURES=(x86_64 aarch64 armv7)
-          MAJOR_VERSION="${VERSION%%.*}"
-          MAJOR_MINOR_VERSION="${VERSION%.*}"
 
-          for image in "${IMAGES[@]}"; do
-            for arch in "${ARCHITECTURES[@]}"; do
-              # Copy sha256sum.txt
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
-                gs://firezone-prod-artifacts/${image}/latest/${arch}.sha256sum.txt
-
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}.sha256sum.txt
-
+          for arch in "${ARCHITECTURES[@]}"; do
+            # Copy sha256sum.txt
             gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}.sha256sum.txt
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/latest/${arch}.sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt
 
-              # Copy binaries
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
-                gs://firezone-prod-artifacts/${image}/latest/${arch}
-
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}/${arch}
-
-              gcloud storage cp \
-                gs://firezone-staging-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch} \
-                gs://firezone-prod-artifacts/${image}/${{ env.VERSION }}-${{ inputs.tag }}/${arch}
-            done
+            # Copy binaries
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/latest/${arch}
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}
           done
 
   deploy-production:
@@ -149,7 +125,7 @@ jobs:
         id: apply-run
         env:
           TF_VAR_image_tag:
-            '"${{ env.VERSION }}-${{ inputs.tag }}"'
+            '"${{ inputs.tag }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version:
@@ -162,3 +138,23 @@ jobs:
           run: ${{ steps.apply-run.outputs.run_id }}
           comment:
             "Apply Run from GitHub Actions CI ${{ inputs.tag }}"
+
+  update-vercel:
+    needs: deploy-production
+    runs-on: ubuntu-22.04
+    env:
+      VERCEL_PROJECT: firezone
+      VERCEL_SLUG: firezone
+      # Fetched from Vercel's API. Not a secret.
+      VERCEL_ENV_VAR_ID: Ph436pR2So7nwrSI
+    steps:
+      - name: Update FIREZONE_DEPLOYED_SHA
+        run: |
+          curl -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" -H "Content-Type: application/json" \
+            -d '{
+              "comment": "latest deployed SHA for control plane",
+              "key": "FIREZONE_DEPLOYED_SHA",
+              "type": "plain",
+              "value": "${{ inputs.tag }}"
+            }'

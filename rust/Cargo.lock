@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.6"
+version = "1.0.4"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.6"
+version = "1.0.5"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-shared"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-shared"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1180,7 +1180,7 @@ dependencies = [
  "futures",
  "futures-util",
  "ip_network",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "known-folders",
  "libc",
  "log",
@@ -1203,7 +1203,7 @@ dependencies = [
  "tracing-android",
  "url",
  "uuid",
- "windows 0.56.0",
+ "windows 0.57.0",
  "wintun",
 ]
 
@@ -1288,9 +1288,9 @@ dependencies = [
 
 [[package]]
 name = "crash-handler"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed56890cb467e9ff5e6fe95254571beebb301990b5c7df5e97a7b203e4f0c4f0"
+checksum = "ff62668cee357a18a67b5ce55bdef533d2c108d8eded362408f08face8731a71"
 dependencies = [
  "cfg-if",
  "crash-context",
@@ -1882,7 +1882,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli-utils"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "clap",
  "tracing",
@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.6"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.6"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1969,9 +1969,9 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "windows 0.56.0",
- "windows-core 0.56.0",
- "windows-implement 0.56.0",
+ "windows 0.57.0",
+ "windows-core 0.57.0",
+ "windows-implement 0.57.0",
  "winreg 0.52.0",
  "wintun",
  "zip",
@@ -1979,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.6"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2012,13 +2012,13 @@ dependencies = [
  "uptime_lib",
  "url",
  "uuid",
- "windows 0.56.0",
+ "windows 0.57.0",
  "windows-service",
 ]
 
 [[package]]
 name = "firezone-relay"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2059,7 +2059,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-tunnel"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "async-trait",
  "bimap",
@@ -2067,6 +2067,7 @@ dependencies = [
  "bytes",
  "chrono",
  "connlib-shared",
+ "derivative",
  "domain",
  "firezone-relay",
  "futures",
@@ -2078,7 +2079,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ip_network_table",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "libc",
  "log",
  "netlink-packet-core",
@@ -2103,7 +2104,7 @@ dependencies = [
  "tracing-android",
  "tracing-subscriber",
  "uuid",
- "windows 0.56.0",
+ "windows 0.57.0",
  "wintun",
 ]
 
@@ -2892,7 +2893,7 @@ dependencies = [
 
 [[package]]
 name = "http-health-check"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "axum 0.7.5",
  "clap",
@@ -2907,7 +2908,7 @@ checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
 
 [[package]]
 name = "http-test-server"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum 0.7.5",
@@ -3166,7 +3167,7 @@ dependencies = [
 
 [[package]]
 name = "ip-packet"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "hickory-proto",
  "pnet_packet",
@@ -3227,9 +3228,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.12.1"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -4557,7 +4558,7 @@ dependencies = [
 
 [[package]]
 name = "phoenix-channel"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "backoff",
  "base64 0.22.1",
@@ -5810,7 +5811,7 @@ dependencies = [
 
 [[package]]
 name = "snownet"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "backoff",
  "boringtun",
@@ -5831,7 +5832,7 @@ dependencies = [
 
 [[package]]
 name = "snownet-tests"
-version = "1.0.6"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "boringtun",
@@ -7547,11 +7548,11 @@ dependencies = [
 
 [[package]]
 name = "windows"
-version = "0.56.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1de69df01bdf1ead2f4ac895dc77c9351aefff65b2f3db429a343f9cbf05e132"
+checksum = "12342cb4d8e3b046f3d80effd474a7a02447231330ef77d71daa6fbc40681143"
 dependencies = [
- "windows-core 0.56.0",
+ "windows-core 0.57.0",
  "windows-targets 0.52.5",
 ]
 
@@ -7595,11 +7596,11 @@ dependencies = [
 
 [[package]]
 name = "windows-core"
-version = "0.56.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4698e52ed2d08f8658ab0c39512a7c00ee5fe2688c65f8c0a4f06750d729f2a6"
+checksum = "d2ed2439a290666cd67ecce2b0ffaad89c2a56b976b736e6ece670297897832d"
 dependencies = [
- "windows-implement 0.56.0",
+ "windows-implement 0.57.0",
  "windows-interface",
  "windows-result",
  "windows-targets 0.52.5",
@@ -7617,9 +7618,9 @@ dependencies = [
 
 [[package]]
 name = "windows-implement"
-version = "0.56.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6fc35f58ecd95a9b71c4f2329b911016e6bec66b3f2e6a4aad86bd2e99e2f9b"
+checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7628,9 +7629,9 @@ dependencies = [
 
 [[package]]
 name = "windows-interface"
-version = "0.56.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08990546bf4edef8f431fa6326e032865f27138718c587dc21bc0265bbcb57cc"
+checksum = "29bee4b38ea3cde66011baa44dba677c432a78593e202392d1e9070cf2a7fca7"
 dependencies = [
  "proc-macro2",
  "quote",

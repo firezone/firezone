@@ -172,20 +172,31 @@ export default function RootNavbar() {
                 (p == "/pricing"
                   ? "text-neutral-900 underline"
                   : "text-neutral-800") +
-                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
+                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
               }
               href="/pricing"
             >
               Pricing
             </Link>
+            <Link
+              className={
+                (p == "/support"
+                  ? "text-neutral-900 underline"
+                  : "text-neutral-800") +
+                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
+              }
+              href="/support"
+            >
+              Support
+            </Link>
           </div>
-          <div className="hidden sm:flex space-x-2.5 items-center sm:order-2 mr-2">
+          <div className="hidden md:flex space-x-2.5 items-center md:order-2 mr-2">
             <Link
               href="https://github.com/firezone/firezone"
               aria-label="GitHub Repository"
             >
               {/* NextJS's image component has issues with shields images */}
-              <span className="md:w-24 w-16 flex">
+              <span className="lg:w-24 w-16 flex">
                 <img
                   className="grow"
                   alt="Github Repo stars"
@@ -195,6 +206,13 @@ export default function RootNavbar() {
             </Link>
             <SignUpButton />
             <RequestDemoButton />
+            <ActionLink
+              href="https://app.firezone.dev/"
+              className="hover:underline hidden sm:inline-flex"
+              size="ml-1 mr-1 w-5 h-5"
+            >
+              Sign in
+            </ActionLink>
           </div>
         </div>
       </nav>
