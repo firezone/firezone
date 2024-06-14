@@ -336,7 +336,7 @@ fn ipv4_header(
     ipv4_packet.set_version(4);
 
     // TODO: packet conversion always set the flags like this.
-    // we still need to support fragmented packets for translated packet propperly
+    // we still need to support fragmented packets for translated packet properly
     ipv4_packet.set_flags(Ipv4Flags::DontFragment | !Ipv4Flags::MoreFragments);
 
     ipv4_packet.set_header_length(ip_header_length);

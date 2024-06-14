@@ -322,7 +322,7 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         // Source Address:  The IPv4-converted address derived from the IPv4
         //    source address per [RFC6052], Section 2.3.
         // Note: Rust implements RFC4291 with to_ipv6_mapped but buf RFC6145
-        // recomends the above. The advantage of using RFC6052 are explained in
+        // recommends the above. The advantage of using RFC6052 are explained in
         // section 4.2 of that RFC
 
         //    If the translator gets an illegal source address (e.g., 0.0.0.0,
@@ -746,7 +746,7 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 }
 
 impl<'a> MutableIpPacket<'a> {
-    // TODO: this API is a bit akward, since you have to pass the extra preppended 20 bytes
+    // TODO: this API is a bit akward, since you have to pass the extra prepended 20 bytes
     pub fn new(buf: &'a mut [u8]) -> Option<Self> {
         match buf[20] >> 4 {
             4 => Some(MutableIpPacket::Ipv4(ConvertibleIpv4Packet::new(buf)?)),

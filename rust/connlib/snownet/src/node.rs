@@ -1660,7 +1660,7 @@ where
                 ControlFlow::Continue(ipv4_packet.into())
             }
             TunnResult::WriteToTunnelV6(packet, ip) => {
-                // For ipv4 we need to use buffer to create the ip packet because we need the extra 20 bytes at the begining
+                // For ipv4 we need to use buffer to create the ip packet because we need the extra 20 bytes at the beginning
                 // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
                 // as `'b` for all branches.
                 let packet_len = packet.len();
