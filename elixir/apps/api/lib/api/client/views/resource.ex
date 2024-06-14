@@ -15,7 +15,10 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :cidr,
       address: address,
-      address_description: resource.address_description,
+      # FIXME: This is a workaround due to clients expecting address_description not
+      # to be null. Remove this to send null address_description on or after 8/13/24
+      # once we can reasonably expect clients to have upgraded.
+      address_description: resource.address_description || address,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
