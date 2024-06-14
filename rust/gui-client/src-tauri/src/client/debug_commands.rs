@@ -62,6 +62,6 @@ fn hostname() {
 fn set_autostart(enabled: bool) -> Result<()> {
     firezone_headless_client::debug_command_setup()?;
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(client::gui::os::set_autostart(enabled))?;
+    rt.block_on(client::gui::set_autostart(enabled))?;
     Ok(())
 }
