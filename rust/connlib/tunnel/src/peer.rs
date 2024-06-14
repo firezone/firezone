@@ -888,27 +888,32 @@ mod proptests {
     }
 
     fn filters_in_gaps(filters: Filters) -> impl Strategy<Value = Filters> {
-        filter_from_vec(gaps(filters.clone(), ProtocolKind::Tcp), ProtocolKind::Tcp).prop_flat_map(
-            move |tcp_filters| {
-                let f = filters.clone();
-                filter_from_vec(gaps(filters.clone(), ProtocolKind::Udp), ProtocolKind::Udp)
-                    .prop_map(move |udp_filters| {
-                        let mut filters = tcp_filters.clone();
-                        filters.extend(udp_filters);
-                        if !f.contains(&Filter::Icmp) {
-                            filters.push(Filter::Icmp)
-                        }
+        let contains_icmp_filter = filters.contains(&Filter::Icmp);
 
-                        filters
-                    })
-            },
-        )
+        let ranges_without_tcp_filter = gaps(filters.clone(), ProtocolKind::Tcp);
+        let tcp_filters = filter_from_vec(ranges_without_tcp_filter, ProtocolKind::Tcp);
+
+        let ranges_without_udp_filter = gaps(filters, ProtocolKind::Udp);
+        let udp_filters = filter_from_vec(ranges_without_udp_filter, ProtocolKind::Udp);
+
+        let icmp_filter = if contains_icmp_filter {
+            Just(vec![])
+        } else {
+            Just(vec![Filter::Icmp])
+        };
+
+        (tcp_filters, udp_filters, icmp_filter)
+            .prop_map(|(udp, tcp, icmp)| Vec::from_iter(tcp.into_iter().chain(udp).chain(icmp)))
     }
 
     fn filter_from_vec(
         ranges: Vec<RangeInclusive<u16>>,
         empty_protocol: ProtocolKind,
-    ) -> impl Strategy<Value = Filters> {
+    ) -> impl Strategy<Value = Filters> + Clone {
+        if ranges.is_empty() {
+            return Just(vec![]).boxed();
+        }
+
         collection::vec(
             select(ranges.clone()).prop_flat_map(move |r| {
                 let range = r.clone();
@@ -918,6 +923,7 @@ mod proptests {
             }),
             1..=ranges.len(),
         )
+        .boxed()
     }
 
     fn filters() -> impl Strategy<Value = Filters> {

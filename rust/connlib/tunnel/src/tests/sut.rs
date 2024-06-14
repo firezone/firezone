@@ -147,11 +147,12 @@ impl StateMachineTest for TunnelTest {
         // Act: Apply the transition
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client.add_resource(ResourceDescription::Cidr(r));
+                state.client.add_resource(ResourceDescription::Cidr(r))
             }
             Transition::AddDnsResource { resource, .. } => state
                 .client
                 .add_resource(ResourceDescription::Dns(resource)),
+            Transition::RemoveResource(id) => state.client.remove_resource(id),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
