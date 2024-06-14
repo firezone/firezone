@@ -31,7 +31,7 @@ use tokio::{
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{
-    fmt::{format::FmtSpan, SubscriberBuilder},
+    fmt,
     layer::SubscriberExt,
     EnvFilter, Layer as _, Registry,
 };
@@ -156,11 +156,11 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
-    RunDebug,
     /// Needed to test the IPC service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
     Install,
     Run,
+    RunDebug,
 }
 
 impl Default for CmdIpc {
@@ -364,9 +364,9 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::try_parse()?;
     match cli.command {
-        CmdIpc::RunDebug => run_debug_ipc_service(),
         CmdIpc::Install => platform::install_ipc_service(),
         CmdIpc::Run => platform::run_ipc_service(cli.common),
+        CmdIpc::RunDebug => run_debug_ipc_service(),
     }
 }
 
@@ -567,7 +567,7 @@ impl Handler {
                 let token = secrecy::SecretString::from(token);
                 assert!(self.connlib.is_none());
                 let device_id =
-                    device_id::get_or_create().context("Failed to read / create device ID")?;
+                    device_id::get_or_create().context("Failed to get / create device ID")?;
                 let (private_key, public_key) = keypair();
 
                 let login = LoginUrl::client(
@@ -706,10 +706,8 @@ fn get_log_filter() -> Result<String> {
 /// Sets up logging for stderr only, with INFO level by default
 pub fn debug_command_setup() -> Result<()> {
     let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
-    let subscriber = SubscriberBuilder::default()
-        .with_span_events(FmtSpan::CLOSE)
-        .with_env_filter(filter)
-        .finish();
+    let layer = fmt::layer().with_filter(filter);
+    let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
     Ok(())
 }

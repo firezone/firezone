@@ -112,6 +112,10 @@ pub fn firezone_group() -> Result<nix::unistd::Group> {
     Ok(group)
 }
 
+pub(crate) fn install_ipc_service() -> Result<()> {
+    bail!("`install_ipc_service` not implemented and not needed on Linux")
+}
+
 pub(crate) fn notify_service_controller() -> Result<()> {
     Ok(sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?)
 }
