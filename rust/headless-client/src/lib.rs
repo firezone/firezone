@@ -25,10 +25,7 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use tracing::subscriber::set_global_default;
-use tracing_subscriber::{
-    fmt::{format::FmtSpan, SubscriberBuilder},
-    EnvFilter,
-};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer as _, Registry};
 use url::Url;
 
 use platform::default_token_path;
@@ -141,6 +138,7 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
+    #[command(hide = true)]
     DebugIpcService,
     IpcService,
 }
@@ -583,10 +581,8 @@ pub fn debug_command_setup() -> Result<()> {
     let filter = EnvFilter::builder()
         .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
         .from_env_lossy();
-    let subscriber = SubscriberBuilder::default()
-        .with_span_events(FmtSpan::CLOSE)
-        .with_env_filter(filter)
-        .finish();
+    let layer = fmt::layer().with_filter(filter);
+    let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
     Ok(())
 }
