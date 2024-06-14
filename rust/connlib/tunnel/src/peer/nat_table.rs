@@ -47,7 +47,7 @@ impl NatTable {
         let inside = (source_protocol, outgoing_pkt.destination());
         if let Some(outside) = self.table.get_by_left(&inside) {
             if outside.1 == real_address {
-                tracing::trace!(?inside, ?outside, "Translating packet");
+                tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
                 self.last_seen.insert(*outside, now);
                 return Some(*outside);
@@ -72,7 +72,7 @@ impl NatTable {
         self.table.insert(inside, outside);
         self.last_seen.insert(outside, now);
 
-        tracing::trace!(?inside, ?outside, "New NAT session");
+        tracing::debug!(?inside, ?outside, "New NAT session");
 
         Some(outside)
     }
@@ -88,13 +88,13 @@ impl NatTable {
         );
 
         if let Some(inside) = self.table.get_by_right(&outside) {
-            tracing::trace!(?inside, ?outside, "Reverting translation");
+            tracing::trace!(?inside, ?outside, "Translating incoming packet");
 
             self.last_seen.insert(*inside, now);
             return Some(*inside);
         }
 
-        tracing::trace!(?outside, "Incoming packet not translated");
+        tracing::trace!(?outside, "No active NAT session; skipping translation");
 
         None
     }
