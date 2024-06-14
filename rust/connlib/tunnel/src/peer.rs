@@ -425,11 +425,11 @@ impl ClientOnGateway {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
-        self.ensure_allowed_source(&packet)?;
+        self.ensure_allowed_src(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
 
-        self.ensure_allowed(&packet)?;
+        self.ensure_allowed_dst(&packet)?;
 
         Ok(packet)
     }
@@ -463,7 +463,7 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
-    fn ensure_allowed_source(
+    fn ensure_allowed_src(
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
@@ -478,7 +478,10 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed(&self, packet: &MutableIpPacket<'_>) -> Result<(), connlib_shared::Error> {
+    fn ensure_allowed_dst(
+        &self,
+        packet: &MutableIpPacket<'_>,
+    ) -> Result<(), connlib_shared::Error> {
         let dst = packet.destination();
         if !self
             .filters
@@ -638,25 +641,25 @@ mod tests {
 
         peer.expire_resources(now);
 
-        assert!(peer.ensure_allowed(&tcp_packet).is_ok());
-        assert!(peer.ensure_allowed(&udp_packet).is_ok());
+        assert!(peer.ensure_allowed_dst(&tcp_packet).is_ok());
+        assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
         peer.expire_resources(then);
 
         assert!(matches!(
-            peer.ensure_allowed(&tcp_packet),
+            peer.ensure_allowed_dst(&tcp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
-        assert!(peer.ensure_allowed(&udp_packet).is_ok());
+        assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
         peer.expire_resources(after_then);
 
         assert!(matches!(
-            peer.ensure_allowed(&tcp_packet),
+            peer.ensure_allowed_dst(&tcp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
         assert!(matches!(
-            peer.ensure_allowed(&udp_packet),
+            peer.ensure_allowed_dst(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
@@ -755,7 +758,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -787,7 +790,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -828,7 +831,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
 
         for dest in dest_2 {
@@ -842,7 +845,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -885,7 +888,7 @@ mod proptests {
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
 
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -918,7 +921,7 @@ mod proptests {
         peer.add_resource(vec![resource_addr], resource_id, filters, None, None);
 
         assert!(matches!(
-            peer.ensure_allowed(&packet),
+            peer.ensure_allowed_dst(&packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
@@ -978,9 +981,9 @@ mod proptests {
         );
         peer.remove_resource(&resource_id_removed);
 
-        assert!(peer.ensure_allowed(&packet_allowed).is_ok());
+        assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(matches!(
-            peer.ensure_allowed(&packet_rejected),
+            peer.ensure_allowed_dst(&packet_rejected),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
