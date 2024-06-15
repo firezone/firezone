@@ -911,6 +911,7 @@ impl ClientState {
         self.peers.remove(gateway_id);
         self.dns_resources_internal_ips
             .retain(|_, (candidate, _)| candidate != gateway_id);
+        self.resources_gateways.retain(|_, g| g != gateway_id);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
