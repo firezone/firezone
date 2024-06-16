@@ -1931,6 +1931,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "arc-swap",
+ "atomicwrites",
  "chrono",
  "clap",
  "connlib-client-shared",
@@ -1941,7 +1942,6 @@ dependencies = [
  "futures",
  "git-version",
  "hex",
- "hostname 0.4.0",
  "keyring",
  "minidumper",
  "native-dialog",
@@ -3171,6 +3171,9 @@ version = "0.1.0"
 dependencies = [
  "hickory-proto",
  "pnet_packet",
+ "proptest",
+ "test-strategy",
+ "thiserror",
 ]
 
 [[package]]

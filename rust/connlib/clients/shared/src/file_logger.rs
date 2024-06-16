@@ -58,6 +58,7 @@ fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
 ///
 /// This handle houses the [`WorkerGuard`] of the underlying non-blocking appender.
 /// Thus, you MUST NOT drop this handle for as long as you want messages to arrive at the log file.
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct Handle {
     _guard: Arc<WorkerGuard>,

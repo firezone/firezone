@@ -38,6 +38,7 @@ use platform::Signals;
 pub(crate) mod device_id;
 pub mod dns_control;
 pub mod heartbeat;
+pub mod ipc;
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
@@ -49,6 +50,8 @@ pub use linux as platform;
 pub mod windows;
 #[cfg(target_os = "windows")]
 pub(crate) use windows as platform;
+
+use ipc::{Server as IpcServer, Stream as IpcStream};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -65,6 +68,14 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
     args = ["--always", "--dirty=-modified", "--tags"],
     fallback = "unknown"
 );
+
+/// Default log filter for the IPC service
+#[cfg(debug_assertions)]
+const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
+
+/// Default log filter for the IPC service
+#[cfg(not(debug_assertions))]
+const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 
 const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
@@ -135,14 +146,16 @@ struct CliIpcService {
 
 #[derive(clap::Subcommand, Debug, PartialEq, Eq)]
 enum CmdIpc {
-    #[command(hide = true)]
-    DebugIpcService,
-    IpcService,
+    /// Needed to test the IPC service on aarch64 Windows,
+    /// where the Tauri MSI bundler doesn't work yet
+    Install,
+    Run,
+    RunDebug,
 }
 
 impl Default for CmdIpc {
     fn default() -> Self {
-        Self::IpcService
+        Self::Run
     }
 }
 
@@ -250,7 +263,7 @@ pub fn run_only_headless_client() -> Result<()> {
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
         Some(id) => id,
-        None => device_id::get().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
+        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let (private_key, public_key) = keypair();
@@ -341,8 +354,9 @@ pub fn run_only_ipc_service() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
     let cli = CliIpcService::try_parse()?;
     match cli.command {
-        CmdIpc::DebugIpcService => run_debug_ipc_service(),
-        CmdIpc::IpcService => platform::run_ipc_service(cli.common),
+        CmdIpc::Install => platform::install_ipc_service(),
+        CmdIpc::Run => platform::run_ipc_service(cli.common),
+        CmdIpc::RunDebug => run_debug_ipc_service(),
     }
 }
 
@@ -423,7 +437,10 @@ impl Callbacks for CallbackHandler {
 }
 
 async fn ipc_listen() -> Result<std::convert::Infallible> {
-    let mut server = platform::IpcServer::new().await?;
+    // Create the device ID and IPC service config dir if needed
+    // This also gives the GUI a safe place to put the log filter config
+    device_id::get_or_create().context("Failed to read / create device ID")?;
+    let mut server = IpcServer::new().await?;
     loop {
         dns_control::deactivate()?;
         let stream = server
@@ -436,7 +453,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     }
 }
 
-async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
+async fn handle_ipc_client(stream: IpcStream) -> Result<()> {
     let (rx, tx) = tokio::io::split(stream);
     let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
     let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
@@ -473,7 +490,8 @@ async fn handle_ipc_client(stream: platform::IpcStream) -> Result<()> {
             IpcClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 assert!(connlib.is_none());
-                let device_id = device_id::get().context("Failed to read / create device ID")?;
+                let device_id =
+                    device_id::get_or_create().context("Failed to get / create device ID")?;
                 let (private_key, public_key) = keypair();
 
                 let login = LoginUrl::client(
@@ -573,15 +591,64 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
     Ok(Some(token))
 }
 
+/// Reads the log filter for the IPC service
+///
+/// e.g. `info`
+///
+/// Reads from:
+/// 1. `RUST_LOG` env var
+/// 2. `known_dirs::ipc_log_filter()` file
+/// 3. Hard-coded default `SERVICE_RUST_LOG`
+///
+/// Errors if something is badly wrong, e.g. the directory for the config file
+/// can't be computed
+fn get_log_filter() -> Result<String> {
+    if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
+        return Ok(filter);
+    }
+
+    if let Ok(filter) = std::fs::read_to_string(
+        known_dirs::ipc_log_filter()
+            .context("Failed to compute directory for log filter config file")?,
+    )
+    .map(|s| s.trim().to_string())
+    {
+        return Ok(filter);
+    }
+
+    Ok(SERVICE_RUST_LOG.to_string())
+}
+
 /// Sets up logging for stderr only, with INFO level by default
 pub fn debug_command_setup() -> Result<()> {
-    let filter = EnvFilter::builder()
-        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
-        .from_env_lossy();
+    let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
     Ok(())
+}
+
+/// Starts logging for the production IPC service
+///
+/// Returns: A `Handle` that must be kept alive. Dropping it stops logging
+/// and flushes the log file.
+fn setup_ipc_service_logging(
+    log_dir: Option<PathBuf>,
+) -> Result<connlib_client_shared::file_logger::Handle> {
+    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
+    let log_dir = log_dir.map_or_else(
+        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
+        Ok,
+    )?;
+    std::fs::create_dir_all(&log_dir)
+        .context("We should have permissions to create our log dir")?;
+    let (layer, handle) = file_logger::layer(&log_dir);
+    let log_filter = get_log_filter().context("Couldn't read log filter")?;
+    let filter = EnvFilter::new(&log_filter);
+    let subscriber = Registry::default().with(layer.with_filter(filter));
+    set_global_default(subscriber).context("`set_global_default` should always work)")?;
+    tracing::info!(git_version = GIT_VERSION, ?log_filter);
+    Ok(handle)
 }
 
 #[cfg(test)]
@@ -607,17 +674,13 @@ mod tests {
         assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([
-            exe_name,
-            "--log-dir",
-            "bogus_log_dir",
-            "debug-ipc-service",
-        ]);
-        assert_eq!(actual.command, CmdIpc::DebugIpcService);
+        let actual =
+            CliIpcService::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
+        assert_eq!(actual.command, CmdIpc::RunDebug);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([exe_name, "ipc-service"]);
-        assert_eq!(actual.command, CmdIpc::IpcService);
+        let actual = CliIpcService::parse_from([exe_name, "run"]);
+        assert_eq!(actual.command, CmdIpc::Run);
 
         Ok(())
     }
@@ -631,7 +694,7 @@ mod tests {
     async fn ipc_server() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
-        let mut server = crate::platform::IpcServer::new_for_test().await?;
+        let mut server = crate::IpcServer::new_for_test().await?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {
