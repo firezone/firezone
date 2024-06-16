@@ -153,13 +153,15 @@ jobs:
         gateway:
           - image: ${{ needs.build-artifacts.outputs.gateway_image }}
             tag: ${{ github.sha }}
+            ci-name: sha
           - image: "ghcr.io/firezone/gateway"
             tag: "latest"
+            ci-name: latest
     # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
     # it'll be red if there was a breaking change we're tring to publish,
     # and the deploy_production workflow checks for main to be green.
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-    name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.tag }})
+    name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
