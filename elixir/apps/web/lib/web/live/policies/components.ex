@@ -234,7 +234,7 @@ defmodule Web.Policies.Components do
     ~H"""
     <fieldset class="flex flex-col gap-2 mt-4">
       <div class="flex items-center justify-between">
-        <legend class="text-xl mb-2">Conditions</legend>
+        <legend class="text-xl mb-2 text-neutral-900">Conditions</legend>
         <%= if @policy_conditions_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
