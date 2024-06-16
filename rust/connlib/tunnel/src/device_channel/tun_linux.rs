@@ -31,7 +31,7 @@ const TUN_DEV_MINOR: u32 = 200;
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
 
 #[derive(Debug)]
-pub struct Tun {
+pub(crate) struct Tun {
     fd: AsyncFd<RawFd>,
 }
 

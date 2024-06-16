@@ -106,6 +106,31 @@ To export or clear your logs:
 
 ## Troubleshooting
 
+### Check if Firezone Client IPC service is running
+
+In the Start Menu, search for "Windows Powershell". Open it and run this
+command:
+
+```pwsh
+Get-Service -Name FirezoneClientIpcServiceDebug
+```
+
+Good output
+
+```text
+Status   Name               DisplayName
+------   ----               -----------
+Running  FirezoneClientI... Firezone Client IPC
+```
+
+Bad output
+
+```text
+Status   Name               DisplayName
+------   ----               -----------
+Stopped  FirezoneClientI... Firezone Client IPC
+```
+
 ### Check if Firezone is controlling DNS
 
 In the Start Menu, search for "Windows Powershell". Open it and run this

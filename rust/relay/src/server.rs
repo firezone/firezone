@@ -406,8 +406,13 @@ where
             tracing::info!(target: "relay", channel = %number.value(), %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
             channel.bound = false;
-            self.channel_and_client_by_port_and_peer
-                .remove(&(channel.allocation, channel.peer_address));
+            if let Some((cs, n)) = self
+                .channel_and_client_by_port_and_peer
+                .remove(&(channel.allocation, channel.peer_address))
+            {
+                debug_assert_eq!(&cs, client, "internal state should be consistent");
+                debug_assert_eq!(&n, number, "internal state should be consistent");
+            };
         }
 
         let channels_to_delete = self
@@ -604,7 +609,7 @@ where
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request)?;
 
-        let allocation = self
+        let allocation: &mut Allocation = self
             .allocations
             .get_mut(&sender)
             .ok_or(error_response(AllocationMismatch, &request))?;
@@ -887,28 +892,29 @@ where
         let port = allocation.port;
 
         self.channels_by_client_and_number
-            .retain(|(cl, number), c| {
+            .retain(|(cs, number), c| {
                 if c.allocation != port {
                     return true;
                 }
 
-                debug_assert_eq!(cl, &client, "internal state to be consistent");
+                debug_assert_eq!(cs, &client, "internal state should be consistent");
 
                 let peer = c.peer_address;
 
-                let existing = self
+                if let Some(existing) = self
                     .channel_numbers_by_client_and_peer
-                    .remove(&(client, peer));
-                debug_assert_eq!(existing, Some(*number), "internal state to be consistent");
+                    .remove(&(client, peer))
+                {
+                    debug_assert_eq!(existing, *number, "internal state should be consistent");
+                }
 
-                let existing = self
+                if let Some((existing_cs, existing_n)) = self
                     .channel_and_client_by_port_and_peer
-                    .remove(&(port, peer));
-                debug_assert_eq!(
-                    existing,
-                    Some((client, *number)),
-                    "internal state to be consistent"
-                );
+                    .remove(&(port, peer))
+                {
+                    debug_assert_eq!(&existing_cs, cs, "internal state should be consistent");
+                    debug_assert_eq!(&existing_n, number, "internal state should be consistent");
+                }
 
                 tracing::info!(%peer, %number, "Deleted channel binding");
 
@@ -938,14 +944,12 @@ where
         let peer = channel.peer_address;
         let allocation = channel.allocation;
 
-        let _peer_channel = self
+        if let Some(_peer_channel) = self
             .channel_numbers_by_client_and_peer
-            .remove(&(client, peer));
-        debug_assert_eq!(
-            _peer_channel,
-            Some(chan),
-            "Channel state should be consistent"
-        );
+            .remove(&(client, peer))
+        {
+            debug_assert_eq!(_peer_channel, chan, "internal state should be consistent");
+        }
 
         self.channels_by_client_and_number.remove(&(client, chan));
 

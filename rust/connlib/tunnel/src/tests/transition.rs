@@ -2,7 +2,7 @@ use super::strategies::*;
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        DnsServer,
+        DnsServer, ResourceId,
     },
     proptest::*,
     DomainName,
@@ -69,45 +69,69 @@ pub(crate) enum Transition {
 
     /// Advance time by this many milliseconds.
     Tick { millis: u64 },
+
+    /// Remove a resource from the client.
+    RemoveResource(ResourceId),
 }
 
-pub(crate) fn ping_random_ip(
-    src: impl Strategy<Value = IpAddr>,
-    dst: impl Strategy<Value = IpAddr>,
-) -> impl Strategy<Value = Transition> {
-    (src, dst, any::<u16>(), any::<u16>()).prop_map(|(src, dst, seq, identifier)| {
-        Transition::SendICMPPacketToNonResourceIp {
-            src,
-            dst,
-            seq,
-            identifier,
-        }
-    })
+pub(crate) fn ping_random_ip<I>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = I>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
+    (
+        src.prop_map(Into::into),
+        dst.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
+    )
+        .prop_map(
+            |(src, dst, seq, identifier)| Transition::SendICMPPacketToNonResourceIp {
+                src,
+                dst,
+                seq,
+                identifier,
+            },
+        )
 }
 
-pub(crate) fn icmp_to_cidr_resource(
-    src: impl Strategy<Value = IpAddr>,
-    dst: impl Strategy<Value = IpAddr>,
-) -> impl Strategy<Value = Transition> {
-    (dst, any::<u16>(), any::<u16>(), src).prop_map(|(dst, seq, identifier, src)| {
-        Transition::SendICMPPacketToCidrResource {
-            src,
-            dst,
-            seq,
-            identifier,
-        }
-    })
+pub(crate) fn icmp_to_cidr_resource<I>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = I>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
+    (
+        dst.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
+        src.prop_map(Into::into),
+    )
+        .prop_map(
+            |(dst, seq, identifier, src)| Transition::SendICMPPacketToCidrResource {
+                src,
+                dst,
+                seq,
+                identifier,
+            },
+        )
 }
 
-pub(crate) fn icmp_to_dns_resource(
-    src: impl Strategy<Value = IpAddr>,
+pub(crate) fn icmp_to_dns_resource<I>(
+    src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = DomainName>,
-) -> impl Strategy<Value = Transition> {
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+{
     (
         dst,
         any::<u16>(),
         any::<u16>(),
-        src,
+        src.prop_map(Into::into),
         any::<sample::Selector>(),
     )
         .prop_map(|(dst, seq, identifier, src, resolved_ip)| {
@@ -121,13 +145,16 @@ pub(crate) fn icmp_to_dns_resource(
         })
 }
 
-pub(crate) fn dns_query(
+pub(crate) fn dns_query<S>(
     domain: impl Strategy<Value = DomainName>,
-    dns_server: impl Strategy<Value = SocketAddr>,
-) -> impl Strategy<Value = Transition> {
+    dns_server: impl Strategy<Value = S>,
+) -> impl Strategy<Value = Transition>
+where
+    S: Into<SocketAddr>,
+{
     (
         domain,
-        dns_server,
+        dns_server.prop_map(Into::into),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
     )
@@ -141,15 +168,7 @@ pub(crate) fn dns_query(
         )
 }
 
-pub(crate) fn add_dns_resource() -> impl Strategy<Value = Transition> {
-    prop_oneof![
-        non_wildcard_dns_resource(),
-        star_wildcard_dns_resource(),
-        question_mark_wildcard_dns_resource(),
-    ]
-}
-
-fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
         Transition::AddDnsResource {
             records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
@@ -158,8 +177,8 @@ fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     })
 }
 
-fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    (dns_resource()).prop_flat_map(move |r| {
+pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+    dns_resource().prop_flat_map(move |r| {
         let wildcard_address = format!("*.{}", r.address);
 
         let records = subdomain_records(r.address, domain_name(1..3));
@@ -173,7 +192,7 @@ fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     })
 }
 
-fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
+pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
     dns_resource().prop_flat_map(move |r| {
         let wildcard_address = format!("?.{}", r.address);
 
