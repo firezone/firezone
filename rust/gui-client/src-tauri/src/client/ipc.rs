@@ -7,7 +7,6 @@ use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
@@ -44,10 +43,7 @@ impl CallbackHandler {
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: FramedWrite<
-        tokio::io::WriteHalf<firezone_headless_client::ipc::ClientStream>,
-        LengthDelimitedCodec,
-    >,
+    tx: firezone_headless_client::ipc::ClientWrite,
 }
 
 impl Client {
@@ -82,11 +78,7 @@ impl Client {
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let stream = firezone_headless_client::ipc::connect_to_service("").await?;
-        let (rx, tx) = tokio::io::split(stream);
-        // Receives messages from the IPC service
-        let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-        let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+        let (mut rx, tx) = firezone_headless_client::ipc::connect_to_service("").await?;
 
         let task = tokio_handle.spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {

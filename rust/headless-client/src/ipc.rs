@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
@@ -11,14 +11,38 @@ mod platform;
 pub mod platform;
 
 pub(crate) use platform::Server;
-use platform::ServerStream;
-pub use platform::{connect_to_service, ClientStream};
+use platform::{ClientStream, ServerStream};
 
-pub(crate) type Read = FramedRead<ReadHalf<ServerStream>, LengthDelimitedCodec>;
-pub(crate) type Write = FramedWrite<WriteHalf<ServerStream>, LengthDelimitedCodec>;
+pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, LengthDelimitedCodec>;
+pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, LengthDelimitedCodec>;
+pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, LengthDelimitedCodec>;
+pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, LengthDelimitedCodec>;
+
+/// Connect to the IPC service
+///
+/// Public because the GUI Client will need it
+pub async fn connect_to_service(id: &str) -> Result<(ClientRead, ClientWrite)> {
+    for _ in 0..10 {
+        match platform::connect_to_service(id) {
+            Ok(stream) => {
+                let (rx, tx) = tokio::io::split(stream);
+                let rx = FramedRead::new(rx, LengthDelimitedCodec::new());
+                let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+                return Ok((rx, tx))
+            }
+            Err(error) => {
+                tracing::warn!(?error, "Couldn't connect to IPC service, will sleep and try again");
+                // This won't come up much for humans but it helps the automated
+                // tests pass
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+    }
+    Err(anyhow!("Failed to connect to IPC server after multiple attempts"))
+}
 
 impl platform::Server {
-    pub(crate) async fn next_client_split(&mut self) -> Result<(Read, Write)> {
+    pub(crate) async fn next_client_split(&mut self) -> Result<(ServerRead, ServerWrite)> {
         let (rx, tx) = tokio::io::split(self.next_client().await?);
         let rx = FramedRead::new(rx, LengthDelimitedCodec::new());
         let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
@@ -28,13 +52,12 @@ impl platform::Server {
 
 #[cfg(test)]
 mod tests {
-    use super::platform::{connect_to_service, Server};
+    use super::platform::Server;
     use crate::{IpcClientMsg, IpcServerMsg};
     use anyhow::{ensure, Context as _, Result};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};
-    use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
     /// Make sure the IPC client and server can exchange messages
     #[tokio::test]
@@ -62,10 +85,7 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let stream = connect_to_service(ID).await.context("Error while connecting to IPC server")?;
-                let (rx, tx) = tokio::io::split(stream);
-                let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-                let mut tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+                let (mut rx, mut tx) = super::connect_to_service(ID).await.context("Error while connecting to IPC server")?;
 
                 let req = IpcClientMsg::Reconnect;
                 for _ in 0..10 {

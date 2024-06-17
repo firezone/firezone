@@ -460,8 +460,8 @@ struct Handler {
     cb_rx: mpsc::Receiver<InternalServerMsg>,
     connlib: Option<connlib_client_shared::Session>,
     dns_controller: DnsController,
-    ipc_rx: ipc::Read,
-    ipc_tx: ipc::Write,
+    ipc_rx: ipc::ServerRead,
+    ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
     tun_device: tun_device_manager::TunDeviceManager,
 }
@@ -472,7 +472,7 @@ enum Event {
 }
 
 impl Handler {
-    fn new(ipc_rx: ipc::Read, ipc_tx: ipc::Write) -> Result<Self> {
+    fn new(ipc_rx: ipc::ServerRead, ipc_tx: ipc::ServerWrite) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(10);
         let tun_device = tun_device_manager::TunDeviceManager::new()?;
 

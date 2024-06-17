@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
 use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
@@ -18,26 +18,10 @@ pub type ClientStream = named_pipe::NamedPipeClient;
 /// Opaque wrapper around the server's half of a platform-specific IPC stream
 pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 
-/// Connect to the IPC service
-#[allow(clippy::unused_async)]
-pub async fn connect_to_service(id: &str) -> Result<ClientStream> {
-    for _ in 0..10 {
-        match connect_to_service_with_path(&pipe_path(id)) {
-            Ok(x) => return Ok(x),
-            Err(error) => {
-                tracing::warn!("Couldn't connect to IPC service, will sleep and try again");
-                // This won't come up much for humans but it helps the automated
-                // tests pass
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
-        }
-    }
-    Err(anyhow!("Failed to connect to IPC server after multiple attempts"))
-}
-
-fn connect_to_service_with_path(path: &str) -> Result<ClientStream> {
+pub(crate) fn connect_to_service(id: &str) -> Result<ClientStream> {
+    let path = pipe_path(id);
     let stream = named_pipe::ClientOptions::new()
-        .open(path)
+        .open(&path)
         .with_context(|| format!("Couldn't connect to named pipe server at `{path}`"))?;
     let handle = HANDLE(stream.as_raw_handle() as isize);
     let mut server_pid: u32 = 0;
@@ -177,6 +161,8 @@ fn pipe_path(id: &str) -> String {
 /// # Arguments
 ///
 /// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
+///
+/// Public because the GUI Client re-uses this for deep links
 pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
