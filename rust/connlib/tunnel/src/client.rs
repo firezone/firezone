@@ -481,14 +481,9 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.ensure_allowed(packet) {
-            Ok(packet) => packet,
-            Err(e) => {
-                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
-
-                return None;
-            }
-        };
+        peer.ensure_allowed_src(&packet)
+            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "Packet not allowed: {e}"))
+            .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
             packet,
