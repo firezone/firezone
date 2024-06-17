@@ -1,6 +1,10 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context as _, Result};
+use crate::{IpcClientMsg, IpcServerMsg};
 use tokio::io::{ReadHalf, WriteHalf};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio_util::{
+    bytes::BytesMut,
+    codec::{FramedRead, FramedWrite, LengthDelimitedCodec},
+};
 
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
@@ -13,10 +17,80 @@ pub mod platform;
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 
-pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, LengthDelimitedCodec>;
-pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, LengthDelimitedCodec>;
-pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, LengthDelimitedCodec>;
-pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, LengthDelimitedCodec>;
+pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, ClientCodec>;
+pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, ClientCodec>;
+pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, ServerCodec>;
+pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, ServerCodec>;
+
+pub struct ClientCodec {
+    inner: LengthDelimitedCodec,
+}
+
+pub struct ServerCodec {
+    inner: LengthDelimitedCodec,
+}
+
+impl Default for ClientCodec {
+    fn default() -> Self {
+        Self {
+            inner: LengthDelimitedCodec::new(),
+        }
+    }
+}
+
+impl Default for ServerCodec {
+    fn default() -> Self {
+        Self {
+            inner: LengthDelimitedCodec::new(),
+        }
+    }
+}
+
+impl tokio_util::codec::Encoder<&IpcClientMsg> for ClientCodec {
+    type Error = anyhow::Error;
+
+    fn encode(&mut self, msg: &IpcClientMsg, buf: &mut BytesMut) -> Result<()> {
+        let msg = serde_json::to_string(&msg)?;
+        self.inner.encode(msg.into(), buf)?;
+        Ok(())
+    }
+}
+
+impl tokio_util::codec::Encoder<&IpcServerMsg> for ServerCodec {
+    type Error = anyhow::Error;
+
+    fn encode(&mut self, msg: &IpcServerMsg, buf: &mut BytesMut) -> Result<()> {
+        let msg = serde_json::to_string(&msg)?;
+        self.inner.encode(msg.into(), buf)?;
+        Ok(())
+    }
+}
+
+impl tokio_util::codec::Decoder for ClientCodec {
+    type Error = anyhow::Error;
+    type Item = IpcServerMsg;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<IpcServerMsg>> {
+        let Some(msg) = self.inner.decode(buf)? else {
+            return Ok(None);
+        };
+        let msg = serde_json::from_slice(&msg).context("Error while deserializing IpcServerMsg")?;
+        Ok(Some(msg))
+    }
+}
+
+impl tokio_util::codec::Decoder for ServerCodec {
+    type Error = anyhow::Error;
+    type Item = IpcClientMsg;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<IpcClientMsg>> {
+        let Some(msg) = self.inner.decode(buf)? else {
+            return Ok(None);
+        };
+        let msg = serde_json::from_slice(&msg).context("Error while deserializing IpcClientMsg")?;
+        Ok(Some(msg))
+    }
+}
 
 /// Connect to the IPC service
 ///
@@ -26,8 +100,8 @@ pub async fn connect_to_service(id: &str) -> Result<(ClientRead, ClientWrite)> {
         match platform::connect_to_service(id) {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
-                let rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-                let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+                let rx = FramedRead::new(rx, ClientCodec::default());
+                let tx = FramedWrite::new(tx, ClientCodec::default());
                 return Ok((rx, tx))
             }
             Err(error) => {
@@ -44,8 +118,8 @@ pub async fn connect_to_service(id: &str) -> Result<(ClientRead, ClientWrite)> {
 impl platform::Server {
     pub(crate) async fn next_client_split(&mut self) -> Result<(ServerRead, ServerWrite)> {
         let (rx, tx) = tokio::io::split(self.next_client().await?);
-        let rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-        let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+        let rx = FramedRead::new(rx, ServerCodec::default());
+        let tx = FramedWrite::new(tx, ServerCodec::default());
         Ok((rx, tx))
     }
 }
@@ -73,9 +147,8 @@ mod tests {
                 let (mut rx, mut tx) = server.next_client_split().await.context("Error while waiting for next IPC client")?;
                 while let Some(req) = rx.next().await {
                     let req = req.context("Error while reading from IPC client")?;
-                    let req: IpcClientMsg = serde_json::from_slice(&req)?;
                     ensure!(req == IpcClientMsg::Reconnect);
-                    tx.send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
+                    tx.send(&IpcServerMsg::OnTunnelReady)
                         .await.context("Error while writing to IPC client")?;
                 }
                 tracing::info!("Client disconnected");
@@ -89,9 +162,8 @@ mod tests {
 
                 let req = IpcClientMsg::Reconnect;
                 for _ in 0..10 {
-                    tx.send(serde_json::to_string(&req)?.into()).await.context("Error while writing to IPC server")?;
+                    tx.send(&req).await.context("Error while writing to IPC server")?;
                     let resp = rx.next().await.context("Should have gotten a reply from the IPC server")?.context("Error while reading from IPC server")?;
-                    let resp: IpcServerMsg = serde_json::from_slice(&resp)?;
                     ensure!(resp == IpcServerMsg::OnTunnelReady);
                 }
             }

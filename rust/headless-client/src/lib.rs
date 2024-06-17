@@ -494,10 +494,7 @@ impl Handler {
                 // This borrows `self` so we must drop it before handling the `Event`.
                 let cb = pin!(self.cb_rx.recv());
                 match future::select(self.ipc_rx.next(), cb).await {
-                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(
-                        serde_json::from_slice(&x)
-                            .context("Error while deserializing IPC message")?,
-                    ), // TODO: Integrate the serde_json stuff into a custom Tokio codec
+                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(x),
                     future::Either::Left((Some(Err(error)), _)) => Err(error)?,
                     future::Either::Left((None, _)) => {
                         tracing::info!("IPC client disconnected");
@@ -531,14 +528,14 @@ impl Handler {
                     }
                 }
                 self.ipc_tx
-                    .send(serde_json::to_string(&msg)?.into())
+                    .send(&msg)
                     .await?
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
                 self.ipc_tx
-                    .send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
+                    .send(&IpcServerMsg::OnTunnelReady)
                     .await?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {

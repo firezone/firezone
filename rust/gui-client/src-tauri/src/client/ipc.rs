@@ -58,11 +58,7 @@ impl Client {
 
     pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
-            .send(
-                serde_json::to_string(msg)
-                    .context("Couldn't encode IPC message as JSON")?
-                    .into(),
-            )
+            .send(msg)
             .await
             .context("Couldn't send IPC message")?;
         Ok(())
@@ -82,7 +78,7 @@ impl Client {
 
         let task = tokio_handle.spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {
-                match serde_json::from_slice::<IpcServerMsg>(&msg)? {
+                match msg {
                     IpcServerMsg::Ok => {}
                     IpcServerMsg::OnDisconnect {
                         error_msg,
