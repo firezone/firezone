@@ -15,9 +15,8 @@ locals {
     "35.235.240.0/20"
   ]
 
-  gateway_image_tag = var.gateway_image_tag != null ? var.gateway_image_tag : var.image_tag
-  relay_image_tag   = var.relay_image_tag != null ? var.relay_image_tag : var.image_tag
-  portal_image_tag  = var.portal_image_tag != null ? var.portal_image_tag : var.image_tag
+  relay_image_tag  = var.relay_image_tag != null ? var.relay_image_tag : var.image_tag
+  portal_image_tag = var.portal_image_tag != null ? var.portal_image_tag : var.image_tag
 }
 
 terraform {
