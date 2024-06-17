@@ -1184,6 +1184,7 @@ dependencies = [
  "known-folders",
  "libc",
  "log",
+ "logging_timer",
  "netlink-packet-core",
  "netlink-packet-route",
  "os_info",
@@ -1994,6 +1995,7 @@ dependencies = [
  "ip_network",
  "ipconfig",
  "known-folders",
+ "logging_timer",
  "mutants",
  "nix 0.28.0",
  "resolv-conf",
@@ -3505,6 +3507,28 @@ name = "log"
 version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+
+[[package]]
+name = "logging_timer"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5669c09dbcb4a0b5f6de8364154495574238e18d6736bbdaa7726307f3268471"
+dependencies = [
+ "log",
+ "logging_timer_proc_macros",
+]
+
+[[package]]
+name = "logging_timer_proc_macros"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27906ca51651609191eeb2d1fdc6b52b8024789ec188b07aad88b6dfbe392fbe"
+dependencies = [
+ "log",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "loom"
