@@ -6,8 +6,38 @@ pub(crate) struct Server {
     listener: UnixListener,
 }
 
+/// Opaque wrapper around the client's half of a platform-specific IPC stream
+pub type ClientStream = UnixStream;
+
+/// Opaque wrapper around the server's half of a platform-specific IPC stream
+///
+/// On Windows `ClientStream` and `ServerStream` differ
+pub(crate) type ServerStream = UnixStream;
+
+/// Connect to the IPC service
+///
+/// This is async on Linux
+#[allow(clippy::unused_async)]
+pub async fn connect_to_service() -> Result<ClientStream> {
+    let path = sock_path();
+    let stream = UnixStream::connect(&path).await.with_context(|| {
+        format!(
+            "Couldn't connect to Unix domain socket at `{}`",
+            path.display()
+        )
+    })?;
+    let cred = stream.peer_cred()?;
+    tracing::info!(
+        uid = cred.uid(),
+        gid = cred.gid(),
+        pid = cred.pid(),
+        "Made an IPC connection"
+    );
+    Ok(stream)
+}
+
 /// Opaque wrapper around platform-specific IPC stream
-pub(crate) type Stream = UnixStream;
+pub(crate) type ServerStream = UnixStream;
 
 impl Server {
     /// Platform-specific setup
@@ -39,7 +69,7 @@ impl Server {
         Ok(Self { listener })
     }
 
-    pub(crate) async fn next_client(&mut self) -> Result<Stream> {
+    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
         tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;

@@ -1,11 +1,10 @@
 #[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-use linux as platform;
+#[path = "ipc/linux.rs"]
+mod platform;
 
 #[cfg(target_os = "windows")]
-pub mod windows;
-#[cfg(target_os = "windows")]
-pub use windows as platform;
+#[path = "ipc/windows.rs"]
+pub mod platform;
 
-pub(crate) use platform::{Server, Stream};
+pub use platform::{connect_to_service, ClientStream};
+pub(crate) use platform::{Server, ServerStream};

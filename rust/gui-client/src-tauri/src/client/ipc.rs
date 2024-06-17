@@ -9,19 +9,6 @@ use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-#[cfg(target_os = "linux")]
-#[path = "ipc/linux.rs"]
-mod platform;
-
-// Stub only
-#[cfg(target_os = "macos")]
-#[path = "ipc/macos.rs"]
-mod platform;
-
-#[cfg(target_os = "windows")]
-#[path = "ipc/windows.rs"]
-mod platform;
-
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
     pub notify_controller: Arc<Notify>,
@@ -57,7 +44,10 @@ impl CallbackHandler {
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: FramedWrite<tokio::io::WriteHalf<platform::IpcStream>, LengthDelimitedCodec>,
+    tx: FramedWrite<
+        tokio::io::WriteHalf<firezone_headless_client::ipc::ClientStream>,
+        LengthDelimitedCodec,
+    >,
 }
 
 impl Client {
@@ -92,7 +82,7 @@ impl Client {
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let stream = platform::connect_to_service().await?;
+        let stream = firezone_headless_client::ipc::connect_to_service().await?;
         let (rx, tx) = tokio::io::split(stream);
         // Receives messages from the IPC service
         let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());

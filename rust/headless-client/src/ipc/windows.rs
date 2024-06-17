@@ -3,15 +3,39 @@ use connlib_shared::BUNDLE_ID;
 use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::HANDLE, Security as WinSec, System::Pipes::GetNamedPipeClientProcessId,
+    Foundation::HANDLE,
+    Security as WinSec,
+    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
 
 pub(crate) struct Server {
     pipe_path: String,
 }
 
-/// Opaque wrapper around platform-specific IPC stream
-pub(crate) type Stream = named_pipe::NamedPipeServer;
+/// Opaque wrapper around the client's half of a platform-specific IPC stream
+pub type ClientStream = named_pipe::NamedPipeClient;
+
+/// Opaque wrapper around the server's half of a platform-specific IPC stream
+pub(crate) type ServerStream = named_pipe::NamedPipeServer;
+
+/// Connect to the IPC service
+///
+/// This is async on Linux
+#[allow(clippy::unused_async)]
+pub async fn connect_to_service() -> Result<ClientStream> {
+    let path = pipe_path();
+    let stream = named_pipe::ClientOptions::new()
+        .open(path)
+        .with_context(|| "Couldn't connect to named pipe server at `{path}`")?;
+    let handle = HANDLE(stream.as_raw_handle() as isize);
+    let mut server_pid: u32 = 0;
+    // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
+    // from Tokio, so it should be valid.
+    unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
+        .context("Couldn't get PID of named pipe server")?;
+    tracing::info!(?server_pid, "Made IPC connection");
+    Ok(stream)
+}
 
 impl Server {
     /// Platform-specific setup
@@ -41,7 +65,7 @@ impl Server {
     }
 
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<Stream> {
+    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
         // Fixes #5143. In the IPC service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -70,7 +94,7 @@ impl Server {
         Ok(server)
     }
 
-    async fn bind_to_pipe(&self) -> Result<Stream> {
+    async fn bind_to_pipe(&self) -> Result<ServerStream> {
         const NUM_ITERS: usize = 10;
         // This loop is defense-in-depth. The `yield_now` in `next_client` is enough
         // to fix #5143, but Tokio doesn't guarantee any behavior when yielding, so
@@ -141,7 +165,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 }
 
 /// Named pipe for IPC between GUI client and IPC service
-pub fn pipe_path() -> String {
+fn pipe_path() -> String {
     named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
 }
 
