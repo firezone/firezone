@@ -52,7 +52,7 @@ jobs:
           - release_name: headless-client-1.0.8
             config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - release_name: gui-client-1.0.8
+          - release_name: gui-client-1.0.9
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6
@@ -144,18 +144,32 @@ jobs:
           timeout 600 docker compose -f rust/snownet-tests/docker-compose.${{ matrix.name }}.yml up --exit-code-from dialer --abort-on-container-exit
 
   compatibility-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        client:
+          - image: "ghcr.io/firezone/client"
+            tag: "latest"
+        gateway:
+          - image: ${{ needs.build-artifacts.outputs.gateway_image }}
+            tag: ${{ github.sha }}
+            ci-name: sha
+          - image: "ghcr.io/firezone/gateway"
+            tag: "latest"
+            ci-name: latest
     # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
     # it'll be red if there was a breaking change we're tring to publish,
     # and the deploy_production workflow checks for main to be green.
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
     needs: build-artifacts
     secrets: inherit
     with:
-      gateway_image: "ghcr.io/firezone/gateway"
-      gateway_tag: "latest"
-      client_image: "ghcr.io/firezone/client"
-      client_tag: "latest"
+      gateway_image: ${{ matrix.gateway.image }}
+      gateway_tag: ${{ matrix.gateway.tag }}
+      client_image: ${{ matrix.client.image }}
+      client_tag: ${{ matrix.client.tag }}
 
   perf-tests:
     # Only the debug images have perf tooling
