@@ -38,10 +38,10 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.New do
     </.breadcrumbs>
     <.section>
       <:title>
-        Add a new JumpCloud ID Identity Provider
+        Add a new JumpCloud Identity Provider
       </:title>
       <:help>
-        For a more detailed guide on setting up Firezone with JumpCloud ID, please <.link
+        For a more detailed guide on setting up Firezone with JumpCloud, please <.link
           href="https://www.firezone.dev/kb/authenticate/jumpcloud"
           class={link_style()}
         >refer to our documentation</.link>.

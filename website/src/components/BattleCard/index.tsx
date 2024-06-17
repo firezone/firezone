@@ -151,6 +151,20 @@ export default function BattleCard() {
                   <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
                 </td>
               </tr>
+              <tr className="border-b bg-neutral-50">
+                <td className="px-3 sm:px-6 py-5 font-medium">
+                  JumpCloud directory sync
+                </td>
+                <td className="text-center px-3 sm:px-6 py-5">
+                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
+                </td>
+                <td className="text-center px-3 sm:px-6 py-5">
+                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
+                </td>
+                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
+                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
+                </td>
+              </tr>
               <tr className="border-b">
                 <td className="px-3 sm:px-6 py-5 font-medium">
                   DNS-based routing
