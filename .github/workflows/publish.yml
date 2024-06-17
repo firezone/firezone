@@ -73,6 +73,14 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_version }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_minor_version }} \
             $SOURCE_TAG
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
       - name: Copy Google Cloud Storage binaries to "latest" version
         run: |
           set -xe
