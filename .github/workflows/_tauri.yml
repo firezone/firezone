@@ -26,22 +26,22 @@ jobs:
         include:
           - runs-on: ubuntu-20.04
             # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-linux_1.0.8_x86_64
+            binary-dest-path: firezone-client-gui-linux_1.0.9_x86_64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
             # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.0.8_x86_64.dwp
+            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.0.9_x86_64.dwp
             # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.0.8_x86_64.deb
+            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.0.9_x86_64.deb
           - runs-on: windows-2019
             # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-windows_1.0.8_x86_64
+            binary-dest-path: firezone-client-gui-windows_1.0.9_x86_64
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
             # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.0.8_x86_64.pdb
+            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.0.9_x86_64.pdb
             # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.0.8_x86_64.msi
+            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.0.9_x86_64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
@@ -50,7 +50,7 @@ jobs:
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
       # mark:next-gui-version
-      FIREZONE_PACKAGE_VERSION: 1.0.8
+      FIREZONE_PACKAGE_VERSION: 1.0.9
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -80,7 +80,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: bash
         # mark:next-gui-version
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.0.8_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.0.9_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
@@ -105,6 +105,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           # mark:next-gui-version
-          TAG_NAME: gui-client-1.0.8
+          TAG_NAME: gui-client-1.0.9
         shell: bash
         run: ${{ matrix.upload-script }}
