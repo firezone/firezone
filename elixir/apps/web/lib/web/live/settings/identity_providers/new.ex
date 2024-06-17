@@ -39,9 +39,9 @@ defmodule Web.Settings.IdentityProviders.New do
       <:help>
         Set up SSO authentication using your own identity provider. Directory sync
         also available for certain providers. <br /> Learn more about
-        <.website_link href="/kb/authenticate/oidc">SSO authentication</.website_link>
+        <.website_link path="/kb/authenticate/oidc">SSO authentication</.website_link>
         and
-        <.website_link href="/kb/authenticate/directory-sync">directory sync</.website_link>
+        <.website_link path="/kb/authenticate/directory-sync">directory sync</.website_link>
         in our docs.
       </:help>
       <:content>

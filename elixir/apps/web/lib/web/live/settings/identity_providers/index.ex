@@ -61,7 +61,7 @@ defmodule Web.Settings.IdentityProviders.Index do
         </.add_button>
       </:action>
       <:help>
-        <.website_link href="/kb/authenticate">
+        <.website_link path="/kb/authenticate">
           Read more
         </.website_link>
         about how authentication works in Firezone.

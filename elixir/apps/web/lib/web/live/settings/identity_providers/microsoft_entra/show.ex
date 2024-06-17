@@ -86,7 +86,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
       <:help>
         Directory sync is enabled for this provider. Users and groups will be synced every 10
         minutes on average, but could take longer for very large organizations.
-        <.website_link href="/kb/authenticate/directory-sync">
+        <.website_link path="/kb/authenticate/directory-sync">
           Read more
         </.website_link>
         about directory sync.
