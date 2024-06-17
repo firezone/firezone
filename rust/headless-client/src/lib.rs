@@ -527,16 +527,12 @@ impl Handler {
                         tracing::info!(?dur, "Connlib started");
                     }
                 }
-                self.ipc_tx
-                    .send(&msg)
-                    .await?
+                self.ipc_tx.send(&msg).await?
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
-                self.ipc_tx
-                    .send(&IpcServerMsg::OnTunnelReady)
-                    .await?;
+                self.ipc_tx.send(&IpcServerMsg::OnTunnelReady).await?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?

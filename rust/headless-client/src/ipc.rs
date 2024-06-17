@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Context as _, Result};
 use crate::{IpcClientMsg, IpcServerMsg};
+use anyhow::{anyhow, Context as _, Result};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -102,17 +102,22 @@ pub async fn connect_to_service(id: &str) -> Result<(ClientRead, ClientWrite)> {
                 let (rx, tx) = tokio::io::split(stream);
                 let rx = FramedRead::new(rx, ClientCodec::default());
                 let tx = FramedWrite::new(tx, ClientCodec::default());
-                return Ok((rx, tx))
+                return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::warn!(?error, "Couldn't connect to IPC service, will sleep and try again");
+                tracing::warn!(
+                    ?error,
+                    "Couldn't connect to IPC service, will sleep and try again"
+                );
                 // This won't come up much for humans but it helps the automated
                 // tests pass
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
         }
     }
-    Err(anyhow!("Failed to connect to IPC server after multiple attempts"))
+    Err(anyhow!(
+        "Failed to connect to IPC server after multiple attempts"
+    ))
 }
 
 impl platform::Server {
@@ -140,16 +145,22 @@ mod tests {
         let loops = 10;
         const ID: &str = "OB5SZCGN";
 
-        let mut server = Server::new(ID).await.context("Error while starting IPC server")?;
+        let mut server = Server::new(ID)
+            .await
+            .context("Error while starting IPC server")?;
 
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = server.next_client_split().await.context("Error while waiting for next IPC client")?;
+                let (mut rx, mut tx) = server
+                    .next_client_split()
+                    .await
+                    .context("Error while waiting for next IPC client")?;
                 while let Some(req) = rx.next().await {
                     let req = req.context("Error while reading from IPC client")?;
                     ensure!(req == IpcClientMsg::Reconnect);
                     tx.send(&IpcServerMsg::OnTunnelReady)
-                        .await.context("Error while writing to IPC client")?;
+                        .await
+                        .context("Error while writing to IPC client")?;
                 }
                 tracing::info!("Client disconnected");
             }
@@ -158,12 +169,20 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = super::connect_to_service(ID).await.context("Error while connecting to IPC server")?;
+                let (mut rx, mut tx) = super::connect_to_service(ID)
+                    .await
+                    .context("Error while connecting to IPC server")?;
 
                 let req = IpcClientMsg::Reconnect;
                 for _ in 0..10 {
-                    tx.send(&req).await.context("Error while writing to IPC server")?;
-                    let resp = rx.next().await.context("Should have gotten a reply from the IPC server")?.context("Error while reading from IPC server")?;
+                    tx.send(&req)
+                        .await
+                        .context("Error while writing to IPC server")?;
+                    let resp = rx
+                        .next()
+                        .await
+                        .context("Should have gotten a reply from the IPC server")?
+                        .context("Error while reading from IPC server")?;
                     ensure!(resp == IpcServerMsg::OnTunnelReady);
                 }
             }
