@@ -816,7 +816,7 @@ impl ClientState {
         match self.next_mangled_dns_expire {
             Some(next_dns_refresh) if now >= next_dns_refresh => {
                 self.mangled_dns_queries
-                    .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
+                    .retain(|_, exp| exp.duration_since(now) < IDS_EXPIRE);
 
                 self.next_mangled_dns_expire = Some(now + DNS_REFRESH_INTERVAL);
             }
