@@ -58,6 +58,7 @@ jobs:
           echo "major_version=$MAJOR_VERSION" >> "$GITHUB_OUTPUT"
           echo "major_minor_version=$MAJOR_MINOR_VERSION" >> "$GITHUB_OUTPUT"
       - name: Pull and push
+        if: ${{ steps.set-variables.outputs.artifact == 'gateway' || steps.set-variables.outputs.artifact == 'client' }}
         run: |
           set -xe
 
