@@ -41,11 +41,6 @@ const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
-// With this single timer this might mean that some DNS are refreshed too often
-// however... this also mean any resource is refresh within a 5 mins interval
-// therefore, only the first time it's added that happens, after that it doesn't matter.
-const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
-
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
@@ -283,7 +278,9 @@ pub struct ClientState {
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
-    mangled_dns_queries: HashMap<u16, std::time::Instant>,
+    ///
+    /// The [`Instant`] tracks when the DNS query expires.
+    mangled_dns_queries: HashMap<u16, Instant>,
     /// When to next refresh DNS resources.
     ///
     /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
@@ -815,13 +812,11 @@ impl ClientState {
 
         match self.next_mangled_dns_expire {
             Some(next_dns_refresh) if now >= next_dns_refresh => {
-                self.mangled_dns_queries
-                    .retain(|_, exp| exp.duration_since(now) < IDS_EXPIRE);
+                self.mangled_dns_queries.retain(|_, exp| *exp < now);
 
-                self.next_mangled_dns_expire = Some(now + DNS_REFRESH_INTERVAL);
+                self.next_mangled_dns_expire = self.mangled_dns_queries.values().min().copied();
             }
-            None => self.next_mangled_dns_expire = Some(now + DNS_REFRESH_INTERVAL),
-            Some(_) => {}
+            None | Some(_) => {}
         }
 
         while let Some(event) = self.node.poll_event() {
@@ -1157,7 +1152,7 @@ fn maybe_mangle_dns_query_to_cidr_resource<'p>(
 
     tracing::debug!(old_dst = %dst, new_dst = %srv.ip(), "Packet is a DNS query to a DNS server configured as a CIDR resource");
 
-    mangeled_dns_queries.insert(message.header().id(), now);
+    mangeled_dns_queries.insert(message.header().id(), now + IDS_EXPIRE);
     packet.set_dst(srv.ip());
     packet.update_checksum();
 
