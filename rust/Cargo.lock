@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.8"
+version = "1.0.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1979,7 +1979,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.0.8"
+version = "1.0.9"
 dependencies = [
  "anyhow",
  "atomicwrites",
