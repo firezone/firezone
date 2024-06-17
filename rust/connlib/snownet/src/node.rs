@@ -148,6 +148,9 @@ where
             binding.refresh(now);
         }
 
+        // FIXME(tech-debt): A refresh here is unnecessary.
+        // We always rebind the sockets one layer up, which changes our outgoing port and thus means we are a "new" client from TURN's perspective (TURN operates on 3-tuples).
+        // Thus, a "reset" operation that just clears the local state would be sufficient here and would likely simplify the internals of `Allocation`.
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
