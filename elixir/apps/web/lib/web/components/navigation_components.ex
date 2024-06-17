@@ -331,13 +331,14 @@ defmodule Web.NavigationComponents do
     <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
   """
   attr :href, :string, required: true
+  attr :anchor, :string, required: false, default: ""
   slot :inner_block, required: true
   attr :rest, :global
 
   def website_link(assigns) do
     ~H"""
     <.link
-      navigate={"https://www.firezone.dev?utm_source=product#{@href}"}
+      navigate={"https://www.firezone.dev#{@href}?utm_source=product##{@anchor}"}
       class={link_style()}
       target="_blank"
       {@rest}
