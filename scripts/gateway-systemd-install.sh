@@ -11,7 +11,7 @@ RUST_LOG=${RUST_LOG:-str0m=warn,info}
 
 # Can be used to download a specific version of the gateway from a custom URL
 FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
-# See https://github.com/firezone/firezone/issues/5370
+# TODO: Remove this workaround after 1.0.8 gateway is released. See https://github.com/firezone/firezone/issues/5370
 # FIREZONE_ARTIFACT_URL=${FIREZONE_ARTIFACT_URL:-https://www.firezone.dev/dl/firezone-gateway}
 FIREZONE_ARTIFACT_URL=https://www.firezone.dev/dl/firezone-gateway
 
