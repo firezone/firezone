@@ -23,12 +23,7 @@ use std::{
     pin::pin,
     time::Duration,
 };
-use tokio::{
-    io::{ReadHalf, WriteHalf},
-    sync::mpsc,
-    time::Instant,
-};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
@@ -184,7 +179,7 @@ enum Cmd {
     Standalone,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcClientMsg {
     Connect { api_url: String, token: String },
     Disconnect,
@@ -205,7 +200,7 @@ enum InternalServerMsg {
     },
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
     OnDisconnect {
@@ -366,7 +361,7 @@ pub fn run_only_ipc_service() -> Result<()> {
 }
 
 pub(crate) fn run_debug_ipc_service() -> Result<()> {
-    debug_command_setup()?;
+    setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     rt.spawn(crate::heartbeat::heartbeat());
@@ -445,14 +440,14 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
-    let mut server = ipc::Server::new().await?;
+    let mut server = ipc::Server::new("").await?;
     loop {
         dns_control::deactivate()?;
-        let stream = server
-            .next_client()
+        let (rx, tx) = server
+            .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(stream)?
+        Handler::new(rx, tx)?
             .run()
             .await
             .context("Error while handling IPC client")?;
@@ -465,8 +460,8 @@ struct Handler {
     cb_rx: mpsc::Receiver<InternalServerMsg>,
     connlib: Option<connlib_client_shared::Session>,
     dns_controller: DnsController,
-    ipc_rx: FramedRead<ReadHalf<ipc::ServerStream>, LengthDelimitedCodec>,
-    ipc_tx: FramedWrite<WriteHalf<ipc::ServerStream>, LengthDelimitedCodec>,
+    ipc_rx: ipc::Read,
+    ipc_tx: ipc::Write,
     last_connlib_start_instant: Option<Instant>,
     tun_device: tun_device_manager::TunDeviceManager,
 }
@@ -477,10 +472,7 @@ enum Event {
 }
 
 impl Handler {
-    fn new(stream: ipc::ServerStream) -> Result<Self> {
-        let (rx, tx) = tokio::io::split(stream);
-        let ipc_rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-        let ipc_tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+    fn new(ipc_rx: ipc::Read, ipc_tx: ipc::Write) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(10);
         let tun_device = tun_device_manager::TunDeviceManager::new()?;
 
@@ -698,8 +690,8 @@ fn get_log_filter() -> Result<String> {
     Ok(SERVICE_RUST_LOG.to_string())
 }
 
-/// Sets up logging for stderr only, with INFO level by default
-pub fn debug_command_setup() -> Result<()> {
+/// Sets up logging for stdout only, with INFO level by default
+pub fn setup_stdout_logging() -> Result<()> {
     let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
@@ -733,10 +725,8 @@ fn setup_ipc_service_logging(
 #[cfg(test)]
 mod tests {
     use super::{Cli, CliIpcService, CmdIpc};
-    use anyhow::Context as _;
     use clap::Parser;
-    use std::{path::PathBuf, time::Duration};
-    use tokio::time::timeout;
+    use std::path::PathBuf;
     use url::Url;
 
     // Can't remember how Clap works sometimes
@@ -761,26 +751,6 @@ mod tests {
         let actual = CliIpcService::parse_from([exe_name, "run"]);
         assert_eq!(actual.command, CmdIpc::Run);
 
-        Ok(())
-    }
-
-    /// Replicate #5143
-    ///
-    /// When the IPC service has disconnected from a GUI and loops over, sometimes
-    /// the named pipe is not ready. If our IPC code doesn't handle this right,
-    /// this test will fail.
-    #[tokio::test]
-    async fn ipc_server() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-
-        let mut server = crate::ipc::Server::new_for_test().await?;
-        for i in 0..5 {
-            if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
-                Err(err).with_context(|| {
-                    format!("Couldn't listen for next IPC client, iteration {i}")
-                })?;
-            }
-        }
         Ok(())
     }
 }

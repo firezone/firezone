@@ -1,4 +1,4 @@
-use anyhow::{bail, Context as _, Result};
+use anyhow::{anyhow, bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
 use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
@@ -19,14 +19,26 @@ pub type ClientStream = named_pipe::NamedPipeClient;
 pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 
 /// Connect to the IPC service
-///
-/// This is async on Linux
 #[allow(clippy::unused_async)]
-pub async fn connect_to_service() -> Result<ClientStream> {
-    let path = pipe_path();
+pub async fn connect_to_service(id: &str) -> Result<ClientStream> {
+    for _ in 0..10 {
+        match connect_to_service_with_path(&pipe_path(id)) {
+            Ok(x) => return Ok(x),
+            Err(error) => {
+                tracing::warn!("Couldn't connect to IPC service, will sleep and try again");
+                // This won't come up much for humans but it helps the automated
+                // tests pass
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+    }
+    Err(anyhow!("Failed to connect to IPC server after multiple attempts"))
+}
+
+fn connect_to_service_with_path(path: &str) -> Result<ClientStream> {
     let stream = named_pipe::ClientOptions::new()
         .open(path)
-        .with_context(|| "Couldn't connect to named pipe server at `{path}`")?;
+        .with_context(|| format!("Couldn't connect to named pipe server at `{path}`"))?;
     let handle = HANDLE(stream.as_raw_handle() as isize);
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
@@ -40,26 +52,15 @@ pub async fn connect_to_service() -> Result<ClientStream> {
 impl Server {
     /// Platform-specific setup
     ///
-    /// This is async on Linux
-    #[allow(clippy::unused_async)]
-    pub(crate) async fn new() -> Result<Self> {
-        Self::new_with_path(pipe_path())
-    }
-
-    /// Uses a test path instead of what prod uses
-    ///
-    /// The test path doesn't need admin powers and won't conflict with the prod
-    /// IPC service on a dev machine.
+    /// Set `id` to an empty string for production and random alphanumeric strings for tests
     ///
     /// This is async on Linux
     #[allow(clippy::unused_async)]
-    #[cfg(test)]
-    pub(crate) async fn new_for_test() -> Result<Self> {
-        let pipe_path = named_pipe_path(&format!("{BUNDLE_ID}_test.ipc_service"));
-        Self::new_with_path(pipe_path)
+    pub(crate) async fn new(id: &str) -> Result<Self> {
+        Self::new_with_path(pipe_path(id))
     }
 
-    pub(crate) fn new_with_path(pipe_path: String) -> Result<Self> {
+    fn new_with_path(pipe_path: String) -> Result<Self> {
         crate::platform::setup_before_connlib()?;
         Ok(Self { pipe_path })
     }
@@ -165,8 +166,10 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 }
 
 /// Named pipe for IPC between GUI client and IPC service
-fn pipe_path() -> String {
-    named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
+///
+/// `id` should have A-Z, 0-9 only, no dots or slashes.
+fn pipe_path(id: &str) -> String {
+    named_pipe_path(&format!("{BUNDLE_ID}_{id}.ipc_service"))
 }
 
 /// Returns a valid name for a Windows named pipe
@@ -190,6 +193,6 @@ mod tests {
 
     #[test]
     fn pipe_path() {
-        assert!(super::pipe_path().starts_with(r"\\.\pipe\"));
+        assert!(super::pipe_path("").starts_with(r"\\.\pipe\"));
     }
 }

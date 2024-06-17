@@ -82,7 +82,7 @@ impl Client {
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let stream = firezone_headless_client::ipc::connect_to_service().await?;
+        let stream = firezone_headless_client::ipc::connect_to_service("").await?;
         let (rx, tx) = tokio::io::split(stream);
         // Receives messages from the IPC service
         let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
