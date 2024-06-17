@@ -373,6 +373,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state.client_connected_cidr_resources.clear();
+                state.client_connected_dns_resources.clear();
             }
         };
 
