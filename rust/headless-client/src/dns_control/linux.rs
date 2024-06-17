@@ -29,6 +29,16 @@ pub(crate) struct DnsController {
     dns_control_method: Option<DnsControlMethod>,
 }
 
+impl Default for DnsController {
+    fn default() -> Self {
+        // We'll remove `get_dns_control_from_env` in #5068
+        let dns_control_method = get_dns_control_from_env();
+        tracing::info!(?dns_control_method);
+
+        Self { dns_control_method }
+    }
+}
+
 impl Drop for DnsController {
     fn drop(&mut self) {
         tracing::debug!("Reverting DNS control...");
@@ -40,14 +50,6 @@ impl Drop for DnsController {
 }
 
 impl DnsController {
-    pub(crate) fn new() -> Self {
-        // We'll remove `get_dns_control_from_env` in #5068
-        let dns_control_method = get_dns_control_from_env();
-        tracing::info!(?dns_control_method);
-
-        Self { dns_control_method }
-    }
-
     /// Set the computer's system-wide DNS servers
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but

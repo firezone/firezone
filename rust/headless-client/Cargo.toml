@@ -67,6 +67,7 @@ features = [
     # For named pipe IPC
     "Win32_Security",
     "Win32_System_SystemServices",
+    "Win32_System_Pipes",
 ]
 
 [lints]
