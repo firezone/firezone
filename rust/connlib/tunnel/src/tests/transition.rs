@@ -73,7 +73,7 @@ pub(crate) enum Transition {
     /// Remove a resource from the client.
     RemoveResource(ResourceId),
 
-    /// TODO
+    /// Roam the client to a new pair of sockets.
     RoamClient {
         ip4_socket: Option<SocketAddrV4>,
         ip6_socket: Option<SocketAddrV6>,
