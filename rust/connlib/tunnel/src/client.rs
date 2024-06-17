@@ -281,11 +281,6 @@ pub struct ClientState {
     ///
     /// The [`Instant`] tracks when the DNS query expires.
     mangled_dns_queries: HashMap<u16, Instant>,
-    /// When to next refresh DNS resources.
-    ///
-    /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
-    next_mangled_dns_expire: Option<Instant>,
-
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -316,7 +311,6 @@ impl ClientState {
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
-            next_mangled_dns_expire: Default::default(),
             node: ClientNode::new(private_key.into()),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
@@ -804,20 +798,17 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(self.next_mangled_dns_expire, self.node.poll_timeout())
+        // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
+        // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
+        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
+        let next_node_timeout = self.node.poll_timeout();
+
+        earliest(next_dns_query_expiry, next_node_timeout)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-
-        match self.next_mangled_dns_expire {
-            Some(next_dns_refresh) if now >= next_dns_refresh => {
-                self.mangled_dns_queries.retain(|_, exp| *exp < now);
-
-                self.next_mangled_dns_expire = self.mangled_dns_queries.values().min().copied();
-            }
-            None | Some(_) => {}
-        }
+        self.mangled_dns_queries.retain(|_, exp| *exp < now);
 
         while let Some(event) = self.node.poll_event() {
             match event {
