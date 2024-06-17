@@ -24,8 +24,6 @@ module "gateways" {
   name    = "gateway"
   api_url = "wss://api.${local.tld}"
   token   = var.gateway_token
-
-  vsn = local.gateway_image_tag
 }
 
 # Allow gateways to access the Metabase

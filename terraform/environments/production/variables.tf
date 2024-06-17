@@ -88,11 +88,6 @@ variable "relay_image_tag" {
   default = null
 }
 
-variable "gateway_image_tag" {
-  type    = string
-  default = null
-}
-
 variable "portal_image_tag" {
   type    = string
   default = null
