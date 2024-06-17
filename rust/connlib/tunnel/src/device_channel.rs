@@ -77,27 +77,12 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        if self.tun.is_none() {
-            self.tun = Some(Tun::new()?);
-
-            if let Some(waker) = self.waker.take() {
-                waker.wake();
-            }
-        }
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        Ok(())
-    }
-
-    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
+    #[cfg(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "windows",
+        target_os = "linux"
+    ))]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
