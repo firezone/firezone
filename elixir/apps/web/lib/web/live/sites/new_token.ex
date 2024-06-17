@@ -57,14 +57,14 @@ defmodule Web.Sites.NewToken do
         Gateways require egress connectivity to the control plane API and relay servers.
         <strong>No ingress firewall rules</strong>
         are required or recommended. See our
-        <.website_link href="/kb/deploy/gateways#firewall-ports">
+        <.website_link path="/kb/deploy/gateways" fragment="firewall-ports">
           deploy guide
         </.website_link>
         for more information.
       </:help>
       <:help>
         Read the
-        <.website_link href="/kb/deploy/gateways">
+        <.website_link path="/kb/deploy/gateways">
           gateway deployment guide
         </.website_link>
         for more detailed instructions.
@@ -161,7 +161,7 @@ defmodule Web.Sites.NewToken do
           <div id="connection-status" class="flex justify-between items-center">
             <p class="text-sm">
               Gateway not connecting? See our
-              <.website_link href="/kb/administer/troubleshooting#gateway-not-connecting">
+              <.website_link path="/kb/administer/troubleshooting" fragment="gateway-not-connecting">
                 gateway troubleshooting guide
               </.website_link>.
             </p>
