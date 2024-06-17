@@ -125,6 +125,7 @@ mod tests {
 
         let _set_default = tracing_subscriber::fmt()
             .with_env_filter("trace")
+            .with_test_writer()
             .set_default();
         let sent_at = Instant::now();
         let mut table = NatTable::default();
@@ -176,6 +177,7 @@ mod tests {
 
         let _set_default = tracing_subscriber::fmt()
             .with_env_filter("trace")
+            .with_test_writer()
             .set_default();
         let mut table = NatTable::default();
 
