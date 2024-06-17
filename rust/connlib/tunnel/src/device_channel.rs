@@ -84,14 +84,15 @@ impl Device {
         dns_config: Vec<IpAddr>,
         callbacks: &impl Callbacks,
     ) -> Result<(), ConnlibError> {
-        // On Android / Linux we recreate the tunnel every time we re-configure it
-        self.tun = Some(Tun::new()?);
+        if self.tun.is_none() {
+            self.tun = Some(Tun::new()?);
+
+            if let Some(waker) = self.waker.take() {
+                waker.wake();
+            }
+        }
 
         callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
 
         Ok(())
     }
