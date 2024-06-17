@@ -24,15 +24,14 @@ jobs:
         with:
           project: firezone-staging
       - uses: ./.github/actions/gcp-docker-login
-        id: login
         with:
           project: firezone-prod
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.GITHUB_TOKEN}}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set variables
         id: set-variables
         run: |
