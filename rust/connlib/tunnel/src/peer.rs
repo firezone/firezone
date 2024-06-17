@@ -483,11 +483,10 @@ impl ClientOnGateway {
 }
 
 impl GatewayOnClient {
-    /// Transform a packet that arrived via the network for the TUN device.
-    pub(crate) fn ensure_allowed<'a>(
+    pub(crate) fn ensure_allowed_src(
         &self,
-        pkt: MutableIpPacket<'a>,
-    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
+        pkt: &MutableIpPacket,
+    ) -> Result<(), connlib_shared::Error> {
         if self.allowed_ips.longest_match(pkt.source()).is_none() {
             return Err(connlib_shared::Error::UnallowedPacket {
                 src: pkt.source(),
@@ -500,7 +499,7 @@ impl GatewayOnClient {
             });
         }
 
-        Ok(pkt)
+        Ok(())
     }
 
     pub fn id(&self) -> GatewayId {
