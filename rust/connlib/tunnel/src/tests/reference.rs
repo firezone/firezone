@@ -517,6 +517,7 @@ impl ReferenceState {
             tracing::debug!("No resource corresponds to IP");
             return;
         };
+        tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
         if self.client_connected_cidr_resources.contains(&resource.id)
             && self.client.is_tunnel_ip(src)
@@ -537,8 +538,11 @@ impl ReferenceState {
         tracing::Span::current().record("dst", tracing::field::display(&dst));
 
         let Some(resource) = self.dns_resource_by_domain(&dst) else {
+            tracing::debug!("No resource corresponds to IP");
             return;
         };
+
+        tracing::Span::current().record("resource", tracing::field::display(resource));
 
         if self
             .client_connected_dns_resources
@@ -551,9 +555,13 @@ impl ReferenceState {
             return;
         }
 
-        if self.client_dns_records.iter().any(|(name, _)| name == &dst) {
-            self.client_connected_dns_resources.insert((resource, dst));
-        }
+        debug_assert!(
+            self.client_dns_records.iter().any(|(name, _)| name == &dst),
+            "Should only sample ICMPs to domains that we resolved"
+        );
+
+        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
+        self.client_connected_dns_resources.insert((resource, dst));
     }
 
     fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
