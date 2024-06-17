@@ -7,6 +7,8 @@ docker compose exec -it client sh -c \
     "curl \
         --fail \
         --max-time 12 \
+        --retry 1 \
+        --continue-at - \
         --limit-rate 1M http://download.httpbin/bytes?num=10000000" > download.file &
 
 DOWNLOAD_PID=$!
