@@ -330,15 +330,15 @@ defmodule Web.NavigationComponents do
     <.website_link href="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
     <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
   """
-  attr :href, :string, required: true
-  attr :anchor, :string, required: false, default: ""
+  attr :path, :string, required: true
+  attr :fragment, :string, required: false, default: ""
   slot :inner_block, required: true
   attr :rest, :global
 
   def website_link(assigns) do
     ~H"""
     <.link
-      navigate={"https://www.firezone.dev#{@href}?utm_source=product##{@anchor}"}
+      navigate={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
       class={link_style()}
       target="_blank"
       {@rest}
