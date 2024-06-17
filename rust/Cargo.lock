@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
