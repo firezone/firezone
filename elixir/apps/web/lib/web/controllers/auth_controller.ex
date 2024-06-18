@@ -75,15 +75,24 @@ defmodule Web.AuthController do
     redirect_params = Web.Auth.take_sign_in_params(params)
 
     if String.contains?(provider_identifier, "@") do
-      signed_provider_identifier =
-        Plug.Crypto.sign(conn.secret_key_base, "signed_provider_identifier", provider_identifier)
-
-      redirect_params =
-        Map.put(redirect_params, "signed_provider_identifier", signed_provider_identifier)
-
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
+        conn = maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params)
+
+        signed_provider_identifier =
+          Plug.Crypto.sign(
+            conn.secret_key_base,
+            "signed_provider_identifier",
+            provider_identifier
+          )
+
+        redirect_params =
+          Map.put(
+            redirect_params,
+            "signed_provider_identifier",
+            signed_provider_identifier
+          )
+
         conn
-        |> maybe_send_magic_link_email(provider, provider_identifier, redirect_params)
         |> maybe_put_resent_flash(params)
         |> redirect(
           to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider.id}?#{redirect_params}"
@@ -174,7 +183,7 @@ defmodule Web.AuthController do
           "secret" => nonce
         } = params
       ) do
-    with {:ok, {fragment, _provider_identifier, redirect_params}, conn} <-
+    with {:ok, {fragment, provider_identifier, redirect_params}, conn} <-
            fetch_auth_state(conn, provider_id) do
       conn = delete_auth_state(conn, provider_id)
       secret = String.downcase(nonce) <> fragment
@@ -193,7 +202,15 @@ defmodule Web.AuthController do
           |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
         {:error, _reason} ->
-          redirect_params = Map.put(redirect_params, "provider_identifier", identity_id)
+          signed_provider_identifier =
+            Plug.Crypto.sign(
+              conn.secret_key_base,
+              "signed_provider_identifier",
+              provider_identifier
+            )
+
+          redirect_params =
+            Map.put(redirect_params, "signed_provider_identifier", signed_provider_identifier)
 
           conn
           |> put_flash(:error, "The sign in token is invalid or expired.")

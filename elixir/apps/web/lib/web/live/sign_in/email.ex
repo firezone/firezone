@@ -39,7 +39,7 @@ defmodule Web.SignIn.Email do
         socket =
           socket
           |> put_flash(:error, "Please try to sign in again.")
-          |> push_navigate(~p"/#{account_id_or_slug}?#{redirect_params}")
+          |> push_navigate(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
         {:ok, socket}
     end
