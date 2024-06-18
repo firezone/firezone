@@ -40,7 +40,7 @@ impl Eventloop {
         Self {
             tunnel,
             portal,
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(Duration::from_secs(60), 100),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(Duration::from_secs(5), 100),
         }
     }
 }
