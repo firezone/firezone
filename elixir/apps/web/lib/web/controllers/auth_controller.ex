@@ -148,7 +148,7 @@ defmodule Web.AuthController do
     nonce = identity.provider_virtual_state.nonce
 
     # Fragment is stored in the browser to prevent authorization code injection
-    # attacks where you can trick user into logging in into a attacker account.
+    # attacks where you can trick user into logging in into an attacker account.
     fragment = identity.provider_virtual_state.fragment
 
     {:ok, _} =
