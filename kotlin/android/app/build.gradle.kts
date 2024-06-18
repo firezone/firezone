@@ -56,7 +56,7 @@ android {
         targetSdk = 34
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.0.4"
+        versionName = "1.0.5"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
     }
@@ -82,7 +82,7 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug," +
+                "\"connlib_client_android=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug," +
                     "boringtun=debug,snownet=debug,str0m=debug,connlib_client_shared=debug,info\"",
             )
         }
