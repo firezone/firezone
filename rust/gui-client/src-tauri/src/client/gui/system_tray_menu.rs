@@ -53,6 +53,10 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
         .separator()
         .disabled("Resources");
 
+    tracing::info!(
+        resource_count = resources.len(),
+        "Building signed-in tray menu"
+    );
     for res in resources {
         let submenu = get_submenu(res);
 
@@ -63,13 +67,11 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
             .copyable(res.pastable().as_ref());
 
         let submenu = if let Some(site) = res.sites().first() {
-            // This should roughly match the iChat status indicators used in the macOS Client.
-            // Windows doesn't support colors, and the shapes are needed for colorblind users anyway.
-            // <https://wearecolorblind.com/examples/ichat/>
+            // Emojis may be causing an issue on some Ubuntu desktop environments.
             let status = match res.status() {
-                Status::Unknown => "⭕ No activity",
-                Status::Online => "🟢 Gateway connected",
-                Status::Offline => "🟥 All Gateways offline",
+                Status::Unknown => "[-] No activity",
+                Status::Online => "[O] Gateway connected",
+                Status::Offline => "[X] All Gateways offline",
             };
 
             submenu
@@ -97,6 +99,54 @@ pub(crate) fn signed_out() -> SystemTrayMenu {
     SystemTrayMenu::new()
         .item(Event::SignIn, "Sign In")
         .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
+}
+
+pub(crate) fn debug() -> SystemTrayMenu {
+    let mut menu = SystemTrayMenu::new()
+        .disabled("Debug tray menu")
+        .item(None, "Fake sign out button")
+        .separator()
+        .disabled("Resources");
+
+    let submenu = SystemTrayMenu::new().copyable("Fake submenu");
+    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 1", submenu));
+
+    let submenu = SystemTrayMenu::new()
+        .copyable("Fake Copyable")
+        .item(None, "Fake description")
+        .separator()
+        .disabled("Resource")
+        .copyable("Fake name")
+        .copyable("Fake pastable")
+        .separator()
+        .disabled("Site")
+        .item(None, "Fake name")
+        .item(None, "[-] No activity");
+    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 2", submenu));
+
+    let submenu = SystemTrayMenu::new()
+        .copyable("Fake Copyable")
+        .item(None, "Fake description")
+        .separator()
+        .disabled("Resource")
+        .copyable("Fake name")
+        .copyable("Fake pastable")
+        .separator()
+        .disabled("Site")
+        .item(None, "Fake name")
+        .item(None, "⭕🟢🟥 Fake status");
+    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 3", submenu));
+
+    let submenu = SystemTrayMenu::new().copyable("Fake Copyable ⭕");
+    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 4", submenu));
+
+    let submenu = SystemTrayMenu::new().copyable("Fake Copyable 🟢");
+    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 5", submenu));
+
+    let submenu = SystemTrayMenu::new().copyable("Fake Copyable 🟥");
+    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 6", submenu));
+
+    menu
 }
 
 trait FirezoneMenu {
