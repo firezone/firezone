@@ -53,7 +53,6 @@ pub mod platform;
 use dns_control::DnsController;
 use ipc::{Server as IpcServer, ServiceId};
 
-
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
 
