@@ -28,7 +28,7 @@ runs:
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
-        key: ${{ runner.os }}-${{ runner.arch }}-webview2-installer
+        key: ${{ runner.os }}-${{ runner.arch }}-webview2-offline-installer
     - name: Download WebView2 bootstrapper
       if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' }}
       # This is the "Evergreen" bootstrapper from Microsoft
