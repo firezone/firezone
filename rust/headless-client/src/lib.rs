@@ -46,7 +46,6 @@ pub mod heartbeat;
 pub mod ipc;
 pub mod known_dirs;
 
-// Setting `path` explicitly like this hides other platforms from `cargo-mutants`
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
 pub mod platform;
