@@ -74,39 +74,39 @@ defmodule Web.AuthController do
       ) do
     redirect_params = Web.Auth.take_sign_in_params(params)
 
-    if String.contains?(provider_identifier, "@") do
-      with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
-        conn = maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params)
+    with true <- String.contains?(provider_identifier, "@"),
+         {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
+      conn = maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params)
 
-        signed_provider_identifier =
-          Plug.Crypto.sign(
-            conn.secret_key_base,
-            "signed_provider_identifier",
-            provider_identifier
-          )
-
-        redirect_params =
-          Map.put(
-            redirect_params,
-            "signed_provider_identifier",
-            signed_provider_identifier
-          )
-
-        conn
-        |> maybe_put_resent_flash(params)
-        |> redirect(
-          to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider.id}?#{redirect_params}"
+      signed_provider_identifier =
+        Plug.Crypto.sign(
+          conn.secret_key_base,
+          "signed_provider_identifier",
+          provider_identifier
         )
-      else
-        {:error, :not_found} ->
-          conn
-          |> put_flash(:error, "You may not use this method to sign in.")
-          |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
-      end
-    else
+
+      redirect_params =
+        Map.put(
+          redirect_params,
+          "signed_provider_identifier",
+          signed_provider_identifier
+        )
+
       conn
-      |> put_flash(:error, "Invalid email address.")
-      |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+      |> maybe_put_resent_flash(params)
+      |> redirect(
+        to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider.id}?#{redirect_params}"
+      )
+    else
+      false ->
+        conn
+        |> put_flash(:error, "Invalid email address.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+
+      {:error, :not_found} ->
+        conn
+        |> put_flash(:error, "You may not use this method to sign in.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
   end
 
