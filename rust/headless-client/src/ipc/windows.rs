@@ -170,6 +170,10 @@ pub fn named_pipe_path(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{Context as _};
+    use futures::StreamExt;
+    use super::{Server, ServiceId};
+
     #[test]
     fn named_pipe_path() {
         assert_eq!(
@@ -180,6 +184,29 @@ mod tests {
 
     #[test]
     fn pipe_path() {
-        assert!(super::pipe_path(super::ServiceId::Prod).starts_with(r"\\.\pipe\"));
+        assert!(super::pipe_path(ServiceId::Prod).starts_with(r"\\.\pipe\"));
+    }
+
+    #[tokio::test]
+    async fn single_instance() -> anyhow::Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        const ID: ServiceId = ServiceId::Test("2GOCMPBG");
+        let mut server_1 = Server::new(ID).await?;
+        let pipe_path = server_1.pipe_path.clone();
+
+        tokio::spawn(async move {
+            let (mut rx, _tx) = server_1.next_client_split().await?;
+            rx.next().await;
+            Ok::<_, anyhow::Error>(())
+        });
+
+        let (_rx, _tx) = crate::ipc::connect_to_service(ID).await?;
+
+        match super::create_pipe_server(&pipe_path) {
+            Err(super::PipeError::AccessDenied) => {},
+            Err(error) => Err(error).context("Expected `PipeError::AccessDenied` but got another error")?,
+            Ok(_) => anyhow::bail!("Expected `PipeError::AccessDenied` but got `Ok`"),
+        }
+        Ok(())
     }
 }
