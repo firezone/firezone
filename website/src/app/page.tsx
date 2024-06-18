@@ -196,8 +196,10 @@ export default function Page() {
             Connections are always end-to-end encrypted with keys that rotate
             daily, and are directly established between your Users and Gateways,
             so we can never see your data. Firezone's advanced Policy Engine
-            logs who accessed what and when, so you can easily demonstrate
-            compliance with internal and external security audits.
+            logs who accessed what and when and can be configured to allow
+            access only from certain countries, IPs, and timeframes, so you can
+            easily demonstrate compliance with internal and external security
+            audits.
           </p>
         </div>
 
