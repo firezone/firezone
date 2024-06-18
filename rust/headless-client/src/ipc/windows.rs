@@ -1,4 +1,4 @@
-use crate::ipc::ServiceId;
+use super::ServiceId;
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
 use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
@@ -41,13 +41,11 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
 impl Server {
     /// Platform-specific setup
     ///
-    /// Set `id` to an empty string for production and random alphanumeric strings for tests
-    ///
     /// This is async on Linux
     #[allow(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
-        let pipe_path = pipe_path(id);
         crate::platform::setup_before_connlib()?;
+        let pipe_path = pipe_path(id);
         Ok(Self { pipe_path })
     }
 
@@ -151,13 +149,10 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     }
 }
 
-/// Named pipe for IPC between GUI client and IPC service
-///
-/// `id` should have A-Z, 0-9 only, no dots or slashes.
-fn pipe_path(id: ServiceId) -> String {
+pub fn pipe_path(id: ServiceId) -> String {
     let name = match id {
         ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
-        ServiceId::Test(id) => format!("{BUNDLE_ID}_{id}.ipc_service"),
+        ServiceId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
     };
     named_pipe_path(&name)
 }
@@ -185,6 +180,6 @@ mod tests {
 
     #[test]
     fn pipe_path() {
-        assert!(super::pipe_path(crate::ipc::ServiceId::Prod).starts_with(r"\\.\pipe\"));
+        assert!(super::pipe_path(super::ServiceId::Prod).starts_with(r"\\.\pipe\"));
     }
 }

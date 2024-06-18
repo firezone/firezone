@@ -22,6 +22,7 @@ pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Codec<IpcServerMsg>>
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, ServerCodec>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, ServerCodec>;
 
+/// A name that both the server and client can use to find each other
 #[derive(Clone, Copy)]
 pub enum ServiceId {
     /// The IPC service used by Firezone GUI Client in production
@@ -29,7 +30,9 @@ pub enum ServiceId {
     /// An IPC service used for unit tests.
     ///
     /// Includes an ID so that multiple tests can
-    /// run in parallel
+    /// run in parallel.
+    ///
+    /// The ID should have A-Z, 0-9 only, no dots or slashes.
     Test(&'static str),
 }
 

@@ -1,4 +1,4 @@
-use crate::ipc::ServiceId;
+use super::ServiceId;
 use anyhow::{Context as _, Result};
 use std::{os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
@@ -41,6 +41,11 @@ impl Server {
         let sock_path = sock_path(id);
         // Remove the socket if a previous run left it there
         tokio::fs::remove_file(&sock_path).await.ok();
+        // Create the dir if possible, needed for test paths under `/run/user`
+        let dir = sock_path
+            .parent()
+            .context("`sock_path` should always have a parent")?;
+        tokio::fs::create_dir_all(dir).await?;
         let listener = UnixListener::bind(&sock_path)
             .with_context(|| format!("Couldn't bind UDS `{}`", sock_path.display()))?;
         let perms = std::fs::Permissions::from_mode(0o660);
