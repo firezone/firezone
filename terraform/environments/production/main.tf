@@ -261,18 +261,20 @@ module "ops" {
 
   pagerduty_auth_token = var.pagerduty_auth_token
 
+  # Feel free to add your Mobile App (due to SOC requirements, only can be used from work devices)
+  # or SMS notification  (recommended for personal devices) channels
   additional_notification_channels = [
     # Andrew
     ## Mobile App
-    "projects/firezone-prod/notificationChannels/203795594709100952",
+    # "projects/firezone-prod/notificationChannels/203795594709100952",
     ## SMS
-    # "projects/firezone-prod/notificationChannels/1314108963890678627",
+    "projects/firezone-prod/notificationChannels/1314108963890678627",
     # Brian
     ## Mobile App
-    "projects/firezone-prod/notificationChannels/16177228986287373178",
+    # "projects/firezone-prod/notificationChannels/16177228986287373178",
     # Jamil
     ## Mobile App
-    "projects/firezone-prod/notificationChannels/1608881766413151733"
+    # "projects/firezone-prod/notificationChannels/1608881766413151733"
   ]
 
   api_host = module.api.host
