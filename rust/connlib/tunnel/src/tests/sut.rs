@@ -8,11 +8,10 @@ use crate::tests::transition::Transition;
 use crate::{dns::DnsQuery, ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::DomainResponse;
 use connlib_shared::{
     messages::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
-        gateway, ClientId, GatewayId, ResourceId,
+        gateway, ClientId, DomainResponse, GatewayId, ResourceId,
     },
     DomainName,
 };
@@ -272,7 +271,6 @@ impl TunnelTest {
                     &ref_state.client_cidr_resources,
                     &ref_state.client_dns_resources,
                     &ref_state.global_dns_records,
-                    self.now,
                 );
                 continue;
             }
@@ -582,7 +580,6 @@ impl TunnelTest {
         client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
         client_dns_resource: &BTreeMap<ResourceId, ResourceDescriptionDns>,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-        now: Instant,
     ) {
         match event {
             ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
@@ -639,45 +636,43 @@ impl TunnelTest {
 
                 match request {
                     Request::NewConnection(new_connection) => {
-                        let connection_accepted = self
-                            .gateway
-                            .span
-                            .in_scope(|| {
-                                self.gateway.state.accept(
-                                    self.client.id,
-                                    snownet::Offer {
-                                        session_key: new_connection
-                                            .client_preshared_key
-                                            .expose_secret()
-                                            .0
-                                            .into(),
-                                        credentials: snownet::Credentials {
-                                            username: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .username,
-                                            password: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .password,
-                                        },
+                        let offer = new_connection.client_payload.ice_parameters;
+                        let domain = new_connection.client_payload.domain;
+
+                        let answer = self.gateway.span.in_scope(|| {
+                            let answer = self.gateway.state.accept(
+                                self.client.id,
+                                snownet::Offer {
+                                    session_key: new_connection
+                                        .client_preshared_key
+                                        .expose_secret()
+                                        .0
+                                        .into(),
+                                    credentials: snownet::Credentials {
+                                        username: offer.username,
+                                        password: offer.password,
                                     },
-                                    self.client.state.public_key(),
-                                    self.client.tunnel_ip4,
-                                    self.client.tunnel_ip6,
-                                    HashSet::default(),
-                                    HashSet::default(),
-                                    new_connection
-                                        .client_payload
-                                        .domain
-                                        .as_ref()
-                                        .map(|d| (d.clone(), Vec::new())),
-                                    None, // TODO: How to generate expiry?
+                                },
+                                self.client.state.public_key(),
+                                self.client.tunnel_ip4,
+                                self.client.tunnel_ip6,
+                                HashSet::default(),
+                                HashSet::default(),
+                                self.now,
+                            );
+                            self.gateway
+                                .state
+                                .allow_access(
                                     resource,
+                                    self.client.id,
+                                    None,
+                                    domain.clone().map(|d| (d, Vec::new())),
                                     self.now,
                                 )
-                            })
-                            .unwrap();
+                                .unwrap();
+
+                            answer
+                        });
 
                         self.client
                             .span
@@ -685,17 +680,15 @@ impl TunnelTest {
                                 self.client.state.accept_answer(
                                     snownet::Answer {
                                         credentials: snownet::Credentials {
-                                            username: connection_accepted.username,
-                                            password: connection_accepted.password,
+                                            username: answer.username,
+                                            password: answer.password,
                                         },
                                     },
                                     resource_id,
                                     self.gateway.state.public_key(),
-                                    new_connection.client_payload.domain.map(|n| {
-                                        connlib_shared::messages::DomainResponse {
-                                            domain: n,
-                                            address: resolved_ips,
-                                        }
+                                    domain.map(|n| connlib_shared::messages::DomainResponse {
+                                        domain: n,
+                                        address: resolved_ips,
                                     }),
                                     self.now,
                                 )
@@ -713,7 +706,7 @@ impl TunnelTest {
                                     self.client.id,
                                     None,
                                     domain.clone().map(|d| (d, Vec::new())),
-                                    now,
+                                    self.now,
                                 )
                             })
                             .unwrap();
@@ -762,7 +755,7 @@ impl TunnelTest {
                                 self.client.id,
                                 None,
                                 domain.clone().map(|d| (d, Vec::new())),
-                                now,
+                                self.now,
                             )
                         })
                         .unwrap();

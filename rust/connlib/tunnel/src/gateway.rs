@@ -53,7 +53,9 @@ where
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> anyhow::Result<Answer> {
-        self.role_state.accept(
+        let now = Instant::now();
+
+        let answer = self.role_state.accept(
             client_id,
             snownet::Offer {
                 session_key: key.expose_secret().0.into(),
@@ -67,11 +69,12 @@ where
             ipv6,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays),
-            domain,
-            expires_at,
-            resource,
-            Instant::now(),
-        )
+            now,
+        );
+        self.role_state
+            .allow_access(resource, client_id, expires_at, domain, now)?;
+
+        Ok(answer)
     }
 
     pub fn cleanup_connection(&mut self, id: &ClientId) {
@@ -242,54 +245,21 @@ impl GatewayState {
         ipv6: Ipv6Addr,
         stun_servers: HashSet<SocketAddr>,
         turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
-    ) -> anyhow::Result<Answer> {
-        let mut peer = ClientOnGateway::new(client_id, ipv4, ipv6);
-
-        peer.add_resource(
-            resource.addresses(),
-            resource.id(),
-            resource.filters(),
-            expires_at,
-            domain.clone().map(|(n, _)| n),
-        );
-
-        match (&domain, &resource) {
-            (Some((domain, resource_ips)), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    bail!(
-                        "'{domain}' is not a sub-domain of the DNS resource '{}'",
-                        r.name
-                    )
-                }
-
-                peer.assign_translations(
-                    domain.clone(),
-                    r.id,
-                    &r.addresses,
-                    resource_ips.clone(),
-                    now,
-                );
-            }
-            (None, ResourceDescription::Dns(_)) => {
-                bail!("No domain supplied with connection request for DNS resource")
-            }
-            _ => {}
-        }
-
+    ) -> Answer {
         let answer =
             self.node
                 .accept_connection(client_id, offer, client, stun_servers, turn_servers, now);
 
-        self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
+        self.peers.insert(
+            ClientOnGateway::new(client_id, ipv4, ipv6),
+            &[ipv4.into(), ipv6.into()],
+        );
 
-        Ok(Answer {
+        Answer {
             username: answer.credentials.username,
             password: answer.credentials.password,
-        })
+        }
     }
 
     pub fn refresh_translation(

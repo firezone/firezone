@@ -257,7 +257,7 @@ impl Eventloop {
         let addresses = match result {
             Ok(Ok(addresses)) => addresses,
             Ok(Err(e)) => {
-                tracing::warn!(client = %req.client.id, reference = %req.reference, "DNS resolution failed: {e}");
+                tracing::warn!(client = %req.client.id, reference = %req.reference, "DNS resolution failed as part of connection request: {e}");
 
                 self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
                 return;
@@ -291,7 +291,7 @@ impl Eventloop {
                 self.tunnel.cleanup_connection(&client);
 
                 tracing::warn!(%client, "Failed to accept connection: {e}");
-                self.send_connection_reply(req.reference, ConnectionFailedError::Accept);
+                self.send_connection_reply(req.reference, ConnectionFailedError::AllowAccess);
 
                 return;
             }
@@ -314,19 +314,18 @@ impl Eventloop {
         result: Result<io::Result<Vec<IpAddr>>, Timeout>,
         req: AllowAccess,
     ) {
-        //TODO: Should we respond with an error for allow-access requests?
         let addresses = match result {
             Ok(Ok(addresses)) => addresses,
             Ok(Err(e)) => {
-                tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution failed: {e}");
+                tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution failed as part of allow request: {e}");
 
-                // self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
+                self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
                 return;
             }
             Err(e) => {
-                tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}");
+                tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow request: {e}");
 
-                // self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
+                self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
                 return;
             }
         };
@@ -337,6 +336,18 @@ impl Eventloop {
             req.expires_at,
             req.payload.as_ref().map(|r| r.as_tuple()),
         );
+
+        match result {
+            Ok(maybe_domain_response) => maybe_domain_response,
+            Err(e) => {
+                let client = req.client_id;
+
+                tracing::warn!(%client, "Failed to allow access: {e}");
+                self.send_connection_reply(req.reference, ConnectionFailedError::AllowAccess);
+
+                return;
+            }
+        };
 
         match (result, req.payload) {
             (Ok(()), Some(ResolveRequest::ReturnResponse(domain))) => {

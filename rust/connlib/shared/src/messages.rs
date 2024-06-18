@@ -235,7 +235,7 @@ pub enum ConnectionFailedError {
     #[error("Failed to resolve DNS records")]
     Dns,
     #[error("Failed to accept connection")]
-    Accept,
+    AllowAccess,
 }
 
 impl From<ConnectionFailedError> for GatewayResponse {
