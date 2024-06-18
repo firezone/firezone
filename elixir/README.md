@@ -238,8 +238,9 @@ account_id = "c89bcc8c-9392-4dae-a40d-888aef6d28e0"
 
 Prerequisites:
 
-* A Stripe account (Note: for the Firezone team, you will need to be invited to the Firezone Stripe account)
-* [Stripe CLI](https://github.com/stripe/stripe-cli)
+- A Stripe account (Note: for the Firezone team, you will need to be invited to
+  the Firezone Stripe account)
+- [Stripe CLI](https://github.com/stripe/stripe-cli)
 
 Steps:
 
@@ -264,27 +265,37 @@ Steps:
    BILLING_ENABLED=true STRIPE_SECRET_KEY="...copy from stripe dashboard..." STRIPE_WEBHOOK_SIGNING_SECRET="...copy from stripe cli tool.." mix phx.server
    ```
 
-When updating the billing plan in stripe, use the [Stripe Testing Docs](https://docs.stripe.com/testing#testing-interactively) for how to add test payment info
+When updating the billing plan in stripe, use the
+[Stripe Testing Docs](https://docs.stripe.com/testing#testing-interactively) for
+how to add test payment info
 
 ### WorkOS integration
 
-WorkOS is currently being used for JumpCloud directory sync integration.  This allows JumpCloud users to use SCIM on the JumpCloud side, rather than having to give Firezone an admin JumpCloud API token.
+WorkOS is currently being used for JumpCloud directory sync integration. This
+allows JumpCloud users to use SCIM on the JumpCloud side, rather than having to
+give Firezone an admin JumpCloud API token.
 
 #### Connecting WorkOS in dev mode for manual testing
 
-If you are not planning to use the JumpCloud provider in your local development setup, then no additional setup is needed.
-However, if you do need to use the JumpCloud provider locally, you will need to obtain an API Key and Client ID from the [WorkOS Dashboard](https://dashboard.workos.com/api-keys).
+If you are not planning to use the JumpCloud provider in your local development
+setup, then no additional setup is needed. However, if you do need to use the
+JumpCloud provider locally, you will need to obtain an API Key and Client ID
+from the [WorkOS Dashboard](https://dashboard.workos.com/api-keys).
 
-To obtain a WorkOS dashboard login, contact one of the following Firezone team members:
+To obtain a WorkOS dashboard login, contact one of the following Firezone team
+members:
 
-* @jamilbk
-* @bmanifold
-* @AndrewDryga
+- @jamilbk
+- @bmanifold
+- @AndrewDryga
 
-Once you are able to login to the WorkOS Dashboard, make sure that you have selected the 'Staging' environment within WorkOS.
-Navigate to the API Keys page and use the `Create Key` button to obtain credentials.
+Once you are able to login to the WorkOS Dashboard, make sure that you have
+selected the 'Staging' environment within WorkOS. Navigate to the API Keys page
+and use the `Create Key` button to obtain credentials.
 
-After obtaining WorkOS API credentials, you will need to make sure they are set in the environment ENVs when starting your local dev instance of Firezone.  As an example:
+After obtaining WorkOS API credentials, you will need to make sure they are set
+in the environment ENVs when starting your local dev instance of Firezone. As an
+example:
 
 ```bash
 cd elixir/
@@ -310,9 +321,10 @@ You'll need access to this env to perform the commands below; to request access
 you need to complete the following process:
 
 - Open a PR adding yourself to `project_owners` in `main.tf` for each of the
-[environments](../terraform/environments) you need access.
+  [environments](../terraform/environments) you need access.
 - Request a review from an existing project owner.
-- Once approved, merge the PR and verify access by continuing with one of the steps below.
+- Once approved, merge the PR and verify access by continuing with one of the
+  steps below.
 
 This is a danger zone so first of all, ALWAYS make sure on which environment
 your code is running:
@@ -449,6 +461,20 @@ iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)1> group = Domain.Repo.o
 
 iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, token} = Domain.Relays.create_token(group, %{})
 ...
+```
+
+## Apply Terraform changes without deploying new containers
+
+Switch to environment you want to apply changes to:
+
+```bash
+cd terraform/environments/staging
+```
+
+and apply changes:
+
+```bash
+terraform apply -var image_tag=$(terraform output -raw image_tag)
 ```
 
 ## Connection to production Cloud SQL instance
