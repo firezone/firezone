@@ -698,7 +698,7 @@ fn get_log_filter() -> Result<String> {
     Ok(SERVICE_RUST_LOG.to_string())
 }
 
-/// Sets up logging for stderr only, with INFO level by default
+/// Sets up logging for stdout only, with INFO level by default
 pub fn setup_stdout_logging() -> Result<()> {
     let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
     let layer = fmt::layer().with_filter(filter);
