@@ -6,7 +6,8 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_shared::messages::{
-    ClientId, ConnectionAccepted, RelaysPresence, ResourceAccepted, ResourceId,
+    ClientId, ConnectionAccepted,
+    {ConnectionFailed, ConnectionFailedError, RelaysPresence, ResourceAccepted, ResourceId},
 };
 use connlib_shared::{messages::GatewayResponse, DomainName};
 #[cfg(not(target_os = "windows"))]
@@ -251,9 +252,23 @@ impl Eventloop {
         result: Result<Vec<IpAddr>, Timeout>,
         req: RequestConnection,
     ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
-            .unwrap_or_default();
+        let addresses = match result {
+            Ok(addresses) => addresses,
+            Err(e) => {
+                tracing::warn!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}");
+
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::ConnectionReady(ConnectionReady {
+                        reference: req.reference,
+                        gateway_payload: GatewayResponse::ConnectionFailed(ConnectionFailed {
+                            error: ConnectionFailedError::DnsResolutionFailed,
+                        }),
+                    }),
+                );
+                return;
+            }
+        };
 
         match self.tunnel.accept(
             req.client.id,
