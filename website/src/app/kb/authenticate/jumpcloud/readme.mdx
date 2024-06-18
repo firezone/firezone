@@ -152,6 +152,9 @@ setup page from the Firezone admin portal and paste them here.
 
 Use [https://app.firezone.dev/](https://app.firezone.dev) for the **Login URL**.
 
+Then, under **Attribute Mapping**, make sure **Email** and **Profile** are both
+checked under **Standard Scopes**. Leave the mappings as they are.
+
 Then, click **Activate**.
 
 <Link
@@ -205,7 +208,11 @@ If you'd like to enable directory sync, keep reading below.
 
 To enable directory sync, go to the JumpCloud provider you just created in the
 Firezone admin portal. Click the **Setup Sync** button in the **Sync Status**
-section of the **Details** pane and follow the prompts from there.
+section of the **Details** pane.
+
+You'll be taken through a detailed step-by-step guide to set up SCIM 2.0 with
+JumpCloud. Make sure to follow the instructions carefully to ensure that the
+sync is set up correctly.
 
 <Alert color="warning">
   **Note**: Firezone uses [WorkOS](https://workos.com) behind the scenes to
