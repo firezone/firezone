@@ -1,3 +1,5 @@
+// Setting `path` directly helps `cargo-mutants` skip over uncompiled code
+// for other platforms, e.g. skip Linux code when building for Windows.
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
 pub mod platform;
