@@ -232,8 +232,28 @@ pub enum GatewayResponse {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, thiserror::Error)]
 pub enum ConnectionFailedError {
-    #[error("DNS resolution failed")]
-    DnsResolutionFailed,
+    #[error("Failed to resolve DNS records")]
+    Dns,
+    #[error("Failed to accept connection")]
+    Accept,
+}
+
+impl From<ConnectionFailedError> for GatewayResponse {
+    fn from(error: ConnectionFailedError) -> Self {
+        GatewayResponse::ConnectionFailed(ConnectionFailed { error })
+    }
+}
+
+impl From<ResourceAccepted> for GatewayResponse {
+    fn from(accepted: ResourceAccepted) -> Self {
+        GatewayResponse::ResourceAccepted(accepted)
+    }
+}
+
+impl From<ConnectionAccepted> for GatewayResponse {
+    fn from(accepted: ConnectionAccepted) -> Self {
+        GatewayResponse::ConnectionAccepted(accepted)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]

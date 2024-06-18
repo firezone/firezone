@@ -1,13 +1,14 @@
 use crate::messages::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-    IngressMessages, RejectAccess, RequestConnection,
+    IngressMessages, RejectAccess, RequestConnection, ResolveRequest,
 };
 use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
+use connlib_shared::messages::DomainResponse;
 use connlib_shared::messages::{
     ClientId, ConnectionAccepted,
-    {ConnectionFailed, ConnectionFailedError, RelaysPresence, ResourceAccepted, ResourceId},
+    {ConnectionFailedError, RelaysPresence, ResourceAccepted, ResourceId},
 };
 use connlib_shared::{messages::GatewayResponse, DomainName};
 #[cfg(not(target_os = "windows"))]
@@ -17,6 +18,7 @@ use futures_bounded::Timeout;
 use phoenix_channel::PhoenixChannel;
 use std::collections::HashSet;
 use std::convert::Infallible;
+use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -43,7 +45,7 @@ pub struct Eventloop {
     tunnel: GatewayTunnel<CallbackHandler>,
     portal: PhoenixChannel<(), IngressMessages, ()>,
 
-    resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
+    resolve_tasks: futures_bounded::FuturesTupleSet<io::Result<Vec<IpAddr>>, ResolveTrigger>,
 }
 
 impl Eventloop {
@@ -249,28 +251,26 @@ impl Eventloop {
 
     pub fn accept_connection(
         &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
+        result: Result<io::Result<Vec<IpAddr>>, Timeout>,
         req: RequestConnection,
     ) {
         let addresses = match result {
-            Ok(addresses) => addresses,
+            Ok(Ok(addresses)) => addresses,
+            Ok(Err(e)) => {
+                tracing::warn!(client = %req.client.id, reference = %req.reference, "DNS resolution failed: {e}");
+
+                self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
+                return;
+            }
             Err(e) => {
                 tracing::warn!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}");
 
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::ConnectionReady(ConnectionReady {
-                        reference: req.reference,
-                        gateway_payload: GatewayResponse::ConnectionFailed(ConnectionFailed {
-                            error: ConnectionFailedError::DnsResolutionFailed,
-                        }),
-                    }),
-                );
+                self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
                 return;
             }
         };
 
-        match self.tunnel.accept(
+        let result = self.tunnel.accept(
             req.client.id,
             req.client.peer.preshared_key,
             req.client.payload.ice_parameters,
@@ -281,99 +281,126 @@ impl Eventloop {
             req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
             req.resource.into_resolved(addresses.clone()),
-        ) {
-            Ok(accepted) => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::ConnectionReady(ConnectionReady {
-                        reference: req.reference,
-                        gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                            ice_parameters: accepted,
-                            domain_response: req.client.payload.domain.map(|r| {
-                                connlib_shared::messages::DomainResponse {
-                                    domain: r.name(),
-                                    address: addresses,
-                                }
-                            }),
-                        }),
-                    }),
-                );
+        );
 
-                // TODO: If outbound request fails, cleanup connection.
-            }
+        let answer = match result {
+            Ok(accepted) => accepted,
             Err(e) => {
                 let client = req.client.id;
 
                 self.tunnel.cleanup_connection(&client);
-                tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
+
+                tracing::warn!(%client, "Failed to accept connection: {e}");
+                self.send_connection_reply(req.reference, ConnectionFailedError::Accept);
+
+                return;
             }
+        };
+
+        self.send_connection_reply(
+            req.reference,
+            ConnectionAccepted {
+                ice_parameters: answer,
+                domain_response: req.client.payload.domain.map(|r| DomainResponse {
+                    domain: r.name(),
+                    address: addresses,
+                }),
+            },
+        );
+    }
+
+    pub fn allow_access(
+        &mut self,
+        result: Result<io::Result<Vec<IpAddr>>, Timeout>,
+        req: AllowAccess,
+    ) {
+        //TODO: Should we respond with an error for allow-access requests?
+        let addresses = match result {
+            Ok(Ok(addresses)) => addresses,
+            Ok(Err(e)) => {
+                tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution failed: {e}");
+
+                // self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}");
+
+                // self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
+                return;
+            }
+        };
+
+        let result = self.tunnel.allow_access(
+            req.resource.into_resolved(addresses.clone()),
+            req.client_id,
+            req.expires_at,
+            req.payload.as_ref().map(|r| r.as_tuple()),
+        );
+
+        match (result, req.payload) {
+            (Ok(()), Some(ResolveRequest::ReturnResponse(domain))) => {
+                self.send_connection_reply(
+                    req.reference,
+                    ResourceAccepted {
+                        domain_response: DomainResponse {
+                            domain,
+                            address: addresses,
+                        },
+                    },
+                );
+            }
+            (
+                Ok(_) | Err(_),
+                Some(ResolveRequest::ReturnResponse(_) | ResolveRequest::MapResponse { .. }) | None,
+            ) => {}
         }
     }
 
-    pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
-            .unwrap_or_default();
-
-        if let (Ok(()), Some(resolve_request)) = (
-            self.tunnel.allow_access(
-                req.resource.into_resolved(addresses.clone()),
-                req.client_id,
-                req.expires_at,
-                req.payload.as_ref().map(|r| r.as_tuple()),
-            ),
-            req.payload,
-        ) {
-            self.portal.send(
-                PHOENIX_TOPIC,
-                EgressMessages::ConnectionReady(ConnectionReady {
-                    reference: req.reference,
-                    gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted {
-                        domain_response: connlib_shared::messages::DomainResponse {
-                            domain: resolve_request.name(),
-                            address: addresses,
-                        },
-                    }),
-                }),
-            );
-        }
+    fn send_connection_reply(&mut self, req_ref: String, result: impl Into<GatewayResponse>) {
+        self.portal.send(
+            PHOENIX_TOPIC,
+            EgressMessages::ConnectionReady(ConnectionReady {
+                reference: req_ref,
+                gateway_payload: result.into(),
+            }),
+        );
     }
 
     pub fn refresh_translation(
         &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
+        result: Result<io::Result<Vec<IpAddr>>, Timeout>,
         conn_id: ClientId,
         resource_id: ResourceId,
         name: DomainName,
     ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {e}"))
-            .unwrap_or_default();
+        let addresses = match result {
+            Ok(Ok(addresses)) => addresses,
+            Ok(Err(e)) => {
+                tracing::warn!(client = %conn_id, "DNS resolution failed as part of refreshing DNS: {e}");
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(client = %conn_id, "DNS resolution timed as part of refreshing DNS: {e}");
+                return;
+            }
+        };
 
         self.tunnel
             .refresh_translation(conn_id, resource_id, name, addresses);
     }
 }
 
-async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
+async fn resolve(domain: Option<DomainName>) -> io::Result<Vec<IpAddr>> {
     let Some(domain) = domain.clone() else {
-        return vec![];
+        return Ok(vec![]);
     };
 
     let dname = domain.to_string();
 
     match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
-        Ok(Ok(addresses)) => addresses,
-        Ok(Err(e)) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
-
-            vec![]
-        }
-        Err(e) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
-
-            vec![]
-        }
+        Ok(result) => result,
+        Err(e) => Err(io::Error::new(io::ErrorKind::Interrupted, e)),
     }
 }
 

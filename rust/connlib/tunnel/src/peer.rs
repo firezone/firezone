@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
+use connlib_shared::messages::gateway::ResourceDescription;
 use connlib_shared::messages::{
     gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
 };
@@ -219,7 +219,7 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    fn assign_translations(
+    pub(crate) fn assign_translations(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
@@ -256,24 +256,6 @@ impl ClientOnGateway {
                 },
             );
         }
-    }
-
-    pub(crate) fn assign_proxies(
-        &mut self,
-        resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
-        domain_ips: Option<(DomainName, Vec<IpAddr>)>,
-        now: Instant,
-    ) -> connlib_shared::Result<()> {
-        match (resource, domain_ips) {
-            (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
-                self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
-            }
-            (ResourceDescription::Cidr(_), None) => {}
-            _ => {
-                return Err(connlib_shared::Error::InvalidResource);
-            }
-        }
-        Ok(())
     }
 
     pub(crate) fn is_emptied(&self) -> bool {

@@ -4,7 +4,7 @@ use std::{collections::HashSet, net::IpAddr};
 use thiserror::Error;
 
 /// Unified Result type to use across connlib.
-pub type Result<T> = std::result::Result<T, ConnlibError>;
+pub type Result<T, E = ConnlibError> = std::result::Result<T, E>;
 
 /// Unified error type to use across connlib.
 #[derive(Error, Debug)]
@@ -18,9 +18,6 @@ pub enum ConnlibError {
     /// Tried to access a resource which didn't exists.
     #[error("Tried to access an undefined resource")]
     UnknownResource,
-    /// One of the stored resources isn't a valid CIDR/DNS.
-    #[error("Invalid resource")]
-    InvalidResource,
     /// Error regarding our own control protocol.
     #[error("Control plane protocol error. Unexpected messages or message order.")]
     ControlProtocolError,
