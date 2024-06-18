@@ -4,20 +4,13 @@ on:
   release:
     types:
       - published
-  workflow_call:
-    inputs:
-      tag:
-        description: "Image tag to deploy. Defaults to the last commit SHA in the branch."
-        type: string
-        default: ${{ github.sha }}
-        required: false
 
 concurrency:
   group: "publish-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:
-  publish-images-to-ghcr:
+  publish-artifacts:
     runs-on: ubuntu-22.04
     permissions:
       # Needed to upload artifacts to a release
@@ -29,27 +22,29 @@ jobs:
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
-          # Deploy from staging artifacts since it what was built on main
           project: firezone-staging
+      - uses: ./.github/actions/gcp-docker-login
+        with:
+          project: firezone-prod
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.GITHUB_TOKEN}}
-      - name: Pull and push
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set variables
+        id: set-variables
         run: |
           set -xe
 
-
           if [[ "${{ github.event.release.name }}" =~ gateway* ]]; then
-            image=gateway
+            ARTIFACT=gateway
             # mark:next-gateway-version
-            VERSION="1.0.8"
+            VERSION="1.0.9"
           elif [[ "${{ github.event.release.name }}" =~ headless* ]]; then
-            image=client
+            ARTIFACT=client
             # mark:next-headless-version
-            VERSION="1.0.8"
+            VERSION="1.0.9"
           else
             echo "Release doesn't require publishing Docker images"
             exit 0
@@ -58,14 +53,60 @@ jobs:
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
-          SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${image}:${{ inputs.tag || github.sha }}
+          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "major_version=$MAJOR_VERSION" >> "$GITHUB_OUTPUT"
+          echo "major_minor_version=$MAJOR_MINOR_VERSION" >> "$GITHUB_OUTPUT"
+      - name: Pull and push
+        if: ${{ steps.set-variables.outputs.artifact == 'gateway' || steps.set-variables.outputs.artifact == 'client' }}
+        run: |
+          set -xe
+
+          SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${{ steps.set-variables.outputs.artifact }}:${{ github.sha }}
 
           docker buildx imagetools create \
-            -t ghcr.io/firezone/${image}:${{ inputs.tag || github.sha }} \
-            -t ghcr.io/firezone/${image}:${VERSION} \
-            -t ghcr.io/firezone/${image}:${VERSION} \
-            -t ghcr.io/firezone/${image}:${VERSION}-${{ inputs.tag || github.sha }} \
-            -t ghcr.io/firezone/${image}:latest \
-            -t ghcr.io/firezone/${image}:${MAJOR_VERSION} \
-            -t ghcr.io/firezone/${image}:${MAJOR_MINOR_VERSION} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ github.sha }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }}-${{ github.sha }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_version }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_minor_version }} \
             $SOURCE_TAG
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy Google Cloud Storage binaries to "latest" version
+        run: |
+          set -xe
+
+          ARCHITECTURES=(x86_64 aarch64 armv7)
+
+          for arch in "${ARCHITECTURES[@]}"; do
+            # Copy sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/${arch}.sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}.sha256sum.txt
+
+            # Copy binaries
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/${arch}
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}
+          done
