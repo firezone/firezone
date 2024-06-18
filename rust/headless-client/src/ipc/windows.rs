@@ -1,3 +1,4 @@
+use crate::ipc::ServiceId;
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
 use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
@@ -18,7 +19,11 @@ pub type ClientStream = named_pipe::NamedPipeClient;
 /// Opaque wrapper around the server's half of a platform-specific IPC stream
 pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 
-pub(crate) async fn connect_to_service(id: &str) -> Result<ClientStream> {
+/// Connect to the IPC service
+///
+/// This is async on Linux
+#[allow(clippy::unused_async)]
+pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
     let path = pipe_path(id);
     let stream = named_pipe::ClientOptions::new()
         .open(&path)
@@ -33,11 +38,6 @@ pub(crate) async fn connect_to_service(id: &str) -> Result<ClientStream> {
     Ok(stream)
 }
 
-// Needed to match Linux
-pub(crate) async fn connect_to_service_for_test(id: &str) -> Result<ClientStream> {
-    connect_to_service(id).await
-}
-
 impl Server {
     /// Platform-specific setup
     ///
@@ -45,19 +45,8 @@ impl Server {
     ///
     /// This is async on Linux
     #[allow(clippy::unused_async)]
-    pub(crate) async fn new() -> Result<Self> {
-        Self::new_with_path(pipe_path(""))
-    }
-
-    /// Creates a server that doesn't need root
-    ///
-    /// On Linux, this is distinct from `new` because `/run` belongs to root
-    #[allow(clippy::unused_async)]
-    pub(crate) async fn new_for_test(id: &str) -> Result<Self> {
-        Self::new_with_path(pipe_path(id))
-    }
-
-    fn new_with_path(pipe_path: String) -> Result<Self> {
+    pub(crate) async fn new(id: ServiceId) -> Result<Self> {
+        let pipe_path = pipe_path(id);
         crate::platform::setup_before_connlib()?;
         Ok(Self { pipe_path })
     }
@@ -165,8 +154,12 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 /// Named pipe for IPC between GUI client and IPC service
 ///
 /// `id` should have A-Z, 0-9 only, no dots or slashes.
-fn pipe_path(id: &str) -> String {
-    named_pipe_path(&format!("{BUNDLE_ID}_{id}.ipc_service"))
+fn pipe_path(id: ServiceId) -> String {
+    let name = match id {
+        ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
+        ServiceId::Test(id) => format!("{BUNDLE_ID}_{id}.ipc_service"),
+    };
+    named_pipe_path(&name)
 }
 
 /// Returns a valid name for a Windows named pipe
@@ -192,6 +185,6 @@ mod tests {
 
     #[test]
     fn pipe_path() {
-        assert!(super::pipe_path("").starts_with(r"\\.\pipe\"));
+        assert!(super::pipe_path(crate::ipc::ServiceId::Prod).starts_with(r"\\.\pipe\"));
     }
 }

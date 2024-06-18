@@ -16,8 +16,6 @@ pub type ClientStream = UnixStream;
 pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
-///
-/// This is async on Linux
 #[allow(clippy::unused_async)]
 pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
     let path = sock_path(id);
