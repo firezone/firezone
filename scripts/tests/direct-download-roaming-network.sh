@@ -10,7 +10,7 @@ docker compose exec -it client sh -c \
         --retry 1 \
         --continue-at - \
         --limit-rate 1M \
-        --output download.file \
+        --output ./download.file \
         http://download.httpbin/bytes?num=10000000" &
 
 DOWNLOAD_PID=$!
