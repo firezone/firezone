@@ -1,7 +1,6 @@
 //! Implementation, Linux-specific
 
 use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
-use crate::ipc::ServiceId;
 use anyhow::{bail, Context as _, Result};
 use futures::future::{select, Either};
 use std::{
@@ -71,24 +70,6 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
         );
     }
     Ok(())
-}
-
-/// The path for our Unix Domain Socket
-///
-/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
-/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
-/// on some systems, `/run` should be the newer version.
-///
-/// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
-pub fn sock_path(id: ServiceId) -> PathBuf {
-    match id {
-        ServiceId::Prod => PathBuf::from("/run")
-            .join(connlib_shared::BUNDLE_ID)
-            .join("ipc.sock"),
-        ServiceId::Test(id) => crate::known_dirs::runtime()
-            .expect("`runtime_dir` should always be computable")
-            .join(format!("ipc_test_{id}.sock")),
-    }
 }
 
 /// Cross-platform entry point for systemd / Windows services

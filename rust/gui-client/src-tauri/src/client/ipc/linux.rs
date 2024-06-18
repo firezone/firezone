@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use firezone_headless_client::{ipc::ServiceId, platform::sock_path};
+use firezone_headless_client::ipc::{platform::sock_path, ServiceId};
 use tokio::net::UnixStream;
 
 /// A type alias to abstract over the Windows and Unix IPC primitives
