@@ -82,7 +82,7 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug," +
+                "\"connlib_client_android=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug," +
                     "boringtun=debug,snownet=debug,str0m=debug,connlib_client_shared=debug,info\"",
             )
         }

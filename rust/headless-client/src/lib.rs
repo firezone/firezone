@@ -77,7 +77,7 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
 
 /// Default log filter for the IPC service
 #[cfg(debug_assertions)]
-const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
+const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
 
 /// Default log filter for the IPC service
 #[cfg(not(debug_assertions))]
