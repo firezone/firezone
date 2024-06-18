@@ -309,6 +309,10 @@ impl Eventloop {
         );
     }
 
+    /// Execute the [`AllowAccess`] request from the client.
+    ///
+    /// Note that we do **not** send [`ConnectionFailedError`]s back to the client.
+    /// Clients don't distinguish between errors from `allow_access` and `connection_request` and thus always clean up the connection on any error.
     pub fn allow_access(
         &mut self,
         result: Result<io::Result<Vec<IpAddr>>, Timeout>,
@@ -318,14 +322,10 @@ impl Eventloop {
             Ok(Ok(addresses)) => addresses,
             Ok(Err(e)) => {
                 tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution failed as part of allow request: {e}");
-
-                self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
                 return;
             }
             Err(e) => {
                 tracing::warn!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow request: {e}");
-
-                self.send_connection_reply(req.reference, ConnectionFailedError::Dns);
                 return;
             }
         };
@@ -340,11 +340,7 @@ impl Eventloop {
         match result {
             Ok(maybe_domain_response) => maybe_domain_response,
             Err(e) => {
-                let client = req.client_id;
-
-                tracing::warn!(%client, "Failed to allow access: {e}");
-                self.send_connection_reply(req.reference, ConnectionFailedError::AllowAccess);
-
+                tracing::warn!(client = %req.client_id, "Failed to allow access: {e}");
                 return;
             }
         };
