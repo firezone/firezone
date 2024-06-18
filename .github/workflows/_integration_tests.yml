@@ -114,8 +114,7 @@ jobs:
           - name: direct-dns
           - name: direct-download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
-            env: |
-              RUST_LOG=debug
+            rust_log: debug
           - name: dns-failsafe # Uses the default DNS control method
           - name: dns-nm
           - name: relay-graceful-shutdown
@@ -136,9 +135,13 @@ jobs:
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
-        env: |
-          ${{ matrix.test.env }}
         run: |
+          set -xe
+
+          if [[ -z "${{ matrix.test.rust_log }}" ]]; then
+            export RUST_LOG="${{ matrix.test.rust_log }}"
+          fi
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
