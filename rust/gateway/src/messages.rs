@@ -139,6 +139,7 @@ pub struct ClientIceCandidates {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
+    // FIXME: `GatewayResponse` also contains an error case so we should rename this at some point.
     ConnectionReady(ConnectionReady),
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),

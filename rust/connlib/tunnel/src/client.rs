@@ -183,14 +183,14 @@ where
         Ok(())
     }
 
-    pub fn cleanup_connection(&mut self, id: ResourceId) {
-        self.role_state.on_connection_failed(id);
+    pub fn on_connection_failed(&mut self, id: ResourceId, error: &dyn fmt::Display) {
+        self.role_state.on_connection_failed(id, error);
     }
 
     pub fn set_resource_offline(&mut self, id: ResourceId) {
         self.role_state.set_resource_offline(id);
-
-        self.role_state.on_connection_failed(id);
+        self.role_state
+            .on_connection_failed(id, &"Resource is offline");
 
         self.callbacks
             .on_update_resources(self.role_state.resources());
@@ -827,9 +827,22 @@ impl ClientState {
         }
     }
 
-    pub fn on_connection_failed(&mut self, resource: ResourceId) {
-        self.awaiting_connection.remove(&resource);
-        self.resources_gateways.remove(&resource);
+    #[tracing::instrument(level = "warn", skip_all, fields(%resource, %error, gateway))]
+    pub fn on_connection_failed(&mut self, resource: ResourceId, error: &dyn fmt::Display) {
+        let awaiting_connection_details = self.awaiting_connection.remove(&resource);
+        let gateway = self.resources_gateways.remove(&resource);
+
+        let (Some(gateway), Some(details)) = (gateway, awaiting_connection_details) else {
+            tracing::warn!("Connection failed");
+            return;
+        };
+
+        tracing::Span::current().record("gateway", tracing::field::display(&gateway));
+
+        match details.domain {
+            Some(domain) => tracing::warn!(%domain, "Connection to DNS resource failed"),
+            None => tracing::warn!("Connection to CIDR resource failed"),
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource, ?domain))]

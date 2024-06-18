@@ -7,7 +7,10 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
+    messages::{
+        ConnectionAccepted, ConnectionFailed, GatewayResponse, RelaysPresence, ResourceAccepted,
+        ResourceId,
+    },
     Callbacks,
 };
 use firezone_tunnel::ClientTunnel;
@@ -281,6 +284,13 @@ where
                     tracing::warn!("Failed to accept resource: {e}");
                 }
             }
+            ReplyMessages::Connect(Connect {
+                gateway_payload: GatewayResponse::ConnectionFailed(ConnectionFailed { error }),
+                resource_id,
+                ..
+            }) => {
+                self.tunnel.on_connection_failed(resource_id, &error);
+            }
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,
                 resource_id,
@@ -339,8 +349,6 @@ where
                 let Some(offline_resource) = self.connection_intents.handle_error(req_id) else {
                     return;
                 };
-
-                tracing::debug!(resource_id = %offline_resource, "Resource is offline");
 
                 self.tunnel.set_resource_offline(offline_resource);
             }

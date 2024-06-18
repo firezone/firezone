@@ -219,9 +219,21 @@ pub struct ResourceAccepted {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct ConnectionFailed {
+    pub error: ConnectionFailedError,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
+    ConnectionFailed(ConnectionFailed),
     ResourceAccepted(ResourceAccepted),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, thiserror::Error)]
+pub enum ConnectionFailedError {
+    #[error("DNS resolution failed")]
+    DnsResolutionFailed,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
