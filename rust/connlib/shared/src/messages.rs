@@ -234,7 +234,7 @@ pub enum GatewayResponse {
 pub enum ConnectionFailedError {
     #[error("Failed to resolve DNS records")]
     Dns,
-    #[error("Failed to accept connection")]
+    #[error("Failed to allow access to resource")]
     AllowAccess,
 }
 
