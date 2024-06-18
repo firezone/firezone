@@ -35,7 +35,7 @@ runs:
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
       # Unfortunately, this makes the test non-deterministic.
       # Controlling the version would be difficult.
-      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
+      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2124701 -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
       if: ${{ runner.os == 'Windows' }}
