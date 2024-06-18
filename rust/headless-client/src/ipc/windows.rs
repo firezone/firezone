@@ -170,9 +170,9 @@ pub fn named_pipe_path(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::{Context as _};
-    use futures::StreamExt;
     use super::{Server, ServiceId};
+    use anyhow::Context as _;
+    use futures::StreamExt;
 
     #[test]
     fn named_pipe_path() {
@@ -203,8 +203,10 @@ mod tests {
         let (_rx, _tx) = crate::ipc::connect_to_service(ID).await?;
 
         match super::create_pipe_server(&pipe_path) {
-            Err(super::PipeError::AccessDenied) => {},
-            Err(error) => Err(error).context("Expected `PipeError::AccessDenied` but got another error")?,
+            Err(super::PipeError::AccessDenied) => {}
+            Err(error) => {
+                Err(error).context("Expected `PipeError::AccessDenied` but got another error")?
+            }
             Ok(_) => anyhow::bail!("Expected `PipeError::AccessDenied` but got `Ok`"),
         }
         Ok(())
