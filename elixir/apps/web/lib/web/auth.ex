@@ -1,6 +1,7 @@
 defmodule Web.Auth do
   use Web, :verified_routes
   alias Domain.{Auth, Accounts, Tokens}
+  require Logger
 
   # This cookie is used for client login.
   @client_auth_cookie_name "fz_client_auth"
@@ -662,6 +663,9 @@ defmodule Web.Auth do
     end)
   end
 
+  @doc """
+  Returns the real IP address of the client.
+  """
   def real_ip(socket) do
     peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
     x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers)
@@ -672,5 +676,33 @@ defmodule Web.Auth do
       end
 
     real_ip || peer_data.address
+  end
+
+  @doc """
+  Attempts to execute a callback in the given constant time.
+
+  If the time it takes to execute the callback is less than the timeout,
+  the function will sleep for the remaining time. Otherwise, the function
+  return immediately.
+  """
+  def execute_with_constant_time(callback, constant_time) do
+    start_time = System.monotonic_time(:millisecond)
+    result = callback.()
+    end_time = System.monotonic_time(:millisecond)
+
+    elapsed_time = end_time - start_time
+    remaining_time = max(0, constant_time - elapsed_time)
+
+    if remaining_time > 0 do
+      :timer.sleep(remaining_time)
+    else
+      Logger.error("Execution took longer than the given constant time",
+        constant_time: constant_time,
+        elapsed_time: elapsed_time,
+        remaining_time: remaining_time
+      )
+    end
+
+    result
   end
 end

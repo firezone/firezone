@@ -5,27 +5,44 @@ defmodule Web.SignIn.Email do
         %{
           "account_id_or_slug" => account_id_or_slug,
           "provider_id" => provider_id,
-          "provider_identifier" => provider_identifier
+          "signed_provider_identifier" => signed_provider_identifier
         } = params,
         _session,
         socket
       ) do
-    form = to_form(%{"secret" => nil})
+    redirect_params = Web.Auth.take_sign_in_params(params)
+    secret_key_base = socket.endpoint.config(:secret_key_base)
 
-    params = Web.Auth.take_sign_in_params(params)
+    with {:ok, provider_identifier} <-
+           Plug.Crypto.verify(
+             secret_key_base,
+             "signed_provider_identifier",
+             signed_provider_identifier,
+             max_age: 3600
+           ) do
+      form = to_form(%{"secret" => nil})
 
-    socket =
-      assign(socket,
-        form: form,
-        provider_identifier: provider_identifier,
-        account_id_or_slug: account_id_or_slug,
-        provider_id: provider_id,
-        resent: params["resent"],
-        params: params,
-        page_title: "Sign In"
-      )
+      socket =
+        assign(socket,
+          form: form,
+          provider_identifier: provider_identifier,
+          account_id_or_slug: account_id_or_slug,
+          provider_id: provider_id,
+          resent: params["resent"],
+          redirect_params: redirect_params,
+          page_title: "Sign In"
+        )
 
-    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    else
+      _ ->
+        socket =
+          socket
+          |> put_flash(:error, "Please try to sign in again.")
+          |> push_navigate(~p"/#{account_id_or_slug}?#{redirect_params}")
+
+        {:ok, socket}
+    end
   end
 
   def mount(_params, _session, _socket) do
@@ -60,7 +77,12 @@ defmodule Web.SignIn.Email do
                 method="get"
                 class="my-4 flex"
               >
-                <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+                <.input
+                  :for={{key, value} <- @redirect_params}
+                  type="hidden"
+                  name={key}
+                  value={value}
+                />
                 <.input type="hidden" name="identity_id" value={@provider_identifier} />
 
                 <input
@@ -93,9 +115,9 @@ defmodule Web.SignIn.Email do
                 account_id_or_slug={@account_id_or_slug}
                 provider_id={@provider_id}
                 provider_identifier={@provider_identifier}
-                params={@params}
+                redirect_params={@redirect_params}
               /> or
-              <.link navigate={~p"/#{@account_id_or_slug}?#{@params}"} class={link_style()}>
+              <.link navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"} class={link_style()}>
                 use a different Sign In method
               </.link>
               .
@@ -139,7 +161,7 @@ defmodule Web.SignIn.Email do
       method="post"
     >
       <.input type="hidden" name="email[provider_identifier]" value={@provider_identifier} />
-      <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+      <.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
       <span>
         Did not receive it?
         <button type="submit" class="inline text-accent-500 hover:underline">
