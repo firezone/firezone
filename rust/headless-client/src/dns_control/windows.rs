@@ -75,6 +75,7 @@ pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
 ///
 /// Parameters:
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
+// TODO 5026: 720 ms
 #[logging_timer::time]
 pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
     let dns_config_string = dns_config
@@ -114,6 +115,7 @@ pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 // Must be `sync` so we can call it from `Drop`
+// TODO 5026: 400 ms
 #[logging_timer::time]
 pub(crate) fn deactivate() -> Result<()> {
     Command::new("powershell")

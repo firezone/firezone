@@ -705,6 +705,7 @@ pub fn debug_command_setup() -> Result<()> {
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
+    tracing_log::LogTracer::init()?;
     Ok(())
 }
 

@@ -18,6 +18,7 @@ impl TunDeviceManager {
         Ok(Self {})
     }
 
+    // TODO 5026: 360 ms
     #[logging_timer::time]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);
