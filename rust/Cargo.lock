@@ -2019,6 +2019,7 @@ dependencies = [
  "uuid",
  "windows 0.57.0",
  "windows-service",
+ "winreg 0.52.0",
 ]
 
 [[package]]

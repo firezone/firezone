@@ -15,7 +15,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
-use std::{net::IpAddr, os::windows::process::CommandExt, process::Command};
+use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers()
@@ -71,6 +71,10 @@ pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
     Ok(resolvers)
 }
 
+// Our NRPT rule should always live at
+// `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig\{6C0507CB-C884-4A78-BC55-0ACEE21227F6}`
+const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
+
 /// Tells Windows to send all DNS queries to our sentinels
 ///
 /// Parameters:
@@ -98,19 +102,30 @@ pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
         .status()?;
 
     tracing::info!("Activating DNS control");
-    Command::new("powershell")
-        .creation_flags(CREATE_NO_WINDOW)
-        .args([
-            "-Command",
-            "Add-DnsClientNrptRule",
-            "-Namespace",
-            ".",
-            "-Comment",
-            FZ_MAGIC,
-            "-NameServers",
-            &dns_config_string,
-        ])
-        .status()?;
+    let dns_config_string = dns_config
+        .iter()
+        .map(|ip| ip.to_string())
+        .collect::<Vec<_>>()
+        .join(";");
+
+    let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let base = Path::new("SYSTEM")
+        .join("CurrentControlSet")
+        .join("Services")
+        .join("Dnscache")
+        .join("Parameters")
+        .join("DnsPolicyConfig")
+        .join(NRPT_REG_KEY);
+
+    let (key, _) = hkcu.create_subkey(&base)?;
+    key.set_value("Comment", &FZ_MAGIC)?;
+    key.set_value("ConfigOptions", &0x8u32)?;
+    key.set_value("DisplayName", &"Firezone SplitDNS")?;
+    key.set_value("GenericDNSServers", &dns_config_string)?;
+    key.set_value("IPSECCARestriction", &"")?;
+    key.set_value("Name", &vec!["."])?;
+    key.set_value("Version", &0x2u32)?;
+
     Ok(())
 }
 
