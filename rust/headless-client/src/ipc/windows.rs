@@ -18,7 +18,7 @@ pub type ClientStream = named_pipe::NamedPipeClient;
 /// Opaque wrapper around the server's half of a platform-specific IPC stream
 pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 
-pub(crate) fn connect_to_service(id: &str) -> Result<ClientStream> {
+pub(crate) async fn connect_to_service(id: &str) -> Result<ClientStream> {
     let path = pipe_path(id);
     let stream = named_pipe::ClientOptions::new()
         .open(&path)
@@ -33,6 +33,11 @@ pub(crate) fn connect_to_service(id: &str) -> Result<ClientStream> {
     Ok(stream)
 }
 
+// Needed to match Linux
+pub(crate) async fn connect_to_service_for_test(id: &str) -> Result<ClientStream> {
+    connect_to_service(id).await
+}
+
 impl Server {
     /// Platform-specific setup
     ///
@@ -40,7 +45,15 @@ impl Server {
     ///
     /// This is async on Linux
     #[allow(clippy::unused_async)]
-    pub(crate) async fn new(id: &str) -> Result<Self> {
+    pub(crate) async fn new() -> Result<Self> {
+        Self::new_with_path(pipe_path(""))
+    }
+
+    /// Creates a server that doesn't need root
+    ///
+    /// On Linux, this is distinct from `new` because `/run` belongs to root
+    #[allow(clippy::unused_async)]
+    pub(crate) async fn new_for_test(id: &str) -> Result<Self> {
         Self::new_with_path(pipe_path(id))
     }
 

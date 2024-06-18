@@ -2,7 +2,7 @@ use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{ipc, IpcClientMsg, IpcServerMsg};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, sync::Arc};
@@ -74,7 +74,7 @@ impl Client {
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let (mut rx, tx) = firezone_headless_client::ipc::connect_to_service("").await?;
+        let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
 
         let task = tokio_handle.spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {

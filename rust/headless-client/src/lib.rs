@@ -440,7 +440,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
-    let mut server = ipc::Server::new("").await?;
+    let mut server = ipc::Server::new(ipc::ServiceId::Prod).await?;
     loop {
         dns_control::deactivate()?;
         let (rx, tx) = server

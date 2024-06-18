@@ -72,19 +72,6 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The path for our Unix Domain Socket
-///
-/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
-/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
-/// on some systems, `/run` should be the newer version.
-///
-/// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
-pub fn sock_path() -> PathBuf {
-    PathBuf::from("/run")
-        .join(connlib_shared::BUNDLE_ID)
-        .join("ipc.sock")
-}
-
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not

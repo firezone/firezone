@@ -22,6 +22,17 @@ pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, ClientCodec>;
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, ServerCodec>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, ServerCodec>;
 
+#[derive(Clone, Copy)]
+pub enum ServiceId {
+    /// The IPC service used by Firezone GUI Client in production
+    Prod,
+    /// An IPC service used for unit tests.
+    ///
+    /// Includes an ID so that multiple tests can
+    /// run in parallel
+    Test(&'static str),
+}
+
 pub struct ClientCodec {
     inner: LengthDelimitedCodec,
 }
@@ -95,9 +106,9 @@ impl tokio_util::codec::Decoder for ServerCodec {
 /// Connect to the IPC service
 ///
 /// Public because the GUI Client will need it
-pub async fn connect_to_service(id: &str) -> Result<(ClientRead, ClientWrite)> {
+pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite)> {
     for _ in 0..10 {
-        match platform::connect_to_service(id) {
+        match platform::connect_to_service(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
                 let rx = FramedRead::new(rx, ClientCodec::default());
@@ -131,7 +142,7 @@ impl platform::Server {
 
 #[cfg(test)]
 mod tests {
-    use super::platform::Server;
+    use super::{platform::Server, ServiceId};
     use crate::{IpcClientMsg, IpcServerMsg};
     use anyhow::{ensure, Context as _, Result};
     use futures::{SinkExt, StreamExt};
@@ -143,7 +154,7 @@ mod tests {
     async fn smoke() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         let loops = 10;
-        const ID: &str = "OB5SZCGN";
+        const ID: ServiceId = ServiceId::Test("OB5SZCGN");
 
         let mut server = Server::new(ID)
             .await
@@ -218,7 +229,7 @@ mod tests {
     async fn loop_to_next_client() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
-        let mut server = Server::new("H6L73DG5").await?;
+        let mut server = Server::new(ServiceId::Test("H6L73DG5")).await?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {
