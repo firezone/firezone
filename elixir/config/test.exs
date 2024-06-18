@@ -73,10 +73,15 @@ config :wallaby,
   js_logger: false,
   hackney_options: [timeout: 10_000, recv_timeout: 10_000]
 
-config :ex_unit,
+ex_unit_config = [
   formatters: [JUnitFormatter, ExUnit.CLIFormatter],
   capture_log: true,
   exclude: [:acceptance]
+] ++ case System.get_env("CI_ASSERT_RECEIVE_TIMEOUT_MS") do
+  nil -> []
+  timeout -> [assert_receive_timeout: String.to_integer(timeout)]
+end
+config :ex_unit, ex_unit_config
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
