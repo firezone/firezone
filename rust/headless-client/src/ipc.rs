@@ -6,8 +6,8 @@ use tokio_util::{
     codec::{FramedRead, FramedWrite, LengthDelimitedCodec},
 };
 
-// Setting `path` directly helps `cargo-mutants` skip over uncompiled code
-// for other platforms, e.g. skip Linux code when building for Windows.
+// There is no special way to prevent `cargo-mutants` from throwing false
+// positives on code for other platforms.
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
 mod platform;
