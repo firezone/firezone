@@ -6,7 +6,7 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... } @ inputs:
+  outputs = { nixpkgs, flake-utils, rust-overlay, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem
       (
         system:
@@ -34,6 +34,7 @@
             dbus
             openssl_3
             librsvg
+            libappindicator-gtk3
           ];
 
           packages = with pkgs; [
@@ -47,11 +48,12 @@
             libsoup
             webkitgtk
             librsvg
-            libappindicator-gtk3
+            gnome.zenity
+            desktop-file-utils
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables cargo-udeps ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps ];
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
