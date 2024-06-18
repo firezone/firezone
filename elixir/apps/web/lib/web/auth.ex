@@ -683,7 +683,7 @@ defmodule Web.Auth do
 
   If the time it takes to execute the callback is less than the timeout,
   the function will sleep for the remaining time. Otherwise, the function
-  return immediately.
+  returns immediately.
   """
   def execute_with_constant_time(callback, constant_time) do
     start_time = System.monotonic_time(:millisecond)
