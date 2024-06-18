@@ -21,6 +21,7 @@ use windows_service::{
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
+#[path = "windows/wintun_install.rs"]
 mod wintun_install;
 
 const SERVICE_NAME: &str = "firezone_client_ipc";

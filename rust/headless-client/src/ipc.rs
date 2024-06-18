@@ -1,11 +1,21 @@
 #[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-use linux as platform;
+#[path = "ipc/linux.rs"]
+mod platform;
 
 #[cfg(target_os = "windows")]
-pub mod windows;
-#[cfg(target_os = "windows")]
-pub use windows as platform;
+#[path = "ipc/windows.rs"]
+pub mod platform;
 
 pub(crate) use platform::{Server, Stream};
+
+/// A name that both the server and client can use to find each other
+#[derive(Clone, Copy)]
+pub enum ServiceId {
+    /// The IPC service used by Firezone GUI Client in production
+    Prod,
+    /// An IPC service used for unit tests.
+    ///
+    /// Includes an ID so that multiple tests can
+    /// run in parallel
+    Test(&'static str),
+}
