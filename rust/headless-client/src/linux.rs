@@ -1,7 +1,7 @@
 //! Implementation, Linux-specific
 
-use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
-use anyhow::{bail, Context as _, Result};
+use super::{CliCommon, SignalKind, TOKEN_ENV_KEY};
+use anyhow::{bail, Result};
 use futures::future::{select, Either};
 use std::{
     path::{Path, PathBuf},
@@ -86,13 +86,6 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         tracing::error!(?error, "`ipc_listen` failed");
     }
     Ok(())
-}
-
-pub fn firezone_group() -> Result<nix::unistd::Group> {
-    let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
-        .context("can't get group by name")?
-        .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
-    Ok(group)
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {
