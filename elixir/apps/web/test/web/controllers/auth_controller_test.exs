@@ -351,9 +351,9 @@ defmodule Web.AuthControllerTest do
         assert email.text_body =~ "secret="
       end)
 
-      assert redirected_to(conn) ==
+      assert redirected_to(conn) =~
                "/#{account.id}/sign_in/providers/email/#{provider.id}?" <>
-                 "provider_identifier=#{URI.encode_www_form(identity.provider_identifier)}"
+                 "signed_provider_identifier="
     end
 
     test "stores email nonce and redirect params in the cookie", %{conn: conn} do
@@ -377,18 +377,37 @@ defmodule Web.AuthControllerTest do
 
       cookie_key = "fz_auth_state_#{provider.id}"
       conn = fetch_cookies(conn, signed: [cookie_key])
-      {nonce, params} = conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
 
-      assert nonce
+      assert {nonce, provider_identifier, params} =
+               conn.cookies[cookie_key]
+               |> :erlang.binary_to_term([:safe])
 
-      assert params == %{
+      assert is_binary(nonce)
+      assert provider_identifier == identity.provider_identifier
+
+      assert %{
                "as" => "client",
                "nonce" => "NONCE",
                "state" => "STATE"
-             }
+             } = params
     end
 
-    test "does not return error if provider is not found", %{conn: conn} do
+    test "redirects to the sign in page if provider is not found", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider_id = Ecto.UUID.generate()
+
+      conn =
+        post(
+          conn,
+          ~p"/#{account.id}/sign_in/providers/#{provider_id}/request_magic_link",
+          %{"email" => %{"provider_identifier" => "foo@bar.com"}}
+        )
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "You may not use this method to sign in."
+    end
+
+    test "redirects to the sign in page if email is invalid", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider_id = Ecto.UUID.generate()
 
@@ -399,9 +418,8 @@ defmodule Web.AuthControllerTest do
           %{"email" => %{"provider_identifier" => "foo"}}
         )
 
-      assert redirected_to(conn) ==
-               "/#{account.id}/sign_in/providers/email/#{provider_id}?" <>
-                 "provider_identifier=foo"
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "Invalid email address."
     end
 
     test "does not return error if identity is not found", %{conn: conn} do
@@ -412,11 +430,20 @@ defmodule Web.AuthControllerTest do
         post(
           conn,
           ~p"/#{account.id}/sign_in/providers/#{provider.id}/request_magic_link",
-          %{"email" => %{"provider_identifier" => "foo"}}
+          %{"email" => %{"provider_identifier" => "foo@bar"}}
         )
 
-      assert redirected_to(conn) ==
-               "/#{account.id}/sign_in/providers/email/#{provider.id}?provider_identifier=foo"
+      assert uri = conn |> redirected_to() |> URI.parse()
+      assert uri.path == ~p"/#{account.id}/sign_in/providers/email/#{provider.id}"
+
+      assert %{"signed_provider_identifier" => signed_provider_identifier} =
+               URI.decode_query(uri.query)
+
+      assert Plug.Crypto.verify(
+               conn.secret_key_base,
+               "signed_provider_identifier",
+               signed_provider_identifier
+             ) == {:ok, "foo@bar"}
     end
   end
 
@@ -522,9 +549,9 @@ defmodule Web.AuthControllerTest do
           "secret" => "bar"
         })
 
-      assert redirected_to(conn) ==
+      assert redirected_to(conn) =~
                ~p"/#{account}/sign_in/providers/email/#{provider}" <>
-                 "?provider_identifier=#{identity.id}"
+                 "?signed_provider_identifier="
 
       assert flash(conn, :error) == "The sign in token is invalid or expired."
     end
@@ -539,8 +566,7 @@ defmodule Web.AuthControllerTest do
         "as" => "client",
         "nonce" => "NONCE",
         "state" => "STATE",
-        "redirect_to" => "/#{account.slug}/foo",
-        "provider_identifier" => identity.id
+        "redirect_to" => "/#{account.slug}/foo"
       }
 
       {conn_with_cookie, _secret} =
@@ -553,8 +579,24 @@ defmodule Web.AuthControllerTest do
           "secret" => "bar"
         })
 
-      assert redirected_to(conn) ==
-               ~p"/#{account}/sign_in/providers/email/#{provider}?#{redirect_params}"
+      assert uri = conn |> redirected_to() |> URI.parse()
+      assert uri.path == ~p"/#{account}/sign_in/providers/email/#{provider}"
+
+      assert %{
+               "as" => "client",
+               "nonce" => "NONCE",
+               "state" => "STATE",
+               "redirect_to" => redirect_to,
+               "signed_provider_identifier" => signed_provider_identifier
+             } = URI.decode_query(uri.query)
+
+      assert redirect_to == "/#{account.slug}/foo"
+
+      assert Plug.Crypto.verify(
+               conn.secret_key_base,
+               "signed_provider_identifier",
+               signed_provider_identifier
+             ) == {:ok, identity.provider_identifier}
 
       assert flash(conn, :error) == "The sign in token is invalid or expired."
     end
