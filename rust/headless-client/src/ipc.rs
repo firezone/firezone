@@ -17,10 +17,10 @@ pub mod platform;
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 
-pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Codec<IpcServerMsg>>;
-pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Codec<IpcServerMsg>>;
-pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, ServerCodec>;
-pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, ServerCodec>;
+pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServerMsg>>;
+pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<IpcClientMsg>>;
+pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClientMsg>>;
+pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;
 
 /// A name that both the server and client can use to find each other
 #[derive(Clone, Copy)]
@@ -36,12 +36,17 @@ pub enum ServiceId {
     Test(&'static str),
 }
 
-pub struct Codec<D> {
+pub struct Decoder<D> {
     inner: LengthDelimitedCodec,
     _decode_type: std::marker::PhantomData<D>,
 }
 
-impl <D> Default for Codec<D> {
+pub struct Encoder<E> {
+    inner: LengthDelimitedCodec,
+    _encode_type: std::marker::PhantomData<E>,
+}
+
+impl<D> Default for Decoder<D> {
     fn default() -> Self {
         Self {
             inner: LengthDelimitedCodec::new(),
@@ -50,7 +55,16 @@ impl <D> Default for Codec<D> {
     }
 }
 
-impl <D: serde::de::DeserializeOwned> tokio_util::codec::Decoder for Codec<D> {
+impl<E> Default for Encoder<E> {
+    fn default() -> Self {
+        Self {
+            inner: LengthDelimitedCodec::new(),
+            _encode_type: Default::default(),
+        }
+    }
+}
+
+impl<D: serde::de::DeserializeOwned> tokio_util::codec::Decoder for Decoder<D> {
     type Error = anyhow::Error;
     type Item = D;
 
@@ -58,88 +72,19 @@ impl <D: serde::de::DeserializeOwned> tokio_util::codec::Decoder for Codec<D> {
         let Some(msg) = self.inner.decode(buf)? else {
             return Ok(None);
         };
-        let msg = serde_json::from_slice(&msg).with_context(|| format!("Error while deserializing {}", std::any::type_name::<D>()))?;
+        let msg = serde_json::from_slice(&msg)
+            .with_context(|| format!("Error while deserializing {}", std::any::type_name::<D>()))?;
         Ok(Some(msg))
     }
 }
 
-impl <D, E: serde::Serialize> tokio_util::codec::Encoder<&E> for Codec<D> {
+impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
     type Error = anyhow::Error;
 
     fn encode(&mut self, msg: &E, buf: &mut BytesMut) -> Result<()> {
-        let msg = serde_json::to_string(&msg)?;
+        let msg = serde_json::to_string(msg)?;
         self.inner.encode(msg.into(), buf)?;
         Ok(())
-    }
-}
-
-pub struct ClientCodec {
-    inner: LengthDelimitedCodec,
-}
-
-pub struct ServerCodec {
-    inner: LengthDelimitedCodec,
-}
-
-impl Default for ClientCodec {
-    fn default() -> Self {
-        Self {
-            inner: LengthDelimitedCodec::new(),
-        }
-    }
-}
-
-impl Default for ServerCodec {
-    fn default() -> Self {
-        Self {
-            inner: LengthDelimitedCodec::new(),
-        }
-    }
-}
-
-impl tokio_util::codec::Encoder<&IpcClientMsg> for ClientCodec {
-    type Error = anyhow::Error;
-
-    fn encode(&mut self, msg: &IpcClientMsg, buf: &mut BytesMut) -> Result<()> {
-        let msg = serde_json::to_string(&msg)?;
-        self.inner.encode(msg.into(), buf)?;
-        Ok(())
-    }
-}
-
-impl tokio_util::codec::Encoder<&IpcServerMsg> for ServerCodec {
-    type Error = anyhow::Error;
-
-    fn encode(&mut self, msg: &IpcServerMsg, buf: &mut BytesMut) -> Result<()> {
-        let msg = serde_json::to_string(&msg)?;
-        self.inner.encode(msg.into(), buf)?;
-        Ok(())
-    }
-}
-
-impl tokio_util::codec::Decoder for ClientCodec {
-    type Error = anyhow::Error;
-    type Item = IpcServerMsg;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<IpcServerMsg>> {
-        let Some(msg) = self.inner.decode(buf)? else {
-            return Ok(None);
-        };
-        let msg = serde_json::from_slice(&msg).context("Error while deserializing IpcServerMsg")?;
-        Ok(Some(msg))
-    }
-}
-
-impl tokio_util::codec::Decoder for ServerCodec {
-    type Error = anyhow::Error;
-    type Item = IpcClientMsg;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<IpcClientMsg>> {
-        let Some(msg) = self.inner.decode(buf)? else {
-            return Ok(None);
-        };
-        let msg = serde_json::from_slice(&msg).context("Error while deserializing IpcClientMsg")?;
-        Ok(Some(msg))
     }
 }
 
@@ -151,8 +96,8 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
         match platform::connect_to_service(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
-                let rx = FramedRead::new(rx, Codec::default());
-                let tx = FramedWrite::new(tx, Codec::default());
+                let rx = FramedRead::new(rx, Decoder::default());
+                let tx = FramedWrite::new(tx, Encoder::default());
                 return Ok((rx, tx));
             }
             Err(error) => {
@@ -174,8 +119,8 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
 impl platform::Server {
     pub(crate) async fn next_client_split(&mut self) -> Result<(ServerRead, ServerWrite)> {
         let (rx, tx) = tokio::io::split(self.next_client().await?);
-        let rx = FramedRead::new(rx, ServerCodec::default());
-        let tx = FramedWrite::new(tx, ServerCodec::default());
+        let rx = FramedRead::new(rx, Decoder::default());
+        let tx = FramedWrite::new(tx, Encoder::default());
         Ok((rx, tx))
     }
 }
