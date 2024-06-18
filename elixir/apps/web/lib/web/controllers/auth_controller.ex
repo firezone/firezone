@@ -73,52 +73,98 @@ defmodule Web.AuthController do
         } = params
       ) do
     redirect_params = Web.Auth.take_sign_in_params(params)
-    conn = maybe_send_magic_link_email(conn, provider_id, provider_identifier, redirect_params)
-    redirect_params = Map.put(redirect_params, "provider_identifier", provider_identifier)
 
-    conn
-    |> maybe_put_resent_flash(params)
-    |> redirect(
-      to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider_id}?#{redirect_params}"
-    )
-  end
+    with true <- String.contains?(provider_identifier, "@"),
+         {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
+      conn = maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params)
 
-  defp maybe_send_magic_link_email(conn, provider_id, provider_identifier, redirect_params) do
-    context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
-    context = Web.Auth.get_auth_context(conn, context_type)
-
-    with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
-         {:ok, identity} <-
-           Domain.Auth.fetch_active_identity_by_provider_and_identifier(
-             provider,
-             provider_identifier,
-             preload: :account
-           ),
-         {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity, context) do
-      # Nonce is the short part that is sent to the user in the email
-      nonce = identity.provider_virtual_state.nonce
-
-      # Fragment is stored in the browser to prevent authorization code injection
-      # attacks where you can trick user into logging in into a attacker account.
-      fragment = identity.provider_virtual_state.fragment
-
-      {:ok, _} =
-        Web.Mailer.AuthEmail.sign_in_link_email(
-          identity,
-          nonce,
-          conn.assigns.user_agent,
-          conn.remote_ip,
-          redirect_params
+      signed_provider_identifier =
+        Plug.Crypto.sign(
+          conn.secret_key_base,
+          "signed_provider_identifier",
+          provider_identifier
         )
-        |> Web.Mailer.deliver()
 
-      put_auth_state(conn, provider.id, {fragment, redirect_params})
+      redirect_params =
+        Map.put(
+          redirect_params,
+          "signed_provider_identifier",
+          signed_provider_identifier
+        )
+
+      conn
+      |> maybe_put_resent_flash(params)
+      |> redirect(
+        to: ~p"/#{account_id_or_slug}/sign_in/providers/email/#{provider.id}?#{redirect_params}"
+      )
     else
-      _ -> conn
+      false ->
+        conn
+        |> put_flash(:error, "Invalid email address.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+
+      {:error, :not_found} ->
+        conn
+        |> put_flash(:error, "You may not use this method to sign in.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
   end
 
-  defp maybe_put_resent_flash(conn, %{"resend" => "true"}),
+  defp maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params) do
+    context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+    context = Web.Auth.get_auth_context(conn, context_type)
+
+    fragment =
+      Web.Auth.execute_with_constant_time(
+        fn ->
+          with {:ok, identity} <-
+                 Domain.Auth.fetch_active_identity_by_provider_and_identifier(
+                   provider,
+                   provider_identifier,
+                   preload: :account
+                 ),
+               {:ok, identity} <-
+                 Domain.Auth.Adapters.Email.request_sign_in_token(identity, context) do
+            send_magic_link_email(conn, identity, redirect_params)
+          else
+            _ ->
+              # We generate a fake fragment to prevent information leakage,
+              # otherwise you can tell if the email is registered or not
+              # by looking at the cookies
+              Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
+                type: :email,
+                secret_fragment: Domain.Crypto.random_token(27)
+              })
+          end
+        end,
+        500
+      )
+
+    put_auth_state(conn, provider.id, {fragment, provider_identifier, redirect_params})
+  end
+
+  defp send_magic_link_email(conn, identity, redirect_params) do
+    # Nonce is the short part that is sent to the user in the email
+    nonce = identity.provider_virtual_state.nonce
+
+    # Fragment is stored in the browser to prevent authorization code injection
+    # attacks where you can trick user into logging in into an attacker account.
+    fragment = identity.provider_virtual_state.fragment
+
+    {:ok, _} =
+      Web.Mailer.AuthEmail.sign_in_link_email(
+        identity,
+        nonce,
+        conn.assigns.user_agent,
+        conn.remote_ip,
+        redirect_params
+      )
+      |> Web.Mailer.deliver()
+
+    fragment
+  end
+
+  defp maybe_put_resent_flash(%Plug.Conn{state: :unset} = conn, %{"resend" => "true"}),
     do: put_flash(conn, :info, "Email was resent.")
 
   defp maybe_put_resent_flash(conn, _params),
@@ -137,7 +183,8 @@ defmodule Web.AuthController do
           "secret" => nonce
         } = params
       ) do
-    with {:ok, {fragment, redirect_params}, conn} <- fetch_auth_state(conn, provider_id) do
+    with {:ok, {fragment, provider_identifier, redirect_params}, conn} <-
+           fetch_auth_state(conn, provider_id) do
       conn = delete_auth_state(conn, provider_id)
       secret = String.downcase(nonce) <> fragment
       context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
@@ -155,7 +202,15 @@ defmodule Web.AuthController do
           |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
 
         {:error, _reason} ->
-          redirect_params = Map.put(redirect_params, "provider_identifier", identity_id)
+          signed_provider_identifier =
+            Plug.Crypto.sign(
+              conn.secret_key_base,
+              "signed_provider_identifier",
+              provider_identifier
+            )
+
+          redirect_params =
+            Map.put(redirect_params, "signed_provider_identifier", signed_provider_identifier)
 
           conn
           |> put_flash(:error, "The sign in token is invalid or expired.")
