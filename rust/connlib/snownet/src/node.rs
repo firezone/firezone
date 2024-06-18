@@ -38,7 +38,7 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long we will at most wait for an [`Answer`] from the remote.
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
