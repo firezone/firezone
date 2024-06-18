@@ -138,7 +138,7 @@ jobs:
         run: |
           set -xe
 
-          if [[ -z "${{ matrix.test.rust_log }}" ]]; then
+          if [[ ! -z "${{ matrix.test.rust_log }}" ]]; then
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
 
