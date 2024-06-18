@@ -17,8 +17,8 @@ pub mod platform;
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 
-pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, ClientCodec>;
-pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, ClientCodec>;
+pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Codec<IpcServerMsg>>;
+pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Codec<IpcServerMsg>>;
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, ServerCodec>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, ServerCodec>;
 
@@ -31,6 +31,43 @@ pub enum ServiceId {
     /// Includes an ID so that multiple tests can
     /// run in parallel
     Test(&'static str),
+}
+
+pub struct Codec<D> {
+    inner: LengthDelimitedCodec,
+    _decode_type: std::marker::PhantomData<D>,
+}
+
+impl <D> Default for Codec<D> {
+    fn default() -> Self {
+        Self {
+            inner: LengthDelimitedCodec::new(),
+            _decode_type: Default::default(),
+        }
+    }
+}
+
+impl <D: serde::de::DeserializeOwned> tokio_util::codec::Decoder for Codec<D> {
+    type Error = anyhow::Error;
+    type Item = D;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<D>> {
+        let Some(msg) = self.inner.decode(buf)? else {
+            return Ok(None);
+        };
+        let msg = serde_json::from_slice(&msg).with_context(|| format!("Error while deserializing {}", std::any::type_name::<D>()))?;
+        Ok(Some(msg))
+    }
+}
+
+impl <D, E: serde::Serialize> tokio_util::codec::Encoder<&E> for Codec<D> {
+    type Error = anyhow::Error;
+
+    fn encode(&mut self, msg: &E, buf: &mut BytesMut) -> Result<()> {
+        let msg = serde_json::to_string(&msg)?;
+        self.inner.encode(msg.into(), buf)?;
+        Ok(())
+    }
 }
 
 pub struct ClientCodec {
@@ -111,8 +148,8 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
         match platform::connect_to_service(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
-                let rx = FramedRead::new(rx, ClientCodec::default());
-                let tx = FramedWrite::new(tx, ClientCodec::default());
+                let rx = FramedRead::new(rx, Codec::default());
+                let tx = FramedWrite::new(tx, Codec::default());
                 return Ok((rx, tx));
             }
             Err(error) => {
