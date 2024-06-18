@@ -28,14 +28,14 @@ runs:
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
-        key: ${{ runner.os }}-${{ runner.arch }}-webview2-installer
+        key: ${{ runner.os }}-${{ runner.arch }}-webview2-offline-installer
     - name: Download WebView2 bootstrapper
       if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' }}
       # This is the "Evergreen" bootstrapper from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
       # Unfortunately, this makes the test non-deterministic.
       # Controlling the version would be difficult.
-      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile WebView2Installer.exe
+      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2124701 -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
       if: ${{ runner.os == 'Windows' }}

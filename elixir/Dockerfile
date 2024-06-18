@@ -297,6 +297,9 @@ ENV APPLICATION_NAME=$APPLICATION_NAME
 ARG MIX_ENV="prod"
 COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
+# Allow the default user to write to the priv directory of some libraries
+RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
+
 # Populate the SHA pointing to this build
 ARG GIT_SHA
 RUN echo ${GIT_SHA} > ./GIT_SHA

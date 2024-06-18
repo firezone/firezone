@@ -27,7 +27,7 @@ use url::Url;
 use ControllerRequest as Req;
 
 mod ran_before;
-mod system_tray_menu;
+pub(crate) mod system_tray_menu;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]

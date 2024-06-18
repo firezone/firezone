@@ -91,6 +91,11 @@ export default function KbSidebar() {
                 <Item href="/kb/authenticate/okta">SSO with Okta</Item>
               </li>
               <li>
+                <Item href="/kb/authenticate/jumpcloud">
+                  SSO with JumpCloud
+                </Item>
+              </li>
+              <li>
                 <Item href="/kb/authenticate/oidc">
                   SSO with Universal OIDC
                 </Item>

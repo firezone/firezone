@@ -24,6 +24,15 @@ use std::time::Duration;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
+/// How long we allow a DNS resolution via `libc::get_addr_info`.
+const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
+
+// DNS resolution happens as part of every connection setup.
+// For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.
+static_assertions::const_assert!(
+    DNS_RESOLUTION_TIMEOUT.as_secs() < snownet::HANDSHAKE_TIMEOUT.as_secs()
+);
+
 pub struct Eventloop {
     tunnel: GatewayTunnel<CallbackHandler>,
     portal: PhoenixChannel<(), IngressMessages, ()>,
@@ -40,7 +49,7 @@ impl Eventloop {
         Self {
             tunnel,
             portal,
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(Duration::from_secs(60), 100),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 100),
         }
     }
 }
