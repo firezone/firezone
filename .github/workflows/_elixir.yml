@@ -39,6 +39,7 @@ jobs:
       - name: Run Tests
         env:
           E2E_DEFAULT_WAIT_SECONDS: 20
+          CI_ASSERT_RECEIVE_TIMEOUT_MS: 250
         run: |
           mix test --warnings-as-errors \
             --exclude flaky:true \
