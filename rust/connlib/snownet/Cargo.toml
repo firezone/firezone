@@ -3,10 +3,16 @@ name = "snownet"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 boringtun = { workspace = true }
+getrandom = { version = "0.2.12", features = ["js"] }
+instant = "0.1.13"
 ip-packet = { workspace = true }
 rand = "0.8"
+ring = { version = "0.17.8", features = ["wasm32_unknown_unknown_js"] }
 secrecy = { workspace = true }
 str0m = { workspace = true }
 thiserror = "1"
@@ -20,7 +26,7 @@ hex = "0.4.0"
 
 [dev-dependencies]
 tracing-subscriber = {version = "0.3", features = ["env-filter"]}
-firezone-relay = { workspace = true }
+# firezone-relay = { workspace = true }
 
 [lints]
 workspace = true

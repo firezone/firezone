@@ -1,4 +1,4 @@
-use std::time::Instant;
+use instant::Instant;
 
 pub fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
     match (left, right) {

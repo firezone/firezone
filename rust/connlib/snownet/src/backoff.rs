@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use instant::{Duration, Instant};
 
 pub type ExponentialBackoff = backoff::exponential::ExponentialBackoff<ManualClock>;
 

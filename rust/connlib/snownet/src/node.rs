@@ -9,6 +9,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
+use instant::{Duration, Instant};
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
 };
@@ -19,7 +20,6 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::ControlFlow;
-use std::time::{Duration, Instant};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::SocketAddr,

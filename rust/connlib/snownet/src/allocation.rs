@@ -6,12 +6,12 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use instant::{Duration, Instant};
 use rand::random;
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
-    time::{Duration, Instant},
 };
 use str0m::{net::Protocol, Candidate};
 use stun_codec::{

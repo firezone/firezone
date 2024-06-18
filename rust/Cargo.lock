@@ -703,7 +703,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/cloudflare/boringtun?branch=master#f672bb6c1e1e371240a8d151f15854687eb740bb"
+source = "git+https://github.com/ReactorScram/boringtun?rev=c1c29c7ae981092aa3eeeed93c5b1ae93ea9f54f#c1c29c7ae981092aa3eeeed93c5b1ae93ea9f54f"
 dependencies = [
  "aead",
  "base64 0.13.1",
@@ -2464,8 +2464,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "190092ea657667030ac6a35e305e62fc4dd69fd98ac98631e5d3a2b1575a12b5"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3147,9 +3149,9 @@ dependencies = [
 
 [[package]]
 name = "instant"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
+checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
 ]
@@ -5699,16 +5701,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
- "sha1-asm",
-]
-
-[[package]]
-name = "sha1-asm"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ba6947745e7f86be3b8af00b7355857085dbdf8901393c89514510eb61f4e21"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -5807,11 +5799,13 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
- "firezone-relay",
+ "getrandom 0.2.12",
  "hex",
+ "instant",
  "ip-packet",
  "once_cell",
  "rand 0.8.5",
+ "ring",
  "secrecy",
  "str0m",
  "stun_codec",
@@ -5922,7 +5916,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.5.1"
-source = "git+https://github.com/firezone/str0m?branch=main#07c4fb0449db1fdde4b3421a61b666312ec81106"
+source = "git+https://github.com/ReactorScram/str0m?rev=250fc018b0e2ad77b67b741c92cc1b68659710b9#250fc018b0e2ad77b67b741c92cc1b68659710b9"
 dependencies = [
  "combine",
  "crc",
@@ -8287,3 +8281,13 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[patch.unused]]
+name = "boringtun"
+version = "0.6.0"
+source = "git+https://github.com/cloudflare/boringtun?branch=master#f672bb6c1e1e371240a8d151f15854687eb740bb"
+
+[[patch.unused]]
+name = "str0m"
+version = "0.5.1"
+source = "git+https://github.com/firezone/str0m?branch=main#07c4fb0449db1fdde4b3421a61b666312ec81106"

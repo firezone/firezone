@@ -5,10 +5,10 @@ use crate::{
 use ::backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use bytecodec::{DecodeExt, EncodeExt};
+use instant::{Duration, Instant};
 use std::{
     collections::VecDeque,
     net::SocketAddr,
-    time::{Duration, Instant},
 };
 use str0m::{net::Protocol, Candidate};
 use stun_codec::{

@@ -21,7 +21,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-boringtun = { version = "0.6", default-features = false }
+boringtun = { git = "https://github.com/ReactorScram/boringtun", rev = "c1c29c7ae981092aa3eeeed93c5b1ae93ea9f54f", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.55"
 backoff = { version = "0.4", features = ["tokio"] }
@@ -29,8 +29,8 @@ tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = ["tokio-runtime"] }
-hickory-proto = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63" }
-str0m = { version = "0.5", default-features = false }
+hickory-proto = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63", default-features = false }
+str0m = { git = "https://github.com/ReactorScram/str0m", rev = "250fc018b0e2ad77b67b741c92cc1b68659710b9", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
