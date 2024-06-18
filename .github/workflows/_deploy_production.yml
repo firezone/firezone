@@ -58,6 +58,42 @@ jobs:
           docker buildx imagetools create \
             -t ${{ steps.login-production.outputs.registry }}/firezone/${{ matrix.image }}:${{ inputs.tag }} \
             $SOURCE_TAG
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy Google Cloud Storage binaries to "edge" version
+        # TODO: Add relay here when we deploy Relay from prod artifacts instead of Docker
+        # To do that properly we need to:
+        #   - Update publish.yml to publish versioned Relays too (and start versioning Relay changes)
+        #   - Add arm64 and armv7l architectures to the Relay builds (we only build for amd64 currently because that's all we need to)
+        if: ${{ matrix.image == 'gateway' || matrix.image == 'client' }}
+        run: |
+          set -xe
+
+          ARCHITECTURES=(x86_64 aarch64 armv7)
+
+          for arch in "${ARCHITECTURES[@]}"; do
+            # Copy sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/edge/${arch}.sha256sum.txt
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}.sha256sum.txt
+
+            # Copy binaries
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/edge/${arch}
+            gcloud storage cp \
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}
+          done
 
   deploy-production:
     needs: push

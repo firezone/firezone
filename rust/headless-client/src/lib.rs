@@ -41,17 +41,18 @@ pub mod heartbeat;
 pub mod ipc;
 pub mod known_dirs;
 
+// Setting `path` explicitly like this hides other platforms from `cargo-mutants`
 #[cfg(target_os = "linux")]
-pub mod linux;
-#[cfg(target_os = "linux")]
-pub use linux as platform;
+#[path = "linux.rs"]
+pub mod platform;
 
 #[cfg(target_os = "windows")]
-pub mod windows;
-#[cfg(target_os = "windows")]
-pub(crate) use windows as platform;
+#[path = "windows.rs"]
+pub mod platform;
 
 use dns_control::DnsController;
+use ipc::{Server as IpcServer, ServiceId};
+
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -71,7 +72,7 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
 
 /// Default log filter for the IPC service
 #[cfg(debug_assertions)]
-const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
+const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
 
 /// Default log filter for the IPC service
 #[cfg(not(debug_assertions))]
@@ -440,7 +441,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
-    let mut server = ipc::Server::new(ipc::ServiceId::Prod).await?;
+    let mut server = IpcServer::new(ServiceId::Prod).await?;
     loop {
         dns_control::deactivate()?;
         let (rx, tx) = server
