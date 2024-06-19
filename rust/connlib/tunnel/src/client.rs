@@ -244,7 +244,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self, resource_id))]
     pub fn received_domain_parameters(
         &mut self,
         resource_id: ResourceId,
@@ -489,8 +488,6 @@ impl ClientState {
             .encapsulate(gateway_id, packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
-
-        tracing::trace!("Encapsulated packet");
 
         Some(transmit)
     }
@@ -915,9 +912,7 @@ impl ClientState {
         self.dns_resources_internal_ips
             .retain(|proxy_ip, (candidate, resources)| {
                 if candidate == gateway_id {
-                    let domains = resources.iter().map(|r| &r.address).join(",");
-
-                    tracing::debug!(%proxy_ip, %domains, "Disassociating proxy IP");
+                    tracing::debug!(%proxy_ip, num_domains = %resources.len(), "Disassociating proxy IP");
 
                     return false;
                 }
