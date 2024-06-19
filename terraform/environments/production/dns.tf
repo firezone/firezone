@@ -32,7 +32,6 @@ resource "google_dns_record_set" "website-caa" {
   name = "www.${module.google-cloud-dns.dns_name}"
   rrdatas = [
     "0 issue \"letsencrypt.org\"",
-    "0 issue \"pki.goog\"",
     "0 iodef \"mailto:security@firezone.dev\""
   ]
   ttl = 3600
@@ -48,29 +47,16 @@ resource "google_dns_record_set" "website-www-redirect" {
   ttl     = 3600
 }
 
-resource "google_dns_record_set" "blog-caa" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type = "CAA"
-  name = "blog.${module.google-cloud-dns.dns_name}"
-  rrdatas = [
-    "0 issue \"letsencrypt.org\"",
-    "0 issue \"pki.goog\"",
-    "0 iodef \"mailto:security@firezone.dev\""
-  ]
-  ttl = 3600
-}
-
 resource "google_dns_record_set" "blog-ipv4" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
   name    = "blog.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["45.63.84.183"]
+  rrdatas = [google_compute_global_address.tld-ipv4.address]
   ttl     = 3600
 }
+
 resource "google_dns_record_set" "blog-ipv6" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
@@ -81,27 +67,13 @@ resource "google_dns_record_set" "blog-ipv6" {
   ttl     = 3600
 }
 
-resource "google_dns_record_set" "docs-caa" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type = "CAA"
-  name = "docs.${module.google-cloud-dns.dns_name}"
-  rrdatas = [
-    "0 issue \"letsencrypt.org\"",
-    "0 issue \"pki.goog\"",
-    "0 iodef \"mailto:security@firezone.dev\""
-  ]
-  ttl = 3600
-}
-
 resource "google_dns_record_set" "docs-ipv4" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
   name    = "docs.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["45.63.84.183"]
+  rrdatas = [google_compute_global_address.tld-ipv4.address]
   ttl     = 3600
 }
 
