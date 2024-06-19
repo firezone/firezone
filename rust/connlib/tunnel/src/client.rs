@@ -840,6 +840,8 @@ impl ClientState {
             .gateway_by_resource(&resource)
             .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
         {
+            tracing::debug!("Already connecting to gateway");
+
             return;
         }
 
