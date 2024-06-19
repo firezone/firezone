@@ -478,9 +478,7 @@ impl Controller {
             .auth
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
-        self.start_session(token)
-            .await
-            .context("Couldn't start connlib session")?;
+        self.start_session(token).await?;
         Ok(())
     }
 
@@ -527,10 +525,7 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(url) => self
-                .handle_deep_link(&url)
-                .await
-                .context("Couldn't handle deep link")?,
+            Req::SchemeRequest(url) => self.handle_deep_link(&url).await?,
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self
                     .auth
@@ -782,9 +777,7 @@ async fn run_controller(
                         tracing::info!("User clicked Quit in the menu");
                         break
                     }
-                    req => if let Err(error) = controller.handle_request(req).await {
-                        tracing::error!(?error, "Failed to handle a ControllerRequest");
-                    }
+                    req => controller.handle_request(req).await?,
                 }
             },
         }

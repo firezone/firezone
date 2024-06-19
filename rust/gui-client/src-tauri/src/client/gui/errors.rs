@@ -1,4 +1,5 @@
 use super::{deep_link, ipc, logging};
+use anyhow::Result;
 use firezone_headless_client::FIREZONE_GROUP;
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
@@ -25,7 +26,7 @@ pub(crate) enum Error {
 ///
 /// Doesn't play well with async, only use this if we're bailing out of the
 /// entire process.
-pub(crate) fn show_error_dialog(error: &Error) -> anyhow::Result<()> {
+pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
     // This message gets shown to users in the GUI and could be localized, unlike
     // messages in the log which only need to be used for `git grep`.
@@ -42,6 +43,8 @@ pub(crate) fn show_error_dialog(error: &Error) -> anyhow::Result<()> {
     };
     tracing::error!(?user_friendly_error_msg);
 
+    // I tried the Tauri dialogs and for some reason they don't show our
+    // app icon.
     native_dialog::MessageDialog::new()
         .set_title("Firezone Error")
         .set_text(&user_friendly_error_msg)
