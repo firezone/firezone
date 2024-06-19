@@ -337,6 +337,7 @@ pub struct ClientState {
     ///
     /// IPs for DNS resources are assigned on a per-peer (i.e. gateway) basis but can point to multiple DNS resources on the same gateway.
     dns_resources_internal_ips: HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
+    outdated_ips: HashMap<DnsResource, HashSet<IpAddr>>,
     /// DNS queries we can only answer once we have connected to the resource.
     ///
     /// See [`dns::ResolveStrategy`] for details.
@@ -389,6 +390,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
+            outdated_ips: Default::default(),
         }
     }
 
@@ -750,12 +752,15 @@ impl ClientState {
 
         // First, remove all IPs for this particular resource.
         {
-            for (_, resources) in self.dns_resources_internal_ips.values_mut() {
-                resources.remove(&resource_description);
+            for (ip, (_, resources)) in self.dns_resources_internal_ips.iter() {
+                tracing::debug!(%ip, ?resource_description, "Removing DNS mapping");
+                if !addrs.contains(ip) && resources.contains(&resource_description) {
+                    self.outdated_ips
+                        .entry(resource_description.clone())
+                        .or_default()
+                        .insert(*ip);
+                }
             }
-
-            self.dns_resources_internal_ips
-                .retain(|_, (_, resources)| !resources.is_empty());
         }
 
         // Second, add the new IPs.
@@ -789,6 +794,7 @@ impl ClientState {
             &self.dns_resources,
             &self.dns_resources_internal_ips,
             &self.dns_mapping,
+            &self.outdated_ips,
             packet.as_immutable(),
         ) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
@@ -982,11 +988,14 @@ impl ClientState {
                 self.mangled_dns_queries
                     .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
 
-                for resource in self
+                let resources_up_for_refresh = self
                     .dns_resources_internal_ips
                     .values()
-                    .flat_map(|(_, resources)| resources)
-                {
+                    .flat_map(|(_, resources)| resources);
+
+                tracing::debug!(?resources_up_for_refresh, "Refreshing DNS");
+
+                for resource in resources_up_for_refresh {
                     let Some(peer) = self.peer_by_resource(resource.id) else {
                         // filter inactive connections
                         continue;

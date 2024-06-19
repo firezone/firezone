@@ -112,6 +112,7 @@ pub(crate) fn parse<'a>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
     dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
+    outdated_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     packet: IpPacket<'a>,
 ) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
     dns_mapping.get_by_left(&packet.destination())?;
@@ -127,20 +128,24 @@ pub(crate) fn parse<'a>(
 
     // In general we prefer to always have a response NxDomain to deal with with domains we don't expect
     // For systems with splitdns, in theory, we should only see Ptr queries we don't handle(e.g. apple's dns-sd)
-    let resource =
-        match resource_from_question(dns_resources, dns_resources_internal_ips, &question) {
-            Some(ResolveStrategy::LocalResponse(resource)) => Some(resource),
-            Some(ResolveStrategy::ForwardQuery(params)) => {
-                return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
-            }
-            Some(ResolveStrategy::DeferredResponse(resource)) => {
-                return Some(ResolveStrategy::DeferredResponse((
-                    resource,
-                    question.qtype(),
-                )))
-            }
-            None => None,
-        };
+    let resource = match resource_from_question(
+        dns_resources,
+        dns_resources_internal_ips,
+        outdated_ips,
+        &question,
+    ) {
+        Some(ResolveStrategy::LocalResponse(resource)) => Some(resource),
+        Some(ResolveStrategy::ForwardQuery(params)) => {
+            return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
+        }
+        Some(ResolveStrategy::DeferredResponse(resource)) => {
+            return Some(ResolveStrategy::DeferredResponse((
+                resource,
+                question.qtype(),
+            )))
+        }
+        None => None,
+    };
     let response = build_dns_with_answer(message, question.qname(), &resource)?;
     let response = build_response(packet, response);
 
@@ -381,6 +386,7 @@ fn get_description(
 fn resource_from_question<N: ToName>(
     dns_resources: &HashMap<String, ResourceDescriptionDns>,
     dns_resources_internal_ips: &HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
+    outdated_ips: &HashMap<DnsResource, HashSet<IpAddr>>,
     question: &Question<N>,
 ) -> Option<ResolveStrategy<RecordData<DomainName>, DnsQueryParams, DnsResource>> {
     let name = ToName::to_vec(question.qname());
@@ -404,6 +410,11 @@ fn resource_from_question<N: ToName>(
 
             Some(ResolveStrategy::LocalResponse(RecordData::A(
                 ips_of_resource(dns_resources_internal_ips, &description)
+                    .filter(|ip| {
+                        !outdated_ips
+                            .get(&description)
+                            .is_some_and(|ips| ips.contains(ip))
+                    })
                     .filter_map(get_v4)
                     .map(domain::rdata::A::new)
                     .collect(),
@@ -424,6 +435,11 @@ fn resource_from_question<N: ToName>(
 
             Some(ResolveStrategy::LocalResponse(RecordData::Aaaa(
                 ips_of_resource(dns_resources_internal_ips, &description)
+                    .filter(|ip| {
+                        !outdated_ips
+                            .get(&description)
+                            .is_some_and(|ips| ips.contains(ip))
+                    })
                     .filter_map(get_v6)
                     .map(domain::rdata::Aaaa::new)
                     .collect(),

@@ -153,6 +153,7 @@ impl GatewayOnClient {
 
         let proxy_ip = ip_provider.get_proxy_ip_for(ip)?;
 
+        tracing::debug!(%proxy_ip, real_ip = %ip, "Adding translation");
         self.translations.insert(proxy_ip, *ip);
         Some(proxy_ip)
     }
