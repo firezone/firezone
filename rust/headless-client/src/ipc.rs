@@ -137,10 +137,21 @@ impl platform::Server {
 mod tests {
     use super::{platform::Server, ServiceId};
     use crate::{IpcClientMsg, IpcServerMsg};
-    use anyhow::{ensure, Context as _, Result};
+    use anyhow::{bail, ensure, Context as _, Result};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};
+
+    #[tokio::test]
+    async fn no_such_service() -> Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        const ID: ServiceId = ServiceId::Test("H56FRXVH");
+
+        if super::connect_to_service(ID).await.is_ok() {
+            bail!("`connect_to_service` should have failed for a non-existent service");
+        }
+        Ok(())
+    }
 
     /// Make sure the IPC client and server can exchange messages
     #[tokio::test]

@@ -8,6 +8,14 @@ use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error("Couldn't connect to IPC service")]
+    CouldntConnectToIpcService,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
     pub notify_controller: Arc<Notify>,
@@ -69,12 +77,14 @@ impl Client {
         token: SecretString,
         callback_handler: CallbackHandler,
         tokio_handle: tokio::runtime::Handle,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         tracing::info!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
+        let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod)
+            .await
+            .map_err(|_| Error::CouldntConnectToIpcService)?;
 
         let task = tokio_handle.spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {
