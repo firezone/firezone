@@ -748,6 +748,17 @@ impl ClientState {
             })
             .collect();
 
+        // First, remove all IPs for this particular resource.
+        {
+            for (_, resources) in self.dns_resources_internal_ips.values_mut() {
+                resources.remove(&resource_description);
+            }
+
+            self.dns_resources_internal_ips
+                .retain(|_, (_, resources)| !resources.is_empty());
+        }
+
+        // Second, add the new IPs.
         for addr in addrs.clone() {
             self.dns_resources_internal_ips
                 .entry(addr)
