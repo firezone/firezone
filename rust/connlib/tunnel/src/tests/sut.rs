@@ -617,6 +617,7 @@ impl TunnelTest {
                             HashSet::default(),
                         )
                     })
+                    .unwrap()
                     .unwrap();
 
                 let resource_id = request.resource_id();

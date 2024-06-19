@@ -2063,6 +2063,7 @@ dependencies = [
 name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bimap",
  "boringtun",
