@@ -737,10 +737,12 @@ impl ClientState {
             return Err(Error::ControlProtocolError);
         };
 
+        tracing::info!(domain = %domain_response.domain, addresses = ?domain_response.address, "Received DNS response");
+
         let resource_description =
             DnsResource::from_description(&resource_description, domain_response.domain.clone());
 
-        let addrs: HashSet<_> = domain_response
+        let proxy_ips: HashSet<_> = domain_response
             .address
             .iter()
             .filter_map(|external_ip| {
@@ -748,9 +750,9 @@ impl ClientState {
             })
             .collect();
 
-        for addr in addrs.clone() {
+        for proxy_ip in proxy_ips.clone() {
             self.dns_resources_internal_ips
-                .entry(addr)
+                .entry(proxy_ip)
                 .and_modify(|(existing_peer, dns_resources)| {
                     assert_eq!(existing_peer, peer_id);
 
@@ -759,10 +761,10 @@ impl ClientState {
                 .or_insert_with(|| (*peer_id, HashSet::from([resource_description.clone()])));
         }
 
-        send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
-        send_dns_answer(self, Rtype::A, &resource_description, &addrs);
+        send_dns_answer(self, Rtype::AAAA, &resource_description, &proxy_ips);
+        send_dns_answer(self, Rtype::A, &resource_description, &proxy_ips);
 
-        Ok(addrs.iter().copied().map(Into::into).collect())
+        Ok(proxy_ips.iter().copied().map(Into::into).collect())
     }
 
     /// Attempt to handle the given packet as a DNS packet.
@@ -904,11 +906,22 @@ impl ClientState {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %gateway_id))]
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
         self.update_site_status_by_gateway(gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
         self.dns_resources_internal_ips
-            .retain(|_, (candidate, _)| candidate != gateway_id);
+            .retain(|proxy_ip, (candidate, resources)| {
+                if candidate == gateway_id {
+                    let domains = resources.iter().map(|r| &r.address).join(",");
+
+                    tracing::debug!(%proxy_ip, %domains, "Disassociating proxy IP");
+
+                    return false;
+                }
+
+                true
+            });
         self.resources_gateways.retain(|_, g| g != gateway_id);
     }
 
@@ -980,6 +993,8 @@ impl ClientState {
                         // filter inactive connections
                         continue;
                     };
+
+                    tracing::debug!(domain = %resource.address, "Refreshing DNS record");
 
                     connections.push(ReuseConnection {
                         resource_id: resource.id,

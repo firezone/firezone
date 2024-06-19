@@ -142,18 +142,23 @@ impl GatewayOnClient {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %self.id, %real_ip))]
     pub fn get_or_assign_translation(
         &mut self,
-        ip: &IpAddr,
+        real_ip: &IpAddr,
         ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
-        if let Some(proxy_ip) = self.translations.get_by_right(ip) {
+        if let Some(proxy_ip) = self.translations.get_by_right(real_ip) {
+            tracing::debug!(%proxy_ip, "Re-use existing translation");
+
             return Some(*proxy_ip);
         }
 
-        let proxy_ip = ip_provider.get_proxy_ip_for(ip)?;
+        let proxy_ip = ip_provider.get_proxy_ip_for(real_ip)?;
 
-        self.translations.insert(proxy_ip, *ip);
+        tracing::debug!(%proxy_ip, "Create new translation");
+
+        self.translations.insert(proxy_ip, *real_ip);
         Some(proxy_ip)
     }
 }
