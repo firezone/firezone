@@ -57,16 +57,6 @@ resource "google_dns_record_set" "blog-ipv4" {
   ttl     = 3600
 }
 
-resource "google_dns_record_set" "blog-ipv6" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "AAAA"
-  name    = "blog.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
-  ttl     = 3600
-}
-
 resource "google_dns_record_set" "docs-ipv4" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
@@ -74,16 +64,6 @@ resource "google_dns_record_set" "docs-ipv4" {
   type    = "A"
   name    = "docs.${module.google-cloud-dns.dns_name}"
   rrdatas = [google_compute_global_address.tld-ipv4.address]
-  ttl     = 3600
-}
-
-resource "google_dns_record_set" "docs-ipv6" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "AAAA"
-  name    = "docs.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
   ttl     = 3600
 }
 
