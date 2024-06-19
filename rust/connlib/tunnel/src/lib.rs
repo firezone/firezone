@@ -8,7 +8,7 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
-    Callbacks, Result,
+    Callbacks, DomainName, Result,
 };
 use io::Io;
 use std::{
@@ -302,5 +302,10 @@ pub enum GatewayEvent {
     InvalidIceCandidate {
         conn_id: ClientId,
         candidate: String,
+    },
+    RefreshDns {
+        name: DomainName,
+        conn_id: ClientId,
+        resource_id: ResourceId,
     },
 }

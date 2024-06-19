@@ -56,6 +56,15 @@ pub enum ConnlibError {
     /// Invalid destination for packet
     #[error("Invalid dest address")]
     InvalidDst,
+    /// Exhausted nat table
+    #[error("exhausted nat")]
+    ExhaustedNat,
+    #[error(transparent)]
+    UnsupportedProtocol(ip_packet::UnsupportedProtocol),
+    // TODO: we might want to log some extra parameters on these failed translations
+    /// Packet translation failed
+    #[error("failed packet translation")]
+    FailedTranslation,
     /// Connection is still being established, retry later
     #[error("Pending connection")]
     PendingConnection,

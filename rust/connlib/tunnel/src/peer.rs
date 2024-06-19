@@ -1,19 +1,28 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::time::{Duration, Instant};
 
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
 use connlib_shared::messages::{
     gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
 };
+use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::ip::IpNextHeaderProtocols;
 use ip_packet::{IpPacket, MutableIpPacket};
+use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
 use crate::client::IpProvider;
 use crate::utils::network_contains_network;
+use crate::GatewayEvent;
+
+use nat_table::NatTable;
+
+mod nat_table;
 
 #[derive(Debug)]
 enum FilterEngine {
@@ -157,6 +166,9 @@ impl ClientOnGateway {
             ipv6,
             resources: HashMap::new(),
             filters: IpNetworkTable::new(),
+            permanent_translations: Default::default(),
+            nat_table: Default::default(),
+            buffered_events: Default::default(),
         }
     }
 
@@ -165,6 +177,103 @@ impl ClientOnGateway {
     /// Failure to enforce this would allow one client to send traffic masquarading as a different client.
     fn allowed_ips(&self) -> [IpAddr; 2] {
         [IpAddr::from(self.ipv4), IpAddr::from(self.ipv6)]
+    }
+
+    pub(crate) fn refresh_translation(
+        &mut self,
+        name: DomainName,
+        resource_id: ResourceId,
+        resolved_ips: Vec<IpAddr>,
+        now: Instant,
+    ) {
+        let Some(resource) = self.resources.get_mut(&resource_id) else {
+            return;
+        };
+
+        let old_ips: HashSet<&IpAddr> =
+            HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
+                (state.name == name && state.resource_id == resource_id)
+                    .then_some(&state.resolved_ip)
+            }));
+        let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
+        if old_ips == new_ips {
+            return;
+        }
+
+        for r in resource
+            .iter_mut()
+            .filter(|ResourceOnGateway { domain, .. }| *domain == Some(name.clone()))
+        {
+            r.ips = resolved_ips.iter().copied().map_into().collect_vec();
+        }
+
+        let proxy_ips = self
+            .permanent_translations
+            .iter()
+            .filter_map(|(k, state)| {
+                (state.name == name && state.resource_id == resource_id).then_some(*k)
+            })
+            .collect_vec();
+
+        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now);
+        self.recalculate_filters();
+    }
+
+    fn assign_translations(
+        &mut self,
+        name: DomainName,
+        resource_id: ResourceId,
+        mapped_ips: &[IpAddr],
+        proxy_ips: Vec<IpAddr>,
+        now: Instant,
+    ) {
+        let mapped_ipv4 = mapped_ipv4(mapped_ips);
+        let mapped_ipv6 = mapped_ipv6(mapped_ips);
+
+        let ipv4_maps = proxy_ips
+            .iter()
+            .filter(|ip| ip.is_ipv4())
+            .zip(mapped_ipv4.into_iter().cycle());
+
+        let ipv6_maps = proxy_ips
+            .iter()
+            .filter(|ip| ip.is_ipv6())
+            .zip(mapped_ipv6.into_iter().cycle());
+
+        let ip_maps = ipv4_maps.chain(ipv6_maps);
+
+        for (proxy_ip, real_ip) in ip_maps {
+            tracing::debug!(%proxy_ip, %real_ip, %name, "Assigned translation");
+
+            self.permanent_translations.insert(
+                *proxy_ip,
+                TranslationState {
+                    resolved_ip: real_ip,
+                    resource_id,
+                    name: name.clone(),
+                    last_response: now,
+                    slated_for_refresh: false,
+                },
+            );
+        }
+    }
+
+    pub(crate) fn assign_proxies(
+        &mut self,
+        resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
+        domain_ips: Option<(DomainName, Vec<IpAddr>)>,
+        now: Instant,
+    ) -> connlib_shared::Result<()> {
+        match (resource, domain_ips) {
+            (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
+                self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
+            }
+            (ResourceDescription::Cidr(_), None) => {}
+            _ => {
+                return Err(connlib_shared::Error::InvalidResource);
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn is_emptied(&self) -> bool {
@@ -180,6 +289,45 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
+        self.buffered_events.pop_front()
+    }
+
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        let expired_translations = self
+            .permanent_translations
+            .iter()
+            .filter(|(_, state)| state.slated_for_refresh);
+        let mut for_refresh = HashSet::new();
+        for (proxy_ip, expired_state) in expired_translations {
+            if self
+                .permanent_translations
+                .values()
+                .filter_map(|state| {
+                    (state.resource_id == expired_state.resource_id
+                        && state.name == expired_state.name)
+                        .then_some((state.last_response, state.slated_for_refresh))
+                })
+                .all(|(last_seen, slated_for_refresh)| {
+                    slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
+                })
+            {
+                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.resolved_ip, %proxy_ip , "Refreshing DNS");
+
+                for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
+            }
+        }
+
+        for (name, resource_id) in for_refresh {
+            self.buffered_events.push_back(GatewayEvent::RefreshDns {
+                name,
+                conn_id: self.id,
+                resource_id,
+            });
+        }
+        self.nat_table.handle_timeout(now);
+    }
+
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.resources.remove(resource);
         self.recalculate_filters();
@@ -191,11 +339,13 @@ impl ClientOnGateway {
         resource: ResourceId,
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
+        domain: Option<DomainName>,
     ) {
         self.resources
             .entry(resource)
             .or_default()
             .push(ResourceOnGateway {
+                domain,
                 ips,
                 filters,
                 // Each resource subdomain can expire individually so it's worth keeping a list
@@ -206,10 +356,7 @@ impl ClientOnGateway {
 
     // Note: we only allow updating filters and names
     // but names updates have no effect on the gateway
-    pub(crate) fn update_resource(
-        &mut self,
-        resource: &connlib_shared::messages::gateway::ResourceDescription,
-    ) {
+    pub(crate) fn update_resource(&mut self, resource: &ResourceDescription) {
         let Some(old_resource) = self.resources.get_mut(&resource.id()) else {
             return;
         };
@@ -247,8 +394,76 @@ impl ClientOnGateway {
         }
     }
 
-    /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    pub fn ensure_allowed(
+    fn transform_network_to_tun<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+        now: Instant,
+    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
+        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
+            return Ok(packet);
+        };
+
+        let (source_protocol, real_ip) =
+            self.nat_table
+                .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
+
+        if now.duration_since(state.last_response) >= Duration::from_secs(30) {
+            state.slated_for_refresh = true;
+        }
+
+        let mut packet = packet
+            .translate_destination(self.ipv4, self.ipv6, real_ip)
+            .ok_or(connlib_shared::Error::FailedTranslation)?;
+        packet.set_source_protocol(source_protocol.value());
+        packet.update_checksum();
+
+        Ok(packet)
+    }
+
+    pub fn decapsulate<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+        now: Instant,
+    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
+        self.ensure_allowed_src(&packet)?;
+
+        let packet = self.transform_network_to_tun(packet, now)?;
+
+        self.ensure_allowed_dst(&packet)?;
+
+        Ok(packet)
+    }
+
+    pub fn encapsulate<'a>(
+        &mut self,
+        packet: MutableIpPacket<'a>,
+        now: Instant,
+    ) -> Result<Option<MutableIpPacket<'a>>, connlib_shared::Error> {
+        let Some((proto, ip)) = self
+            .nat_table
+            .translate_incoming(packet.as_immutable(), now)?
+        else {
+            return Ok(Some(packet));
+        };
+
+        let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
+            return Ok(None);
+        };
+        let state = self
+            .permanent_translations
+            .get_mut(&ip)
+            .expect("inconsistent state");
+
+        state.last_response = now;
+        state.slated_for_refresh = false;
+
+        packet.set_destination_protocol(proto.value());
+        packet.update_checksum();
+
+        Ok(Some(packet))
+    }
+
+    fn ensure_allowed_src(
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
@@ -259,6 +474,14 @@ impl ClientOnGateway {
             });
         }
 
+        Ok(())
+    }
+
+    /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
+    fn ensure_allowed_dst(
+        &self,
+        packet: &MutableIpPacket<'_>,
+    ) -> Result<(), connlib_shared::Error> {
         let dst = packet.destination();
         if !self
             .filters
@@ -322,10 +545,26 @@ impl GatewayOnClient {
     }
 }
 
+#[derive(Debug)]
 struct ResourceOnGateway {
     ips: Vec<IpNetwork>,
     filters: Filters,
     expires_at: Option<DateTime<Utc>>,
+    domain: Option<DomainName>,
+}
+
+// Current state of a translation for a given proxy ip
+#[derive(Debug)]
+struct TranslationState {
+    /// Which (DNS) resource we belong to.
+    resource_id: ResourceId,
+    /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
+    name: DomainName,
+    /// The IP we have resolved for the domain.
+    resolved_ip: IpAddr,
+    /// When we've last seen a packet from the resolved IP.
+    last_response: Instant,
+    slated_for_refresh: bool,
 }
 
 /// The state of one client on a gateway.
@@ -335,6 +574,9 @@ pub struct ClientOnGateway {
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, Vec<ResourceOnGateway>>,
     filters: IpNetworkTable<FilterEngine>,
+    permanent_translations: HashMap<IpAddr, TranslationState>,
+    nat_table: NatTable,
+    buffered_events: VecDeque<GatewayEvent>,
 }
 
 #[cfg(test)]
@@ -367,6 +609,7 @@ mod tests {
                 port_range_end: 100,
             })],
             Some(then),
+            None,
         );
 
         peer.add_resource(
@@ -377,19 +620,20 @@ mod tests {
                 port_range_end: 100,
             })],
             Some(after_then),
+            None,
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
-            source_v4_addr().into(),
-            cidr_v4_resource().hosts().next().unwrap().into(),
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
             vec![0; 100],
         );
 
         let udp_packet = ip_packet::make::udp_packet(
-            source_v4_addr().into(),
-            cidr_v4_resource().hosts().next().unwrap().into(),
+            source_v4_addr(),
+            cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
             vec![0; 100],
@@ -397,25 +641,25 @@ mod tests {
 
         peer.expire_resources(now);
 
-        assert!(peer.ensure_allowed(&tcp_packet).is_ok());
-        assert!(peer.ensure_allowed(&udp_packet).is_ok());
+        assert!(peer.ensure_allowed_dst(&tcp_packet).is_ok());
+        assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
         peer.expire_resources(then);
 
         assert!(matches!(
-            peer.ensure_allowed(&tcp_packet),
+            peer.ensure_allowed_dst(&tcp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
-        assert!(peer.ensure_allowed(&udp_packet).is_ok());
+        assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
         peer.expire_resources(after_then);
 
         assert!(matches!(
-            peer.ensure_allowed(&tcp_packet),
+            peer.ensure_allowed_dst(&tcp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
         assert!(matches!(
-            peer.ensure_allowed(&udp_packet),
+            peer.ensure_allowed_dst(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
@@ -497,7 +741,13 @@ mod proptests {
             let Some((filter, _)) = filters.next() else {
                 break;
             };
-            peer.add_resource(vec![addr], resources_id[resources], filter.clone(), None);
+            peer.add_resource(
+                vec![addr],
+                resources_id[resources],
+                filter.clone(),
+                None,
+                None,
+            );
             resources += 1;
             resource_addr = supernet(addr);
         }
@@ -508,7 +758,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -527,7 +777,7 @@ mod proptests {
         let (filters, protocol) = protocol_config;
         let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
 
-        peer.add_resource(resource_addr, resource_id, filters, None);
+        peer.add_resource(resource_addr, resource_id, filters, None, None);
 
         for dest in dest {
             let src = if dest.is_ipv4() {
@@ -540,7 +790,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -567,8 +817,8 @@ mod proptests {
         let (filters, protocol) = protocol_config;
         let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
 
-        peer.add_resource(resource_addr_1, resource_id, filters.clone(), None);
-        peer.add_resource(resource_addr_2, resource_id, filters, None);
+        peer.add_resource(resource_addr_1, resource_id, filters.clone(), None, None);
+        peer.add_resource(resource_addr_2, resource_id, filters, None, None);
 
         for dest in dest_1 {
             let src = if dest.is_ipv4() {
@@ -581,7 +831,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
 
         for dest in dest_2 {
@@ -595,7 +845,7 @@ mod proptests {
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -627,6 +877,7 @@ mod proptests {
                 *resources_ids.next().unwrap(),
                 filters.clone(),
                 None,
+                None,
             );
         }
 
@@ -637,7 +888,7 @@ mod proptests {
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
             };
 
-            assert!(peer.ensure_allowed(&packet).is_ok());
+            assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
 
@@ -667,10 +918,10 @@ mod proptests {
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
         };
 
-        peer.add_resource(vec![resource_addr], resource_id, filters, None);
+        peer.add_resource(vec![resource_addr], resource_id, filters, None, None);
 
         assert!(matches!(
-            peer.ensure_allowed(&packet),
+            peer.ensure_allowed_dst(&packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
@@ -718,6 +969,7 @@ mod proptests {
             resource_id_allowed,
             filters_allowed,
             None,
+            None,
         );
 
         peer.add_resource(
@@ -725,12 +977,13 @@ mod proptests {
             resource_id_removed,
             filters_removed,
             None,
+            None,
         );
         peer.remove_resource(&resource_id_removed);
 
-        assert!(peer.ensure_allowed(&packet_allowed).is_ok());
+        assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(matches!(
-            peer.ensure_allowed(&packet_rejected),
+            peer.ensure_allowed_dst(&packet_rejected),
             Err(connlib_shared::Error::InvalidDst)
         ));
     }
@@ -999,5 +1252,28 @@ mod proptests {
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }
+    }
+}
+
+fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
+}
+
+fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
+}
+
+fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv4_addresses(ips).is_empty() {
+        ipv4_addresses(ips)
+    } else {
+        ipv6_addresses(ips)
+    }
+}
+fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv6_addresses(ips).is_empty() {
+        ipv6_addresses(ips)
+    } else {
+        ipv4_addresses(ips)
     }
 }

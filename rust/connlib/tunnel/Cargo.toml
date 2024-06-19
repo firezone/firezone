@@ -47,6 +47,7 @@ firezone-relay = { workspace = true, features = ["proptest"] }
 rand = "0.8"
 hickory-proto = { workspace = true }
 derivative = "2.2.0"
+ip-packet = { workspace = true, features = ["proptest"] }
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
