@@ -17,13 +17,13 @@ export default function Changelog() {
           <Gateway />
         </TabsItem>
         <TabsItem title="Linux GUI" icon={FaLinux}>
-          <GUI type="Linux GUI" />
+          <GUI title="Linux GUI" />
         </TabsItem>
         <TabsItem title="Apple" icon={FaApple}>
           <Apple />
         </TabsItem>
         <TabsItem title="Windows" icon={FaWindows}>
-          <GUI type="Windows" />
+          <GUI title="Windows" />
         </TabsItem>
         <TabsItem title="Android" icon={FaAndroid}>
           <Android />
