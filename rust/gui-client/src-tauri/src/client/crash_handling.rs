@@ -16,6 +16,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use crash_handler::CrashHandler;
 use firezone_headless_client::known_dirs;
 use std::{fs::File, io::Write, path::PathBuf};
+use time::OffsetDateTime;
 
 /// Attaches a crash handler to the client process
 ///
@@ -57,7 +58,7 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
 pub(crate) fn server(socket_path: PathBuf) -> Result<()> {
     let mut server = minidumper::Server::with_name(&*socket_path)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
-    server.run(Box::new(Handler), &ab, None)?;
+    server.run(Box::new(Handler::default()), &ab, None)?;
     Ok(())
 }
 
@@ -113,16 +114,34 @@ fn start_server_and_connect() -> Result<(minidumper::Client, std::process::Child
 ///
 /// The minidumper docs call this the "server" process because it's an IPC server,
 /// not to be confused with network servers for Firezone itself.
-struct Handler;
+struct Handler {
+    start_time: OffsetDateTime,
+}
+
+impl Default for Handler {
+    fn default() -> Self {
+        // Capture the time at startup so that the crash dump file will have
+        // a similar timestamp to the log file
+        Self {
+            start_time: OffsetDateTime::now_utc(),
+        }
+    }
+}
 
 impl minidumper::ServerHandler for Handler {
     /// Called when a crash has been received and a backing file needs to be
     /// created to store it.
     #[allow(clippy::print_stderr)]
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
+        let format = time::format_description::parse(connlib_client_shared::file_logger::TIME_FORMAT)
+            .expect("static format description should always be parsable");
+        let date = self
+            .start_time
+            .format(&format)
+            .expect("formatting a timestamp should always be possible");
         let dump_path = known_dirs::logs()
             .expect("Should be able to find logs dir to put crash dump in")
-            .join("last_crash.dmp");
+            .join(format!("crash.{date}.dmp"));
 
         // `tracing` is unlikely to work inside the crash handler subprocess, so
         // just print to stderr and it may show up on the terminal. This helps in CI / local dev.
