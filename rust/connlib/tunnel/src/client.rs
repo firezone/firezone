@@ -812,9 +812,22 @@ impl ClientState {
                 Ok(None)
             }
             Some(dns::ResolveStrategy::DeferredResponse((resource, r_type))) => {
-                self.on_not_connected_resource(resource.id, Some(resource.address.clone()), now);
                 self.deferred_dns_queries
-                    .insert((resource, r_type), packet.as_immutable().to_owned());
+                    .insert((resource.clone(), r_type), packet.as_immutable().to_owned());
+
+                let Some(peer) = self.peer_by_resource(resource.id) else {
+                    self.on_not_connected_resource(resource.id, Some(resource.address), now);
+                    return Ok(None);
+                };
+
+                self.buffered_events
+                    .push_back(ClientEvent::RefreshResources {
+                        connections: vec![ReuseConnection {
+                            resource_id: resource.id,
+                            gateway_id: peer.id(),
+                            payload: Some(resource.address),
+                        }],
+                    });
 
                 Ok(None)
             }
