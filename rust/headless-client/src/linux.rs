@@ -1,7 +1,7 @@
 //! Implementation, Linux-specific
 
-use super::{CliCommon, SignalKind, FIREZONE_GROUP, TOKEN_ENV_KEY};
-use anyhow::{bail, Context as _, Result};
+use super::{CliCommon, SignalKind, TOKEN_ENV_KEY};
+use anyhow::{bail, Result};
 use futures::future::{select, Either};
 use std::{
     path::{Path, PathBuf},
@@ -72,19 +72,6 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The path for our Unix Domain Socket
-///
-/// Docker keeps theirs in `/run` and also appears to use filesystem permissions
-/// for security, so we're following their lead. `/run` and `/var/run` are symlinked
-/// on some systems, `/run` should be the newer version.
-///
-/// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
-pub fn sock_path() -> PathBuf {
-    PathBuf::from("/run")
-        .join(connlib_shared::BUNDLE_ID)
-        .join("ipc.sock")
-}
-
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
@@ -99,13 +86,6 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         tracing::error!(?error, "`ipc_listen` failed");
     }
     Ok(())
-}
-
-pub fn firezone_group() -> Result<nix::unistd::Group> {
-    let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
-        .context("can't get group by name")?
-        .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
-    Ok(group)
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {

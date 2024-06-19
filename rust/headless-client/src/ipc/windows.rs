@@ -1,3 +1,4 @@
+use super::ServiceId;
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
 use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
@@ -18,25 +19,9 @@ impl Server {
     ///
     /// This is async on Linux
     #[allow(clippy::unused_async)]
-    pub(crate) async fn new() -> Result<Self> {
-        Self::new_with_path(pipe_path())
-    }
-
-    /// Uses a test path instead of what prod uses
-    ///
-    /// The test path doesn't need admin powers and won't conflict with the prod
-    /// IPC service on a dev machine.
-    ///
-    /// This is async on Linux
-    #[allow(clippy::unused_async)]
-    #[cfg(test)]
-    pub(crate) async fn new_for_test() -> Result<Self> {
-        let pipe_path = named_pipe_path(&format!("{BUNDLE_ID}_test.ipc_service"));
-        Self::new_with_path(pipe_path)
-    }
-
-    pub(crate) fn new_with_path(pipe_path: String) -> Result<Self> {
+    pub(crate) async fn new(id: ServiceId) -> Result<Self> {
         crate::platform::setup_before_connlib()?;
+        let pipe_path = pipe_path(id);
         Ok(Self { pipe_path })
     }
 
@@ -141,8 +126,12 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 }
 
 /// Named pipe for IPC between GUI client and IPC service
-pub fn pipe_path() -> String {
-    named_pipe_path(&format!("{BUNDLE_ID}.ipc_service"))
+pub fn pipe_path(id: ServiceId) -> String {
+    let name = match id {
+        ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
+        ServiceId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
+    };
+    named_pipe_path(&name)
 }
 
 /// Returns a valid name for a Windows named pipe
@@ -166,6 +155,6 @@ mod tests {
 
     #[test]
     fn pipe_path() {
-        assert!(super::pipe_path().starts_with(r"\\.\pipe\"));
+        assert!(super::pipe_path(super::ServiceId::Prod).starts_with(r"\\.\pipe\"));
     }
 }

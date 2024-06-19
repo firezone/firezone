@@ -47,17 +47,15 @@ pub mod ipc;
 pub mod known_dirs;
 
 #[cfg(target_os = "linux")]
-pub mod linux;
-#[cfg(target_os = "linux")]
-pub use linux as platform;
+#[path = "linux.rs"]
+pub mod platform;
 
 #[cfg(target_os = "windows")]
-pub mod windows;
-#[cfg(target_os = "windows")]
-pub(crate) use windows as platform;
+#[path = "windows.rs"]
+pub mod platform;
 
 use dns_control::DnsController;
-use ipc::{Server as IpcServer, Stream as IpcStream};
+use ipc::{Server as IpcServer, ServiceId, Stream as IpcStream};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -367,7 +365,7 @@ pub fn run_only_ipc_service() -> Result<()> {
 }
 
 pub(crate) fn run_debug_ipc_service() -> Result<()> {
-    debug_command_setup()?;
+    setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     rt.spawn(crate::heartbeat::heartbeat());
@@ -446,7 +444,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
-    let mut server = IpcServer::new().await?;
+    let mut server = IpcServer::new(ServiceId::Prod).await?;
     loop {
         dns_control::deactivate()?;
         let stream = server
@@ -699,8 +697,8 @@ fn get_log_filter() -> Result<String> {
     Ok(SERVICE_RUST_LOG.to_string())
 }
 
-/// Sets up logging for stderr only, with INFO level by default
-pub fn debug_command_setup() -> Result<()> {
+/// Sets up logging for stdout only, with INFO level by default
+pub fn setup_stdout_logging() -> Result<()> {
     let filter = EnvFilter::new(get_log_filter().context("Can't read log filter")?);
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
@@ -774,7 +772,7 @@ mod tests {
     async fn ipc_server() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
-        let mut server = crate::IpcServer::new_for_test().await?;
+        let mut server = super::IpcServer::new(super::ServiceId::Test("H6L73DG5")).await?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {
