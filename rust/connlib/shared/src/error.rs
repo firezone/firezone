@@ -50,9 +50,6 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Received connection details that might be stale
-    #[error("Unexpected connection details")]
-    UnexpectedConnectionDetails,
     /// Invalid destination for packet
     #[error("Invalid dest address")]
     InvalidDst,
@@ -65,9 +62,6 @@ pub enum ConnlibError {
     /// Packet translation failed
     #[error("failed packet translation")]
     FailedTranslation,
-    /// Connection is still being established, retry later
-    #[error("Pending connection")]
-    PendingConnection,
     #[cfg(target_os = "windows")]
     #[error("Windows error: {0}")]
     WindowsError(#[from] windows::core::Error),
