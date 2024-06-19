@@ -38,7 +38,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
 impl Server {
     /// Platform-specific setup
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
-        let sock_path = sock_path(id);
+        let sock_path = ipc_path(id);
         // Remove the socket if a previous run left it there
         tokio::fs::remove_file(&sock_path).await.ok();
         // Create the dir if possible, needed for test paths under `/run/user`
@@ -77,7 +77,7 @@ impl Server {
 /// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
 ///
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
-fn sock_path(id: ServiceId) -> PathBuf {
+fn ipc_path(id: ServiceId) -> PathBuf {
     match id {
         ServiceId::Prod => PathBuf::from("/run")
             .join(connlib_shared::BUNDLE_ID)

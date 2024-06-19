@@ -24,7 +24,7 @@ pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 /// This is async on Linux
 #[allow(clippy::unused_async)]
 pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
-    let path = pipe_path(id);
+    let path = ipc_path(id);
     let stream = named_pipe::ClientOptions::new()
         .open(&path)
         .with_context(|| format!("Couldn't connect to named pipe server at `{path}`"))?;
@@ -45,7 +45,7 @@ impl Server {
     #[allow(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
         crate::platform::setup_before_connlib()?;
-        let pipe_path = pipe_path(id);
+        let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
     }
 
@@ -149,7 +149,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     }
 }
 
-pub fn pipe_path(id: ServiceId) -> String {
+fn ipc_path(id: ServiceId) -> String {
     let name = match id {
         ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
         ServiceId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
@@ -163,7 +163,8 @@ pub fn pipe_path(id: ServiceId) -> String {
 ///
 /// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
 ///
-/// Public because the GUI Client re-uses this for deep links
+/// Public because the GUI Client re-uses this for deep links. Eventually that code
+/// will be de-duped into this code.
 pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
@@ -183,8 +184,8 @@ mod tests {
     }
 
     #[test]
-    fn pipe_path() {
-        assert!(super::pipe_path(ServiceId::Prod).starts_with(r"\\.\pipe\"));
+    fn ipc_path() {
+        assert!(super::ipc_path(ServiceId::Prod).starts_with(r"\\.\pipe\"));
     }
 
     #[tokio::test]
