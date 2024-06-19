@@ -117,7 +117,7 @@ pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
         .join("DnsPolicyConfig")
         .join(NRPT_REG_KEY);
 
-    let (key, _) = hkcu.create_subkey(&base)?;
+    let (key, _) = hkcu.create_subkey(base)?;
     key.set_value("Comment", &FZ_MAGIC)?;
     key.set_value("ConfigOptions", &0x8u32)?;
     key.set_value("DisplayName", &"Firezone SplitDNS")?;
