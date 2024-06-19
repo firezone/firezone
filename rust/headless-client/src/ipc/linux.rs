@@ -18,7 +18,7 @@ pub(crate) type ServerStream = UnixStream;
 /// Connect to the IPC service
 #[allow(clippy::unused_async)]
 pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
-    let path = sock_path(id);
+    let path = ipc_path(id);
     let stream = UnixStream::connect(&path).await.with_context(|| {
         format!(
             "Couldn't connect to Unix domain socket at `{}`",
