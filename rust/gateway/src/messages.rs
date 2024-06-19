@@ -1,12 +1,20 @@
+use std::net::IpAddr;
+
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
     messages::{
-        gateway::ResourceDescription, ClientId, ClientPayload, GatewayResponse, Interface, Peer,
-        Relay, RelaysPresence, ResourceId,
+        gateway::ResourceDescription, ClientId, GatewayResponse, Interface, Offer, Peer, Relay,
+        RelaysPresence, ResourceId,
     },
     DomainName,
 };
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct ClientPayload {
+    pub ice_parameters: Offer,
+    pub domain: Option<ResolveRequest>,
+}
 
 // TODO: Should this have a resource?
 #[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
@@ -47,12 +55,42 @@ pub struct RemoveResource {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum ResolveRequest {
+    ReturnResponse(DomainName),
+    MapResponse {
+        name: DomainName,
+        proxy_ips: Vec<IpAddr>,
+    },
+}
+
+impl ResolveRequest {
+    pub fn name(&self) -> DomainName {
+        match self {
+            ResolveRequest::ReturnResponse(name) => name.clone(),
+            ResolveRequest::MapResponse { name, .. } => name.clone(),
+        }
+    }
+
+    // TODO: remove me
+    pub fn as_tuple(&self) -> (DomainName, Vec<IpAddr>) {
+        match self {
+            ResolveRequest::ReturnResponse(name) => (name.clone(), Vec::new()),
+            ResolveRequest::MapResponse {
+                name,
+                proxy_ips: proxy,
+            } => (name.clone(), proxy.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct AllowAccess {
     pub client_id: ClientId,
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
-    pub payload: Option<DomainName>,
+    pub payload: Option<ResolveRequest>,
     #[serde(rename = "ref")]
     pub reference: String,
 }
@@ -176,6 +214,176 @@ mod test {
             }
         }"#;
         // TODO: We are just testing we can deserialize for now.
+        let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
+    }
+
+    #[test]
+    fn request_connection_with_payload() {
+        let message = r#"{
+  "event": "request_connection",
+  "ref": null,
+  "topic": "gateway",
+  "payload": {
+    "client": {
+      "id": "2e5c0210-3ac0-49cd-bfc9-8005046291de",
+      "peer": {
+        "ipv6": "fd00:2021:1111::4:4616",
+        "public_key": "zHtdIFPDm8QQkqjbmAc1r8O1WegviA6UeUTP6rpminA=",
+        "ipv4": "100.87.247.184",
+        "persistent_keepalive": 25,
+        "preshared_key": "BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="
+      },
+      "payload": {
+        "domain": {
+          "name": "download.httpbin",
+          "proxy_ips": [
+            "100.96.0.1",
+            "100.96.0.2",
+            "100.96.0.3",
+            "100.96.0.4",
+            "fd00:2021:1111:8000::",
+            "fd00:2021:1111:8000::1",
+            "fd00:2021:1111:8000::2",
+            "fd00:2021:1111:8000::3"
+          ]
+        },
+        "ice_parameters": {
+          "password": "MMceouYA5jGIPkxbvIiLvD",
+          "username": "aYaH"
+        }
+      }
+    },
+    "resource": {
+      "id": "619fbe83-bc95-4635-9a08-68da9a944c88",
+      "name": "?.httpbin",
+      "type": "dns",
+      "address": "?.httpbin",
+      "filters": [
+        {
+          "protocol": "tcp",
+          "port_range_end": 80,
+          "port_range_start": 80
+        },
+        {
+          "protocol": "tcp",
+          "port_range_end": 433,
+          "port_range_start": 433
+        },
+        {
+          "protocol": "udp",
+          "port_range_end": 53,
+          "port_range_start": 53
+        },
+        {
+          "protocol": "icmp"
+        }
+      ]
+    },
+    "ref": "SFMyNTY.g2gDbQAAAVhnMmdFV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFENndBQUFBQm1hakdpYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFQZ0FBQUFBR1pxTWFKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFSaEFHMEFBQUFrTmpFNVptSmxPRE10WW1NNU5TMDBOak0xTFRsaE1EZ3ROamhrWVRsaE9UUTBZemc0YkFBQUFBRm9BbTBBQUFBTGRISmhZMlZ3WVhKbGJuUnRBQUFBTnpBd0xUZzROMlptTUdKaU1EZGhOakU1TkdOa01tTTRNamsxWkRGaE1tSXlabU15TFRnMU9USXpZV1kzTVRZNVlUQmlPR1F0TURGcW4GAKnP0g6QAWIAAVGA.MBccK7A6wR4EA1ZkKnGlHzAnh-tRitZ2d97q_IvzoD8",
+    "expires_at": 1718663242,
+    "actor": {
+      "id": "0f4a5f16-3c59-47c9-a7c1-31de7a51b26c"
+    },
+    "relays": [
+      {
+        "id": "75542064-e5f7-491b-b054-5350b4f34963",
+        "type": "turn",
+        "addr": "172.28.0.101:3478",
+        "username": "1719445215:D8RIljXHIIYGn88dBjUIFw",
+        "password": "AipiIetIXo33EnV36U+nET8lAtJXr+iSwwFU5VOfF5k",
+        "expires_at": 1719445215
+      },
+      {
+        "id": "649cd79f-2536-4f9d-906b-d20b1c5d3ac3",
+        "type": "turn",
+        "addr": "172.28.0.201:3478",
+        "username": "1719445215:hpx751e3Wt-Mg9kv7yv0mg",
+        "password": "D6A4ytn/U8xAvfOE1l3G/rNlduZD1gq21BFXhITkjpA",
+        "expires_at": 1719445215
+      }
+    ],
+    "flow_id": "b944e68a-c936-4a81-bd8d-88c45efdcb2c"
+  }
+}"#;
+        let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
+    }
+
+    #[test]
+    fn request_connection_with_payload_old_format() {
+        let message = r#"{
+  "event": "request_connection",
+  "ref": null,
+  "topic": "gateway",
+  "payload": {
+    "client": {
+      "id": "2e5c0210-3ac0-49cd-bfc9-8005046291de",
+      "peer": {
+        "ipv6": "fd00:2021:1111::4:4616",
+        "public_key": "zHtdIFPDm8QQkqjbmAc1r8O1WegviA6UeUTP6rpminA=",
+        "ipv4": "100.87.247.184",
+        "persistent_keepalive": 25,
+        "preshared_key": "BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="
+      },
+      "payload": {
+        "domain": "download.httpbin",
+        "ice_parameters": {
+          "password": "MMceouYA5jGIPkxbvIiLvD",
+          "username": "aYaH"
+        }
+      }
+    },
+    "resource": {
+      "id": "619fbe83-bc95-4635-9a08-68da9a944c88",
+      "name": "?.httpbin",
+      "type": "dns",
+      "address": "?.httpbin",
+      "filters": [
+        {
+          "protocol": "tcp",
+          "port_range_end": 80,
+          "port_range_start": 80
+        },
+        {
+          "protocol": "tcp",
+          "port_range_end": 433,
+          "port_range_start": 433
+        },
+        {
+          "protocol": "udp",
+          "port_range_end": 53,
+          "port_range_start": 53
+        },
+        {
+          "protocol": "icmp"
+        }
+      ]
+    },
+    "ref": "SFMyNTY.g2gDbQAAAVhnMmdFV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFENndBQUFBQm1hakdpYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFQZ0FBQUFBR1pxTWFKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFSaEFHMEFBQUFrTmpFNVptSmxPRE10WW1NNU5TMDBOak0xTFRsaE1EZ3ROamhrWVRsaE9UUTBZemc0YkFBQUFBRm9BbTBBQUFBTGRISmhZMlZ3WVhKbGJuUnRBQUFBTnpBd0xUZzROMlptTUdKaU1EZGhOakU1TkdOa01tTTRNamsxWkRGaE1tSXlabU15TFRnMU9USXpZV1kzTVRZNVlUQmlPR1F0TURGcW4GAKnP0g6QAWIAAVGA.MBccK7A6wR4EA1ZkKnGlHzAnh-tRitZ2d97q_IvzoD8",
+    "expires_at": 1718663242,
+    "actor": {
+      "id": "0f4a5f16-3c59-47c9-a7c1-31de7a51b26c"
+    },
+    "relays": [
+      {
+        "id": "75542064-e5f7-491b-b054-5350b4f34963",
+        "type": "turn",
+        "addr": "172.28.0.101:3478",
+        "username": "1719445215:D8RIljXHIIYGn88dBjUIFw",
+        "password": "AipiIetIXo33EnV36U+nET8lAtJXr+iSwwFU5VOfF5k",
+        "expires_at": 1719445215
+      },
+      {
+        "id": "649cd79f-2536-4f9d-906b-d20b1c5d3ac3",
+        "type": "turn",
+        "addr": "172.28.0.201:3478",
+        "username": "1719445215:hpx751e3Wt-Mg9kv7yv0mg",
+        "password": "D6A4ytn/U8xAvfOE1l3G/rNlduZD1gq21BFXhITkjpA",
+        "expires_at": 1719445215
+      }
+    ],
+    "flow_id": "b944e68a-c936-4a81-bd8d-88c45efdcb2c"
+  }
+}"#;
         let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
     }
 

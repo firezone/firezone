@@ -160,13 +160,19 @@ pub(crate) fn icmp_packet(
     }
 }
 
-pub fn tcp_packet(
-    saddr: IpAddr,
-    daddr: IpAddr,
+pub fn tcp_packet<IP>(
+    saddr: IP,
+    daddr: IP,
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> MutableIpPacket<'static> {
+) -> MutableIpPacket<'static>
+where
+    IP: Into<IpAddr>,
+{
+    let saddr = saddr.into();
+    let daddr = daddr.into();
+
     match (saddr, daddr) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
@@ -196,13 +202,19 @@ pub fn tcp_packet(
     }
 }
 
-pub fn udp_packet(
-    saddr: IpAddr,
-    daddr: IpAddr,
+pub fn udp_packet<IP>(
+    saddr: IP,
+    daddr: IP,
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> MutableIpPacket<'static> {
+) -> MutableIpPacket<'static>
+where
+    IP: Into<IpAddr>,
+{
+    let saddr = saddr.into();
+    let daddr = daddr.into();
+
     match (saddr, daddr) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
