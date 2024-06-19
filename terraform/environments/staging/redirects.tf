@@ -58,47 +58,10 @@ resource "google_compute_managed_ssl_certificate" "tld" {
 resource "google_compute_url_map" "redirects" {
   project = module.google-cloud-project.project.project_id
 
-  name = "${replace(local.tld, ".", "-")}-www-redirect"
+  name = "${replace(local.tld, ".", "-")}-production-redirect"
 
-  # docs.firezone.dev -> https://www.firezone.dev/docs{uri}
-  host_rule {
-    hosts        = ["docs.${local.tld}"]
-    path_matcher = "firezone-docs-redirects"
-  }
-
-  path_matcher {
-    name = "firezone-redirects"
-
-    default_url_redirect {
-      host_redirect          = "www.firezone.dev"
-      prefix_redirect        = "/docs"
-      https_redirect         = true
-      redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
-      strip_query            = false
-    }
-  }
-
-  # blog.firezone.dev -> https://www.firezone.dev/blog{uri}
-  host_rule {
-    hosts        = ["blog.${local.tld}"]
-    path_matcher = "firezone-blog-redirects"
-  }
-
-  path_matcher {
-    name = "firezone-redirects"
-
-    default_url_redirect {
-      host_redirect          = "www.firezone.dev"
-      prefix_redirect        = "/blog"
-      https_redirect         = true
-      redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
-      strip_query            = false
-    }
-  }
-
-  # rest of the hosts -> https://www.firezone.dev{uri}
   default_url_redirect {
-    host_redirect          = "www.${local.tld}"
+    host_redirect          = "www.firezone.dev"
     https_redirect         = true
     redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
     strip_query            = false
