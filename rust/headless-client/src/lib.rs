@@ -451,10 +451,13 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
             .next_client()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(stream)?
+        if let Err(error) = Handler::new(stream)?
             .run()
             .await
-            .context("Error while handling IPC client")?;
+            .context("Error in `Handler::run` while handling IPC client")
+        {
+            tracing::error!(?error);
+        }
     }
 }
 
@@ -505,7 +508,9 @@ impl Handler {
                         serde_json::from_slice(&x)
                             .context("Error while deserializing IPC message")?,
                     ), // TODO: Integrate the serde_json stuff into a custom Tokio codec
-                    future::Either::Left((Some(Err(error)), _)) => Err(error)?,
+                    future::Either::Left((Some(Err(error)), _)) => {
+                        Err(error).context("error from `ipc_rx.next()`")?
+                    }
                     future::Either::Left((None, _)) => {
                         tracing::info!("IPC client disconnected");
                         break;
@@ -539,14 +544,16 @@ impl Handler {
                 }
                 self.ipc_tx
                     .send(serde_json::to_string(&msg)?.into())
-                    .await?
+                    .await
+                    .context("Error while sending IPC message")?
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
                 self.ipc_tx
                     .send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
-                    .await?;
+                    .await
+                    .context("Error while sending `OnTunnelReady`")?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
