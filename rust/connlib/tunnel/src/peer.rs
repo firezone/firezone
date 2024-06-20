@@ -271,25 +271,49 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        for (proxy_ip, state) in self
+        let conn_id = self.id;
+
+        let events = self
             .permanent_translations
             .iter()
             .filter(|(_, state)| state.should_refresh(now))
-        {
-            let domain = state.name.clone();
-            let resource_id = state.resource_id;
-            let conn_id = self.id;
+            .filter(|(_, expired_state)| {
+                Self::all_ips_due_for_refresh(&self.permanent_translations, &expired_state.name, expired_state.resource_id, now)
+            })
+            .map(|(proxy_ip, state)| (proxy_ip, state.resource_id, &state.name, state.resolved_ip))
+            .unique()
+            .map(|(proxy_ip, resource_id, domain, resolved_ip)| {
+                tracing::debug!(%domain, %conn_id, %resource_id, resolved_ip = ?resolved_ip, %proxy_ip , "Refreshing DNS");
 
-            tracing::debug!(%domain, %conn_id, %resource_id, resolved_ip = ?state.resolved_ip, %proxy_ip , "Refreshing DNS");
-
-            self.buffered_events.push_back(GatewayEvent::RefreshDns {
-                name: domain,
-                conn_id,
-                resource_id,
-            });
-        }
+                GatewayEvent::RefreshDns {
+                    name: domain.clone(),
+                    conn_id,
+                    resource_id,
+                }},
+            );
+        self.buffered_events.extend(events);
 
         self.nat_table.handle_timeout(now);
+    }
+
+    /// Checks if all IPs for a given resource and domain are due for a refresh.
+    ///
+    /// This ensures we don't refresh IPs that are actively in use by a client and thus break their connection.
+    fn all_ips_due_for_refresh(
+        translations: &HashMap<IpAddr, TranslationState>,
+        name: &DomainName,
+        resource: ResourceId,
+        now: Instant,
+    ) -> bool {
+        translations
+            .values()
+            .filter_map(|state| {
+                (state.resource_id == resource && state.name == name)
+                    .then_some((state.last_response, state.slated_for_refresh))
+            })
+            .all(|(last_seen, slated_for_refresh)| {
+                slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
+            })
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
