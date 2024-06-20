@@ -32,7 +32,11 @@ function smoke_test() {
     done
 
     # Run the smoke test normally
-    cargo run --bin "$PACKAGE" -- smoke-test
+    if ! cargo run --bin "$PACKAGE" -- smoke-test
+    then
+        echo "Smoke test failed L463MPIN"
+        exit 1
+    fi
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")

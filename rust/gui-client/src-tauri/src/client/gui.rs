@@ -170,8 +170,7 @@ pub(crate) fn run(
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
                         if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test");
-                            tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
                             unsafe { sadness_generator::raise_segfault() }
                         }
                     });
