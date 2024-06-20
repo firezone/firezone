@@ -3,7 +3,7 @@
 # Read it before running on a dev system.
 # This script must run from an elevated shell so that Firezone won't try to elevate.
 
-source "./scripts/tests/lib.sh"
+set -euox pipefail
 
 # This prevents a `shellcheck` lint warning about using an unset CamelCase var
 if [[ -z "$ProgramData" ]]; then
@@ -32,11 +32,7 @@ function smoke_test() {
     done
 
     # Run the smoke test normally
-    if ! cargo run --bin "$PACKAGE" -- smoke-test
-    then
-        echo "Smoke test failed L463MPIN"
-        exit 1
-    fi
+    cargo run --bin "$PACKAGE" -- smoke-test
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
