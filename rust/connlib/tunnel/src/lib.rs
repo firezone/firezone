@@ -275,6 +275,7 @@ pub enum ClientEvent {
         resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
     },
+    // FIXME: Refactor this to "request-access" or something similar.
     RefreshResources {
         connections: Vec<ReuseConnection>,
     },
