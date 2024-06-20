@@ -275,22 +275,28 @@ impl GatewayState {
         domain: Option<(DomainName, Vec<IpAddr>)>,
         now: Instant,
     ) -> Result<()> {
-        match (&domain, &resource) {
-            (Some((domain, _)), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
-            _ => {}
-        }
-
         let Some(peer) = self.peers.get_mut(&client) else {
             return Err(Error::ControlProtocolError);
         };
 
-        peer.assign_proxies(&resource, domain.clone(), now)?;
+        match (&domain, &resource) {
+            (Some((domain, proxy_ips)), ResourceDescription::Dns(r)) if !proxy_ips.is_empty() => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
+                    return Err(Error::InvalidResource);
+                }
 
+                peer.assign_translations(domain.clone(), r.id, &r.addresses, proxy_ips.clone(), now)
+            }
+            (Some((domain, _)), ResourceDescription::Dns(r)) => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
+                    return Err(Error::InvalidResource);
+                }
+
+                tracing::debug!("Client hasn't sent us any proxy IPs, skipping IP translation");
+            }
+            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
+            _ => {}
+        }
         peer.add_resource(
             resource.addresses(),
             resource.id(),
