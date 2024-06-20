@@ -1,6 +1,6 @@
 use super::{Error, ServiceId};
 use anyhow::{Context as _, Result};
-use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
+use std::{io::ErrorKind, os::unix::fs::PermissionsExt};
 use tokio::net::{UnixListener, UnixStream};
 
 pub(crate) struct Server {
@@ -17,16 +17,20 @@ pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
 #[allow(clippy::unused_async)]
-pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, super::Error> {
+#[allow(clippy::wildcard_enum_match_arm)]
+pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
     let stream = UnixStream::connect(&path)
         .await
         .map_err(|error| match error.kind() {
-            ErrorKind::NotFound => Error::NotFound(path),
+            ErrorKind::NotFound => Error::NotFound(path.display()),
             ErrorKind::PermissionDenied => Error::PermissionDenied,
             _ => Error::Other(error.into()),
         })?;
-    let cred = stream.peer_cred().map_err(|e| Error::Other(e.into()))?;
+    let cred = stream
+        .peer_cred()
+        .context("Couldn't get PID of UDS server")
+        .map_err(Error::Other)?;
     tracing::info!(
         uid = cred.uid(),
         gid = cred.gid(),

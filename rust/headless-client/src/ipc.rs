@@ -1,6 +1,5 @@
 use crate::{IpcClientMsg, IpcServerMsg};
 use anyhow::{Context as _, Result};
-use std::path::PathBuf;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -28,8 +27,8 @@ pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcSe
 // pub so that the GUI can display a human-friendly message
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Couldn't find IPC service")]
-    NotFound(PathBuf),
+    #[error("Couldn't find IPC service `{0}`")]
+    NotFound(String),
     #[error("Permission denied")]
     PermissionDenied,
 
