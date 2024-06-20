@@ -273,6 +273,7 @@ impl ClientOnGateway {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let conn_id = self.id;
 
+        // FIXME: This is O(n^2) with n being the number of proxy IPs (8 per resolved domain).
         let events = self
             .permanent_translations
             .iter()
