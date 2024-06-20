@@ -54,6 +54,15 @@ defmodule Domain.Auth.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:api_client) do
+    [
+      manage_providers_permission(),
+      manage_service_accounts_permission(),
+      manage_own_identities_permission(),
+      manage_identities_permission()
+    ]
+  end
+
   def list_permissions_for_role(_role) do
     []
   end
