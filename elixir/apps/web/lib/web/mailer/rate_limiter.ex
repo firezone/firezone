@@ -54,7 +54,7 @@ defmodule Web.Mailer.RateLimiter do
   @doc """
   Prevents the callback from being executed more than `limit` times within `interval`.
 
-  Every time callback is executed, the counter is incremented and it's expiration is extended,
+  Every time callback is executed, the counter is incremented and its expiration is extended,
   this means that if the caller MUST wait before calling the function again or it will be rate limited
   all the time.
   """
