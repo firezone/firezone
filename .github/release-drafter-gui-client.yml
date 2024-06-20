@@ -52,4 +52,5 @@ exclude-labels:
 change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
 template: |
-  CHANGE_ME
+  Please see our [changelog](https://www.firezone.dev/changelog?utm_source=github-releases)
+  for more details.

@@ -79,16 +79,34 @@ function TabsGroup({ children }: { children: React.ReactNode }) {
 function TabsItem({
   children,
   title,
+  icon,
   ...props
 }: {
   children: React.ReactNode;
   title: string;
+  icon?: FlowbiteIcon;
 }) {
   return (
-    <Tabs.Item title={title} {...props}>
+    <Tabs.Item title={title} icon={icon} {...props}>
       {children}
     </Tabs.Item>
   );
 }
 
 export { TabsGroup, TabsItem };
+
+// Nastiness needed because of Flowbite Typescript
+// See https://github.com/themesberg/flowbite-react/issues/1359
+export type IconSVGProps = React.PropsWithoutRef<
+  React.SVGProps<SVGSVGElement>
+> &
+  React.RefAttributes<SVGSVGElement>;
+export type FlowbiteIconProps = IconSVGProps & {
+  title?: string;
+  titleId?: string;
+};
+
+export type FlowbiteIcon = React.FC<
+  Omit<React.SVGProps<SVGSVGElement>, "ref">
+> &
+  FlowbiteIconProps;
