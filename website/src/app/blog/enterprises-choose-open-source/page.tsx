@@ -14,7 +14,6 @@ export default function Page() {
     <Post
       authorName="Jeff Spencer"
       authorTitle=""
-      authorEmail="jeff@firezone.dev"
       authorAvatarSrc={gravatar("jeff@firezone.dev")}
       title="Enterprises choose open source"
       date="December 6, 2023"

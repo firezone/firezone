@@ -703,39 +703,85 @@ impl TunnelTest {
                             .unwrap();
                     }
                     Request::ReuseConnection(reuse_connection) => {
-                        if let (Ok(()), Some(name)) = (
-                            self.gateway.span.in_scope(|| {
+                        let domain = reuse_connection.payload;
+
+                        self.gateway
+                            .span
+                            .in_scope(|| {
                                 self.gateway.state.allow_access(
                                     resource,
                                     self.client.id,
                                     None,
-                                    reuse_connection
-                                        .payload
-                                        .as_ref()
-                                        .map(|d| (d.clone(), Vec::new())),
+                                    domain.clone().map(|d| (d, Vec::new())),
                                     now,
                                 )
-                            }),
-                            reuse_connection.payload,
-                        ) {
+                            })
+                            .unwrap();
+
+                        if let Some(domain) = domain {
                             self.client
                                 .span
                                 .in_scope(|| {
                                     self.client.state.received_domain_parameters(
                                         resource_id,
                                         DomainResponse {
-                                            domain: name.clone(),
+                                            domain,
                                             address: resolved_ips,
                                         },
                                     )
                                 })
                                 .unwrap();
-                        };
+                        }
                     }
                 };
             }
-            ClientEvent::RefreshResources { .. } => {
-                tracing::warn!("Unimplemented");
+            ClientEvent::RefreshResources { connections } => {
+                for reuse_connection in connections {
+                    let domain = reuse_connection.payload.clone();
+                    let resource_id = reuse_connection.resource_id;
+
+                    let resolved_ips = reuse_connection
+                        .payload
+                        .into_iter()
+                        .flat_map(|domain| global_dns_records.get(&domain).cloned())
+                        .flatten()
+                        .collect::<Vec<_>>();
+
+                    let resource = map_client_resource_to_gateway_resource(
+                        client_cidr_resources,
+                        client_dns_resource,
+                        resolved_ips.clone(),
+                        resource_id,
+                    );
+
+                    self.gateway
+                        .span
+                        .in_scope(|| {
+                            self.gateway.state.allow_access(
+                                resource,
+                                self.client.id,
+                                None,
+                                domain.clone().map(|d| (d, Vec::new())),
+                                now,
+                            )
+                        })
+                        .unwrap();
+
+                    if let Some(domain) = domain {
+                        self.client
+                            .span
+                            .in_scope(|| {
+                                self.client.state.received_domain_parameters(
+                                    resource_id,
+                                    DomainResponse {
+                                        domain,
+                                        address: resolved_ips,
+                                    },
+                                )
+                            })
+                            .unwrap();
+                    }
+                }
             }
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
