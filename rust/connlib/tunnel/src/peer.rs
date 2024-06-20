@@ -479,8 +479,7 @@ impl ClientOnGateway {
             .longest_match(dst)
             .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
         {
-            tracing::warn!(%dst, "unallowed packet");
-            return Err(connlib_shared::Error::InvalidDst);
+            return Err(connlib_shared::Error::Filtered(dst));
         };
 
         Ok(())
@@ -636,7 +635,7 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
         assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
@@ -644,11 +643,11 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
         assert!(matches!(
             peer.ensure_allowed_dst(&udp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
     }
 
@@ -910,7 +909,7 @@ mod proptests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
     }
 
@@ -972,7 +971,7 @@ mod proptests {
         assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(matches!(
             peer.ensure_allowed_dst(&packet_rejected),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
     }
 
