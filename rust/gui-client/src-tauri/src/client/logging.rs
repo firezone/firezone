@@ -144,15 +144,18 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     tracing::info!("Exporting logs to {path:?}");
+    // Use a temp path so that if the export fails we don't end up with half a zip file
+    let temp_path = path.with_extension(".zip-partial");
 
     // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
     spawn_blocking(move || {
-        let f = fs::File::create(path).context("Failed to create zip file")?;
+        let f = fs::File::create(&temp_path).context("Failed to create zip file")?;
         let mut zip = zip::ZipWriter::new(f);
         for log_path in log_paths().context("Can't compute log paths")? {
             add_dir_to_zip(&mut zip, &log_path.src, &stem.join(log_path.dst))?;
         }
         zip.finish().context("Failed to finish zip file")?;
+        fs::rename(&temp_path, &path)?;
         Ok::<_, anyhow::Error>(())
     })
     .await
