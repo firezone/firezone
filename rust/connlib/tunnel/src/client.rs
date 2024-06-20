@@ -734,7 +734,7 @@ impl ClientState {
             return Err(Error::ControlProtocolError);
         };
 
-        tracing::info!(domain = %domain_response.domain, addresses = ?domain_response.address, "Received DNS response");
+        tracing::debug!(domain = %domain_response.domain, addresses = ?domain_response.address, "Received DNS response");
 
         let resource_description =
             DnsResource::from_description(&resource_description, domain_response.domain.clone());
