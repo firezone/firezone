@@ -22,8 +22,24 @@ export default function Page() {
         </p>
         <div className="mt-14 grid divide-y">
           <SummaryCard
+            title="Improving reliability for DNS Resources"
+            date="June 20, 2024"
+            href="/blog/improving-reliability-for-dns-resources"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <p className="mb-2">
+              We're making some changes to the way DNS Resources are routed in
+              Firezone. These changes will be coming in Client and Gateway
+              versions 1.1 and later. Continue reading to understand how these
+              changes will affect your network and what you need to do to take
+              advantage of them.
+            </p>
+          </SummaryCard>
+          <SummaryCard
             title="Using Tauri to build a cross-platform security app"
-            date="Jun 11, 2024"
+            date="June 11, 2024"
             href="/blog/using-tauri"
             authorName="ReactorScram"
             authorAvatarSrc="/images/avatars/reactorscram.png"
@@ -35,7 +51,7 @@ export default function Page() {
             </p>
           </SummaryCard>
           <SummaryCard
-            title="How DNS Works in Firezone"
+            title="How DNS works in Firezone"
             date="May 8, 2024"
             href="/blog/how-dns-works-in-firezone"
             authorName="Gabriel Steinberg"
@@ -50,7 +66,7 @@ export default function Page() {
             </p>
           </SummaryCard>
           <SummaryCard
-            title="May 2024 Update"
+            title="May 2024 update"
             date="May 1, 2024"
             href="/blog/may-2024-update"
             authorName="Jamil Bou Kheir"
@@ -77,7 +93,7 @@ export default function Page() {
             </div>
           </SummaryCard>
           <SummaryCard
-            title="April 2024 Update: GA"
+            title="April 2024 update: GA"
             date="April 1, 2024"
             href="/blog/apr-2024-update"
             authorName="Jamil Bou Kheir"
@@ -112,7 +128,7 @@ export default function Page() {
             </ul>
           </SummaryCard>
           <SummaryCard
-            title="March 2024 Update"
+            title="March 2024 update"
             date="March 1, 2024"
             href="/blog/mar-2024-update"
             authorName="Jamil Bou Kheir"
@@ -136,7 +152,7 @@ export default function Page() {
             </ul>
           </SummaryCard>
           <SummaryCard
-            title="Jaunary 2024 Update"
+            title="Jaunary 2024 update"
             date="January 1, 2024"
             href="/blog/jan-2024-update"
             authorName="Jamil Bou Kheir"

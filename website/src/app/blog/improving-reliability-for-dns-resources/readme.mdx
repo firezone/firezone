@@ -1,0 +1,106 @@
+In our [How DNS works in Firezone](/blog/how-dns-works-in-firezone) post, we
+covered how DNS Resources are resolved and routed reliably even when the IPs
+they resolve to collide. The system described there works well for the vast
+majority of our users across many kinds of networks.
+
+But, as it turns out, not all networks are well-behaved (surprise!). Certain
+networks in particular can cause issues with DNS Resources, causing them to time
+out or fail to be resolved after a period of time.
+
+This post describes why that happens, how we're resolving it, and the steps you
+can take to upgrade.
+
+## The case of the NAT reset
+
+The issue was first discovered about a month ago during our internal dogfood
+testing sessions. We noticed that after some time (typically 30 minutes to a few
+hours), DNS Resources would become unresponsive and require the application to
+issue another DNS query to perform the hole-punching dance and re-establish
+connectivity.
+
+This is odd behavior -- tunnels are designed to be kept alive indefinitely with
+periodic keep-alives sent from Client to Gateway.
+
+### When tunnels drop
+
+There are two obvious reasons why a tunnel might drop and need to be
+re-established:
+
+- The Client experienced a change in network connectivity (e.g. switching Wi-Fi
+  networks), or
+- The Gateway experienced a change in network connectivity (e.g. restarted by an
+  admin)
+
+A third, less obvious reason is when network in between the Client and Gateway
+is misbehaving.
+
+### Google Cloud NAT
+
+We dogfood Firezone internally across a variety of network conditions for both
+Client and Gateway. After some investigation, we discovered a curious pattern:
+the DNS Resource reliaibility issue only occurred for our Gateways running in
+Google Cloud.
+
+After running an overnight soak test, we discovered that the issue happened at
+regular intervals. Precisely **every 30 minutes**, the WireGuard tunnel would
+drop, and connectivity to the DNS Resource would be lost. Since new tunnels for
+DNS Resources are established only at the time of resolution, the application
+(`ping` in our case) would lose connectivity until it was restarted.
+
+Google doesn't publish details on the session lifetimes for their NAT Gateways,
+so we can't be sure if the problem is related to GCP or another router close to
+GCP's datacenters (if you happen to know, please email us!).
+
+But the goal of this post isn't to pick on Google -- some enterprise routers
+behave similarly, under the guide of so-called "security" features, so the issue
+could occur in other networks as well.
+
+## The solution
+
+The solution is a simple, yet subtle one: instead of establishing the tunnel for
+a DNS Resource at the time of resolution, we now wait until we see the first
+packet for the Resource before performing the hole-punching dance to set up the
+tunnel.
+
+The stub resolver maintains a list of mapped IPs to DNS Resources, so we know at
+the packet level which DNS Resource the packet is for, even long after the query
+has been resolved.
+
+If the tunnel fails, the very next packet from the application will establish it
+again, avoiding the need for another query (which the application may not make)
+and thus avoiding reliability issues detailed above.
+
+### NAT64 comes for free
+
+One interesting edge case we hit implementing the above solution is that we
+don't know the _actual_ IP of the DNS Resource until the tunnel to the Gateway
+is established, at which point the Gateway resolves it.
+
+Since the stub resolver now immediately returns a dummy IP when asked to do so,
+it could return an IPv4 address for a Resource that has only `AAAA` records
+defined, or vice versa. If the application chooses IPv4 to connect to the
+Resource, packets would arrive at the Gateway and suddenly need to be translated
+to IPv6.
+
+So we added a NAT64 implemented to Gateways in 1.1.0 that handles this
+on-the-fly, with no configuration required. That means your workforce can now
+seamlessly connect to IPv6-only Resources even if they're on IPv4-only networks!
+
+## How to upgrade
+
+We released Gateway version 1.1.0 yesterday that includes the change. This
+version is compatible with Client versions 1.0.x **and** 1.1.x. However, Client
+versions 1.1.x **will not** be compatible with Gateway versions 1.0.x.
+
+To give admins time to upgrade their Gateways, we are waiting to release the
+1.1.0 Clients until **Thursday, June 27th**. We recommend upgrading your
+Gateways to 1.1.0 as soon as possible to avoid any service disruptions caused by
+end users upgrading their Clients prematurely.
+
+Upgrading Gateway(s) usually takes only a couple minutes --
+[read the docs](/kb/administer/upgrading) to see how.
+
+### Conclusion
+
+That's all for now. If you have questions or hit issues, contact us via one of
+the means [listed here](/support).
