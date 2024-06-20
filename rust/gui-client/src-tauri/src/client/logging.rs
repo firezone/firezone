@@ -77,7 +77,12 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 
 #[tauri::command]
 pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| e.to_string())
+    if let Err(error) = clear_logs_inner().await {
+        tracing::error!(?error, "Error while clearing logs");
+        Err(error.to_string())
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
