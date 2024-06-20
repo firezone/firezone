@@ -266,6 +266,11 @@ impl ClientOnGateway {
     ) -> connlib_shared::Result<()> {
         match (resource, domain_ips) {
             (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
+                if resource_ips.is_empty() {
+                    tracing::debug!("Client hasn't sent us any proxy IPs, skipping IP translation");
+                    return Ok(());
+                }
+
                 self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
             }
             (ResourceDescription::Cidr(_), None) => {}
