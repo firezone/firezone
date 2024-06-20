@@ -70,6 +70,7 @@ defmodule Domain.Auth.Adapters.Email do
   def request_sign_in_token(%Identity{} = identity, %Context{} = context) do
     nonce = String.downcase(Domain.Crypto.random_token(5, encoder: :user_friendly))
     expires_at = DateTime.utc_now() |> DateTime.add(@sign_in_token_expiration_seconds, :second)
+    sequence_number = Map.get(identity.provider_state, "request_sequence_number", 0) + 1
 
     {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
 
@@ -91,7 +92,8 @@ defmodule Domain.Auth.Adapters.Email do
 
     state = %{
       "last_created_token_id" => token.id,
-      "token_created_at" => token.inserted_at
+      "token_created_at" => token.inserted_at,
+      "request_sequence_number" => sequence_number
     }
 
     virtual_state = %{nonce: nonce, fragment: fragment}

@@ -124,8 +124,9 @@ defmodule Web.AuthController do
                    preload: :account
                  ),
                {:ok, identity} <-
-                 Domain.Auth.Adapters.Email.request_sign_in_token(identity, context) do
-            send_magic_link_email(conn, identity, redirect_params)
+                 Domain.Auth.Adapters.Email.request_sign_in_token(identity, context),
+               {:ok, fragment} <- send_magic_link_email(conn, identity, redirect_params) do
+            fragment
           else
             _ ->
               # We generate a fake fragment to prevent information leakage,
@@ -151,17 +152,22 @@ defmodule Web.AuthController do
     # attacks where you can trick user into logging in into an attacker account.
     fragment = identity.provider_virtual_state.fragment
 
-    {:ok, _} =
-      Web.Mailer.AuthEmail.sign_in_link_email(
-        identity,
-        nonce,
-        conn.assigns.user_agent,
-        conn.remote_ip,
-        redirect_params
-      )
-      |> Web.Mailer.deliver()
-
-    fragment
+    Web.Mailer.AuthEmail.sign_in_link_email(
+      identity,
+      nonce,
+      conn.assigns.user_agent,
+      conn.remote_ip,
+      redirect_params
+    )
+    |> Web.Mailer.deliver_with_rate_limit(
+      rate_limit_key: {:sign_in_link, identity.id},
+      rate_limit: 10,
+      rate_limit_interval: :timer.minutes(15)
+    )
+    |> case do
+      {:ok, _} -> {:ok, fragment}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp maybe_put_resent_flash(%Plug.Conn{state: :unset} = conn, %{"resend" => "true"}),

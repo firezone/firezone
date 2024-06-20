@@ -94,7 +94,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert {:ok, identity} = request_sign_in_token(identity, context)
 
       assert %{
-               "last_created_token_id" => token_id
+               "last_created_token_id" => token_id,
+               "request_sequence_number" => 1
              } = identity.provider_state
 
       assert %{
@@ -114,15 +115,23 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert token.remaining_attempts == 4
     end
 
-    test "deletes previous sign in tokens" do
+    test "deletes previous sign in tokens and increments sequence number" do
       identity = Fixtures.Auth.create_identity()
       context = Fixtures.Auth.build_context(type: :email)
 
       assert {:ok, identity} = request_sign_in_token(identity, context)
-      assert %{"last_created_token_id" => first_token_id} = identity.provider_state
+
+      assert %{
+               "last_created_token_id" => first_token_id,
+               "request_sequence_number" => 1
+             } = identity.provider_state
 
       assert {:ok, identity} = request_sign_in_token(identity, context)
-      assert %{"last_created_token_id" => second_token_id} = identity.provider_state
+
+      assert %{
+               "last_created_token_id" => second_token_id,
+               "request_sequence_number" => 2
+             } = identity.provider_state
 
       assert Repo.get(Domain.Tokens.Token, first_token_id).deleted_at
       refute Repo.get(Domain.Tokens.Token, second_token_id).deleted_at

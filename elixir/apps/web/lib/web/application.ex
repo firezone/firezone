@@ -9,6 +9,7 @@ defmodule Web.Application do
 
     children = [
       Web.Mailer,
+      Web.Mailer.RateLimiter,
       Web.Endpoint
     ]
 

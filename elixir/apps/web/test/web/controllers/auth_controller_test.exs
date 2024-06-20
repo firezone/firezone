@@ -356,6 +356,32 @@ defmodule Web.AuthControllerTest do
                  "signed_provider_identifier="
     end
 
+    test "rate limits the emails", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+
+      for _ <- 1..10 do
+        post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_magic_link", %{
+          "email" => %{
+            "provider_identifier" => identity.provider_identifier
+          }
+        })
+
+        assert_email_sent(fn email ->
+          assert email.subject == "Firezone sign in token"
+        end)
+      end
+
+      post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_magic_link", %{
+        "email" => %{
+          "provider_identifier" => identity.provider_identifier
+        }
+      })
+
+      refute_email_sent()
+    end
+
     test "stores email nonce and redirect params in the cookie", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
