@@ -8,7 +8,6 @@ export default function _Page() {
     <Post
       authorName="Gabriel Steinberg"
       authorTitle="Senior Backend Engineer"
-      authorEmail="gabriel@firezone.dev"
       authorAvatarSrc={gravatar("gabriel@firezone.dev")}
       title="How DNS Works in Firezone"
       date="2024-05-08"

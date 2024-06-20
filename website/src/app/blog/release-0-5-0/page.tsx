@@ -12,8 +12,7 @@ export default function Page() {
   return (
     <Post
       authorName="Jamil Bou Kheir"
-      authorTitle="Founder & CEO"
-      authorEmail="jamil@firezone.dev"
+      authorTitle="Founder"
       authorAvatarSrc={gravatar("jamil@firezone.dev")}
       title="Firezone 0.5.0 Released!"
       date="July 25, 2022"
