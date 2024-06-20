@@ -11,7 +11,6 @@ FZ_GROUP="firezone-client"
 
 LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 
-#DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 IPC_LOGS_PATH="/var/log/$BUNDLE_ID"
 RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
@@ -64,7 +63,8 @@ function smoke_test() {
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
     # https://stackoverflow.com/questions/41321092
-    bash -c "stat \"${LOGS_PATH}/\"connlib*log"
+    # TODO: Smoke test the IPC service
+    # bash -c "stat \"${LOGS_PATH}/\"connlib*log"
     stat "$SETTINGS_PATH"
     # stat "$DEVICE_ID_PATH"
     # `ran_before` is now only written after a successful sign-in

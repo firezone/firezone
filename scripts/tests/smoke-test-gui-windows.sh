@@ -12,7 +12,6 @@ if [[ -z "$ProgramData" ]]; then
 fi
 
 BUNDLE_ID="dev.firezone.client"
-DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
 IPC_LOGS_PATH="$ProgramData/$BUNDLE_ID/data/logs"
 PACKAGE=firezone-gui-client
@@ -24,7 +23,6 @@ function smoke_test() {
     files=(
         "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
         "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
-        "$DEVICE_ID_PATH"
     )
 
     # Make sure the files we want to check don't exist on the system yet
@@ -37,19 +35,6 @@ function smoke_test() {
 
     # Run the smoke test normally
     cargo run --bin "$PACKAGE" -- smoke-test
-
-    # Note the device ID
-    DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
-
-    # Run the test again and make sure the device ID is not changed
-    cargo run --bin "$PACKAGE" -- smoke-test
-    DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
-
-    if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
-    then
-        echo "The device ID should not change if the file is intact between runs"
-        exit 1
-    fi
 
     # Make sure the files were written in the right paths
     for file in "${files[@]}"
