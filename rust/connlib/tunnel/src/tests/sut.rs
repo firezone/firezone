@@ -635,44 +635,49 @@ impl TunnelTest {
 
                 match request {
                     Request::NewConnection(new_connection) => {
-                        let answer = self
-                            .gateway
-                            .span
-                            .in_scope(|| {
-                                self.gateway.state.accept(
-                                    self.client.id,
-                                    snownet::Offer {
-                                        session_key: new_connection
-                                            .client_preshared_key
-                                            .expose_secret()
-                                            .0
-                                            .into(),
-                                        credentials: snownet::Credentials {
-                                            username: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .username,
-                                            password: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .password,
-                                        },
+                        let answer = self.gateway.span.in_scope(|| {
+                            let answer = self.gateway.state.accept(
+                                self.client.id,
+                                snownet::Offer {
+                                    session_key: new_connection
+                                        .client_preshared_key
+                                        .expose_secret()
+                                        .0
+                                        .into(),
+                                    credentials: snownet::Credentials {
+                                        username: new_connection
+                                            .client_payload
+                                            .ice_parameters
+                                            .username,
+                                        password: new_connection
+                                            .client_payload
+                                            .ice_parameters
+                                            .password,
                                     },
-                                    self.client.state.public_key(),
-                                    self.client.tunnel_ip4,
-                                    self.client.tunnel_ip6,
-                                    HashSet::default(),
-                                    HashSet::default(),
+                                },
+                                self.client.state.public_key(),
+                                self.client.tunnel_ip4,
+                                self.client.tunnel_ip6,
+                                HashSet::default(),
+                                HashSet::default(),
+                                self.now,
+                            );
+                            self.gateway
+                                .state
+                                .allow_access(
+                                    resource,
+                                    self.client.id,
+                                    None,
                                     new_connection
                                         .client_payload
                                         .domain
                                         .map(|r| (r.name, r.proxy_ips)),
-                                    None, // TODO: How to generate expiry?
-                                    resource,
                                     self.now,
                                 )
-                            })
-                            .unwrap();
+                                .unwrap();
+
+                            answer
+                        });
 
                         self.client
                             .span
