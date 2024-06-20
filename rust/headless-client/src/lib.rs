@@ -451,13 +451,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
             .next_client()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        if let Err(error) = Handler::new(stream)?
-            .run()
-            .await
-            .context("Error in `Handler::run` while handling IPC client")
-        {
-            tracing::error!(?error);
-        }
+        Handler::new(stream)?.run().await;
     }
 }
 
@@ -498,18 +492,25 @@ impl Handler {
         })
     }
 
-    async fn run(&mut self) -> Result<()> {
+    // Infallible so that we only give up on an IPC client explicitly
+    async fn run(&mut self) {
         loop {
             let event = {
                 // This borrows `self` so we must drop it before handling the `Event`.
                 let cb = pin!(self.cb_rx.recv());
                 match future::select(self.ipc_rx.next(), cb).await {
-                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(
-                        serde_json::from_slice(&x)
-                            .context("Error while deserializing IPC message")?,
-                    ), // TODO: Integrate the serde_json stuff into a custom Tokio codec
+                    future::Either::Left((Some(Ok(x)), _)) => {
+                        Event::Ipc(match serde_json::from_slice(&x) {
+                            Err(error) => {
+                                tracing::error!(?error, "Error while deserializing IPC message");
+                                continue;
+                            }
+                            Ok(x) => x,
+                        })
+                    } // TODO: Integrate the serde_json stuff into a custom Tokio codec, #5426
                     future::Either::Left((Some(Err(error)), _)) => {
-                        Err(error).context("error from `ipc_rx.next()`")?
+                        tracing::error!(?error, "`ipc_rx.next()` returned an error");
+                        break;
                     }
                     future::Either::Left((None, _)) => {
                         tracing::info!("IPC client disconnected");
@@ -523,13 +524,20 @@ impl Handler {
                 }
             };
             match event {
-                Event::Callback(x) => self.handle_connlib_cb(x).await?,
-                Event::Ipc(msg) => self
-                    .handle_ipc_msg(msg)
-                    .context("Error while handling IPC message from client")?,
+                Event::Callback(x) => {
+                    if let Err(error) = self.handle_connlib_cb(x).await {
+                        tracing::error!(?error, "Error while handling connlib callback");
+                        continue;
+                    }
+                }
+                Event::Ipc(msg) => {
+                    if let Err(error) = self.handle_ipc_msg(msg) {
+                        tracing::error!(?error, "Error while handling IPC message from client");
+                        continue;
+                    }
+                }
             }
         }
-        Ok(())
     }
 
     async fn handle_connlib_cb(&mut self, msg: InternalServerMsg) -> Result<()> {
