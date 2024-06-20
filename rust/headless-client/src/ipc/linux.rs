@@ -1,6 +1,6 @@
 use super::{Error, ServiceId};
 use anyhow::{Context as _, Result};
-use std::{io::ErrorKind, os::unix::fs::PermissionsExt};
+use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
 pub(crate) struct Server {
@@ -23,7 +23,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let stream = UnixStream::connect(&path)
         .await
         .map_err(|error| match error.kind() {
-            ErrorKind::NotFound => Error::NotFound(path.display()),
+            ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
             ErrorKind::PermissionDenied => Error::PermissionDenied,
             _ => Error::Other(error.into()),
         })?;
