@@ -5,6 +5,25 @@ import Link from "next/link";
 export default function Gateway() {
   return (
     <Entries title="Gateway">
+      <Entry version="1.1.0" date={new Date("2024-06-19")}>
+        <p className="mb-2 md:mb-4">
+          This release introduces a new method of resolving and routing DNS
+          Resources that is more reliable on some poorly-behaved networks. To
+          use this new method, Client versions 1.1.0 or later are required.
+          Client versions 1.0.x will continue to work with Gateway 1.1.x, but
+          will not benefit from the new DNS resolution method.
+        </p>
+        <p>
+          Read more about this change in the announcement post{" "}
+          <Link
+            href="/blog/improving-reliability-for-dns-resources"
+            className="text-accent-500 underline hover:no-underline"
+          >
+            here
+          </Link>
+          .
+        </p>
+      </Entry>
       <Entry version="1.0.8" date={new Date("2024-06-17")}>
         This is a maintenance release with no major user-facing changes.
       </Entry>
@@ -27,7 +46,7 @@ export default function Gateway() {
         Adds support for{" "}
         <Link
           href="/kb/deploy/resources#traffic-restrictions"
-          className="hover:underline text-accent-500"
+          className="hover:no-underline underline text-accent-500"
         >
           traffic restrictions
         </Link>
