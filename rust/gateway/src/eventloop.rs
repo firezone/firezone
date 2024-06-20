@@ -337,14 +337,6 @@ impl Eventloop {
             req.payload.as_ref().map(|r| r.as_tuple()),
         );
 
-        match result {
-            Ok(maybe_domain_response) => maybe_domain_response,
-            Err(e) => {
-                tracing::warn!(client = %req.client_id, "Failed to allow access: {e}");
-                return;
-            }
-        };
-
         match (result, req.payload) {
             (Ok(()), Some(ResolveRequest::ReturnResponse(domain))) => {
                 self.send_connection_reply(
@@ -357,10 +349,10 @@ impl Eventloop {
                     },
                 );
             }
-            (
-                Ok(_) | Err(_),
-                Some(ResolveRequest::ReturnResponse(_) | ResolveRequest::MapResponse { .. }) | None,
-            ) => {}
+            (Err(e), _) => {
+                tracing::warn!(client = %req.client_id, "Failed to allow access: {e}");
+            }
+            (Ok(_), Some(ResolveRequest::MapResponse { .. }) | None) => {}
         }
     }
 
