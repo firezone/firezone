@@ -35,7 +35,11 @@ pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
         Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
         Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
-        Error::Ipc(ipc::Error::CouldntConnectToIpcService) => "Couldn't connect to Firezone IPC Service. Is the service running?".to_string(),
+        Error::Ipc(ipc::Error::NotFound(path)) => {
+            tracing::error!(?path, "Couldn't find Firezone IPC service");
+            "Couldn't find Firezone IPC service. Is the service running?".to_string()
+        }
+        Error::Ipc(ipc::Error::PermissionDenied) => "Permission denied for Firezone IPC service. This should only happen on dev systems.".to_string(),
         Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
         Error::Logging(_) => "Logging error".to_string(),
         Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
