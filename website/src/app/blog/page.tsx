@@ -152,7 +152,7 @@ export default function Page() {
             </ul>
           </SummaryCard>
           <SummaryCard
-            title="Jaunary 2024 update"
+            title="January 2024 update"
             date="January 1, 2024"
             href="/blog/jan-2024-update"
             authorName="Jamil Bou Kheir"
