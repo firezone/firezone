@@ -18,7 +18,7 @@ IPC_LOGS_PATH="$ProgramData/$BUNDLE_ID/data/logs"
 PACKAGE=firezone-gui-client
 
 # Make the IPC log dir so that the zip export doesn't bail out
-mkdir "$IPC_LOGS_PATH"
+mkdir -p "$IPC_LOGS_PATH"
 
 function smoke_test() {
     files=(

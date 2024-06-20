@@ -9,10 +9,11 @@ set -euox pipefail
 BUNDLE_ID="dev.firezone.client"
 FZ_GROUP="firezone-client"
 
+LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
+
 #DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
 IPC_LOGS_PATH="/var/log/$BUNDLE_ID"
-LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 SYMS_PATH="../target/debug/firezone-gui-client.syms"
@@ -32,7 +33,7 @@ sudo groupadd --force "$FZ_GROUP"
 sudo adduser "$USER" "$FZ_GROUP"
 
 # Make the IPC log dir so that the zip export doesn't bail out
-mkdir "$IPC_LOGS_PATH"
+sudo mkdir -p "$IPC_LOGS_PATH"
 
 function run_fz_gui() {
     pwd
