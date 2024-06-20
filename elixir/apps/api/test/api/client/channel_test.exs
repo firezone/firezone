@@ -174,7 +174,21 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert socket.assigns.gateway_version_requirement == "< 1.1.0"
+      assert socket.assigns.gateway_version_requirement == "> 0.0.0"
+
+      client = %{client | last_seen_version: "1.1.99"}
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert socket.assigns.gateway_version_requirement == ">= 1.1.0"
     end
 
     test "sends list of resources after join", %{
@@ -927,7 +941,7 @@ defmodule API.Client.ChannelTest do
         )
         |> Domain.Relays.connect_relay(Ecto.UUID.generate())
 
-      client = %{client | last_seen_version: "1.0.55"}
+      client = %{client | last_seen_version: "1.1.55"}
 
       gateway =
         Fixtures.Gateways.create_gateway(
@@ -936,7 +950,7 @@ defmodule API.Client.ChannelTest do
           context:
             Fixtures.Auth.build_context(
               type: :gateway_group,
-              user_agent: "Linux/24.04 connlib/1.1.412"
+              user_agent: "Linux/24.04 connlib/1.0.412"
             )
         )
 
@@ -963,7 +977,7 @@ defmodule API.Client.ChannelTest do
           context:
             Fixtures.Auth.build_context(
               type: :gateway_group,
-              user_agent: "Linux/24.04 connlib/1.0.11"
+              user_agent: "Linux/24.04 connlib/1.1.11"
             )
         )
 
