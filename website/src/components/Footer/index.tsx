@@ -48,18 +48,26 @@ export default function Footer() {
               </h2>
               <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
-                  <Link href="/about" className="hover:underline">
-                    About
-                  </Link>
-                </li>
-                <li className="mb-4">
                   <Link href="/" className="hover:underline">
                     Home
                   </Link>
                 </li>
                 <li className="mb-4">
+                  <Link href="/about" className="hover:underline">
+                    About
+                  </Link>
+                </li>
+                <li className="mb-4">
                   <Link href="/pricing" className="hover:underline">
                     Pricing
+                  </Link>
+                </li>
+                <li className="mb-4">
+                  <Link
+                    href="https://github.com/orgs/firezone/projects/9"
+                    className="hover:underline hover:text-neutral-900"
+                  >
+                    Roadmap
                   </Link>
                 </li>
                 <li className="mb-4">
@@ -92,18 +100,26 @@ export default function Footer() {
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="https://trust.firezone.dev/"
+                    href="/support"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Trust Center
+                    Support
                   </Link>
                 </li>
                 <li className="mb-4">
                   <Link
-                    href="https://github.com/orgs/firezone/projects/9"
+                    href="/changelog"
                     className="hover:underline hover:text-neutral-900"
                   >
-                    Roadmap
+                    Changelog
+                  </Link>
+                </li>
+                <li className="mb-4">
+                  <Link
+                    href="https://trust.firezone.dev/"
+                    className="hover:underline hover:text-neutral-900"
+                  >
+                    Trust Center
                   </Link>
                 </li>
                 <li className="mb-4">
