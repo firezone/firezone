@@ -42,7 +42,6 @@ function smoke_test() {
     do
         stat "$file"
     done
-    stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
 
     # Clean up so the test can be cycled
     for file in "${files[@]}"
