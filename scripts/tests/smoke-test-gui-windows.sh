@@ -20,9 +20,10 @@ PACKAGE=firezone-gui-client
 mkdir -p "$IPC_LOGS_PATH"
 
 function smoke_test() {
+    # This array used to have more items
+    # TODO: Smoke-test the IPC service
     files=(
         "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
-        "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
     )
 
     # Make sure the files we want to check don't exist on the system yet
