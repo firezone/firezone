@@ -214,7 +214,7 @@ impl ClientOnGateway {
                         resource_id,
                         name: name.clone(),
                         last_response: now,
-                        slated_for_refresh: false,
+                        slated_for_refresh: true,
                     },
                 );
             }
