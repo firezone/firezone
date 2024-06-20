@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Put `set -euox` in the top-level scripts directly. If it's only sourced,
+# and the source path is wrong, it will not throw an error and it'll be hard
+# to debug.
+# <https://github.com/firezone/firezone/actions/runs/9602401296/job/26483176628#step:11:12>
 set -euox pipefail
 
 BUNDLE_ID="dev.firezone.client"
