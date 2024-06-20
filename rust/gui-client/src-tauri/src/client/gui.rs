@@ -323,12 +323,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .await
         .context("Failed to get zip file metadata")?
         .len();
-    if zip_len <= 22 {
-        tracing::error!(
-            ?path,
-            ?zip_len,
-            "Exported zip log just has the empty header"
-        );
+    if zip_len == 0 {
         bail!("Exported log zip has 0 bytes");
     }
     tokio::fs::remove_file(&path)

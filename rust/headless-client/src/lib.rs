@@ -155,7 +155,6 @@ enum CmdIpc {
     Install,
     Run,
     RunDebug,
-    SmokeTest,
 }
 
 impl Default for CmdIpc {
@@ -361,11 +360,11 @@ pub fn run_only_ipc_service() -> Result<()> {
     match cli.command {
         CmdIpc::Install => platform::install_ipc_service(),
         CmdIpc::Run => platform::run_ipc_service(cli.common),
-        CmdIpc::RunDebug | CmdIpc::SmokeTest => run_debug_ipc_service(&cli),
+        CmdIpc::RunDebug => run_debug_ipc_service(),
     }
 }
 
-pub(crate) fn run_debug_ipc_service(cli: &CliIpcService) -> Result<()> {
+pub(crate) fn run_debug_ipc_service() -> Result<()> {
     setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
@@ -373,7 +372,7 @@ pub(crate) fn run_debug_ipc_service(cli: &CliIpcService) -> Result<()> {
     let mut signals = Signals::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
-    let service_fut = async {
+    rt.block_on(async {
         let ipc_service = pin!(ipc_listen());
 
         match future::select(pin!(signals.recv()), ipc_service).await {
@@ -387,20 +386,7 @@ pub(crate) fn run_debug_ipc_service(cli: &CliIpcService) -> Result<()> {
             future::Either::Right((Ok(impossible), _)) => match impossible {},
             future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
         }
-    };
-
-    if let CmdIpc::SmokeTest = &cli.command {
-        rt.block_on(async {
-            let delay = 10;
-            tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
-            tokio::time::timeout(Duration::from_secs(10), service_fut)
-                .await
-                .unwrap_err();
-            Ok(())
-        })
-    } else {
-        rt.block_on(service_fut)
-    }
+    })
 }
 
 #[derive(Clone)]

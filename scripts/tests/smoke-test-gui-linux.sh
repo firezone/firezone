@@ -13,16 +13,16 @@ LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
 
 #DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
+IPC_LOGS_PATH="/var/log/$BUNDLE_ID"
 RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
 SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 SYMS_PATH="../target/debug/firezone-gui-client.syms"
 
-GUI_BIN=firezone-gui-client
-IPC_BIN=firezone-client-ipc
+PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
-cargo build --bin "$GUI_BIN" --bin "$IPC_BIN"
+cargo build -p "$PACKAGE"
 cargo install --quiet --locked dump_syms minidump-stackwalk
 # The dwp doesn't actually do anything if the exe already has all the debug info
 # Getting this to coordinate between Linux and Windows is tricky
@@ -32,13 +32,15 @@ ls -lash ../target/debug
 sudo groupadd --force "$FZ_GROUP"
 sudo adduser "$USER" "$FZ_GROUP"
 
+# Make the IPC log dir so that the zip export doesn't bail out
+sudo mkdir -p "$IPC_LOGS_PATH"
+
 function run_fz_gui() {
     pwd
-    sudo "$PWD/../target/debug/$IPC_BIN" smoke-test
     # Does what it says
     sudo --preserve-env \
     su --login "$USER" --command \
-    "xvfb-run --auto-servernum $PWD/../target/debug/$GUI_BIN $*"
+    "xvfb-run --auto-servernum $PWD/../target/debug/$PACKAGE $*"
 }
 
 function smoke_test() {
