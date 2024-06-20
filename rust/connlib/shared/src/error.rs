@@ -79,7 +79,7 @@ pub enum ConnlibError {
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
 
-    #[error("source: {src}; allowed_ips: {allowed_ips:?}")]
+    #[error("Unallowed packet! source: {src}; allowed_ips: {allowed_ips:?}")]
     UnallowedPacket {
         src: IpAddr,
         allowed_ips: HashSet<IpAddr>,
