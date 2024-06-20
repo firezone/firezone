@@ -14,7 +14,11 @@ fi
 BUNDLE_ID="dev.firezone.client"
 DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
+IPC_LOGS_PATH="$ProgramData/$BUNDLE_ID/data/logs"
 PACKAGE=firezone-gui-client
+
+# Make the IPC log dir so that the zip export doesn't bail out
+mkdir "$IPC_LOGS_PATH"
 
 function smoke_test() {
     files=(
