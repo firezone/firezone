@@ -169,8 +169,8 @@ impl ClientOnGateway {
 
         let old_ips: HashSet<&IpAddr> =
             HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
-                (state.name() == &name && state.resource_id() == resource_id)
-                    .then_some(state.resolved_ip()?)
+                (state.name == name && state.resource_id == resource_id)
+                    .then_some(state.resolved_ip.as_ref()?)
             }));
         let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
 
@@ -189,7 +189,7 @@ impl ClientOnGateway {
             .permanent_translations
             .iter()
             .filter_map(|(k, state)| {
-                (state.name() == &name && state.resource_id() == resource_id).then_some(*k)
+                (state.name == name && state.resource_id == resource_id).then_some(*k)
             })
             .collect_vec();
 
@@ -209,9 +209,12 @@ impl ClientOnGateway {
             for ip in proxy_ips {
                 self.permanent_translations.insert(
                     ip,
-                    TranslationState::Unresolved {
+                    TranslationState {
+                        resolved_ip: None,
                         resource_id,
                         name: name.clone(),
+                        last_response: now,
+                        slated_for_refresh: false,
                     },
                 );
             }
@@ -239,8 +242,8 @@ impl ClientOnGateway {
 
             self.permanent_translations.insert(
                 *proxy_ip,
-                TranslationState::Resolved {
-                    resolved_ip: real_ip,
+                TranslationState {
+                    resolved_ip: Some(real_ip),
                     resource_id,
                     name: name.clone(),
                     last_response: now,
@@ -273,11 +276,11 @@ impl ClientOnGateway {
             .iter()
             .filter(|(_, state)| state.should_refresh(now))
         {
-            let domain = state.name().clone();
-            let resource_id = state.resource_id();
+            let domain = state.name.clone();
+            let resource_id = state.resource_id;
             let conn_id = self.id;
 
-            tracing::debug!(%domain, %conn_id, %resource_id, resolved_ip = ?state.resolved_ip(), %proxy_ip , "Refreshing DNS");
+            tracing::debug!(%domain, %conn_id, %resource_id, resolved_ip = ?state.resolved_ip, %proxy_ip , "Refreshing DNS");
 
             self.buffered_events.push_back(GatewayEvent::RefreshDns {
                 name: domain,
@@ -364,13 +367,15 @@ impl ClientOnGateway {
             return Ok(packet);
         };
 
-        let Some(resolved_ip) = state.resolved_ip() else {
+        let Some(resolved_ip) = state.resolved_ip else {
+            state.slated_for_refresh = true; // We are trying to access a resource via a proxy IP that hasn't been resolved yet: Refresh DNS.
+
             return Ok(packet);
         };
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(packet.as_immutable(), *resolved_ip, now)?;
+                .translate_outgoing(packet.as_immutable(), resolved_ip, now)?;
 
         state.record_outgoing_traffic(now);
 
@@ -495,90 +500,32 @@ struct ResourceOnGateway {
 
 // Current state of a translation for a given proxy ip
 #[derive(Debug)]
-enum TranslationState {
-    Unresolved {
-        /// Which (DNS) resource we belong to.
-        resource_id: ResourceId,
-        /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
-        name: DomainName,
-    },
-    Resolved {
-        /// Which (DNS) resource we belong to.
-        resource_id: ResourceId,
-        /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
-        name: DomainName,
-        /// The IP we have resolved for the domain.
-        resolved_ip: IpAddr,
-        /// When we've last seen a packet from the resolved IP.
-        last_response: Instant,
-        slated_for_refresh: bool,
-    },
+struct TranslationState {
+    /// Which (DNS) resource we belong to.
+    resource_id: ResourceId,
+    /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
+    name: DomainName,
+    /// The IP we have resolved for the domain.
+    resolved_ip: Option<IpAddr>,
+    /// When we've last seen a packet from the resolved IP.
+    last_response: Instant,
+    slated_for_refresh: bool,
 }
 
 impl TranslationState {
-    fn name(&self) -> &DomainName {
-        match self {
-            TranslationState::Unresolved { name, .. } => name,
-            TranslationState::Resolved { name, .. } => name,
-        }
-    }
-
-    fn resource_id(&self) -> ResourceId {
-        match self {
-            TranslationState::Unresolved { resource_id, .. } => *resource_id,
-            TranslationState::Resolved { resource_id, .. } => *resource_id,
-        }
-    }
-
-    fn resolved_ip(&self) -> Option<&IpAddr> {
-        match self {
-            TranslationState::Unresolved { .. } => None,
-            TranslationState::Resolved { resolved_ip, .. } => Some(resolved_ip),
-        }
-    }
-
     fn should_refresh(&self, now: Instant) -> bool {
-        match self {
-            TranslationState::Unresolved { .. } => true,
-            TranslationState::Resolved {
-                slated_for_refresh,
-                last_response,
-                ..
-            } => {
-                *slated_for_refresh || now.duration_since(*last_response) > Duration::from_secs(30)
-            }
-        }
+        self.slated_for_refresh || now.duration_since(self.last_response) > Duration::from_secs(30)
     }
 
     fn record_outgoing_traffic(&mut self, now: Instant) {
-        match self {
-            TranslationState::Unresolved { .. } => {}
-            TranslationState::Resolved {
-                last_response,
-                slated_for_refresh,
-                ..
-            } => {
-                if now.duration_since(*last_response) >= Duration::from_secs(30) {
-                    *slated_for_refresh = true;
-                }
-            }
+        if now.duration_since(self.last_response) >= Duration::from_secs(30) {
+            self.slated_for_refresh = true;
         }
     }
 
     fn record_incoming_traffic(&mut self, now: Instant) {
-        match self {
-            TranslationState::Unresolved { .. } => {
-                debug_assert!(false, "Should not be able to receive incoming traffic for unresolved translation state")
-            }
-            TranslationState::Resolved {
-                last_response,
-                slated_for_refresh,
-                ..
-            } => {
-                *last_response = now;
-                *slated_for_refresh = false;
-            }
-        }
+        self.last_response = now;
+        self.slated_for_refresh = false;
     }
 }
 
