@@ -161,6 +161,22 @@ defmodule API.Client.ChannelTest do
       assert_receive {:socket_close, _pid, {:shutdown, :token_expired}}
     end
 
+    test "selects compatible gateway versions", %{client: client, subject: subject} do
+      client = %{client | last_seen_version: "1.0.99"}
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert socket.assigns.gateway_version_requirement == "< 1.1.0"
+    end
+
     test "sends list of resources after join", %{
       client: client,
       gateway_group: gateway_group,
@@ -886,6 +902,70 @@ defmodule API.Client.ChannelTest do
           last_seen_remote_ip_location_lon: -120
         )
         |> Domain.Relays.connect_relay(Ecto.UUID.generate())
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+
+      assert_reply ref, :ok, %{}
+    end
+
+    test "selects compatible gateway versions", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      subject: subject,
+      client: client
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      :ok =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+        |> Domain.Relays.connect_relay(Ecto.UUID.generate())
+
+      client = %{client | last_seen_version: "1.0.55"}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/24.04 connlib/1.1.412"
+            )
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+
+      assert_reply ref, :error, %{reason: :not_found}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/24.04 connlib/1.0.11"
+            )
+        )
 
       :ok = Domain.Gateways.connect_gateway(gateway)
 
