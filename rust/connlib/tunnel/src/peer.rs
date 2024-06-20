@@ -392,6 +392,8 @@ impl ClientOnGateway {
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
+            tracing::debug!(proxy_ip = %packet.destination(), "Proxy IP has not yet been resolved");
+
             state.slated_for_refresh = true; // We are trying to access a resource via a proxy IP that hasn't been resolved yet: Refresh DNS.
 
             return Ok(packet);
