@@ -70,15 +70,21 @@ impl Eventloop {
             match self.resolve_tasks.poll_unpin(cx) {
                 Poll::Ready((result, ResolveTrigger::RequestConnection(req))) => {
                     let addresses = result
-                    .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
-                    .unwrap_or_default();
+                        .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
+                        .unwrap_or_default();
 
                     self.accept_connection(
                         &req,
                         Some(DomainResponse {
                             domain: req.client.payload.domain.as_ref().unwrap().name(),
-                            address: addresses,
+                            address: addresses.clone(),
                         }),
+                    );
+                    let _result = self.tunnel.allow_access(
+                        req.resource.into_resolved(addresses),
+                        req.client.id,
+                        req.expires_at,
+                        req.client.payload.domain.map(|r| r.as_tuple()),
                     );
                     continue;
                 }
