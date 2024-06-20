@@ -14,11 +14,8 @@ fi
 BUNDLE_ID="dev.firezone.client"
 DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
-IPC_LOGS_PATH="$ProgramData/$BUNDLE_ID/data/logs"
-PACKAGE=firezone-gui-client
-
-# Make the IPC log dir so that the zip export doesn't bail out
-mkdir -p "$IPC_LOGS_PATH"
+GUI_BIN=firezone-gui-client
+IPC_BIN=firezone-client-ipc
 
 function smoke_test() {
     files=(
@@ -28,21 +25,21 @@ function smoke_test() {
     )
 
     # Make sure the files we want to check don't exist on the system yet
-    # I'm leaning on ChatGPT and `shellcheck` for the syntax here.
-    # Maybe this is about ready to be translated into Python or Rust.
     for file in "${files[@]}"
     do
-        stat "$file" && exit 1
+        rm -f "$file"
     done
 
     # Run the smoke test normally
-    cargo run --bin "$PACKAGE" -- smoke-test
+    cargo run --bin "$IPC_BIN" -- smoke-test
+    cargo run --bin "$GUI_BIN" -- smoke-test
 
     # Note the device ID
     DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
 
     # Run the test again and make sure the device ID is not changed
-    cargo run --bin "$PACKAGE" -- smoke-test
+    cargo run --bin "$IPC_BIN" -- smoke-test
+    cargo run --bin "$GUI_BIN" -- smoke-test
     DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
 
     if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
@@ -57,12 +54,6 @@ function smoke_test() {
         stat "$file"
     done
     stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
-
-    # Clean up so the test can be cycled
-    for file in "${files[@]}"
-    do
-        rm "$file"
-    done
 }
 
 function crash_test() {
@@ -70,7 +61,7 @@ function crash_test() {
     rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    cargo run --bin "$PACKAGE" -- --crash && exit 1
+    cargo run --bin "$GUI_BIN" -- --crash && exit 1
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"
