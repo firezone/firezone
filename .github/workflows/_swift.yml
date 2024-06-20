@@ -48,6 +48,8 @@ jobs:
           MACOS_APP_PP: ${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}
           MACOS_NE_PP: ${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}
         run: |
+          set -xe
+
           BUILD_CERT_PATH=$RUNNER_TEMP/build_certificate.cer
           INSTALLER_CERT_PATH=$RUNNER_TEMP/installer_certificate.cer
 
