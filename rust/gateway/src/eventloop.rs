@@ -311,7 +311,7 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
-        if let (Ok(()), Some(resolve_request)) = (
+        if let (Ok(()), Some(ResolveRequest::ReturnResponse(domain))) = (
             self.tunnel.allow_access(
                 req.resource.into_resolved(addresses.clone()),
                 req.client_id,
@@ -326,7 +326,7 @@ impl Eventloop {
                     reference: req.reference,
                     gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted {
                         domain_response: connlib_shared::messages::DomainResponse {
-                            domain: resolve_request.name(),
+                            domain,
                             address: addresses,
                         },
                     }),
