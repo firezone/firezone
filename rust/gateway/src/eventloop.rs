@@ -178,7 +178,20 @@ impl Eventloop {
                     };
                 }
                 // Client wants to access a CIDR resource, accept the connection instantly.
-                None => self.accept_connection(&req, None),
+                None => {
+                    self.accept_connection(&req, None);
+
+                    let _result = self.tunnel.allow_access(
+                        req.resource.into_resolved(vec![]),
+                        req.client.id,
+                        req.expires_at,
+                        None,
+                    );
+                    debug_assert!(
+                        _result.is_ok(),
+                        "Allow access can only fail for non-existent peer and we just added accepted the connection"
+                    );
+                }
                 // Clients requires a `domain_response`, resolve DNS first and then accept the connection. FIXME: This is legacy code for backwards compatibility and should be removed.
                 Some(ResolveRequest::ReturnResponse(name)) => {
                     if self
