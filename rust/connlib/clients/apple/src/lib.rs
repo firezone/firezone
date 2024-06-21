@@ -196,6 +196,7 @@ impl WrappedSession {
             sockets: Sockets::new(),
             private_key,
             os_version_override,
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
             callbacks: CallbackHandler {
                 inner: Arc::new(callback_handler),
             },

@@ -102,7 +102,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
 
     let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
         Secret::new(login),
-        get_user_agent(None),
+        get_user_agent(None, env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
         ExponentialBackoffBuilder::default()
