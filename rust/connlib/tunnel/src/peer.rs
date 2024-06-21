@@ -258,6 +258,7 @@ impl ClientOnGateway {
                     name: name.clone(),
                     last_response: now,
                     slated_for_refresh: false,
+                    created_at: now,
                 },
             );
         }
@@ -308,7 +309,10 @@ impl ClientOnGateway {
             .permanent_translations
             .iter()
             .filter(|(_, state)| state.slated_for_refresh);
+
+        let mut dead_ips = HashSet::new();
         let mut for_refresh = HashSet::new();
+
         for (proxy_ip, expired_state) in expired_translations {
             if self
                 .permanent_translations
@@ -322,10 +326,26 @@ impl ClientOnGateway {
                     slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
                 })
             {
-                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.resolved_ip, %proxy_ip , "Refreshing DNS");
+                let domain = &expired_state.name;
+                let resource_id = expired_state.resource_id;
+                let resolved_ip = expired_state.resolved_ip;
+                let any_response_traffic = expired_state.any_response_traffic();
+
+                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, %any_response_traffic, "Refreshing DNS");
+
+                if !any_response_traffic {
+                    dead_ips.insert((domain.clone(), resolved_ip));
+                }
 
                 for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
             }
+        }
+
+        if !dead_ips.is_empty() {
+            tracing::warn!(
+                ?dead_ips,
+                "Dead IPs detected (never received any traffic); check your DNS configuration"
+            );
         }
 
         for (name, resource_id) in for_refresh {
@@ -575,6 +595,14 @@ struct TranslationState {
     /// When we've last seen a packet from the resolved IP.
     last_response: Instant,
     slated_for_refresh: bool,
+    /// When this translation state was created.
+    created_at: Instant,
+}
+
+impl TranslationState {
+    fn any_response_traffic(&self) -> bool {
+        self.last_response > self.created_at
+    }
 }
 
 /// The state of one client on a gateway.
