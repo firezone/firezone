@@ -3,27 +3,35 @@ pub(crate) use imp::is_normal_user;
 #[cfg(target_os = "linux")]
 mod imp {
     use crate::client::gui::Error;
-    use anyhow::Context;
+    use anyhow::{Context as _, Result};
+    use firezone_headless_client::FIREZONE_GROUP;
 
     /// Returns true if we're running without root privileges
     ///
     /// Everything that needs root / admin powers happens in the IPC services,
     /// so for security and practicality reasons the GUIs must be non-root.
     /// (In Linux by default a root GUI app barely works at all)
-    pub(crate) fn is_normal_user() -> anyhow::Result<bool, Error> {
+    pub(crate) fn is_normal_user() -> Result<bool, Error> {
         // Must use `eprintln` here because `tracing` won't be initialized yet.
         let user = std::env::var("USER").context("USER env var should be set")?;
         if user == "root" {
             return Ok(false);
         }
 
-        let fz_gid = firezone_headless_client::platform::firezone_group()?.gid;
+        let fz_gid = firezone_group()?.gid;
         let groups = nix::unistd::getgroups().context("`nix::unistd::getgroups`")?;
         if !groups.contains(&fz_gid) {
             return Err(Error::UserNotInFirezoneGroup);
         }
 
         Ok(true)
+    }
+
+    fn firezone_group() -> Result<nix::unistd::Group> {
+        let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
+            .context("can't get group by name")?
+            .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
+        Ok(group)
     }
 }
 

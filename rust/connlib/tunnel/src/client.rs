@@ -1,8 +1,9 @@
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
+use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
-use connlib_shared::error::{ConnlibError as Error, ConnlibError};
+use connlib_shared::error::ConnlibError as Error;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, client::ResourceDescriptionDns,
@@ -210,7 +211,7 @@ where
         gateway_id: GatewayId,
         relays: Vec<Relay>,
         site_id: SiteId,
-    ) -> connlib_shared::Result<Request> {
+    ) -> anyhow::Result<Option<Request>> {
         self.role_state.create_or_reuse_connection(
             resource_id,
             gateway_id,
@@ -243,7 +244,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self, resource_id))]
     pub fn received_domain_parameters(
         &mut self,
         resource_id: ResourceId,
@@ -468,7 +468,7 @@ impl ClientState {
             // If we don't have a peer but we have an ip for a resource it's then not a DNS resource
             debug_assert!(self.cidr_resources.longest_match(dest).is_some());
 
-            self.on_connection_intent_to_resource(resource, None, now);
+            self.on_not_connected_resource(resource, None, now);
             return None;
         };
 
@@ -488,8 +488,6 @@ impl ClientState {
             .encapsulate(gateway_id, packet.as_immutable(), now)
             .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
             .ok()??;
-
-        tracing::trace!("Encapsulated packet");
 
         Some(transmit)
     }
@@ -554,6 +552,8 @@ impl ClientState {
         domain_response: Option<DomainResponse>,
         now: Instant,
     ) -> connlib_shared::Result<()> {
+        debug_assert!(!self.awaiting_connection.contains_key(&resource_id));
+
         let gateway_id = self
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
@@ -566,9 +566,6 @@ impl ClientState {
             .ok_or(Error::ControlProtocolError)?;
 
         let ips = self.get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
-
-        // Tidy up state once everything succeeded.
-        self.awaiting_connection.remove(&resource_id);
 
         let resource_ids = HashSet::from([resource_id]);
         let peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
@@ -595,40 +592,44 @@ impl ClientState {
         site_id: SiteId,
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
-    ) -> connlib_shared::Result<Request> {
+    ) -> anyhow::Result<Option<Request>> {
         tracing::trace!("create_or_reuse_connection");
-
-        self.gateways_site.insert(gateway_id, site_id);
 
         let desc = self
             .resource_ids
             .get(&resource_id)
-            .ok_or(Error::UnknownResource)?;
+            .context("Unknown resource")?;
 
-        let awaiting_connection = self.get_awaiting_connection(&resource_id)?.clone();
-        let domain = awaiting_connection.domain.clone();
+        if self.node.is_expecting_answer(gateway_id) {
+            return Ok(None);
+        }
 
-        self.resources_gateways.insert(resource_id, gateway_id);
+        let awaiting_connection = self
+            .awaiting_connection
+            .remove(&resource_id)
+            .context("No connection details found for resource")?;
+
+        if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
+            if self.peers.get(&old_gateway_id).is_some() {
+                assert_eq!(old_gateway_id, gateway_id, "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}");
+            }
+        }
+
+        self.gateways_site.insert(gateway_id, site_id);
 
         if self.peers.get(&gateway_id).is_some() {
             self.peers.add_ips_with_resource(
                 &gateway_id,
-                &self.get_resource_ip(desc, &domain),
+                &self.get_resource_ip(desc, &awaiting_connection.domain),
                 &resource_id,
             );
 
-            self.awaiting_connection.remove(&resource_id);
-
-            return Ok(Request::ReuseConnection(ReuseConnection {
+            return Ok(Some(Request::ReuseConnection(ReuseConnection {
                 resource_id,
                 gateway_id,
-                payload: domain,
-            }));
+                payload: awaiting_connection.domain,
+            })));
         };
-
-        if self.node.is_expecting_answer(gateway_id) {
-            return Err(Error::PendingConnection);
-        }
 
         let offer = self.node.new_connection(
             gateway_id,
@@ -638,7 +639,7 @@ impl ClientState {
             Instant::now(),
         );
 
-        return Ok(Request::NewConnection(RequestConnection {
+        return Ok(Some(Request::NewConnection(RequestConnection {
             resource_id,
             gateway_id,
             client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
@@ -647,9 +648,9 @@ impl ClientState {
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain,
+                domain: awaiting_connection.domain,
             },
-        }));
+        })));
     }
 
     pub fn received_domain_parameters(
@@ -733,10 +734,12 @@ impl ClientState {
             return Err(Error::ControlProtocolError);
         };
 
+        tracing::debug!(domain = %domain_response.domain, addresses = ?domain_response.address, "Received DNS response");
+
         let resource_description =
             DnsResource::from_description(&resource_description, domain_response.domain.clone());
 
-        let addrs: HashSet<_> = domain_response
+        let proxy_ips: HashSet<_> = domain_response
             .address
             .iter()
             .filter_map(|external_ip| {
@@ -744,9 +747,9 @@ impl ClientState {
             })
             .collect();
 
-        for addr in addrs.clone() {
+        for proxy_ip in proxy_ips.clone() {
             self.dns_resources_internal_ips
-                .entry(addr)
+                .entry(proxy_ip)
                 .and_modify(|(existing_peer, dns_resources)| {
                     assert_eq!(existing_peer, peer_id);
 
@@ -755,10 +758,10 @@ impl ClientState {
                 .or_insert_with(|| (*peer_id, HashSet::from([resource_description.clone()])));
         }
 
-        send_dns_answer(self, Rtype::AAAA, &resource_description, &addrs);
-        send_dns_answer(self, Rtype::A, &resource_description, &addrs);
+        send_dns_answer(self, Rtype::AAAA, &resource_description, &proxy_ips);
+        send_dns_answer(self, Rtype::A, &resource_description, &proxy_ips);
 
-        Ok(addrs.iter().copied().map(Into::into).collect())
+        Ok(proxy_ips.iter().copied().map(Into::into).collect())
     }
 
     /// Attempt to handle the given packet as a DNS packet.
@@ -797,13 +800,22 @@ impl ClientState {
                 Ok(None)
             }
             Some(dns::ResolveStrategy::DeferredResponse((resource, r_type))) => {
-                self.on_connection_intent_to_resource(
-                    resource.id,
-                    Some(resource.address.clone()),
-                    now,
-                );
                 self.deferred_dns_queries
-                    .insert((resource, r_type), packet.as_immutable().to_owned());
+                    .insert((resource.clone(), r_type), packet.as_immutable().to_owned());
+
+                let Some(peer) = self.peer_by_resource(resource.id) else {
+                    self.on_not_connected_resource(resource.id, Some(resource.address), now);
+                    return Ok(None);
+                };
+
+                self.buffered_events
+                    .push_back(ClientEvent::RefreshResources {
+                        connections: vec![ReuseConnection {
+                            resource_id: resource.id,
+                            gateway_id: peer.id(),
+                            payload: Some(resource.address),
+                        }],
+                    });
 
                 Ok(None)
             }
@@ -814,22 +826,13 @@ impl ClientState {
         }
     }
 
-    pub(crate) fn get_awaiting_connection(
-        &self,
-        resource: &ResourceId,
-    ) -> Result<&AwaitingConnectionDetails, ConnlibError> {
-        self.awaiting_connection
-            .get(resource)
-            .ok_or(Error::UnexpectedConnectionDetails)
-    }
-
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection.remove(&resource);
         self.resources_gateways.remove(&resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource, ?domain))]
-    fn on_connection_intent_to_resource(
+    fn on_not_connected_resource(
         &mut self,
         resource: ResourceId,
         domain: Option<DomainName>,
@@ -842,6 +845,15 @@ impl ClientState {
             .values()
             .copied()
             .collect::<HashSet<_>>();
+
+        if self
+            .gateway_by_resource(&resource)
+            .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
+        {
+            tracing::debug!("Already connecting to gateway");
+
+            return;
+        }
 
         match self.awaiting_connection.entry(resource) {
             Entry::Occupied(mut occupied) => {
@@ -906,11 +918,20 @@ impl ClientState {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %gateway_id))]
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
         self.update_site_status_by_gateway(gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
         self.dns_resources_internal_ips
-            .retain(|_, (candidate, _)| candidate != gateway_id);
+            .retain(|proxy_ip, (candidate, resources)| {
+                if candidate == gateway_id {
+                    tracing::debug!(%proxy_ip, num_domains = %resources.len(), "Disassociating proxy IP");
+
+                    return false;
+                }
+
+                true
+            });
         self.resources_gateways.retain(|_, g| g != gateway_id);
     }
 
@@ -982,6 +1003,8 @@ impl ClientState {
                         // filter inactive connections
                         continue;
                     };
+
+                    tracing::debug!(domain = %resource.address, "Refreshing DNS record");
 
                     connections.push(ReuseConnection {
                         resource_id: resource.id,

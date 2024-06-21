@@ -75,6 +75,46 @@ defmodule Web.Live.SignUpTest do
     end)
   end
 
+  test "rate limits welcome emails", %{conn: conn} do
+    Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+    account_name = "FooBar"
+    email = Fixtures.Auth.email()
+
+    attrs = %{
+      account: %{name: account_name},
+      actor: %{name: "John Doe"},
+      email: email
+    }
+
+    Bypass.open()
+    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
+      id: Ecto.UUID.generate(),
+      name: account_name
+    })
+    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
+
+    for _ <- 1..3 do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert html =
+               lv
+               |> form("form", registration: attrs)
+               |> render_submit()
+
+      assert html =~ "Your account has been created!"
+    end
+
+    {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+    assert html =
+             lv
+             |> form("form", registration: attrs)
+             |> render_submit()
+
+    assert html =~ "This email has been rate limited. Please try again later."
+  end
+
   test "trims the user email", %{conn: conn} do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 

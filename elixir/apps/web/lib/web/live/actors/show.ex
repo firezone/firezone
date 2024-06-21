@@ -562,19 +562,34 @@ defmodule Web.Actors.Show do
   def handle_event("send_welcome_email", %{"id" => id}, socket) do
     {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
 
-    {:ok, _} =
-      Web.Mailer.AuthEmail.new_user_email(
-        socket.assigns.account,
-        identity,
-        socket.assigns.subject
-      )
-      |> Web.Mailer.deliver()
+    Web.Mailer.AuthEmail.new_user_email(
+      socket.assigns.account,
+      identity,
+      socket.assigns.subject
+    )
+    |> Web.Mailer.deliver_with_rate_limit(
+      rate_limit: 3,
+      rate_limit_key: {:welcome_email, identity.id},
+      rate_limit_interval: :timer.minutes(15)
+    )
+    |> case do
+      {:ok, _} ->
+        socket =
+          socket
+          |> put_flash(:info, "Welcome email sent to #{get_identity_email(identity)}")
 
-    socket =
-      socket
-      |> put_flash(:info, "Welcome email sent to #{get_identity_email(identity)}")
+        {:noreply, socket}
 
-    {:noreply, socket}
+      {:error, :rate_limited} ->
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "You sent too many welcome emails to this address. Please try again later."
+          )
+
+        {:noreply, socket}
+    end
   end
 
   def handle_event("revoke_all_tokens", _params, socket) do

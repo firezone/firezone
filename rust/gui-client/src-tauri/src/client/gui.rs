@@ -175,8 +175,7 @@ pub(crate) fn run(
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
                         if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test");
-                            tracing::error!("Crashing on purpose so a dev can see our stacktraces");
+                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
                             unsafe { sadness_generator::raise_segfault() }
                         }
                     });
@@ -329,8 +328,8 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .await
         .context("Failed to get zip file metadata")?
         .len();
-    if zip_len == 0 {
-        bail!("Exported log zip has 0 bytes");
+    if zip_len <= 22 {
+        bail!("Exported log zip just has the file header");
     }
     tokio::fs::remove_file(&path)
         .await
