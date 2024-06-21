@@ -68,7 +68,7 @@ pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) ->
     let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
     let lib_name = LIB_NAME;
-    format!("{os_type}/{os_version}{additional_info}{lib_name}/{firezone_package_version}")
+    format!("{os_type}/{os_version}{additional_info}{lib_name}/{app_version}")
 }
 
 fn additional_info() -> String {
