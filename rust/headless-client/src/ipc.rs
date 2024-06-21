@@ -170,7 +170,7 @@ mod tests {
 
         let mut server = Server::new(ID)
             .await
-            .expect("Error while starting IPC server")?;
+            .expect("Error while starting IPC server");
 
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
