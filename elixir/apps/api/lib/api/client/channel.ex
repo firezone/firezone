@@ -6,6 +6,12 @@ defmodule API.Client.Channel do
   require Logger
   require OpenTelemetry.Tracer
 
+  @gateway_compatibility [
+    # The clients of version of 1.1+ are compatible with gateways of version 1.1+,
+    # but the clients of versions prior to that can connect to any gateway
+    {">= 1.1.0", ">= 1.1.0"}
+  ]
+
   @impl true
   def join("client", _payload, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
@@ -15,10 +21,13 @@ defmodule API.Client.Channel do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
+      gateway_version_requirement = select_gateway_version_requirement(socket.assigns.client)
+
       socket =
         assign(socket,
           opentelemetry_ctx: opentelemetry_ctx,
-          opentelemetry_span_ctx: opentelemetry_span_ctx
+          opentelemetry_span_ctx: opentelemetry_span_ctx,
+          gateway_version_requirement: gateway_version_requirement
         )
 
       with {:ok, socket} <- schedule_expiration(socket) do
@@ -385,6 +394,8 @@ defmodule API.Client.Channel do
              Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
                preload: :group
              ),
+           {:ok, gateways} <-
+             filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement),
            {:ok, [_ | _] = relays} <- select_relays(socket) do
         :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
 
@@ -604,5 +615,30 @@ defmodule API.Client.Channel do
     relays = Relays.load_balance_relays(location, relays)
 
     {:ok, relays}
+  end
+
+  defp select_gateway_version_requirement(client) do
+    gateway_version_requirement =
+      Enum.find_value(
+        @gateway_compatibility,
+        fn {client_version_requirement, gateway_version_requirement} ->
+          if Version.match?(client.last_seen_version, client_version_requirement) do
+            gateway_version_requirement
+          end
+        end
+      )
+
+    gateway_version_requirement || "> 0.0.0"
+  end
+
+  defp filter_compatible_gateways(gateways, gateway_version_requirement) do
+    gateways
+    |> Enum.filter(fn gateway ->
+      Version.match?(gateway.last_seen_version, gateway_version_requirement)
+    end)
+    |> case do
+      [] -> {:error, :not_found}
+      gateways -> {:ok, gateways}
+    end
   end
 end
