@@ -301,7 +301,7 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.slated_for_refresh);
+            .filter(|(_, state)| state.no_response_in_30s(now));
 
         let mut dead_ips = BTreeMap::<DomainName, BTreeSet<IpAddr>>::new();
         let mut for_refresh = HashSet::new();
@@ -315,14 +315,8 @@ impl ClientOnGateway {
             if self
                 .permanent_translations
                 .values()
-                .filter_map(|state| {
-                    (state.resource_id == expired_state.resource_id
-                        && state.name == expired_state.name)
-                        .then_some((state.last_incoming, state.slated_for_refresh))
-                })
-                .all(|(last_seen, slated_for_refresh)| {
-                    slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
-                })
+                .filter(|state| state.resource_id == resource_id && state.name == domain)
+                .all(|state| state.no_response_in_30s(now))
             {
                 tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
@@ -474,13 +468,11 @@ impl ClientOnGateway {
         let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
             return Ok(None);
         };
-        let state = self
-            .permanent_translations
-            .get_mut(&ip)
-            .expect("inconsistent state");
 
-        state.last_incoming = now;
-        state.slated_for_refresh = false;
+        self.permanent_translations
+            .get_mut(&ip)
+            .expect("inconsistent state")
+            .on_incoming_traffic(now);
 
         packet.set_destination_protocol(proto.value());
         packet.update_checksum();
@@ -597,7 +589,6 @@ struct TranslationState {
     /// Initially set to `created_at`.
     first_outgoing: Instant,
 
-    slated_for_refresh: bool,
     /// When this translation state was created.
     created_at: Instant,
 }
@@ -615,7 +606,6 @@ impl TranslationState {
             resolved_ip,
             last_incoming: created_at,
             first_outgoing: created_at,
-            slated_for_refresh: false,
             created_at,
         }
     }
@@ -630,15 +620,19 @@ impl TranslationState {
         sent_at_least_one_packet && received_no_packets && first_outgoing_at_least_10s_ago
     }
 
+    fn no_response_in_30s(&self, now: Instant) -> bool {
+        now.duration_since(self.last_incoming) >= Duration::from_secs(30)
+    }
+
+    fn on_incoming_traffic(&mut self, now: Instant) {
+        self.last_incoming = now;
+    }
+
     fn on_outgoing_traffic(&mut self, now: Instant) {
         if self.first_outgoing > self.created_at {
             return;
         }
         self.first_outgoing = now;
-
-        if now.duration_since(self.last_incoming) >= Duration::from_secs(30) {
-            self.slated_for_refresh = true;
-        }
     }
 }
 
