@@ -197,7 +197,7 @@ cat profile.mobileprovision | base64
 
 ### Runner keychain password
 
-This can be randomly genearted. It's only used ephemerally to load the secrets
+This can be randomly generated. It's only used ephemerally to load the secrets
 into the runner's keychain for the build.
 
 ```
