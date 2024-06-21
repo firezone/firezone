@@ -381,7 +381,7 @@ fn connect(
         sockets,
         private_key,
         os_version_override: Some(os_version),
-        firezone_package_version: env!("CARGO_PKG_VERSION").to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
         callbacks,
         max_partition_time: Some(MAX_PARTITION_TIME),
     };

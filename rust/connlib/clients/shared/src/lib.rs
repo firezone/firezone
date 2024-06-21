@@ -38,7 +38,7 @@ pub struct ConnectArgs<CB> {
     pub sockets: Sockets,
     pub private_key: StaticSecret,
     pub os_version_override: Option<String>,
-    pub firezone_package_version: String,
+    pub app_version: String,
     pub callbacks: CB,
     pub max_partition_time: Option<Duration>,
 }
@@ -114,7 +114,7 @@ where
         sockets,
         private_key,
         os_version_override,
-        firezone_package_version,
+        app_version,
         callbacks,
         max_partition_time,
     } = args;
@@ -123,7 +123,7 @@ where
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
-        get_user_agent(os_version_override, &firezone_package_version),
+        get_user_agent(os_version_override, &app_version),
         PHOENIX_TOPIC,
         (),
         ExponentialBackoffBuilder::default()
