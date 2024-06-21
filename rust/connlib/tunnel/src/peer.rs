@@ -434,15 +434,13 @@ impl ClientOnGateway {
             self.nat_table
                 .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
 
-        if now.duration_since(state.last_incoming) >= Duration::from_secs(30) {
-            state.slated_for_refresh = true;
-        }
-
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, real_ip)
             .ok_or(connlib_shared::Error::FailedTranslation)?;
         packet.set_source_protocol(source_protocol.value());
         packet.update_checksum();
+
+        state.on_outgoing_traffic(now);
 
         Ok(packet)
     }
@@ -594,10 +592,10 @@ struct TranslationState {
     ///
     /// Initially set to `created_at`.
     last_incoming: Instant,
-    /// When we've last sent a packet to the resolved IP.
+    /// When we've sent the first packet to the resolved IP.
     ///
     /// Initially set to `created_at`.
-    last_outgoing: Instant,
+    first_outgoing: Instant,
 
     slated_for_refresh: bool,
     /// When this translation state was created.
@@ -616,20 +614,31 @@ impl TranslationState {
             name,
             resolved_ip,
             last_incoming: created_at,
-            last_outgoing: created_at,
+            first_outgoing: created_at,
             slated_for_refresh: false,
             created_at,
         }
     }
 
-    /// We define an IP as dead if we have seen outgoing traffic that is at least 10s old but _never_ received incoming traffic.
+    /// We define an IP as dead if we have seen the first outgoing traffic over 10s ago and _never_ received incoming traffic.
     fn is_dead_ip(&self, now: Instant) -> bool {
-        let sent_at_least_one_packet = self.last_outgoing > self.created_at;
+        let sent_at_least_one_packet = self.first_outgoing > self.created_at;
         let received_no_packets = self.last_incoming == self.created_at;
-        let last_outgoing_at_least_10s_ago =
-            now.duration_since(self.last_outgoing) >= Duration::from_secs(10);
+        let first_outgoing_at_least_10s_ago =
+            now.duration_since(self.first_outgoing) >= Duration::from_secs(10);
 
-        sent_at_least_one_packet && received_no_packets && last_outgoing_at_least_10s_ago
+        sent_at_least_one_packet && received_no_packets && first_outgoing_at_least_10s_ago
+    }
+
+    fn on_outgoing_traffic(&mut self, now: Instant) {
+        if self.first_outgoing > self.created_at {
+            return;
+        }
+        self.first_outgoing = now;
+
+        if now.duration_since(self.last_incoming) >= Duration::from_secs(30) {
+            self.slated_for_refresh = true;
+        }
     }
 }
 
@@ -754,7 +763,7 @@ mod tests {
         );
 
         now += Duration::from_secs(1);
-        state.last_outgoing = now;
+        state.on_outgoing_traffic(now);
 
         assert!(!state.is_dead_ip(now));
 
