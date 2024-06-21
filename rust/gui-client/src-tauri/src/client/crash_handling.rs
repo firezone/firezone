@@ -133,8 +133,9 @@ impl minidumper::ServerHandler for Handler {
     /// created to store it.
     #[allow(clippy::print_stderr)]
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
-        let format = time::format_description::parse(connlib_client_shared::file_logger::TIME_FORMAT)
-            .expect("static format description should always be parsable");
+        let format =
+            time::format_description::parse(connlib_client_shared::file_logger::TIME_FORMAT)
+                .expect("static format description should always be parsable");
         let date = self
             .start_time
             .format(&format)

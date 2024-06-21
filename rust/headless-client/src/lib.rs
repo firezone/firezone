@@ -446,9 +446,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(rx, tx)?
-            .run()
-            .await;
+        Handler::new(rx, tx)?.run().await;
     }
 }
 
@@ -536,12 +534,18 @@ impl Handler {
                         tracing::info!(?dur, "Connlib started");
                     }
                 }
-                self.ipc_tx.send(&msg).await.context("Error while sending IPC message")?;
+                self.ipc_tx
+                    .send(&msg)
+                    .await
+                    .context("Error while sending IPC message")?;
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
-                self.ipc_tx.send(&IpcServerMsg::OnTunnelReady).await.context("Error while sending `OnTunnelReady`")?;
+                self.ipc_tx
+                    .send(&IpcServerMsg::OnTunnelReady)
+                    .await
+                    .context("Error while sending `OnTunnelReady`")?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
