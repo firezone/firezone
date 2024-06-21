@@ -11,7 +11,7 @@
 use anyhow::{anyhow, bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{
-    file_logger, keypair, Callbacks, Error as ConnlibError, LoginUrl, Session, Sockets,
+    file_logger, keypair, Callbacks, ConnectArgs, Error as ConnlibError, LoginUrl, Session, Sockets,
 };
 use connlib_shared::{callbacks, tun_device_manager, Cidrv4, Cidrv6};
 use firezone_cli_utils::setup_global_subscriber;
@@ -266,7 +266,7 @@ pub fn run_only_headless_client() -> Result<()> {
     };
 
     let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(
+    let url = LoginUrl::client(
         cli.api_url,
         &token,
         firezone_id,
@@ -280,18 +280,18 @@ pub fn run_only_headless_client() -> Result<()> {
     }
 
     let (cb_tx, mut cb_rx) = mpsc::channel(10);
-    let callback_handler = CallbackHandler { cb_tx };
+    let callbacks = CallbackHandler { cb_tx };
 
     platform::setup_before_connlib()?;
-    let session = Session::connect(
-        login,
-        Sockets::new(),
+    let args = ConnectArgs {
+        url,
+        sockets: Sockets::new(),
         private_key,
-        None,
-        callback_handler,
+        os_version_override: None,
+        callbacks,
         max_partition_time,
-        rt.handle().clone(),
-    );
+    };
+    let session = Session::connect(args, rt.handle().clone());
     // TODO: this should be added dynamically
     session.set_dns(dns_control::system_resolvers().unwrap_or_default());
     platform::notify_service_controller()?;
@@ -549,7 +549,7 @@ impl Handler {
                     device_id::get_or_create().context("Failed to get / create device ID")?;
                 let (private_key, public_key) = keypair();
 
-                let login = LoginUrl::client(
+                let url = LoginUrl::client(
                     Url::parse(&api_url)?,
                     &token,
                     device_id.id,
@@ -558,15 +558,15 @@ impl Handler {
                 )?;
 
                 self.last_connlib_start_instant = Some(Instant::now());
-                let new_session = connlib_client_shared::Session::connect(
-                    login,
-                    Sockets::new(),
+                let args = ConnectArgs {
+                    url,
+                    sockets: Sockets::new(),
                     private_key,
-                    None,
-                    self.callback_handler.clone(),
-                    Some(Duration::from_secs(60 * 60 * 24 * 30)),
-                    tokio::runtime::Handle::try_current()?,
-                );
+                    os_version_override: None,
+                    callbacks: self.callback_handler.clone(),
+                    max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
+                };
+                let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);
             }
