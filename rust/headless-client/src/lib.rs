@@ -288,6 +288,7 @@ pub fn run_only_headless_client() -> Result<()> {
         sockets: Sockets::new(),
         private_key,
         os_version_override: None,
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
         callbacks,
         max_partition_time,
     };
@@ -563,6 +564,7 @@ impl Handler {
                     sockets: Sockets::new(),
                     private_key,
                     os_version_override: None,
+                    app_version: env!("CARGO_PKG_VERSION").to_string(),
                     callbacks: self.callback_handler.clone(),
                     max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
