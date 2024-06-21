@@ -23,12 +23,7 @@ use std::{
     pin::pin,
     time::Duration,
 };
-use tokio::{
-    io::{ReadHalf, WriteHalf},
-    sync::mpsc,
-    time::Instant,
-};
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
@@ -55,7 +50,7 @@ pub mod platform;
 pub mod platform;
 
 use dns_control::DnsController;
-use ipc::{Server as IpcServer, ServiceId, Stream as IpcStream};
+use ipc::{Server as IpcServer, ServiceId};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -183,7 +178,7 @@ enum Cmd {
     Standalone,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcClientMsg {
     Connect { api_url: String, token: String },
     Disconnect,
@@ -204,7 +199,7 @@ enum InternalServerMsg {
     },
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
     OnDisconnect {
@@ -447,11 +442,11 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     loop {
         dns_control::deactivate()?;
-        let stream = server
-            .next_client()
+        let (rx, tx) = server
+            .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(stream)?
+        Handler::new(rx, tx)?
             .run()
             .await
             .context("Error while handling IPC client")?;
@@ -464,8 +459,8 @@ struct Handler {
     cb_rx: mpsc::Receiver<InternalServerMsg>,
     connlib: Option<connlib_client_shared::Session>,
     dns_controller: DnsController,
-    ipc_rx: FramedRead<ReadHalf<IpcStream>, LengthDelimitedCodec>,
-    ipc_tx: FramedWrite<WriteHalf<IpcStream>, LengthDelimitedCodec>,
+    ipc_rx: ipc::ServerRead,
+    ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
     tun_device: tun_device_manager::TunDeviceManager,
 }
@@ -476,10 +471,7 @@ enum Event {
 }
 
 impl Handler {
-    fn new(stream: IpcStream) -> Result<Self> {
-        let (rx, tx) = tokio::io::split(stream);
-        let ipc_rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-        let ipc_tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+    fn new(ipc_rx: ipc::ServerRead, ipc_tx: ipc::ServerWrite) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(10);
         let tun_device = tun_device_manager::TunDeviceManager::new()?;
 
@@ -501,10 +493,7 @@ impl Handler {
                 // This borrows `self` so we must drop it before handling the `Event`.
                 let cb = pin!(self.cb_rx.recv());
                 match future::select(self.ipc_rx.next(), cb).await {
-                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(
-                        serde_json::from_slice(&x)
-                            .context("Error while deserializing IPC message")?,
-                    ), // TODO: Integrate the serde_json stuff into a custom Tokio codec
+                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(x),
                     future::Either::Left((Some(Err(error)), _)) => Err(error)?,
                     future::Either::Left((None, _)) => {
                         tracing::info!("IPC client disconnected");
@@ -537,16 +526,12 @@ impl Handler {
                         tracing::info!(?dur, "Connlib started");
                     }
                 }
-                self.ipc_tx
-                    .send(serde_json::to_string(&msg)?.into())
-                    .await?
+                self.ipc_tx.send(&msg).await?
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
-                self.ipc_tx
-                    .send(serde_json::to_string(&IpcServerMsg::OnTunnelReady)?.into())
-                    .await?;
+                self.ipc_tx.send(&IpcServerMsg::OnTunnelReady).await?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
@@ -732,10 +717,8 @@ fn setup_ipc_service_logging(
 #[cfg(test)]
 mod tests {
     use super::{Cli, CliIpcService, CmdIpc};
-    use anyhow::Context as _;
     use clap::Parser;
-    use std::{path::PathBuf, time::Duration};
-    use tokio::time::timeout;
+    use std::path::PathBuf;
     use url::Url;
 
     // Can't remember how Clap works sometimes
@@ -760,26 +743,6 @@ mod tests {
         let actual = CliIpcService::parse_from([exe_name, "run"]);
         assert_eq!(actual.command, CmdIpc::Run);
 
-        Ok(())
-    }
-
-    /// Replicate #5143
-    ///
-    /// When the IPC service has disconnected from a GUI and loops over, sometimes
-    /// the named pipe is not ready. If our IPC code doesn't handle this right,
-    /// this test will fail.
-    #[tokio::test]
-    async fn ipc_server() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-
-        let mut server = super::IpcServer::new(super::ServiceId::Test("H6L73DG5")).await?;
-        for i in 0..5 {
-            if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
-                Err(err).with_context(|| {
-                    format!("Couldn't listen for next IPC client, iteration {i}")
-                })?;
-            }
-        }
         Ok(())
     }
 }
