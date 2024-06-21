@@ -347,45 +347,38 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
 
     let dname = domain.to_string();
 
-    match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
-        Ok(Ok(addresses)) => addresses,
-        Ok(Err(e)) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
-
-            vec![]
-        }
-        Err(e) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
-
-            vec![]
-        }
-    }
+    tokio::task::spawn_blocking(move || resolve_addresses(&dname))
+        .await
+        .inspect_err(|e| tracing::warn!(%domain, "DNS resolution task failed: {e}"))
+        .unwrap_or_default()
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpAddr>> {
+fn resolve_addresses(_: &str) -> Vec<IpAddr> {
     unimplemented!()
 }
 
 #[cfg(not(target_os = "windows"))]
-fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpAddr>> {
+fn resolve_addresses(domain: &str) -> Vec<IpAddr> {
     use libc::{AF_INET, AF_INET6};
-    let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
-        .map_err(|e| e.into())
-        .and_then(|a| a.collect());
-    let addr_v6: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET6)
-        .map_err(|e| e.into())
-        .and_then(|a| a.collect());
-    match (addr_v4, addr_v6) {
-        (Ok(v4), Ok(v6)) => Ok(v6
-            .iter()
-            .map(|a| a.sockaddr.ip())
-            .chain(v4.iter().map(|a| a.sockaddr.ip()))
-            .collect()),
-        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip()).collect()),
-        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip()).collect()),
-        (Err(e), Err(_)) => Err(e),
-    }
+
+    let addr_v4 = resolve_address_family(domain, AF_INET)
+        .inspect_err(|e| tracing::warn!(%domain, "Failed to resolve A records: {e:?}")); // FIXME: Upstream an fmt::Display impl for LookupError.
+    let addr_v6 = resolve_address_family(domain, AF_INET6)
+        .inspect_err(|e| tracing::warn!(%domain, "Failed to resolve AAAA records: {e:?}"));
+
+    addr_v4
+        .into_iter()
+        .chain(addr_v6)
+        .flatten()
+        .filter_map(|result| match result {
+            Ok(addr) => Some(addr.sockaddr.ip()),
+            Err(e) => {
+                tracing::warn!("Failed to parse DNS record: {e}");
+                None
+            }
+        })
+        .collect()
 }
 
 #[cfg(not(target_os = "windows"))]
