@@ -40,11 +40,11 @@ jobs:
           if [[ "${{ github.event.release.name }}" =~ gateway* ]]; then
             ARTIFACT=gateway
             # mark:next-gateway-version
-            VERSION="1.0.9"
+            VERSION="1.1.1"
           elif [[ "${{ github.event.release.name }}" =~ headless* ]]; then
             ARTIFACT=client
             # mark:next-headless-version
-            VERSION="1.0.9"
+            VERSION="1.1.0"
           else
             echo "Release doesn't require publishing Docker images"
             exit 0

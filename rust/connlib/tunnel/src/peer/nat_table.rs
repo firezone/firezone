@@ -67,7 +67,7 @@ impl NatTable {
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
         // This will re-assign the same port in most cases, even after the mapping expires.
-        let outside = (src.value()..)
+        let outside = (src.value()..=u16::MAX)
             .chain(1..src.value())
             .map(|p| (src.with_value(p), outside_dst))
             .find(|outside| !self.table.contains_right(outside))

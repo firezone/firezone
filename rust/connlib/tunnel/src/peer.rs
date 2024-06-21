@@ -142,18 +142,23 @@ impl GatewayOnClient {
         }
     }
 
+    #[tracing::instrument(name = "translation", level = "debug", skip_all, fields(gateway = %self.id))]
     pub fn get_or_assign_translation(
         &mut self,
-        ip: &IpAddr,
+        real_ip: &IpAddr,
         ip_provider: &mut IpProvider,
     ) -> Option<IpAddr> {
-        if let Some(proxy_ip) = self.translations.get_by_right(ip) {
+        if let Some(proxy_ip) = self.translations.get_by_right(real_ip) {
+            tracing::debug!("Existing translation: {real_ip} -> {proxy_ip}");
+
             return Some(*proxy_ip);
         }
 
-        let proxy_ip = ip_provider.get_proxy_ip_for(ip)?;
+        let proxy_ip = ip_provider.get_proxy_ip_for(real_ip)?;
 
-        self.translations.insert(proxy_ip, *ip);
+        tracing::debug!("New translation: {real_ip} -> {proxy_ip}");
+
+        self.translations.insert(proxy_ip, *real_ip);
         Some(proxy_ip)
     }
 }
@@ -266,6 +271,11 @@ impl ClientOnGateway {
     ) -> connlib_shared::Result<()> {
         match (resource, domain_ips) {
             (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
+                if resource_ips.is_empty() {
+                    tracing::debug!("Client hasn't sent us any proxy IPs, skipping IP translation");
+                    return Ok(());
+                }
+
                 self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
             }
             (ResourceDescription::Cidr(_), None) => {}
