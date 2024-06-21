@@ -56,7 +56,7 @@ android {
         targetSdk = 34
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.0.5"
+        versionName = "1.1.0"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
     }
