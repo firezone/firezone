@@ -51,7 +51,10 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     (private_key, public_key)
 }
 
-pub fn get_user_agent(os_version_override: Option<String>) -> String {
+pub fn get_user_agent(
+    os_version_override: Option<String>,
+    firezone_package_version: &str,
+) -> String {
     // Note: we could switch to sys-info and get the hostname
     // but we lose the arch
     // and neither of the libraries provide the kernel version.
@@ -67,9 +70,8 @@ pub fn get_user_agent(os_version_override: Option<String>) -> String {
 
     let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
-    let version = option_env!("FIREZONE_PACKAGE_VERSION").unwrap_or("development");
     let lib_name = LIB_NAME;
-    format!("{os_type}/{os_version}{additional_info}{lib_name}/{version}")
+    format!("{os_type}/{os_version}{additional_info}{lib_name}/{firezone_package_version}")
 }
 
 fn additional_info() -> String {

@@ -32,30 +32,29 @@ pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
+/// Arguments for `connect`, since Clippy said 8 args is too many
+pub struct ConnectArgs<CB> {
+    pub url: LoginUrl,
+    pub sockets: Sockets,
+    pub private_key: StaticSecret,
+    pub os_version_override: Option<String>,
+    pub firezone_package_version: String,
+    pub callbacks: CB,
+    pub max_partition_time: Option<Duration>,
+}
+
 impl Session {
     /// Creates a new [`Session`].
     ///
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
-        url: LoginUrl,
-        sockets: Sockets,
-        private_key: StaticSecret,
-        os_version_override: Option<String>,
-        callbacks: CB,
-        max_partition_time: Option<Duration>,
+        args: ConnectArgs<CB>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let connect_handle = handle.spawn(connect(
-            url,
-            sockets,
-            private_key,
-            os_version_override,
-            callbacks.clone(),
-            max_partition_time,
-            rx,
-        ));
+        let callbacks = args.callbacks.clone();
+        let connect_handle = handle.spawn(connect(args, rx));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -106,23 +105,25 @@ impl Session {
 /// Connects to the portal and starts a tunnel.
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-async fn connect<CB>(
-    url: LoginUrl,
-    sockets: Sockets,
-    private_key: StaticSecret,
-    os_version_override: Option<String>,
-    callbacks: CB,
-    max_partition_time: Option<Duration>,
-    rx: UnboundedReceiver<Command>,
-) -> Result<(), Error>
+async fn connect<CB>(args: ConnectArgs<CB>, rx: UnboundedReceiver<Command>) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks.clone())?;
+    let ConnectArgs {
+        url,
+        sockets,
+        private_key,
+        os_version_override,
+        firezone_package_version,
+        callbacks,
+        max_partition_time,
+    } = args;
+
+    let tunnel = ClientTunnel::new(private_key, sockets, callbacks)?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
-        get_user_agent(os_version_override),
+        get_user_agent(os_version_override, &firezone_package_version),
         PHOENIX_TOPIC,
         (),
         ExponentialBackoffBuilder::default()
