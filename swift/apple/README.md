@@ -119,3 +119,85 @@ item is missing. You can remove the keychain item with the following command:
 ```bash
 security delete-generic-password -s "dev.firezone.firezone"
 ```
+
+## Generating new signing certificates and provisioning profiles
+
+Certs are only good for a year, then you need to generate new ones. Since we use
+GitHub CI, we have to use manually-managed signing and provisioning. Here's how
+you populate the required GitHub secrets.
+
+### Certificates
+
+You first need two certs: The build / signing cert (Apple Distribution) and the
+installer cert (Mac Installer Distribution). You can generate these in the Apple
+Developer portal.
+
+These are the secrets in GH actions:
+
+```
+APPLE_BUILD_CERTIFICATE_BASE64
+APPLE_BUILD_CERTIFICATE_P12_PASSWORD
+APPLE_MAC_INSTALLER_CERTIFICATE_BASE64
+APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD
+```
+
+How to do it:
+
+1. Go to
+   [Apple Developer](https://developer.apple.com/account/resources/certificates/list)
+2. Click the "+" button to generate a new distribution certificate for App Store
+3. It will ask for a CSR. Open Keychain Access, go to Keychain Access ->
+   Certificate Assistant -> Request a Certificate from a Certificate Authority
+   and follow the prompts. Make sure to select "save to disk" to save the CSR.
+4. Upload the CSR to Apple Developer. Download the resulting certificate.
+   Double-click to install it in Keychain Access.
+5. Right-click the cert in Keychain access. Export the certificate, choose p12
+   file. Make sure to set a password -- this is the
+   `APPLE_BUILD_CERTIFICATE_P12_PASSWORD`.
+6. Convert the p12 file to base64:
+   ```bash
+   cat cert.p12 | base64
+   ```
+7. Save the base64 output as `APPLE_BUILD_CERTIFICATE_BASE64`.
+
+Repeat the steps above but choose "Mac Installer certificate" instead of
+"distribution certificate" in step 2, and save the resulting base64 and password
+as `APPLE_MAC_INSTALLER_CERTIFICATE_BASE64` and
+`APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD`.
+
+### Provisioning profiles
+
+```
+APPLE_IOS_APP_PROVISIONING_PROFILE
+APPLE_IOS_NE_PROVISIONING_PROFILE
+APPLE_MACOS_APP_PROVISIONING_PROFILE
+APPLE_MACOS_NE_PROVISIONING_PROFILE
+```
+
+1. Go to
+   [Apple Developer](https://developer.apple.com/account/resources/profiles/list)
+2. Click the "+" button to generate a new provisioning profile for App Store
+3. Select the appropriate app ID and distribution certificate you just created.
+   You'll need a provisioning profile for each app and network extension, so 4
+   total (mac app, mac network extension, ios app, ios network extension).
+4. Download the resulting provisioning profiles.
+5. Encode to base64 and save each using the secrets names above:
+
+```bash
+cat profile.mobileprovision | base64
+```
+
+6.  Now, you need to update the XCConfig to use these. Edit
+    Firezone/xcconfig/release.xcconfig and update the provisioning profile
+    UUIDs. The UUID can be found by grepping for them in the provisioning
+    profile files themselves, or just opening them in a text editor and looking
+    halfway down the file.
+
+### Runner keychain password
+
+This can be randomly genearted. It's only used ephemerally to load the secrets
+into the runner's keychain for the build.
+
+```
+APPLE_RUNNER_KEYCHAIN_PASSWORD
+```
