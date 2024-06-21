@@ -78,6 +78,7 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 #[tauri::command]
 pub(crate) async fn clear_logs() -> StdResult<(), String> {
     if let Err(error) = clear_logs_inner().await {
+        // Log the error ourselves since Tauri will only log it to the JS console
         tracing::error!(?error, "Error while clearing logs");
         Err(error.to_string())
     } else {
@@ -121,6 +122,7 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
                     path = path.display().to_string(),
                     "Error while removing log file"
                 );
+                // We'll return the most recent error, it loses some information but it's better than nothing.
                 result = Err(error);
             }
         }
