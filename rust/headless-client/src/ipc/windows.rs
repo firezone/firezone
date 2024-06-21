@@ -13,10 +13,10 @@ pub(crate) struct Server {
     pipe_path: String,
 }
 
-/// Opaque wrapper around the client's half of a platform-specific IPC stream
+/// Alias for the client's half of a platform-specific IPC stream
 pub type ClientStream = named_pipe::NamedPipeClient;
 
-/// Opaque wrapper around the server's half of a platform-specific IPC stream
+/// Alias for the server's half of a platform-specific IPC stream
 pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 
 /// Connect to the IPC service
