@@ -473,7 +473,7 @@ impl ClientState {
         };
 
         peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "{e}"))
+            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "{e}"))
             .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
