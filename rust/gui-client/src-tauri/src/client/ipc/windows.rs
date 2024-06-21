@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use firezone_headless_client::ipc;
 use std::os::windows::io::AsRawHandle;
 use tokio::net::windows::named_pipe;
 use windows::Win32::{Foundation::HANDLE, System::Pipes::GetNamedPipeServerProcessId};
@@ -11,10 +12,10 @@ pub(crate) type IpcStream = named_pipe::NamedPipeClient;
 /// This is async on Linux
 #[allow(clippy::unused_async)]
 pub(crate) async fn connect_to_service() -> Result<IpcStream> {
-    let path = firezone_headless_client::ipc::platform::pipe_path();
+    let path = ipc::platform::pipe_path(ipc::ServiceId::Prod);
     let stream = named_pipe::ClientOptions::new()
-        .open(path)
-        .with_context(|| "Couldn't connect to named pipe server at `{path}`")?;
+        .open(&path)
+        .with_context(|| format!("Couldn't connect to named pipe server at `{path}`"))?;
     let handle = HANDLE(stream.as_raw_handle() as isize);
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle

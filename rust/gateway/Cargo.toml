@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gateway"
 # mark:next-gateway-version
-version = "1.0.9"
+version = "1.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -33,6 +33,8 @@ dns-lookup = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 either = "1"
 http-health-check = { workspace = true }
+static_assertions = "1.1.0"
+snownet = { workspace = true }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }

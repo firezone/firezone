@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 
+# Put `set -euox` in the top-level scripts directly. If it's only sourced,
+# and the source path is wrong, it will not throw an error and it'll be hard
+# to debug.
+# <https://github.com/firezone/firezone/actions/runs/9602401296/job/26483176628#step:11:12>
 set -euox pipefail
 
 BUNDLE_ID="dev.firezone.client"
 FZ_GROUP="firezone-client"
 
-#DEVICE_ID_PATH="/var/lib/$BUNDLE_ID/config/firezone-id.json"
 LOGS_PATH="$HOME/.cache/$BUNDLE_ID/data/logs"
+
 DUMP_PATH="$LOGS_PATH/last_crash.dmp"
-SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
+IPC_LOGS_PATH="/var/log/$BUNDLE_ID"
 RAN_BEFORE_PATH="$HOME/.local/share/$BUNDLE_ID/data/ran_before.txt"
+SETTINGS_PATH="$HOME/.config/$BUNDLE_ID/config/advanced_settings.json"
 SYMS_PATH="../target/debug/firezone-gui-client.syms"
 
 PACKAGE=firezone-gui-client
@@ -25,6 +30,9 @@ ls -lash ../target/debug
 
 sudo groupadd --force "$FZ_GROUP"
 sudo adduser "$USER" "$FZ_GROUP"
+
+# Make the IPC log dir so that the zip export doesn't bail out
+sudo mkdir -p "$IPC_LOGS_PATH"
 
 function run_fz_gui() {
     pwd
@@ -55,7 +63,8 @@ function smoke_test() {
     # Make sure the files were written in the right paths
     # TODO: Inject some bogus sign-in sequence to test the actor_name file
     # https://stackoverflow.com/questions/41321092
-    bash -c "stat \"${LOGS_PATH}/\"connlib*log"
+    # TODO: Smoke test the IPC service
+    # bash -c "stat \"${LOGS_PATH}/\"connlib*log"
     stat "$SETTINGS_PATH"
     # stat "$DEVICE_ID_PATH"
     # `ran_before` is now only written after a successful sign-in
