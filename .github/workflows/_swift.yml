@@ -41,16 +41,16 @@ jobs:
       - name: Install the Apple build certificate and provisioning profile
         env:
           BUILD_CERT: ${{ secrets.APPLE_BUILD_CERTIFICATE_BASE64 }}
+          BUILD_CERT_PASS: ${{ secrets.APPLE_BUILD_CERTIFICATE_P12_PASSWORD }}
           INSTALLER_CERT: ${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_BASE64 }}
+          INSTALLER_CERT_PASS: ${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}
           KEYCHAIN_PASS: ${{ secrets.APPLE_RUNNER_KEYCHAIN_PASSWORD }}
           IOS_APP_PP: ${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}
           IOS_NE_PP: ${{ secrets.APPLE_IOS_NE_PROVISIONING_PROFILE }}
           MACOS_APP_PP: ${{ secrets.APPLE_MACOS_APP_PROVISIONING_PROFILE }}
           MACOS_NE_PP: ${{ secrets.APPLE_MACOS_NE_PROVISIONING_PROFILE }}
         run: |
-          set -xe
-
-          BUILD_CERT_PATH=$RUNNER_TEMP/build_certificate.cer
+          BUILD_CERT_PATH=$RUNNER_TEMP/build_certificate.p12
           INSTALLER_CERT_PATH=$RUNNER_TEMP/installer_certificate.cer
 
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
@@ -82,10 +82,10 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASS" $KEYCHAIN_PATH
 
           # import certificate to keychain
-          security import $BUILD_CERT_PATH -A -k $KEYCHAIN_PATH
+          security import $BUILD_CERT_PATH -P "$BUILD_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
 
           if [ "${{ matrix.platform }}" = "macOS" ]; then
-            security import $INSTALLER_CERT_PATH -A -k $KEYCHAIN_PATH
+            security import $INSTALLER_CERT_PATH -P "$INSTALLER_CERT_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           fi
           security list-keychain -d user -s $KEYCHAIN_PATH
       - name: Build and sign app
