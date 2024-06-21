@@ -27,6 +27,7 @@ thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.38.0", features = ["macros", "signal"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
+tracing-log = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 uptime_lib = "0.3.0"
 url = { version = "2.3.1", default-features = false }
@@ -51,10 +52,12 @@ dirs = "5.0.1"
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
 known-folders = "1.1.0"
+logging_timer = "1.1.1"
 ring = "0.17"
 thiserror = { version = "1.0", default-features = false }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 windows-service = "0.7.0"
+winreg = "0.52.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"

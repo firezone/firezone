@@ -57,7 +57,6 @@ impl Drop for Tun {
 }
 
 impl Tun {
-    #[tracing::instrument(level = "debug")]
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
@@ -100,6 +99,8 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
+    // TODO 5026: 540 + 370 ms
+    #[logging_timer::time]
     pub fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
@@ -227,11 +228,11 @@ impl Tun {
 }
 
 /// Flush Windows' system-wide DNS cache
-pub(crate) fn flush_dns() -> Result<()> {
-    tracing::info!("Flushing Windows DNS cache");
-    Command::new("powershell")
+#[logging_timer::time]
+fn flush_dns() -> Result<()> {
+    Command::new("ipconfig")
         .creation_flags(CREATE_NO_WINDOW)
-        .args(["-Command", "Clear-DnsClientCache"])
+        .args(["/flushdns"])
         .status()?;
     Ok(())
 }
@@ -264,6 +265,7 @@ fn start_recv_thread(
 
 /// Sets MTU on the interface
 /// TODO: Set IP and other things in here too, so the code is more organized
+#[logging_timer::time]
 fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
     // the u64 value and re-wrapping it, since wintun doesn't refer to the windows

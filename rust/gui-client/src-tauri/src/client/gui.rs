@@ -12,7 +12,12 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -422,6 +427,7 @@ struct Controller {
     session: Option<Session>,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
+    last_connlib_start: Option<Instant>,
     tunnel_ready: bool,
     uptime: client::uptime::Tracker,
 }
@@ -449,6 +455,7 @@ impl Controller {
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
+        self.last_connlib_start = Some(Instant::now());
         let connlib = ipc::Client::connect(
             api_url.as_str(),
             token,
@@ -591,14 +598,7 @@ impl Controller {
                 "Impossible error: `Quit` should be handled before this"
             ))?,
             Req::TunnelReady => {
-                if !self.tunnel_ready {
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                self.tunnel_ready = true;
-                self.refresh_system_tray_menu()?;
+                // TODO: Get rid of this
             }
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
@@ -657,6 +657,7 @@ impl Controller {
     async fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
         self.tunnel_ready = false;
+        self.last_connlib_start = None;
         if let Some(session) = self.session.take() {
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
@@ -703,6 +704,7 @@ async fn run_controller(
         ctlr_tx,
         session: None,
         notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
+        last_connlib_start: None,
         tunnel_ready: false,
         uptime: Default::default(),
     };
@@ -732,13 +734,28 @@ async fn run_controller(
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
     let mut dns_listener = network_changes::DnsListener::new()?;
+    let mut last_resolvers_sent = vec![];
 
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
+                let tunnel_became_ready = !controller.tunnel_ready;
+                controller.tunnel_ready = true;
                 tracing::debug!("Controller notified of new resources");
                 if let Err(error) = controller.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to reload resource list");
+                }
+                if tunnel_became_ready {
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                    if let Some(instant) = controller.last_connlib_start.take() {
+                        let elapsed = instant.elapsed();
+                        tracing::info!(?elapsed, "Tunnel ready");
+                    } else {
+                        tracing::error!("Impossible - tunnel is ready but we didn't record when connlib started");
+                    }
                 }
             }
             () = com_worker.notified() => {
@@ -752,10 +769,14 @@ async fn run_controller(
                 }
             },
             resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
-                if let Some(session) = controller.session.as_mut() {
-                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(resolvers).await?;
+                let mut resolvers = resolvers?;
+                resolvers.sort();
+                if resolvers != last_resolvers_sent {
+                    last_resolvers_sent.clone_from(&resolvers);
+                    if let Some(session) = controller.session.as_mut() {
+                        tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                        session.connlib.set_dns(resolvers).await?;
+                    }
                 }
             },
             req = rx.recv() => {

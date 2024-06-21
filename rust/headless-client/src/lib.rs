@@ -698,6 +698,7 @@ pub fn setup_stdout_logging() -> Result<()> {
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
+    tracing_log::LogTracer::init()?;
     Ok(())
 }
 
