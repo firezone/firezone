@@ -3177,6 +3177,7 @@ dependencies = [
  "proptest",
  "test-strategy",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

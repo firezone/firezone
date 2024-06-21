@@ -10,8 +10,8 @@ mod proptests;
 
 use pnet_packet::{
     icmp::{
-        echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpTypes,
-        MutableIcmpPacket,
+        echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpType,
+        IcmpTypes, MutableIcmpPacket,
     },
     icmpv6::{Icmpv6Type, Icmpv6Types, MutableIcmpv6Packet},
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
@@ -381,12 +381,28 @@ impl<'a> ConvertibleIpv4Packet<'a> {
             Icmpv6Types::EchoReply => {
                 icmp.set_icmpv6_type(Icmpv6Type(0));
             }
+            unimplemented @ (Icmpv6Types::DestinationUnreachable
+            | Icmpv6Types::PacketTooBig
+            | Icmpv6Types::TimeExceeded
+            | Icmpv6Types::ParameterProblem) => {
+                // TODO: Handle these properly.
+                tracing::debug!(
+                    "Unimplemented translation of ICMPv6 type {}",
+                    unimplemented.0
+                );
+                return None;
+            }
             //       MLD Multicast Listener Query/Report/Done (Type 130, 131, 132):
             //          Single-hop message.  Silently drop.
+            Icmpv6Type(130..=132) => {
+                return None;
+            }
             //       Neighbor Discover messages (Type 133 through 137):  Single-hop
             //          message.  Silently drop.
+            Icmpv6Type(133..=137) => {
+                return None;
+            }
             //       Unknown informational messages:  Silently drop.
-            //    (TODO:)ICMPv6 error messages:
             _ => return None,
         }
 
@@ -575,8 +591,11 @@ impl<'a> ConvertibleIpv6Packet<'a> {
         // maybe I'm misreading this.
 
         let mut pkt = match next_header {
-            IpNextHeaderProtocols::Ipv6Frag => {
-                // TODO:
+            IpNextHeaderProtocols::Ipv6Frag // TODO: Implement fragmentation?
+            | IpNextHeaderProtocols::Hopopt
+            | IpNextHeaderProtocols::Ipv6Route
+            | IpNextHeaderProtocols::Ipv6Opts => {
+                tracing::debug!("Unable to translate IPv6 next header protocol: {next_header}");
                 return None;
             }
             IpNextHeaderProtocols::Icmpv6 => {
@@ -584,11 +603,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
                 pkt.as_ipv4()
                     .set_next_level_protocol(IpNextHeaderProtocols::Icmp);
                 pkt
-            }
-            IpNextHeaderProtocols::Hopopt
-            | IpNextHeaderProtocols::Ipv6Route
-            | IpNextHeaderProtocols::Ipv6Opts => {
-                return None;
             }
             proto => {
                 pkt.as_ipv4().set_next_level_protocol(proto);
@@ -667,21 +681,55 @@ impl<'a> ConvertibleIpv6Packet<'a> {
             IcmpTypes::TimeExceeded => {
                 icmp.set_icmp_type(icmp::IcmpType(3));
             }
-            // (TODO) Destination Unreachable (Type 3):  Translate the Code as
+            // Destination Unreachable (Type 3):  Translate the Code as
             //   described below, set the Type to 1, and adjust the ICMP
             //   checksum both to take the type/code change into account and
             //   to include the ICMPv6 pseudo-header.
-
-            //  Information Request/Reply (Type 15 and Type 16):  Obsoleted in
-            //    ICMPv6.  Silently drop.
+            unimplemented @ IcmpTypes::DestinationUnreachable => {
+                // TODO: Handle this properly.
+                tracing::debug!(
+                    "Unimplemented translation of ICMPv4 type {}",
+                    unimplemented.0
+                );
+                return None;
+            }
             //  Timestamp and Timestamp Reply (Type 13 and Type 14):  Obsoleted in
             //    ICMPv6.  Silently drop.
+            IcmpType(13..=14) => {
+                return None;
+            }
+            //  Information Request/Reply (Type 15 and Type 16):  Obsoleted in
+            //    ICMPv6.  Silently drop.
+            IcmpType(15..=16) => {
+                return None;
+            }
             //  Address Mask Request/Reply (Type 17 and Type 18):  Obsoleted in
             //     ICMPv6.  Silently drop.
+            IcmpType(17..=18) => {
+                return None;
+            }
             //  ICMP Router Advertisement (Type 9):  Single-hop message.  Silently
             //    drop.
+            IcmpType(9) => {
+                return None;
+            }
             //  ICMP Router Solicitation (Type 10):  Single-hop message.  Silently
             //    drop.
+            IcmpType(10) => {
+                return None;
+            }
+            // Redirect (Type 5):  Single-hop message.  Silently drop.
+            IcmpType(5) => {
+                return None;
+            }
+            // Alternative Host Address (Type 6):  Silently drop.
+            IcmpType(6) => {
+                return None;
+            }
+            // Source Quench (Type 4):  Obsoleted in ICMPv6.  Silently drop.
+            IcmpType(4) => {
+                return None;
+            }
             //  Unknown ICMPv4 types:  Silently drop.
             //  IGMP messages:  While the Multicast Listener Discovery (MLD)
             //    messages [RFC2710] [RFC3590] [RFC3810] are the logical IPv6
@@ -692,9 +740,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
             //    configuration error to try to have router adjacencies across
             //    IP/ICMP translators, those packets SHOULD also be silently
             //    dropped.
-            // Redirect (Type 5):  Single-hop message.  Silently drop.
-            // Alternative Host Address (Type 6):  Silently drop.
-            // Source Quench (Type 4):  Obsoleted in ICMPv6.  Silently drop.
             _ => {
                 return None;
             }
