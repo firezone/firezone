@@ -123,7 +123,7 @@ impl StubResolver {
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
         self.dns_resources.retain(|_, r| {
             if r.id == id {
-                tracing::info!(address = %r.address, "Deactivating DNS resources");
+                tracing::info!(address = %r.address, "Deactivating DNS resource");
                 return false;
             }
 
