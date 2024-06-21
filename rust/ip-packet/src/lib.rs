@@ -10,8 +10,8 @@ mod proptests;
 
 use pnet_packet::{
     icmp::{
-        echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpType,
-        IcmpTypes, MutableIcmpPacket,
+        destination_unreachable::IcmpCodes, echo_reply::MutableEchoReplyPacket,
+        echo_request::MutableEchoRequestPacket, IcmpCode, IcmpType, IcmpTypes, MutableIcmpPacket,
     },
     icmpv6::{Icmpv6Type, Icmpv6Types, MutableIcmpv6Packet},
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
@@ -682,16 +682,83 @@ impl<'a> ConvertibleIpv6Packet<'a> {
                 icmp.set_icmp_type(icmp::IcmpType(3));
             }
             // Destination Unreachable (Type 3):  Translate the Code as
-            //   described below, set the Type to 1, and adjust the ICMP
-            //   checksum both to take the type/code change into account and
-            //   to include the ICMPv6 pseudo-header.
-            unimplemented @ IcmpTypes::DestinationUnreachable => {
-                // TODO: Handle this properly.
-                tracing::debug!(
-                    "Unimplemented translation of ICMPv4 type {}",
-                    unimplemented.0
-                );
-                return None;
+            // described below, set the Type to 1, and adjust the ICMP
+            // checksum both to take the type/code change into account and
+            // to include the ICMPv6 pseudo-header.
+            IcmpTypes::DestinationUnreachable => {
+                icmp.set_icmp_type(icmp::IcmpType(1));
+                match icmp.get_icmp_code() {
+                    // Code 0, 1 (Net Unreachable, Host Unreachable):  Set the Code
+                    //    to 0 (No route to destination).
+                    IcmpCodes::DestinationNetworkUnreachable
+                    | IcmpCodes::DestinationHostUnreachable => icmp.set_icmp_code(IcmpCode(0)),
+
+                    // Code 2 (Protocol Unreachable):  Translate to an ICMPv6
+                    //    Parameter Problem (Type 4, Code 1) and make the Pointer
+                    //    point to the IPv6 Next Header field.
+                    IcmpCodes::DestinationProtocolUnreachable => {
+                        // TODO How to set the pointer?
+                        return None;
+                    }
+
+                    // Code 3 (Port Unreachable):  Set the Code to 4 (Port
+                    //    unreachable).
+                    IcmpCodes::DestinationPortUnreachable => icmp.set_icmp_code(IcmpCode(4)),
+                    // Code 4 (Fragmentation Needed and DF was Set):  Translate to
+                    //    an ICMPv6 Packet Too Big message (Type 2) with Code set
+                    //    to 0.  The MTU field MUST be adjusted for the difference
+                    //    between the IPv4 and IPv6 header sizes, i.e.,
+                    //    minimum(advertised MTU+20, MTU_of_IPv6_nexthop,
+                    //    (MTU_of_IPv4_nexthop)+20).  Note that if the IPv4 router
+                    //    set the MTU field to zero, i.e., the router does not
+                    //    implement [RFC1191], then the translator MUST use the
+                    //    plateau values specified in [RFC1191] to determine a
+                    //    likely path MTU and include that path MTU in the ICMPv6
+                    //    packet.  (Use the greatest plateau value that is less
+                    //    than the returned Total Length field.)
+
+                    //    See also the requirements in Section 6.
+                    IcmpCodes::FragmentationRequiredAndDFFlagSet => {
+                        // TODO
+                        return None;
+                    }
+                    // Code 5 (Source Route Failed):  Set the Code to 0 (No route
+                    //    to destination).  Note that this error is unlikely since
+                    //    source routes are not translated.
+                    IcmpCodes::SourceRouteFailed => icmp.set_icmp_code(IcmpCode(0)),
+
+                    // Code 6, 7, 8:  Set the Code to 0 (No route to destination).
+                    IcmpCode(5..=8) => icmp.set_icmp_code(IcmpCode(0)),
+
+                    // Code 9, 10 (Communication with Destination Host
+                    //     Administratively Prohibited):  Set the Code to 1
+                    //     (Communication with destination administratively
+                    //     prohibited).
+                    IcmpCode(9..=10) => icmp.set_icmp_code(IcmpCode(1)),
+
+                    //  Code 11, 12:  Set the Code to 0 (No route to destination).
+                    IcmpCode(11..=12) => icmp.set_icmp_code(IcmpCode(0)),
+
+                    //  Code 13 (Communication Administratively Prohibited):  Set
+                    //     the Code to 1 (Communication with destination
+                    //     administratively prohibited).
+                    IcmpCodes::CommunicationAdministrativelyProhibited => {
+                        icmp.set_icmp_code(IcmpCode(1))
+                    }
+
+                    //  Code 14 (Host Precedence Violation):  Silently drop.
+                    IcmpCodes::HostPrecedenceViolation => {
+                        return None;
+                    }
+
+                    //  Code 15 (Precedence cutoff in effect):  Set the Code to 1
+                    //     (Communication with destination administratively
+                    //     prohibited).
+                    IcmpCodes::PrecedenceCutoffInEffect => icmp.set_icmp_code(IcmpCode(1)),
+
+                    //  Other Code values:  Silently drop.
+                    _ => return None,
+                }
             }
             //  Timestamp and Timestamp Reply (Type 13 and Type 14):  Obsoleted in
             //    ICMPv6.  Silently drop.
