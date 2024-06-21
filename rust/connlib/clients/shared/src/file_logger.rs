@@ -25,6 +25,7 @@ use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::Layer;
 
 const LOG_FILE_BASE_NAME: &str = "connlib";
+pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
 
 /// Create a new file logger layer.
 pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
@@ -93,12 +94,11 @@ impl Appender {
 
     // Inspired from `tracing-appender/src/rolling.rs`.
     fn create_new_writer(&self) -> io::Result<(fs::File, String)> {
-        let format =
-            time::format_description::parse("[year]-[month]-[day]-[hour]-[minute]-[second]")
-                .expect("static format description to be valid");
+        let format = time::format_description::parse(TIME_FORMAT)
+            .expect("static format description should always be parsable");
         let date = OffsetDateTime::now_utc()
             .format(&format)
-            .expect("static format description to be valid");
+            .expect("formatting a timestamp should always be possible");
 
         let filename = format!("{LOG_FILE_BASE_NAME}.{date}.log");
 
