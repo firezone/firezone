@@ -173,6 +173,12 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
+                  Conditional access policies
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
                   Customize your account slug
                 </span>
               </li>
@@ -226,7 +232,7 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
-                  Directory sync for Google, Entra ID, and Okta
+                  Directory sync for Google, Entra ID, Okta, and JumpCloud
                 </span>
               </li>
               <li className="flex space-x-2.5">

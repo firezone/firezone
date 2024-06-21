@@ -15,10 +15,27 @@ To define a Policy, go to `Policies -> Add Policy`.
 
 Policies define a single Group's access to a single Resource.
 
+<PlanBadge plans={["team", "enterprise"]}>
+
+## Conditional access policies
+
+</PlanBadge>
+
+On Team and higher plans, you may optionally restrict access further based on
+the following conditions:
+
+- **Client location**: Restrict access only to Clients connecting from specific
+  countries.
+- **IP address or CIDR**: Restrict access to a specific IP address or range of
+  Client IP addresses.
+- **Time of day**: Restrict access to certain time windows.
+- **Authentication method**: Restrict access based on the authentication
+  provider that was used to authenticate the Client.
+
 <Alert color="warning">
-  **Note:** To preserve audit trails, Policy access cannot be changed once a
-  Policy is created. Double-check to ensure the Group and Resource selected are
-  correct before creating the Policy.
+  **Note:** To preserve audit trails, Policy details cannot be changed once a
+  Policy is created. Double-check to ensure the Group, Resource, and/or
+  conditions are correct before creating the Policy.
 </Alert>
 
 <NextStep href="/kb/deploy/clients">Next: Install Clients</NextStep>

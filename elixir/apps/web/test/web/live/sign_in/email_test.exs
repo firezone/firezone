@@ -29,8 +29,18 @@ defmodule Web.SignIn.EmailTest do
   } do
     {conn, _secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
+    signed_provider_identifier =
+      Plug.Crypto.sign(
+        conn.secret_key_base,
+        "signed_provider_identifier",
+        identity.provider_identifier
+      )
+
     {:ok, lv, html} =
-      live(conn, ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo")
+      live(
+        conn,
+        ~p"/#{account}/sign_in/providers/email/#{provider}?signed_provider_identifier=#{signed_provider_identifier}"
+      )
 
     assert html =~ "Please check your email"
     assert has_element?(lv, ~s|a[href="https://mail.google.com/mail/"]|, "Open Gmail")
@@ -45,10 +55,17 @@ defmodule Web.SignIn.EmailTest do
   } do
     {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
+    signed_provider_identifier =
+      Plug.Crypto.sign(
+        conn.secret_key_base,
+        "signed_provider_identifier",
+        identity.provider_identifier
+      )
+
     {:ok, lv, _html} =
       live(
         conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=#{identity.id}&as=client&state=STATE&nonce=NONCE"
+        ~p"/#{account}/sign_in/providers/email/#{provider}?signed_provider_identifier=#{signed_provider_identifier}&as=client&state=STATE&nonce=NONCE"
       )
 
     assert has_element?(lv, ~s|form#verify-sign-in-token|)
@@ -84,10 +101,17 @@ defmodule Web.SignIn.EmailTest do
 
     {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
 
+    signed_provider_identifier =
+      Plug.Crypto.sign(
+        conn.secret_key_base,
+        "signed_provider_identifier",
+        identity.provider_identifier
+      )
+
     {:ok, lv, _html} =
       live(
         conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=#{identity.id}"
+        ~p"/#{account}/sign_in/providers/email/#{provider}?signed_provider_identifier=#{signed_provider_identifier}"
       )
 
     assert has_element?(lv, ~s|form#verify-sign-in-token|)
@@ -117,10 +141,17 @@ defmodule Web.SignIn.EmailTest do
   } do
     {conn, _secret} = put_magic_link_auth_state(conn, account, provider, identity)
 
+    signed_provider_identifier =
+      Plug.Crypto.sign(
+        conn.secret_key_base,
+        "signed_provider_identifier",
+        identity.provider_identifier
+      )
+
     {:ok, lv, _html} =
       live(
         conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&client_platform=android"
+        ~p"/#{account}/sign_in/providers/email/#{provider}?signed_provider_identifier=#{signed_provider_identifier}&client_platform=android"
       )
 
     conn =
@@ -131,9 +162,17 @@ defmodule Web.SignIn.EmailTest do
       })
       |> submit_form(conn)
 
-    assert redirected_to(conn, 302) ==
-             ~p"/#{account}/sign_in/providers/email/#{provider}" <>
-               "?provider_identifier=#{identity.id}"
+    assert uri = conn |> redirected_to(302) |> URI.parse()
+    assert uri.path == ~p"/#{account}/sign_in/providers/email/#{provider}"
+
+    assert %{"signed_provider_identifier" => signed_provider_identifier} =
+             URI.decode_query(uri.query)
+
+    assert Plug.Crypto.verify(
+             conn.secret_key_base,
+             "signed_provider_identifier",
+             signed_provider_identifier
+           ) == {:ok, identity.provider_identifier}
 
     assert conn.assigns.flash["error"] == "The sign in token is invalid or expired."
   end
@@ -144,8 +183,18 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
+    signed_provider_identifier =
+      Plug.Crypto.sign(
+        conn.secret_key_base,
+        "signed_provider_identifier",
+        identity.provider_identifier
+      )
+
     {:ok, lv, _html} =
-      live(conn, ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo")
+      live(
+        conn,
+        ~p"/#{account}/sign_in/providers/email/#{provider}?signed_provider_identifier=#{signed_provider_identifier}"
+      )
 
     assert has_element?(lv, ~s|button[type="submit"]|, "Resend email")
 
@@ -168,18 +217,23 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
+    signed_provider_identifier =
+      Plug.Crypto.sign(
+        conn.secret_key_base,
+        "signed_provider_identifier",
+        identity.provider_identifier
+      )
+
     redirect_params = %{
       "as" => "client",
       "state" => "STATE",
       "nonce" => "NONCE",
-      "redirect_to" => "/foo"
+      "redirect_to" => "/foo",
+      "signed_provider_identifier" => signed_provider_identifier
     }
 
     {:ok, lv, _html} =
-      live(
-        conn,
-        ~p"/#{account}/sign_in/providers/email/#{provider}?provider_identifier=foo&#{redirect_params}"
-      )
+      live(conn, ~p"/#{account}/sign_in/providers/email/#{provider}?#{redirect_params}")
 
     assert has_element?(lv, ~s|button[type="submit"]|, "Resend email")
 

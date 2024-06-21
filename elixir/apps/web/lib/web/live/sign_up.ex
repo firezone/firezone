@@ -326,18 +326,9 @@ defmodule Web.SignUp do
     if changeset.valid? and socket.assigns.sign_up_enabled? do
       registration = Ecto.Changeset.apply_changes(changeset)
 
-      case register_account(registration) do
+      case register_account(socket, registration) do
         {:ok, %{account: account, provider: provider, identity: identity, actor: actor}} ->
           {:ok, account} = Domain.Billing.provision_account(account)
-
-          {:ok, _} =
-            Web.Mailer.AuthEmail.sign_up_link_email(
-              account,
-              identity,
-              socket.assigns.user_agent,
-              socket.assigns.real_ip
-            )
-            |> Web.Mailer.deliver()
 
           socket =
             assign(socket,
@@ -365,10 +356,29 @@ defmodule Web.SignUp do
 
           {:noreply, socket}
 
-        {:error, :account, err_changeset, _effects_so_far} ->
-          new_changeset = Ecto.Changeset.put_change(changeset, :account, err_changeset)
-          form = to_form(new_changeset)
+        {:error, :send_email, :rate_limited, _effects_so_far} ->
+          changeset =
+            Ecto.Changeset.add_error(
+              changeset,
+              :email,
+              "This email has been rate limited. Please try again later."
+            )
 
+          {:noreply, assign(socket, form: to_form(changeset))}
+
+        {:error, :send_email, _reason, _effects_so_far} ->
+          changeset =
+            Ecto.Changeset.add_error(
+              changeset,
+              :email,
+              "We were unable to send you an email. Please try again later."
+            )
+
+          {:noreply, assign(socket, form: to_form(changeset))}
+
+        {:error, :account, error_changeset, _effects_so_far} ->
+          new_changeset = Ecto.Changeset.put_change(changeset, :account, error_changeset)
+          form = to_form(new_changeset)
           {:noreply, assign(socket, form: form)}
       end
     else
@@ -403,53 +413,67 @@ defmodule Web.SignUp do
     put_in(attrs, ["actor", "name"], default_name)
   end
 
-  defp register_account(registration) do
-    multi =
-      Ecto.Multi.new()
-      |> Ecto.Multi.run(
-        :account,
-        fn _repo, _changes ->
-          Accounts.create_account(%{
-            name: registration.account.name,
-            metadata: %{stripe: %{billing_email: registration.email}}
-          })
-        end
-      )
-      |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
-        Domain.Actors.create_managed_group(account, %{
-          name: "Everyone",
-          membership_rules: [%{operator: true}]
+  defp register_account(socket, registration) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.run(
+      :account,
+      fn _repo, _changes ->
+        Accounts.create_account(%{
+          name: registration.account.name,
+          metadata: %{stripe: %{billing_email: registration.email}}
         })
-      end)
-      |> Ecto.Multi.run(
-        :provider,
-        fn _repo, %{account: account} ->
-          Auth.create_provider(account, %{
-            name: "Email",
-            adapter: :email,
-            adapter_config: %{}
-          })
-        end
-      )
-      |> Ecto.Multi.run(
-        :actor,
-        fn _repo, %{account: account} ->
-          Actors.create_actor(account, %{
-            type: :account_admin_user,
-            name: registration.actor.name
-          })
-        end
-      )
-      |> Ecto.Multi.run(
-        :identity,
-        fn _repo, %{actor: actor, provider: provider} ->
-          Auth.create_identity(actor, provider, %{
-            provider_identifier: registration.email,
-            provider_identifier_confirmation: registration.email
-          })
-        end
-      )
-
-    Domain.Repo.transaction(multi)
+      end
+    )
+    |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
+      Domain.Actors.create_managed_group(account, %{
+        name: "Everyone",
+        membership_rules: [%{operator: true}]
+      })
+    end)
+    |> Ecto.Multi.run(
+      :provider,
+      fn _repo, %{account: account} ->
+        Auth.create_provider(account, %{
+          name: "Email",
+          adapter: :email,
+          adapter_config: %{}
+        })
+      end
+    )
+    |> Ecto.Multi.run(
+      :actor,
+      fn _repo, %{account: account} ->
+        Actors.create_actor(account, %{
+          type: :account_admin_user,
+          name: registration.actor.name
+        })
+      end
+    )
+    |> Ecto.Multi.run(
+      :identity,
+      fn _repo, %{actor: actor, provider: provider} ->
+        Auth.create_identity(actor, provider, %{
+          provider_identifier: registration.email,
+          provider_identifier_confirmation: registration.email
+        })
+      end
+    )
+    |> Ecto.Multi.run(
+      :send_email,
+      fn _repo, %{account: account, identity: identity} ->
+        Web.Mailer.AuthEmail.sign_up_link_email(
+          account,
+          identity,
+          socket.assigns.user_agent,
+          socket.assigns.real_ip
+        )
+        |> Web.Mailer.deliver_with_rate_limit(
+          rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
+          rate_limit: 3,
+          rate_limit_interval: :timer.minutes(60)
+        )
+      end
+    )
+    |> Domain.Repo.transaction()
   end
 end

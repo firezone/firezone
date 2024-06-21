@@ -303,22 +303,24 @@ where
                     relays,
                     site_id,
                 ) {
-                    Ok(firezone_tunnel::Request::NewConnection(connection_request)) => {
+                    Ok(Some(firezone_tunnel::Request::NewConnection(connection_request))) => {
                         // TODO: keep track for the response
                         let _id = self.portal.send(
                             PHOENIX_TOPIC,
                             EgressMessages::RequestConnection(connection_request),
                         );
                     }
-                    Ok(firezone_tunnel::Request::ReuseConnection(connection_request)) => {
+                    Ok(Some(firezone_tunnel::Request::ReuseConnection(connection_request))) => {
                         // TODO: keep track for the response
                         let _id = self.portal.send(
                             PHOENIX_TOPIC,
                             EgressMessages::ReuseConnection(connection_request),
                         );
                     }
+                    Ok(None) => {
+                        tracing::debug!(%resource_id, %gateway_id, "Pending connection");
+                    }
                     Err(e) => {
-                        self.tunnel.cleanup_connection(resource_id);
                         tracing::warn!("Failed to request new connection: {e}");
                     }
                 };
