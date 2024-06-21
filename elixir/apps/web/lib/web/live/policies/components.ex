@@ -294,7 +294,10 @@ defmodule Web.Policies.Components do
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
-          Client location
+          <span class="flex items-center">
+            <.icon name="hero-globe-americas" class="w-5 h-5 mr-2" />
+            Client location
+          </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_remote_ip_location_region_chevron"
@@ -379,7 +382,10 @@ defmodule Web.Policies.Components do
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
-          IP address
+          <span class="flex items-center">
+            <.icon name="hero-globe-alt" class="w-5 h-5 mr-2" />
+            IP address
+          </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon id="policy_conditions_remote_ip_chevron" name="hero-chevron-down" class="w-5 h-5" />
           </span>
@@ -460,7 +466,10 @@ defmodule Web.Policies.Components do
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
-          Authentication Provider
+          <span class="flex items-center">
+            <.icon name="hero-identification" class="w-5 h-5 mr-2" />
+            Identity provider
+          </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_provider_id_chevron"
@@ -555,7 +564,10 @@ defmodule Web.Policies.Components do
         }
       >
         <legend class="flex justify-between items-center text-neutral-700">
+          <span class="flex items-center">
+            <.icon name="hero-clock" class="w-5 h-5 mr-2" />
           Current time
+          </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
               id="policy_conditions_current_utc_datetime_chevron"
