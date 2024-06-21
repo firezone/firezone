@@ -4,11 +4,15 @@ defmodule Web.NavigationComponents do
   import Web.CoreComponents
 
   attr :subject, :any, required: true
+  slot :banner, required: false, doc: "Optional top banner to show"
 
   def topbar(assigns) do
     ~H"""
-    <nav class="bg-neutral-50 border-b border-neutral-200 px-4 py-2.5 fixed left-0 right-0 top-0 z-50">
-      <div class="flex flex-wrap justify-between items-center">
+    <nav class="bg-neutral-50 border-b border-neutral-200 fixed left-0 right-0 top-0 z-50">
+      <div :if={@banner} class="text-center text-sm py-2 bg-accent-100 text-accent-800">
+        <%= render_slot(@banner) %>
+      </div>
+      <div class="px-4 py-2.5 flex flex-wrap justify-between items-center">
         <div class="flex justify-start items-center">
           <button
             data-drawer-target="drawer-navigation"
