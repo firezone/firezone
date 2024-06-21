@@ -36,6 +36,7 @@ module "vpc" {
   enable_ipv6                                    = true
   public_subnet_assign_ipv6_address_on_creation  = true
   private_subnet_assign_ipv6_address_on_creation = true
+  enable_nat_gateway                             = true # By default, each subnet gets a DNS64 resolver. That requires a NAT64 gateway to work properly.
 
   public_subnet_ipv6_prefixes  = [0, 1]
   private_subnet_ipv6_prefixes = [2, 3]
