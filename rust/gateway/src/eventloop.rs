@@ -378,6 +378,14 @@ fn resolve_addresses(domain: &str) -> Vec<IpAddr> {
                 None
             }
         })
+        .filter(|ip| {
+            if is_dns64_address(ip) {
+                tracing::info!(%domain, %ip, "Ignoring DNS64 address record");
+                return false;
+            }
+
+            true
+        })
         .collect()
 }
 
@@ -397,4 +405,36 @@ fn resolve_address_family(
             ..Default::default()
         }),
     )
+}
+
+/// Checks if the given IP is a synthesized DNS64 IPv6 address.
+///
+/// DNS64 IPv6 addresses are within the `0064:ff9b/96` subnet.
+///
+/// See <https://en.wikipedia.org/wiki/IPv6_transition_mechanism#DNS64> for details.
+fn is_dns64_address(ip: &IpAddr) -> bool {
+    let IpAddr::V6(v6) = ip else {
+        return false;
+    };
+
+    matches!(
+        v6.octets(),
+        [00, 0x64, 0xff, 0x9b, _, _, _, _, _, _, _, _, _, _, _, _]
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv6Addr;
+
+    #[test]
+    fn detects_dns64_addr() {
+        assert!(is_dns64_address(&"64:ff9b::8c52:7004".parse().unwrap()))
+    }
+
+    #[test]
+    fn ignores_non_dns64_addr() {
+        assert!(!is_dns64_address(&IpAddr::V6(Ipv6Addr::LOCALHOST)))
+    }
 }
