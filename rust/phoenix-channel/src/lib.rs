@@ -225,6 +225,8 @@ where
     ) -> Self {
         let next_request_id = Arc::new(AtomicU64::new(0));
 
+        tracing::debug!(host = %url.expose_secret().host(), %user_agent, "Connecting to portal");
+
         Self {
             reconnect_backoff,
             url: url.clone(),
