@@ -1,6 +1,6 @@
 //! Error module.
 use base64::DecodeError;
-use std::{collections::HashSet, net::IpAddr};
+use std::net::IpAddr;
 use thiserror::Error;
 
 /// Unified Result type to use across connlib.
