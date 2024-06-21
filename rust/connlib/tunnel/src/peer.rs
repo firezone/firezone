@@ -331,24 +331,7 @@ impl ClientOnGateway {
             });
         }
 
-        let mut dead_ips = BTreeMap::<DomainName, BTreeSet<IpAddr>>::new();
-
-        for state in self.permanent_translations.values() {
-            // Check each state individually for whether it is being used but dead.
-            if state.is_used(now) && state.is_dead(now) {
-                dead_ips
-                    .entry(state.name.clone())
-                    .or_default()
-                    .insert(state.resolved_ip);
-            }
-        }
-
-        if !dead_ips.is_empty() {
-            tracing::warn!(
-                ?dead_ips,
-                "Dead IPs detected (never received any traffic); check your DNS configuration"
-            );
-        }
+        self.check_for_dead_ips(now);
 
         self.nat_table.handle_timeout(now);
     }
@@ -518,6 +501,32 @@ impl ClientOnGateway {
 
     pub fn id(&self) -> ClientId {
         self.id
+    }
+
+    /// Check all [`TranslationState`]s for dead but used IPs.
+    ///
+    /// We don't want to be spamming this warning but it also shouldn't go unnoticed.
+    /// Thus, the strategy is to only print the log if:
+    /// - An IP has recently been used (we have seen outgoing traffic in the last 30s)
+    /// - An IP has not responded in the last 10s
+    fn check_for_dead_ips(&self, now: Instant) {
+        let mut dead_ips = BTreeMap::<DomainName, BTreeSet<IpAddr>>::new();
+
+        for state in self.permanent_translations.values() {
+            if state.is_used(now) && state.is_dead(now) {
+                dead_ips
+                    .entry(state.name.clone())
+                    .or_default()
+                    .insert(state.resolved_ip);
+            }
+        }
+
+        if !dead_ips.is_empty() {
+            tracing::warn!(
+                ?dead_ips,
+                "Dead IPs detected (never received any traffic); check your DNS configuration"
+            );
+        }
     }
 }
 
