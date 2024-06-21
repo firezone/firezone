@@ -311,6 +311,7 @@ impl ClientOnGateway {
             let resource_id = expired_state.resource_id;
             let resolved_ip = expired_state.resolved_ip;
 
+            // Only refresh DNS for a domain if all of the resolved IPs stop responding in order to not kill existing connections.
             if self
                 .permanent_translations
                 .values()
@@ -328,6 +329,7 @@ impl ClientOnGateway {
                 for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
             }
 
+            // Check each state individually for whether it is dead.
             if expired_state.is_dead_ip() {
                 dead_ips
                     .entry(domain.clone())
