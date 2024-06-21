@@ -77,7 +77,13 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 
 #[tauri::command]
 pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| e.to_string())
+    if let Err(error) = clear_logs_inner().await {
+        // Log the error ourselves since Tauri will only log it to the JS console
+        tracing::error!(?error, "Error while clearing logs");
+        Err(error.to_string())
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -100,15 +106,29 @@ pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
 ///
 /// This includes the current log file, so we won't write any more logs to disk
 /// until the file rolls over or the app restarts.
+///
+/// If we get an error while removing a file, we still try to remove all other
+/// files, then we return the most recent error.
 pub(crate) async fn clear_logs_inner() -> Result<()> {
+    let mut result = Ok(());
+
     for log_path in log_paths()?.into_iter().map(|x| x.src) {
         let mut dir = tokio::fs::read_dir(log_path).await?;
         while let Some(entry) = dir.next_entry().await? {
-            tokio::fs::remove_file(entry.path()).await?;
+            let path = entry.path();
+            if let Err(error) = tokio::fs::remove_file(&path).await {
+                tracing::error!(
+                    ?error,
+                    path = path.display().to_string(),
+                    "Error while removing log file"
+                );
+                // We'll return the most recent error, it loses some information but it's better than nothing.
+                result = Err(error);
+            }
         }
     }
 
-    Ok(())
+    Ok(result?)
 }
 
 /// Pops up the "Save File" dialog
