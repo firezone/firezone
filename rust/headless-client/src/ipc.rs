@@ -25,6 +25,25 @@ pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClien
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;
 
 /// A name that both the server and client can use to find each other
+///
+/// In the platform-specific code, this is translated to a Unix Domain Socket
+/// path on Linux, and a named pipe name on Windows.
+/// These have different restrictions on naming.
+///
+/// UDS are mostly like normal
+/// files, so for production we want them in `/run/dev.firezone.client`, which
+/// systemd will create for us, and the Client can trust no other service
+/// will impersonate that path. For tests we want them in `/run/user/$UID/`,
+/// which we can use without root privilege.
+///
+/// Named pipes are not part of the normal file hierarchy, they can only
+/// have 2 or 3 slashes in them, and we don't distinguish yet between
+/// privileged and non-privileged named pipes. Windows is slowly rolling out
+/// UDS support, so in a year or two we might be better off making it UDS
+/// on all platforms.
+///
+/// Because the paths are so different (and Windows actually uses a `String`),
+/// we have this `ServiceId` abstraction instead of just a `PathBuf`.
 #[derive(Clone, Copy)]
 pub enum ServiceId {
     /// The IPC service used by Firezone GUI Client in production
