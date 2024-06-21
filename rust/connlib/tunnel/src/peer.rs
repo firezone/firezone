@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -252,14 +252,7 @@ impl ClientOnGateway {
 
             self.permanent_translations.insert(
                 *proxy_ip,
-                TranslationState {
-                    resolved_ip: real_ip,
-                    resource_id,
-                    name: name.clone(),
-                    last_response: now,
-                    slated_for_refresh: false,
-                    created_at: now,
-                },
+                TranslationState::new(resource_id, name.clone(), real_ip, now),
             );
         }
     }
@@ -310,34 +303,36 @@ impl ClientOnGateway {
             .iter()
             .filter(|(_, state)| state.slated_for_refresh);
 
-        let mut dead_ips = HashSet::new();
+        let mut dead_ips = BTreeMap::<DomainName, BTreeSet<IpAddr>>::new();
         let mut for_refresh = HashSet::new();
 
         for (proxy_ip, expired_state) in expired_translations {
+            let domain = &expired_state.name;
+            let resource_id = expired_state.resource_id;
+            let resolved_ip = expired_state.resolved_ip;
+
             if self
                 .permanent_translations
                 .values()
                 .filter_map(|state| {
                     (state.resource_id == expired_state.resource_id
                         && state.name == expired_state.name)
-                        .then_some((state.last_response, state.slated_for_refresh))
+                        .then_some((state.last_incoming, state.slated_for_refresh))
                 })
                 .all(|(last_seen, slated_for_refresh)| {
                     slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
                 })
             {
-                let domain = &expired_state.name;
-                let resource_id = expired_state.resource_id;
-                let resolved_ip = expired_state.resolved_ip;
-                let any_response_traffic = expired_state.any_response_traffic();
-
-                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, %any_response_traffic, "Refreshing DNS");
-
-                if !any_response_traffic {
-                    dead_ips.insert((domain.clone(), resolved_ip));
-                }
+                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
                 for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
+            }
+
+            if expired_state.is_dead_ip() {
+                dead_ips
+                    .entry(domain.clone())
+                    .or_default()
+                    .insert(resolved_ip);
             }
         }
 
@@ -437,7 +432,7 @@ impl ClientOnGateway {
             self.nat_table
                 .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
 
-        if now.duration_since(state.last_response) >= Duration::from_secs(30) {
+        if now.duration_since(state.last_incoming) >= Duration::from_secs(30) {
             state.slated_for_refresh = true;
         }
 
@@ -484,7 +479,7 @@ impl ClientOnGateway {
             .get_mut(&ip)
             .expect("inconsistent state");
 
-        state.last_response = now;
+        state.last_incoming = now;
         state.slated_for_refresh = false;
 
         packet.set_destination_protocol(proto.value());
@@ -592,16 +587,45 @@ struct TranslationState {
     name: DomainName,
     /// The IP we have resolved for the domain.
     resolved_ip: IpAddr,
-    /// When we've last seen a packet from the resolved IP.
-    last_response: Instant,
+
+    /// When we've last received a packet from the resolved IP.
+    ///
+    /// Initially set to `created_at`.
+    last_incoming: Instant,
+    /// When we've last sent a packet to the resolved IP.
+    ///
+    /// Initially set to `created_at`.
+    last_outgoing: Instant,
+
     slated_for_refresh: bool,
     /// When this translation state was created.
     created_at: Instant,
 }
 
 impl TranslationState {
-    fn any_response_traffic(&self) -> bool {
-        self.last_response > self.created_at
+    fn new(
+        resource_id: ResourceId,
+        name: DomainName,
+        resolved_ip: IpAddr,
+        created_at: Instant,
+    ) -> Self {
+        Self {
+            resource_id,
+            name,
+            resolved_ip,
+            last_incoming: created_at,
+            last_outgoing: created_at,
+            slated_for_refresh: false,
+            created_at,
+        }
+    }
+
+    /// We define an IP as dead if we have seen outgoing traffic but _never_ received incoming traffic.
+    fn is_dead_ip(&self) -> bool {
+        let sent_at_least_one_packet = self.last_outgoing > self.created_at;
+        let received_no_packets = self.last_incoming == self.created_at;
+
+        sent_at_least_one_packet && received_no_packets
     }
 }
 
@@ -620,8 +644,8 @@ pub struct ClientOnGateway {
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{Ipv4Addr, Ipv6Addr},
-        time::Duration,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        time::{Duration, Instant},
     };
 
     use chrono::Utc;
@@ -631,7 +655,7 @@ mod tests {
     };
     use ip_network::Ipv4Network;
 
-    use super::ClientOnGateway;
+    use super::{ClientOnGateway, TranslationState};
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -700,6 +724,18 @@ mod tests {
             peer.ensure_allowed_dst(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
+    }
+
+    #[test]
+    fn initial_translation_state_is_not_dead() {
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            Instant::now(),
+        );
+
+        assert!(!state.is_dead_ip())
     }
 
     fn source_v4_addr() -> Ipv4Addr {
