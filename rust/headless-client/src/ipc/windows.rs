@@ -149,6 +149,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     }
 }
 
+/// Named pipe for IPC between GUI client and IPC service
 fn ipc_path(id: ServiceId) -> String {
     let name = match id {
         ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),

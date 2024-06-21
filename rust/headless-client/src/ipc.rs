@@ -40,7 +40,7 @@ pub enum ServiceId {
     /// Includes an ID so that multiple tests can
     /// run in parallel.
     ///
-    /// The ID should have A-Z, 0-9 only, no dots or slashes.
+    /// The ID should have A-Z, 0-9 only, no dots or slashes, because of Windows named pipes name restrictions.
     Test(&'static str),
 }
 

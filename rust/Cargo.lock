@@ -1179,6 +1179,7 @@ dependencies = [
  "domain",
  "futures",
  "futures-util",
+ "ip-packet",
  "ip_network",
  "itertools 0.13.0",
  "known-folders",
@@ -1407,15 +1408,14 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek"
-version = "4.1.2"
+version = "4.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a677b8922c94e01bdbb12126b0bc852f00447528dee1782229af9c720c3f348"
+checksum = "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
 dependencies = [
  "cfg-if",
  "cpufeatures",
  "curve25519-dalek-derive",
  "fiat-crypto",
- "platforms",
  "rustc_version",
  "subtle",
  "zeroize",
@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.0.9"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1916,6 +1916,8 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "snownet",
+ "static_assertions",
  "tokio",
  "tokio-tungstenite",
  "tracing",
@@ -1926,7 +1928,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2061,6 +2063,7 @@ dependencies = [
 name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bimap",
  "boringtun",
@@ -4636,12 +4639,6 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
-
-[[package]]
-name = "platforms"
-version = "3.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db23d408679286588f4d4644f965003d056e3dd5abcaaa938116871d7ce2fee7"
 
 [[package]]
 name = "plist"

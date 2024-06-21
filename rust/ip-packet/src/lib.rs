@@ -1,5 +1,8 @@
 pub mod make;
 
+#[cfg(feature = "proptest")]
+pub mod proptest;
+
 pub use pnet_packet::*;
 
 #[cfg(all(test, feature = "proptest"))]
@@ -43,8 +46,11 @@ macro_rules! swap_src_dst {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Protocol {
+    /// Contains either the source or destination port.
     Tcp(u16),
+    /// Contains either the source or destination port.
     Udp(u16),
+    /// Contains the `identifier` of the ICMP packet.
     Icmp(u16),
 }
 
@@ -115,7 +121,7 @@ pub enum IcmpEchoReply<'a> {
     Ipv6(icmpv6::echo_reply::EchoReplyPacket<'a>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum MutableIpPacket<'a> {
     Ipv4(ConvertibleIpv4Packet<'a>),
     Ipv6(ConvertibleIpv6Packet<'a>),
@@ -135,6 +141,15 @@ impl<'a> MaybeOwned<'a> {
                 owned.drain(0..bytes);
                 MaybeOwned::Owned(owned)
             }
+        }
+    }
+}
+
+impl<'a> Clone for MaybeOwned<'a> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::RefMut(i) => Self::Owned(i.to_vec()),
+            Self::Owned(i) => Self::Owned(i.clone()),
         }
     }
 }
@@ -159,7 +174,7 @@ impl<'a> DerefMut for MaybeOwned<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet<'a> {
     buf: MaybeOwned<'a>,
 }
@@ -404,7 +419,7 @@ impl<'a> MutablePacket for ConvertibleIpv4Packet<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet<'a> {
     buf: MaybeOwned<'a>,
 }
@@ -1042,7 +1057,12 @@ impl<'a> MutableIpPacket<'a> {
         match (self, dst) {
             (Self::Ipv4(p), IpAddr::V4(d)) => p.set_destination(d),
             (Self::Ipv6(p), IpAddr::V6(d)) => p.set_destination(d),
-            _ => {}
+            (Self::Ipv4(_), IpAddr::V6(_)) => {
+                debug_assert!(false, "Cannot set an IPv6 address on an IPv4 packet")
+            }
+            (Self::Ipv6(_), IpAddr::V4(_)) => {
+                debug_assert!(false, "Cannot set an IPv4 address on an IPv6 packet")
+            }
         }
     }
 
@@ -1051,7 +1071,12 @@ impl<'a> MutableIpPacket<'a> {
         match (self, src) {
             (Self::Ipv4(p), IpAddr::V4(s)) => p.set_source(s),
             (Self::Ipv6(p), IpAddr::V6(s)) => p.set_source(s),
-            _ => {}
+            (Self::Ipv4(_), IpAddr::V6(_)) => {
+                debug_assert!(false, "Cannot set an IPv6 address on an IPv4 packet")
+            }
+            (Self::Ipv6(_), IpAddr::V4(_)) => {
+                debug_assert!(false, "Cannot set an IPv4 address on an IPv6 packet")
+            }
         }
     }
 }
