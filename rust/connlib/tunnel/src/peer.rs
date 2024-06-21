@@ -330,7 +330,7 @@ impl ClientOnGateway {
             }
 
             // Check each state individually for whether it is dead.
-            if expired_state.is_dead_ip() {
+            if expired_state.is_dead_ip(now) {
                 dead_ips
                     .entry(domain.clone())
                     .or_default()
@@ -622,12 +622,14 @@ impl TranslationState {
         }
     }
 
-    /// We define an IP as dead if we have seen outgoing traffic but _never_ received incoming traffic.
-    fn is_dead_ip(&self) -> bool {
+    /// We define an IP as dead if we have seen outgoing traffic that is at least 10s old but _never_ received incoming traffic.
+    fn is_dead_ip(&self, now: Instant) -> bool {
         let sent_at_least_one_packet = self.last_outgoing > self.created_at;
         let received_no_packets = self.last_incoming == self.created_at;
+        let last_outgoing_at_least_10s_ago =
+            now.duration_since(self.last_outgoing) >= Duration::from_secs(10);
 
-        sent_at_least_one_packet && received_no_packets
+        sent_at_least_one_packet && received_no_packets && last_outgoing_at_least_10s_ago
     }
 }
 
@@ -730,14 +732,37 @@ mod tests {
 
     #[test]
     fn initial_translation_state_is_not_dead() {
+        let now = Instant::now();
         let state = TranslationState::new(
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            Instant::now(),
+            now,
         );
 
-        assert!(!state.is_dead_ip())
+        assert!(!state.is_dead_ip(now))
+    }
+
+    #[test]
+    fn is_dead_only_after_10s_of_no_response() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(1);
+        state.last_outgoing = now;
+
+        assert!(!state.is_dead_ip(now));
+
+        now += Duration::from_secs(9);
+        assert!(!state.is_dead_ip(now));
+
+        now += Duration::from_secs(1);
+        assert!(state.is_dead_ip(now));
     }
 
     fn source_v4_addr() -> Ipv4Addr {
