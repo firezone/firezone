@@ -2,6 +2,7 @@ import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 import PlanBadge from "@/components/PlanBadge";
 import NextStep from "@/components/NextStep";
+import Image from "next/image";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
@@ -15,28 +16,76 @@ To define a Policy, go to `Policies -> Add Policy`.
 
 Policies define a single Group's access to a single Resource.
 
+<Alert color="warning">
+  **Note:** To preserve audit trails, Policy details cannot be changed once a
+  Policy is created. Double-check to ensure the Group, Resource, and/or
+  conditions are correct before creating the Policy.
+</Alert>
+
 <PlanBadge plans={["team", "enterprise"]}>
 
 ## Conditional access policies
 
 </PlanBadge>
 
-On Team and higher plans, you may optionally restrict access further based on
-the following conditions:
+On Team and higher plans, you may restrict access further based on the below
+conditions.
 
-- **Client location**: Restrict access only to Clients connecting from specific
-  countries.
-- **IP address or CIDR**: Restrict access to a specific IP address or range of
-  Client IP addresses.
-- **Time of day**: Restrict access to certain time windows.
-- **Authentication method**: Restrict access based on the authentication
-  provider that was used to authenticate the Client.
+### Client location
 
-<Alert color="warning">
-  **Note:** To preserve audit trails, Policy details cannot be changed once a
-  Policy is created. Double-check to ensure the Group, Resource, and/or
-  conditions are correct before creating the Policy.
-</Alert>
+<Image
+  src="/images/kb/deploy/policies/client_location.png"
+  alt="Client location"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded"
+/>
+
+Restrict access only to Clients connecting from specific countries. When this is
+specified, the Client's IP address will be used to lookup the country of origin.
+
+### Client IP address or CIDR
+
+<Image
+  src="/images/kb/deploy/policies/client_ip.png"
+  alt="Client IP address or CIDR"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded"
+/>
+
+Restrict access to a specific IP address or range of Client IP addresses.
+
+### Identity provider
+
+<Image
+  src="/images/kb/deploy/policies/client_idp.png"
+  alt="Identity provider"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded"
+/>
+
+Restrict access based on the authentication provider that was used to
+authenticate the Client.
+
+### Time of day
+
+<Image
+  src="/images/kb/deploy/policies/client_tod.png"
+  alt="Time of day"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded"
+/>
+
+Restrict access to certain time windows throughout the week based on the 24hr
+time and specified time zone.
+
+The time zone determines the offset used when determining whether to allow
+access for a particular Client. For example, if you specify a time window of
+`08:00-17:00` and time zone of `Eastern`, Clients in the `Pacific` timezone 3
+hours behind will be allowed access from `05:00-14:00` Eastern time.
 
 <NextStep href="/kb/deploy/clients">Next: Install Clients</NextStep>
 
