@@ -1,0 +1,142 @@
+import Image from "next/image";
+
+<Image
+  src="/images/blog/jun-2024-update/jun-24-update.png"
+  alt="June update graphic"
+  width={400}
+  height={400}
+  className="mx-auto shadow rounded"
+/>
+
+## In this update:
+
+- **New feature:** [Conditional access policies](#conditional-access-policies)
+- **New feature:**
+  [Directory sync support for JumpCloud](#directory-sync-support-for-jumpcloud)
+- **Blog post:**
+  [Using Tauri for a cross-platform security app](/blog/using-tauri)
+- **Blog post:**
+  [Improving reliability for DNS Resources](/blog/improving-reliability-for-dns-resources)
+- New [support page](/support) for getting help with Firezone
+- New [changelog](/changelog) for tracking all releases we ship
+
+### Conditional access policies
+
+[Policies](/kb/deploy/policies) form the basis of Firezone's access model, and
+in June they got a major upgrade with new access modifiers that allow admins to
+restrict access to Resources based on Client location, IP address, identity
+provider, and time of day.
+
+These are evaluated at the time the access is attempted, and updated in
+real-time -- if a Client's location or IP changes, for example, the policy will
+be re-evaluated and access will be allowed or denied accordingly.
+
+#### Client location
+
+<Image
+  src="/images/blog/jun-2024-update/client_location.png"
+  alt="Client location"
+  width={600}
+  height={600}
+  className="rounded shadow"
+/>
+
+Use Client location to restrict access to a Resource based on the country where
+the Client is attempting to access it from. This is useful for region-locking
+certain Resources or preventing Clients in certain countries from accessing
+sensitive Resources.
+
+The Client's location is determined by its IP address using
+[Google's Regional external Application Load Balancer API](https://cloud.google.com/load-balancing/docs/https).
+
+#### Client IP
+
+<Image
+  src="/images/blog/jun-2024-update/client_ip.png"
+  alt="Client IP"
+  width={600}
+  height={600}
+  className="rounded shadow"
+/>
+
+Another way to restrict access to a Resource is by the Client's IP or CIDR
+address.
+
+You can use it as an allowlist, for example, to allow employees to access a
+Resource from only a branch office or another VPN.
+
+Or, you can use it as a denylist to block access from malicious IP addresses or
+networks you explicitly **don't** want to allow access to your Resources.
+
+#### Identity provider
+
+<Image
+  src="/images/blog/jun-2024-update/client_idp.png"
+  alt="Client IP"
+  width={600}
+  height={600}
+  className="rounded shadow"
+/>
+
+If you've [configured an identity provider](/kb/authenticate), you can also
+require users to have signed into that identity provider in order to access the
+Resource in question.
+
+This means you can use Firezone to enforce MFA via your identity provider for
+certain extra-sensitive Resources.
+
+And since Firezone supports adding multiple identity providers to your account,
+you can configure multiple SSO applications in your identity provider -- each
+with their own set of authentication requirements -- for even more flexibility
+over access to your Resources.
+
+#### Time of day
+
+<Image
+  src="/images/blog/jun-2024-update/client_tod.png"
+  alt="Client IP"
+  width={600}
+  height={600}
+  className="rounded shadow"
+/>
+
+### Directory sync support for JumpCloud
+
+<Image
+  src="/images/blog/jun-2024-update/jump_dir_sync.png"
+  alt="JumpCloud directory sync"
+  width={400}
+  height={400}
+  className="rounded shadow"
+/>
+
+In our ongoing effort to make Firezone more accessible to organizations of all
+sizes, we've added support for syncing your JumpCloud directory with Firezone.
+
+This integration leverages JumpCloud's SCIM API to push user and group updates
+in real-time as they're made in your JumpCloud account. Set up takes only a few
+minutes, and once it's done, you can manage access to your Resources in Firezone
+using your JumpCloud groups, just like you would with any other identity
+provider.
+
+Like other providers, JumpCloud directory sync is available on our Enterprise
+plan to ensure we can provide a smooth setup and support experience.
+
+### Blog posts
+
+- [Using Tauri for a cross-platform security app](/blog/using-tauri): Our
+  Windows and Linux clients are built using Tauri, a Rust-based framework for
+  building cross-platform desktop apps. In this post, we share our experience
+  using Tauri and some tips for getting started with it for your own projects.
+- [Improving reliability for DNS Resources](/blog/improving-reliability-for-dns-resources):
+  We've made some changes to how we handle DNS Resources to make them more
+  reliable and resilient to network outages. Read this to learn more about how
+  this change may affect your Firezone deployment.
+
+## Wrapping up
+
+That's all for this month's update! Subscribe to our
+[newsletter](/product/newsletter) below to get these updates once a month in
+your inbox. If you want a personalized demo to understand how Firezone can help
+secure your organization, [fill out the form here](/contact/sales) and we'll be
+touch.
