@@ -23,13 +23,24 @@ import Image from "next/image";
 ### Conditional access policies
 
 [Policies](/kb/deploy/policies) form the basis of Firezone's access model, and
-in June they got a major upgrade with new access modifiers that allow admins to
-restrict access to Resources based on Client location, IP address, identity
-provider, and time of day.
+in June they got a major upgrade.
 
-These are evaluated at the time the access is attempted, and updated in
-real-time -- if a Client's location or IP changes, for example, the policy will
-be re-evaluated and access will be allowed or denied accordingly.
+In the zero-trust security model, it's all about making access as granular as
+possible to ensure only the right people can access the right Resources at the
+right time. Policy conditions continue that theme by allowing you to restrict
+access to **four** powerful access conditions:
+
+- Client location
+- Client IP address
+- Identity provider using for authentication
+- Time of day
+
+These are evaluated at the time access is attempted by Firezone's
+[Policy Engine](/kb/architecture/core-components#policy-engine). If a Client
+switches networks, for example, access is re-evaluated immediately based on the
+new conditions.
+
+Read more about how each one works below.
 
 #### Client location
 
@@ -42,12 +53,20 @@ be re-evaluated and access will be allowed or denied accordingly.
 />
 
 Use Client location to restrict access to a Resource based on the country where
-the Client is attempting to access it from. This is useful for region-locking
-certain Resources or preventing Clients in certain countries from accessing
-sensitive Resources.
+the Client is located. This is useful for region-locking certain Resources or
+preventing Clients in certain countries from accessing sensitive systems.
+
+How does it work?
 
 The Client's location is determined by its IP address using
 [Google's Regional external Application Load Balancer API](https://cloud.google.com/load-balancing/docs/https).
+The load balancer reports this data to Firezone's control plane API based on the
+remote IP address of the Client's control plane connection. If the Client
+switches IPs, the control plane connection is re-established and the location is
+updated, invalidating all previously authorized Policies.
+
+We deliberately avoided using Client-provided location data such as device GPS.
+These can be trivially spoofed by a malicious Client.
 
 #### Client IP
 
@@ -63,7 +82,7 @@ Another way to restrict access to a Resource is by the Client's IP or CIDR
 address.
 
 You can use it as an allowlist, for example, to allow employees to access a
-Resource from only a branch office or another VPN.
+Resource from only a particular branch office.
 
 Or, you can use it as a denylist to block access from malicious IP addresses or
 networks you explicitly **don't** want to allow access to your Resources.
@@ -82,8 +101,9 @@ If you've [configured an identity provider](/kb/authenticate), you can also
 require users to have signed into that identity provider in order to access the
 Resource in question.
 
-This means you can use Firezone to enforce MFA via your identity provider for
-certain extra-sensitive Resources.
+This functions well for MFA enforcement -- restrict access to an identity
+provider with MFA enabled to enforce MFA across your workforce for all
+Firezone-managed Resources.
 
 And since Firezone supports adding multiple identity providers to your account,
 you can configure multiple SSO applications in your identity provider -- each
@@ -108,9 +128,9 @@ to match the time zone you want to enforce access based on.
 
 Time-based access policies open the door for interesting use cases. For example:
 
-- Have a cron job that runs at 3 AM and needs access to a Resource? Set up a
-  Policy that only allows access to that Resource between 3 AM and 4 AM, and
-  you're set.
+- Have a cron job that runs at 3 AM and that needs access to a Resource? Set up
+  a Policy that only allows access between 3 AM and 4 AM to restrict access
+  outside of the hours the job runs.
 - Want to prevent employees from accessing certain Resources outside of business
   hours? Set up a Policy that only allows access between 9 AM and 5 PM on
   weekdays.
