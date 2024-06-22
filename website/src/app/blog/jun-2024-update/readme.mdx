@@ -100,6 +100,24 @@ over access to your Resources.
   className="rounded shadow"
 />
 
+Finally, you can restrict access to a Resource based on the time of day.
+
+The time of day is determined by the locality defined in the Policy and not by
+the Client, so it's important to ensure your Policy's locality is set correctly
+to match the time zone you want to enforce access based on.
+
+Time-based access policies open the door for interesting use cases. For example:
+
+- Have a cron job that runs at 3 AM and needs access to a Resource? Set up a
+  Policy that only allows access to that Resource between 3 AM and 4 AM, and
+  you're set.
+- Want to prevent employees from accessing certain Resources outside of business
+  hours? Set up a Policy that only allows access between 9 AM and 5 PM on
+  weekdays.
+
+By locking down access to Resources based on the time of day, you add another
+tool to your security arsenal to prevent unauthorized access to your Resources.
+
 ### Directory sync support for JumpCloud
 
 <Image
