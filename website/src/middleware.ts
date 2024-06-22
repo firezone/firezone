@@ -50,6 +50,12 @@ const versionedRedirects = [
   },
 ];
 
+// Restrict the middleware to execute only on the following paths in order
+// to avoid unnecessary processing and invocations
+export const config = {
+  matcher: versionedRedirects.map((redirect) => redirect.source),
+};
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
