@@ -1,4 +1,4 @@
-import _Page from "./_page.tsx";
+import _Page from "./_page";
 import { Metadata } from "next";
 import LastUpdated from "@/components/LastUpdated";
 
