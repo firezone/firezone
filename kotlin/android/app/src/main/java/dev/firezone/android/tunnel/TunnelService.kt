@@ -199,6 +199,12 @@ class TunnelService : VpnService() {
         super.onDestroy()
     }
 
+    override fun onRevoke() {
+        Log.d(TAG, "onRevoke")
+        disconnect()
+        super.onRevoke()
+    }
+
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
         Log.d(TAG, "disconnect")
