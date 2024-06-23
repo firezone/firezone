@@ -19,7 +19,7 @@ defmodule Web.NavigationComponents do
             data-drawer-toggle="drawer-navigation"
             aria-controls="drawer-navigation"
             class={[
-              "p-2 mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
+              "mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
               "hover:text-neutral-900 hover:bg-neutral-100"
             ]}
           >
@@ -33,18 +33,18 @@ defmodule Web.NavigationComponents do
             </span>
           </a>
         </div>
-        <div class="flex items-center lg:order-2">
+        <div class="flex items-center order-2">
           <a
             target="_blank"
             href="https://www.firezone.dev/kb?utm_source=product"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline lg:ml-2 hidden lg:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline ml-2"
           >
             Docs
           </a>
           <a
             target="_blank"
             href="https://firezone.statuspage.io"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline lg:ml-2 hidden lg:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline ml-2"
           >
             Status
           </a>
@@ -104,12 +104,14 @@ defmodule Web.NavigationComponents do
     required: true,
     doc: "The items for the navigation bar should use `sidebar_item` component."
 
+  attr :banner, :boolean, required: false, default: false
+
   def sidebar(assigns) do
     ~H"""
     <aside class={~w[
         fixed top-0 left-0 z-40
         w-64 h-screen
-        pt-14 pb-8
+        #{@banner && "pt-24" || "pt-14"} pb-8
         transition-transform -translate-x-full
         bg-white border-r border-neutral-200
         lg:translate-x-0
