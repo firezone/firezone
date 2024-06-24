@@ -27,8 +27,6 @@ use std::mem;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-// TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
-// See https://github.com/firezone/firezone/issues/2158
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
     waker: Option<Waker>,
