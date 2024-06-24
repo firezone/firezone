@@ -1,8 +1,20 @@
 # These are used for the dev environment.
 # This should match the versions used in the built product.
 nodejs 20.14.0
+pnpm 9.4.0
 elixir 1.16.2-otp-26
 erlang 26.2.2
+
+# If you hit an issue like this when you run apply or plan:
+#
+#  Failed to upload configuration files: failed to get file info from file ".../hashicorp/template/2.2.0/...": ... no such file or directory
+#
+# you might need to install template plugin, to do so run:
+#
+#  brew install kreuzwerker/taps/m1-terraform-provider-helper
+#  m1-terraform-provider-helper activate
+#  m1-terraform-provider-helper install hashicorp/template -v v2.2.0
+#
 terraform 1.8.5
 
 # Used for static analysis

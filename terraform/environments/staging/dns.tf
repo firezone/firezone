@@ -15,23 +15,13 @@ resource "google_dns_record_set" "dns-caa" {
 
 # Website -- these redirect to firezone.dev
 
-resource "google_dns_record_set" "website-ipv6" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type    = "AAAA"
-  name    = module.google-cloud-dns.dns_name
-  rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
-  ttl     = 3600
-}
-
 resource "google_dns_record_set" "website-ipv4" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
   name    = module.google-cloud-dns.dns_name
-  rrdatas = ["45.63.84.183"]
+  rrdatas = [google_compute_global_address.tld-ipv4.address]
   ttl     = 3600
 }
 
@@ -39,9 +29,9 @@ resource "google_dns_record_set" "website-www-redirect" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  type    = "CNAME"
+  type    = "A"
   name    = "www.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["firez.one."]
+  rrdatas = [google_compute_global_address.tld-ipv4.address]
   ttl     = 3600
 }
 
