@@ -23,7 +23,7 @@ struct FirstTimeView: View {
           .padding(.horizontal, 10)
         Spacer()
         Text(
-          "You can sign in to Firezone by clicking on the Firezone icon in the macOS menu bar.\nYou may now close this window."
+          "You can sign in to Firezone by clicking on the Firezone icon in the macOS menu bar or clicking 'Open menu' below.\nYou may now close this window."
         )
         .font(.body)
         .multilineTextAlignment(.center)
