@@ -8,7 +8,7 @@ use connlib_shared::messages::DnsServer;
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
 use hickory_resolver::{
-    config::{NameServerConfig, Protocol, ResolverConfig},
+    config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts},
     TokioAsyncResolver,
 };
 use ip_packet::{IpPacket, MutableIpPacket};
@@ -198,9 +198,14 @@ fn create_resolvers(
         .map(|(sentinel, srv)| {
             let mut resolver_config = ResolverConfig::new();
             resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
+            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Tcp));
+
+            let mut resolver_opts = ResolverOpts::default();
+            resolver_opts.edns0 = true;
+
             (
                 sentinel,
-                TokioAsyncResolver::tokio(resolver_config, Default::default()),
+                TokioAsyncResolver::tokio(resolver_config, resolver_opts),
             )
         })
         .collect()
