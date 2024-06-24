@@ -198,6 +198,7 @@ fn create_resolvers(
         .map(|(sentinel, srv)| {
             let mut resolver_config = ResolverConfig::new();
             resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Udp));
+            resolver_config.add_name_server(NameServerConfig::new(srv.address(), Protocol::Tcp));
             (
                 sentinel,
                 TokioAsyncResolver::tokio(resolver_config, Default::default()),
