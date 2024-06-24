@@ -1,9 +1,10 @@
-ARG ALPINE_VERSION=3.19.2
-ARG CARGO_CHEF_VERSION="0.1.62"
+ARG RUST_VERSION="1.79"
+ARG ALPINE_VERSION="3.20"
+ARG CARGO_CHEF_VERSION="0.1.67"
 
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 # Keep the Rust version synced with `rust-toolchain.toml`
-FROM rust:1.79-alpine${ALPINE_VERSION} as chef
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} as chef
 
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
