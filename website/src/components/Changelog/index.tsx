@@ -10,9 +10,7 @@ import Headless from "./Headless";
 import { HiServerStack } from "react-icons/hi2";
 import { FaApple, FaAndroid, FaWindows, FaLinux } from "react-icons/fa";
 
-export default function Changelog() {
-  const sha = process.env.FIREZONE_DEPLOYED_SHA;
-
+export default function Changelog({ sha }: { sha: string | undefined }) {
   return (
     <section className="mx-auto max-w-xl md:max-w-screen-xl">
       <TabsGroup>
