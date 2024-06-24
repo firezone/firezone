@@ -1140,7 +1140,7 @@ fn maybe_mangle_dns_query_to_cidr_resource<'p>(
         return packet;
     };
 
-    tracing::debug!(old_dst = %dst, new_dst = %srv.ip(), "Packet is a DNS query to a DNS server configured as a CIDR resource");
+    tracing::debug!(old_dst = %dst, new_dst = %srv.ip(), "Mangling DNS query to CIDR resource");
 
     mangeled_dns_queries.insert(message.header().id(), now + IDS_EXPIRE);
     packet.set_dst(srv.ip());
@@ -1171,15 +1171,11 @@ fn maybe_mangle_dns_response_from_cidr_resource<'p>(
         return packet;
     };
 
-    let Some(query_sent_at) = mangeled_dns_queries.remove(&message.header().id()) else {
+    let Some(_query_expires_at) = mangeled_dns_queries.remove(&message.header().id()) else {
         return packet;
     };
 
-    if now.duration_since(query_sent_at) > IDS_EXPIRE {
-        return packet;
-    }
-
-    tracing::debug!(old_src = %src_ip, new_src = %sentinel, "Packet is a DNS response from a DNS server configured as a CIDR resource");
+    tracing::debug!(old_src = %src_ip, new_src = %sentinel, "Mangling DNS response from CIDR resource");
 
     packet.set_src(*sentinel);
     packet.update_checksum();
