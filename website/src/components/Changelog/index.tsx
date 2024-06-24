@@ -37,7 +37,7 @@ export default function Changelog({ sha }: { sha: string | undefined }) {
         <p className="text-sm md:text-lg mt-4 md:mt-8">
           Current SHA of Portal and Relays in production is{" "}
           <Link
-            href={"https://www.github.com/firezone/firezone/tree/#{sha}"}
+            href={`https://www.github.com/firezone/firezone/tree/${sha}`}
             className="underline hover:no-underline text-accent-500"
           >
             {sha}
