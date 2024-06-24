@@ -149,13 +149,6 @@ defmodule Domain.Repo.Filter do
 
       {:error, {:invalid_value, metadata}} ->
         {:error, {:invalid_value, metadata}}
-
-      invalid_return ->
-        raise RuntimeError, """
-        Invalid return value from filter function: #{inspect(invalid_return)}
-
-        Filter function must return a tuple in the form of {queryable, dynamic}.
-        """
     end
   end
 

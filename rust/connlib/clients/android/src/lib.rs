@@ -4,8 +4,8 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
-    LoginUrl, LoginUrlError, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
+    Error, LoginUrl, LoginUrlError, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -346,14 +346,14 @@ fn connect(
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
 
-    let callback_handler = CallbackHandler {
+    let callbacks = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
         handle,
     };
 
     let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(
+    let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
         device_id,
@@ -368,7 +368,7 @@ fn connect(
         .build()?;
 
     let sockets = Sockets::with_protect({
-        let callbacks = callback_handler.clone();
+        let callbacks = callbacks.clone();
         move |fd| {
             callbacks
                 .protect_file_descriptor(fd)
@@ -376,15 +376,16 @@ fn connect(
         }
     });
 
-    let session = Session::connect(
-        login,
+    let args = ConnectArgs {
+        url,
         sockets,
         private_key,
-        Some(os_version),
-        callback_handler,
-        Some(MAX_PARTITION_TIME),
-        runtime.handle().clone(),
-    );
+        os_version_override: Some(os_version),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        callbacks,
+        max_partition_time: Some(MAX_PARTITION_TIME),
+    };
+    let session = Session::connect(args, runtime.handle().clone());
 
     Ok(SessionWrapper {
         inner: session,

@@ -36,6 +36,7 @@ module "vpc" {
   enable_ipv6                                    = true
   public_subnet_assign_ipv6_address_on_creation  = true
   private_subnet_assign_ipv6_address_on_creation = true
+  public_subnet_enable_dns64                     = false # DNS64 without a NAT64 gateway breaks IPv4-only resources
 
   public_subnet_ipv6_prefixes  = [0, 1]
   private_subnet_ipv6_prefixes = [2, 3]

@@ -190,7 +190,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last">
+    <div class="flex items-center order-last md:w-56">
       <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
@@ -225,7 +225,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last">
+    <div class="flex items-center order-last md:w-56">
       <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
