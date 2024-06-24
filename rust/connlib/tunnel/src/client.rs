@@ -608,9 +608,8 @@ impl ClientState {
                 {
                     let ip = upstream_dns.ip();
 
+                    // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
                     if self.cidr_resources.longest_match(ip).is_some() {
-                        tracing::debug!(%ip, "DNS server is a CIDR resource");
-
                         return Err((packet, ip));
                     }
                 }
