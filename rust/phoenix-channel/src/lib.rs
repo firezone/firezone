@@ -2,6 +2,9 @@ mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
+use std::mem;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 use std::{fmt, future, marker::PhantomData};
 
 use backoff::backoff::Backoff;
@@ -15,7 +18,9 @@ use secrecy::{ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
+use tokio_tungstenite::connect_async_with_config;
 use tokio_tungstenite::tungstenite::http::StatusCode;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{handshake::client::Request, Message},
@@ -23,9 +28,6 @@ use tokio_tungstenite::{
 };
 
 pub use login_url::{LoginUrl, LoginUrlError};
-use std::mem;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 // TODO: Refactor this PhoenixChannel to be compatible with the needs of the client and gateway
 // See https://github.com/firezone/firezone/issues/2158
@@ -57,6 +59,25 @@ enum State {
     ),
     Closing(WebSocketStream<MaybeTlsStream<TcpStream>>),
     Closed,
+}
+
+impl State {
+    fn connect(url: Secret<LoginUrl>, user_agent: String) -> Self {
+        Self::Connecting(Box::pin(async move {
+            let (stream, _) = connect_async_with_config(
+                make_request(url, user_agent),
+                Some(WebSocketConfig {
+                    write_buffer_size: 0,
+                    ..WebSocketConfig::default()
+                }),
+                true,
+            )
+            .await
+            .map_err(InternalError::WebSocket)?;
+
+            Ok(stream)
+        }))
+    }
 }
 
 /// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
@@ -231,13 +252,7 @@ where
             reconnect_backoff,
             url: url.clone(),
             user_agent: user_agent.clone(),
-            state: State::Connecting(Box::pin(async move {
-                let (stream, _) = connect_async(make_request(url, user_agent))
-                    .await
-                    .map_err(InternalError::WebSocket)?;
-
-                Ok(stream)
-            })),
+            state: State::connect(url, user_agent),
             waker: None,
             pending_messages: Default::default(),
             _phantom: PhantomData,
@@ -279,13 +294,7 @@ where
         // 2. Set state to `Connecting` without a timer.
         let url = self.url.clone();
         let user_agent = self.user_agent.clone();
-        self.state = State::Connecting(Box::pin(async move {
-            let (stream, _) = connect_async(make_request(url, user_agent))
-                .await
-                .map_err(InternalError::WebSocket)?;
-
-            Ok(stream)
-        }));
+        self.state = State::connect(url, user_agent);
 
         // 3. In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
@@ -523,18 +532,6 @@ where
                 }
                 Poll::Ready(Err(MissedLastHeartbeat {})) => {
                     self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            // Priority 4: Flush out.
-            match stream.poll_flush_unpin(cx) {
-                Poll::Ready(Ok(())) => {
-                    tracing::trace!("Flushed websocket");
-                }
-                Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
