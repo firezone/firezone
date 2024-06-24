@@ -201,6 +201,10 @@ impl WrappedSession {
             .build()?;
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Calling `install_default` only once per process always succeeds");
+
         let args = ConnectArgs {
             private_key,
             callbacks: CallbackHandler {

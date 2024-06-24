@@ -58,6 +58,10 @@ async fn try_main() -> Result<()> {
         public_key.to_bytes(),
     )?;
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process always succeeds");
+
     let task = tokio::spawn(run(login, private_key)).err_into();
 
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));

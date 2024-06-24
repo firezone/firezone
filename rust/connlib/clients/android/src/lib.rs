@@ -366,6 +366,16 @@ fn connect(
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
+    // On Android, the VpnService may still be loaded into memory when reconnecting.
+    // Only install the crypto-provider if we haven't done so previously.
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect(
+                "Calling `install_default` should succeed if we don't have a crypto provider yet.",
+            );
+    }
+
     let args = ConnectArgs {
         tcp_socket_factory: tcp_socket_factory.clone(),
         udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),

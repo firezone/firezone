@@ -23,6 +23,7 @@ opentelemetry_sdk = { version = "0.24.1", features = ["rt-tokio"] }
 phoenix-channel = { path = "../phoenix-channel" }
 proptest = { version = "1", optional = true }
 rand = "0.8.5"
+rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0.204", features = ["derive"] }
 sha2 = "0.10.8"
