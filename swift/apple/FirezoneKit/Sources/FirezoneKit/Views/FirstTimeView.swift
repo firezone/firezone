@@ -9,6 +9,8 @@ import SwiftUI
 
 #if os(macOS)
 struct FirstTimeView: View {
+  @EnvironmentObject var menuBar: MenuBar
+
   var body: some View {
     VStack(
       alignment: .center,
@@ -21,17 +23,27 @@ struct FirstTimeView: View {
           .padding(.horizontal, 10)
         Spacer()
         Text(
-          "You can sign in to Firezone by clicking on the Firezone icon in the macOS menu bar.\nYou may now close this window."
+          "You can sign in by clicking the Firezone icon in the macOS menu bar or clicking 'Open menu' below."
         )
         .font(.body)
         .multilineTextAlignment(.center)
 
         Spacer()
-        Button("Close this Window") {
-          AppViewModel.WindowDefinition.main.window()?.close()
+        HStack {
+          Button("Close this window") {
+            AppViewModel.WindowDefinition.main.window()?.close()
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
+          Button("Open menu") {
+            DispatchQueue.main.async {
+              menuBar.showMenu()
+            }
+            AppViewModel.WindowDefinition.main.window()?.close()
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
         Spacer()
           .frame(maxHeight: 20)
         Text(
