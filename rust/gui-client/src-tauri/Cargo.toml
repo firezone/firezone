@@ -11,7 +11,7 @@ authors = ["Firezone, Inc."]
 anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
-[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+[dependencies]
 arboard = { version = "3.4.0", default-features = false }
 anyhow = { version = "1.0" }
 arc-swap = "1.7.0"
