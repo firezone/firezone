@@ -61,10 +61,13 @@ public class AppViewModel: ObservableObject {
 }
 
 public struct AppView: View {
+  var menuBar: MenuBar?
+
   @ObservedObject var model: AppViewModel
 
-  public init(model: AppViewModel) {
+  public init(model: AppViewModel, menuBar: MenuBar?) {
     self.model = model
+    self.menuBar = menuBar
   }
 
   @ViewBuilder
@@ -91,7 +94,7 @@ public struct AppView: View {
     case .invalid:
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
     default:
-      FirstTimeView()
+      FirstTimeView(menuBar: menuBar)
     }
 #endif
   }

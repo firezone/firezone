@@ -48,6 +48,10 @@ public final class MenuBar: NSObject {
     setupObservers()
   }
 
+  func showMenu() {
+    statusItem.button?.performClick(nil)
+  }
+
   private func setupObservers() {
     model.store.$status
       .receive(on: DispatchQueue.main)

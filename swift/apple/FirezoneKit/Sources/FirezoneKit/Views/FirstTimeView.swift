@@ -9,6 +9,8 @@ import SwiftUI
 
 #if os(macOS)
 struct FirstTimeView: View {
+  var menuBar: MenuBar?
+
   var body: some View {
     VStack(
       alignment: .center,
@@ -27,11 +29,21 @@ struct FirstTimeView: View {
         .multilineTextAlignment(.center)
 
         Spacer()
-        Button("Close this Window") {
-          AppViewModel.WindowDefinition.main.window()?.close()
+        HStack {
+          Button("Close this window") {
+            AppViewModel.WindowDefinition.main.window()?.close()
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
+          Button("Open menu") {
+            DispatchQueue.main.async {
+              menuBar?.showMenu()
+            }
+            AppViewModel.WindowDefinition.main.window()?.close()
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
         Spacer()
           .frame(maxHeight: 20)
         Text(
