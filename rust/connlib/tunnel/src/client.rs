@@ -807,7 +807,7 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        self.mangled_dns_queries.retain(|_, exp| *exp < now);
+        self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
         while let Some(event) = self.node.poll_event() {
             match event {
