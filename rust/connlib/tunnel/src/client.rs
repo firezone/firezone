@@ -1171,11 +1171,21 @@ fn maybe_mangle_dns_response_from_cidr_resource<'p>(
         return packet;
     };
 
-    let Some(_query_expires_at) = mangeled_dns_queries.remove(&message.header().id()) else {
+    let Some(query_sent_at) = mangeled_dns_queries
+        .remove(&message.header().id())
+        .map(|expires_at| expires_at - IDS_EXPIRE)
+    else {
         return packet;
     };
 
-    tracing::debug!(old_src = %src_ip, new_src = %sentinel, "Mangling DNS response from CIDR resource");
+    let rtt = now.duration_since(query_sent_at);
+
+    let domains = message
+        .question()
+        .filter_map(|q| Some(q.ok()?.into_qname()))
+        .join(",");
+
+    tracing::debug!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
 
     packet.set_src(*sentinel);
     packet.update_checksum();
