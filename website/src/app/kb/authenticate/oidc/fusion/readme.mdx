@@ -85,17 +85,17 @@ for use with Firezone's OIDC connector.
 ## Step 2: Create identity provider in Firezone
 
 1. In your Firezone admin portal, go to
-   `Settings -> Identity Providers -> Add -> OIDC`.
+   `Settings -> Identity Providers -> Add Identity Provider -> OpenID Connect`.
 1. Enter the `client id` and `client secret` saved from the previous step.
 1. In the Discovery URL, enter
    `https://<domain>/.well-known/openid-configuration` replacing `<domain>` with
    the domain you use to host Fusion Auth.
-1. Click Create.
+1. Click `Connect Identity Provider`.
 
 ## Step 3: Test
 
-You should now be able authenticate users to Firezone using the identity
-provider just created.
+You should be able to authenticate users to Firezone using the new identity
+provider.
 
 <Alert color="warning">
   Firezone **does not** automatically provision users or groups for identity
