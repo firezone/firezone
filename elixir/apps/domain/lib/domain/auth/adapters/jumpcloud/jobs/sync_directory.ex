@@ -59,9 +59,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory do
 
       {:error, msg} ->
         {:error, msg, msg}
-
-      _ ->
-        {:error, nil, "An unknown error occurred"}
     end
   end
 

@@ -155,7 +155,7 @@ defmodule Web.SignIn do
   end
 
   def providers_group_form(%{adapter: "userpass"} = assigns) do
-    provider_identifier = live_flash(assigns.flash, :userpass_provider_identifier)
+    provider_identifier = Phoenix.Flash.get(assigns.flash, :userpass_provider_identifier)
     form = to_form(%{"provider_identifier" => provider_identifier}, as: "userpass")
     assigns = Map.put(assigns, :userpass_form, form)
 
@@ -195,7 +195,7 @@ defmodule Web.SignIn do
   end
 
   def providers_group_form(%{adapter: "email"} = assigns) do
-    provider_identifier = live_flash(assigns.flash, :email_provider_identifier)
+    provider_identifier = Phoenix.Flash.get(assigns.flash, :email_provider_identifier)
     form = to_form(%{"provider_identifier" => provider_identifier}, as: "email")
     assigns = Map.put(assigns, :email_form, form)
 
