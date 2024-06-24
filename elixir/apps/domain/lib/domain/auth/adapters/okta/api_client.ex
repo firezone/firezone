@@ -121,9 +121,6 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
             {:error, {status, response}}
         end
 
-      :error ->
-        {:ok, [], nil}
-
       other ->
         other
     end
