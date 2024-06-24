@@ -265,6 +265,10 @@ pub fn run_only_headless_client() -> Result<()> {
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process always succeeds");
+
     let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         cli.api_url,
