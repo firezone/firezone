@@ -161,7 +161,7 @@ defmodule Domain.Billing do
            ) do
       {:ok, account}
     else
-      {:ok, {status, body}} ->
+      {:error, {status, body}} ->
         :ok =
           Logger.error("Cannot update Stripe customer",
             status: status,
@@ -256,7 +256,7 @@ defmodule Domain.Billing do
     with {:ok, product} <- APIClient.fetch_product(secret_key, product_id) do
       {:ok, product}
     else
-      {:ok, {status, body}} ->
+      {:error, {status, body}} ->
         :ok =
           Logger.error("Cannot fetch Stripe product",
             status: status,
