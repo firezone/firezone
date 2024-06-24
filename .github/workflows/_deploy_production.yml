@@ -154,7 +154,7 @@ jobs:
     steps:
       - name: Update FIREZONE_DEPLOYED_SHA
         run: |
-          curl -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${VERCEL_ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
+          curl --fail -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${VERCEL_ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
             -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" -H "Content-Type: application/json" \
             -d '{
               "comment": "latest deployed SHA for control plane",
