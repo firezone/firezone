@@ -9,7 +9,7 @@ import SwiftUI
 
 #if os(macOS)
 struct FirstTimeView: View {
-  var menuBar: MenuBar?
+  @EnvironmentObject var menuBar: MenuBar
 
   var body: some View {
     VStack(
@@ -37,7 +37,7 @@ struct FirstTimeView: View {
           .controlSize(.large)
           Button("Open menu") {
             DispatchQueue.main.async {
-              menuBar?.showMenu()
+              menuBar.showMenu()
             }
             AppViewModel.WindowDefinition.main.window()?.close()
           }

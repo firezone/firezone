@@ -36,7 +36,10 @@ struct FirezoneApp: App {
       "Welcome to Firezone",
       id: AppViewModel.WindowDefinition.main.identifier
     ) {
-      AppView(model: appViewModel, menuBar: appDelegate.menuBar)
+      if let menuBar = appDelegate.menuBar {
+        // menuBar will be initialized by this point
+        AppView(model: appViewModel).environmentObject(menuBar)
+      }
     }
     .handlesExternalEvents(
       matching: [AppViewModel.WindowDefinition.main.externalEventMatchString]

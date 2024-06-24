@@ -16,7 +16,7 @@ import SwiftUI
 @MainActor
 // TODO: Refactor to MenuBarExtra for macOS 13+
 // https://developer.apple.com/documentation/swiftui/menubarextra
-public final class MenuBar: NSObject {
+public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
   private var resources: [Resource]?
   private var cancellables: Set<AnyCancellable> = []
