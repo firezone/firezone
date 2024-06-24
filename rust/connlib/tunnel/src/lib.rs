@@ -113,9 +113,7 @@ where
             }
 
             if let Some(dns_query) = self.role_state.poll_dns_queries() {
-                if let Err(e) = self.io.perform_dns_query(dns_query.clone()) {
-                    self.role_state.on_dns_result(dns_query, Err(e))
-                }
+                self.io.perform_dns_query(dns_query.clone());
                 continue;
             }
 
@@ -160,7 +158,7 @@ where
                     continue;
                 }
                 Poll::Ready(io::Input::DnsResponse(query, response)) => {
-                    self.role_state.on_dns_result(query, Ok(response));
+                    self.role_state.on_dns_result(query, response);
                     continue;
                 }
                 Poll::Pending => {}
