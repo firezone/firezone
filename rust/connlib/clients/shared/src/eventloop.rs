@@ -141,7 +141,7 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::ClientEvent::RefreshResources { connections } => {
+            firezone_tunnel::ClientEvent::SendProxyIps { connections } => {
                 for connection in connections {
                     self.portal
                         .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
@@ -251,10 +251,7 @@ where
         match res {
             ReplyMessages::Connect(Connect {
                 gateway_payload:
-                    GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                        ice_parameters,
-                        domain_response,
-                    }),
+                    GatewayResponse::ConnectionAccepted(ConnectionAccepted { ice_parameters, .. }),
                 gateway_public_key,
                 resource_id,
                 ..
@@ -262,24 +259,16 @@ where
                 if let Err(e) = self.tunnel.received_offer_response(
                     resource_id,
                     ice_parameters,
-                    domain_response,
                     gateway_public_key.0.into(),
                 ) {
                     tracing::warn!("Failed to accept connection: {e}");
                 }
             }
             ReplyMessages::Connect(Connect {
-                gateway_payload:
-                    GatewayResponse::ResourceAccepted(ResourceAccepted { domain_response }),
-                resource_id,
+                gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted { .. }),
                 ..
             }) => {
-                if let Err(e) = self
-                    .tunnel
-                    .received_domain_parameters(resource_id, domain_response)
-                {
-                    tracing::warn!("Failed to accept resource: {e}");
-                }
+                tracing::trace!("Connection response received, ignored as it's deprecated")
             }
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,

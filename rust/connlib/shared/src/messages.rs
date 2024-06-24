@@ -160,10 +160,16 @@ pub struct RequestConnection {
     pub client_payload: ClientPayload,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct ResolveRequest {
+    pub name: DomainName,
+    pub proxy_ips: Vec<IpAddr>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
-    pub domain: Option<DomainName>,
+    pub domain: Option<ResolveRequest>,
 }
 
 /// Represent a request to reuse an existing gateway connection from a client to a given resource.
@@ -177,7 +183,7 @@ pub struct ReuseConnection {
     /// Id of the gateway we want to reuse
     pub gateway_id: GatewayId,
     /// Payload that the gateway will receive
-    pub payload: Option<DomainName>,
+    pub payload: Option<ResolveRequest>,
 }
 
 // Custom implementation of partial eq to ignore client_rtc_sdp
@@ -189,12 +195,6 @@ impl PartialEq for RequestConnection {
 
 impl Eq for RequestConnection {}
 
-#[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
-pub struct DomainResponse {
-    pub domain: DomainName,
-    pub address: Vec<IpAddr>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Answer {
     pub username: String,
@@ -205,6 +205,12 @@ pub struct Answer {
 pub struct Offer {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
+pub struct DomainResponse {
+    pub domain: DomainName,
+    pub address: Vec<IpAddr>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
