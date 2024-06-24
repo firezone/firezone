@@ -12,7 +12,12 @@ use crate::client::{
 };
 use anyhow::{bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -505,13 +510,17 @@ impl Controller {
                     "Applied new settings. Log level will take effect at next app start."
                 );
             }
-            Req::ClearLogs => logging::clear_logs_inner()
-                .await
-                .context("Failed to clear logs")?,
+            Req::ClearLogs => {
+                let _timer = UsabilityTimer::new("ClearLogs");
+                logging::clear_logs_inner()
+                    .await
+                    .context("Failed to clear logs")?
+            }
             Req::Disconnected {
                 error_msg,
                 is_authentication_error,
             } => {
+                let _timer = UsabilityTimer::new("Disconnected");
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
@@ -528,18 +537,24 @@ impl Controller {
                         .show_alert()?;
                 }
             }
-            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
-                .await
-                .context("Failed to export logs to zip")?,
+            Req::ExportLogs { path, stem } => {
+                let _timer = UsabilityTimer::new("ExportLogs");
+                logging::export_logs_to(path, stem)
+                    .await
+                    .context("Failed to export logs to zip")?
+            }
             Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(url) => self
-                .handle_deep_link(&url)
-                .await
-                .context("Couldn't handle deep link")?,
+            Req::SchemeRequest(url) => {
+                let _timer = UsabilityTimer::new("SchemeRequest");
+                self.handle_deep_link(&url)
+                    .await
+                    .context("Couldn't handle deep link")?
+            }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
+                let _timer = UsabilityTimer::new("SignIn");
                 if let Some(req) = self.auth.start_sign_in()? {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
@@ -550,16 +565,23 @@ impl Controller {
                         .hide()?;
                 }
             }
-            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
-                &self.app.shell_scope(),
-                &self.advanced_settings.auth_base_url,
-                None,
-            )?,
-            Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
-                .context("Couldn't access clipboard")?
-                .set_text(s)
-                .context("Couldn't copy resource URL or other text to clipboard")?,
+            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => {
+                let _timer = UsabilityTimer::new("AdminPortal");
+                tauri::api::shell::open(
+                    &self.app.shell_scope(),
+                    &self.advanced_settings.auth_base_url,
+                    None,
+                )?
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => {
+                let _timer = UsabilityTimer::new("Copy");
+                arboard::Clipboard::new()
+                    .context("Couldn't access clipboard")?
+                    .set_text(s)
+                    .context("Couldn't copy resource URL or other text to clipboard")?
+            }
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
+                let _timer = UsabilityTimer::new("CancelSignIn");
                 if self.session.is_some() {
                     if self.tunnel_ready {
                         tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
@@ -575,6 +597,7 @@ impl Controller {
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
+                let _timer = UsabilityTimer::new("ShowWindow");
                 self.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
@@ -587,16 +610,19 @@ impl Controller {
                 );
             }
             Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
+                let _timer = UsabilityTimer::new("SignOut");
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
+                let _timer = UsabilityTimer::new("Url");
                 tauri::api::shell::open(&self.app.shell_scope(), url, None)?
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 bail!("Impossible error: `Quit` should be handled before this")
             }
             Req::TunnelReady => {
+                let _timer = UsabilityTimer::new("TunnelReady");
                 if !self.tunnel_ready {
                     os::show_notification(
                         "Firezone connected",
@@ -607,6 +633,7 @@ impl Controller {
                 self.refresh_system_tray_menu()?;
             }
             Req::UpdateAvailable(release) => {
+                let _timer = UsabilityTimer::new("UpdateAvailable");
                 let title = format!("Firezone {} available for download", release.version);
 
                 // We don't need to route through the controller here either, we could
@@ -615,6 +642,7 @@ impl Controller {
                 os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
             }
             Req::UpdateNotificationClicked(download_url) => {
+                let _timer = UsabilityTimer::new("UpdateNotificationClicked");
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 tauri::api::shell::open(&self.app.shell_scope(), download_url, None)?;
             }
@@ -744,12 +772,14 @@ async fn run_controller(
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
+                let _timer = UsabilityTimer::new("New resources");
                 tracing::debug!("Controller notified of new resources");
                 if let Err(error) = controller.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to reload resource list");
                 }
             }
             () = com_worker.notified() => {
+                let _timer = UsabilityTimer::new("Network up/down change");
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
@@ -760,6 +790,7 @@ async fn run_controller(
                 }
             },
             resolvers = dns_listener.notified() => {
+                let _timer = UsabilityTimer::new("DNS change");
                 let resolvers = resolvers?;
                 if let Some(session) = controller.session.as_mut() {
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
@@ -799,4 +830,27 @@ async fn run_controller(
     // Last chance to do any drops / cleanup before the process crashes.
 
     Ok(())
+}
+
+struct UsabilityTimer {
+    msg: &'static str,
+    start_instant: Instant,
+}
+
+impl UsabilityTimer {
+    fn new(msg: &'static str) -> Self {
+        Self {
+            msg,
+            start_instant: Instant::now(),
+        }
+    }
+}
+
+impl Drop for UsabilityTimer {
+    fn drop(&mut self) {
+        let dur = self.start_instant.elapsed();
+        if dur > Duration::from_millis(100) {
+            tracing::warn!(?dur, msg = self.msg, "GUI operation took a long time");
+        }
+    }
 }
