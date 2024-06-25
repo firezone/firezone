@@ -1,5 +1,5 @@
 use crate::{IpcClientMsg, IpcServerMsg};
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -23,6 +23,18 @@ pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServe
 pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<IpcClientMsg>>;
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClientMsg>>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;
+
+// pub so that the GUI can display a human-friendly message
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Couldn't find IPC service `{0}`")]
+    NotFound(String),
+    #[error("Permission denied")]
+    PermissionDenied,
+
+    #[error(transparent)]
+    Other(anyhow::Error),
+}
 
 /// A name that both the server and client can use to find each other
 ///
@@ -118,7 +130,11 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
 /// Connect to the IPC service
 ///
 /// Public because the GUI Client will need it
-pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite)> {
+pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite), Error> {
+    // This is how ChatGPT recommended, and I couldn't think of any more clever
+    // way before I asked it.
+    let mut last_err = None;
+
     for _ in 0..10 {
         match platform::connect_to_service(id).await {
             Ok(stream) => {
@@ -132,15 +148,14 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                     ?error,
                     "Couldn't connect to IPC service, will sleep and try again"
                 );
+                last_err = Some(error);
                 // This won't come up much for humans but it helps the automated
                 // tests pass
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
         }
     }
-    Err(anyhow!(
-        "Failed to connect to IPC server after multiple attempts"
-    ))
+    Err(last_err.expect("Impossible - Exhausted all retries but didn't get any errors"))
 }
 
 impl platform::Server {
@@ -156,10 +171,21 @@ impl platform::Server {
 mod tests {
     use super::{platform::Server, ServiceId};
     use crate::{IpcClientMsg, IpcServerMsg};
-    use anyhow::{ensure, Context as _, Result};
+    use anyhow::{bail, ensure, Context as _, Result};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};
+
+    #[tokio::test]
+    async fn no_such_service() -> Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        const ID: ServiceId = ServiceId::Test("H56FRXVH");
+
+        if super::connect_to_service(ID).await.is_ok() {
+            bail!("`connect_to_service` should have failed for a non-existent service");
+        }
+        Ok(())
+    }
 
     /// Make sure the IPC client and server can exchange messages
     #[tokio::test]

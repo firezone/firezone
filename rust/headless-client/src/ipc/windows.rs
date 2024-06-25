@@ -1,7 +1,7 @@
-use super::ServiceId;
+use super::{Error, ServiceId};
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
-use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
+use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
     Foundation::HANDLE,
@@ -23,17 +23,22 @@ pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 ///
 /// This is async on Linux
 #[allow(clippy::unused_async)]
-pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
+#[allow(clippy::wildcard_enum_match_arm)]
+pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
     let stream = named_pipe::ClientOptions::new()
         .open(&path)
-        .with_context(|| format!("Couldn't connect to named pipe server at `{path}`"))?;
+        .map_err(|error| match error.kind() {
+            ErrorKind::NotFound => Error::NotFound(path),
+            _ => Error::Other(error.into()),
+        })?;
     let handle = HANDLE(stream.as_raw_handle() as isize);
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
     unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
-        .context("Couldn't get PID of named pipe server")?;
+        .context("Couldn't get PID of named pipe server")
+        .map_err(Error::Other)?;
     tracing::info!(?server_pid, "Made IPC connection");
     Ok(stream)
 }
