@@ -39,7 +39,7 @@ defmodule Domain.Types.INET do
   defp cast_address(address) do
     address
     |> String.to_charlist()
-    |> :inet.parse_address()
+    |> :inet.parse_strict_address()
   end
 
   defp cast_netmask(nil), do: {:ok, nil}

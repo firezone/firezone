@@ -54,6 +54,7 @@ defmodule Web.Policies.Components do
        ) do
     Map.update(condition_attrs, "values", [], fn values ->
       values
+      |> Enum.filter(fn {dow, _} -> dow in ["M", "T", "W", "R", "F", "S", "U"] end)
       |> Enum.sort_by(fn {dow, _} -> day_of_week_index(dow) end)
       |> Enum.map(fn {dow, time_ranges} ->
         "#{dow}/#{time_ranges}/#{timezone}"
