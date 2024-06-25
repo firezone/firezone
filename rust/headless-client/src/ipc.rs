@@ -196,20 +196,20 @@ mod tests {
 
         let mut server = Server::new(ID)
             .await
-            .context("Error while starting IPC server")?;
+            .expect("Error while starting IPC server");
 
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
                 let (mut rx, mut tx) = server
                     .next_client_split()
                     .await
-                    .context("Error while waiting for next IPC client")?;
+                    .expect("Error while waiting for next IPC client");
                 while let Some(req) = rx.next().await {
-                    let req = req.context("Error while reading from IPC client")?;
+                    let req = req.expect("Error while reading from IPC client");
                     ensure!(req == IpcClientMsg::Reconnect);
                     tx.send(&IpcServerMsg::OnTunnelReady)
                         .await
-                        .context("Error while writing to IPC client")?;
+                        .expect("Error while writing to IPC client");
                 }
                 tracing::info!("Client disconnected");
             }
@@ -226,12 +226,12 @@ mod tests {
                 for _ in 0..10 {
                     tx.send(&req)
                         .await
-                        .context("Error while writing to IPC server")?;
+                        .expect("Error while writing to IPC server");
                     let resp = rx
                         .next()
                         .await
-                        .context("Should have gotten a reply from the IPC server")?
-                        .context("Error while reading from IPC server")?;
+                        .expect("Should have gotten a reply from the IPC server")
+                        .expect("Error while reading from IPC server");
                     ensure!(resp == IpcServerMsg::OnTunnelReady);
                 }
             }

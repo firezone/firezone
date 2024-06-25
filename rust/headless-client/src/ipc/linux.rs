@@ -7,16 +7,15 @@ pub(crate) struct Server {
     listener: UnixListener,
 }
 
-/// Opaque wrapper around the client's half of a platform-specific IPC stream
+/// Alias for the client's half of a platform-specific IPC stream
 pub type ClientStream = UnixStream;
 
-/// Opaque wrapper around the server's half of a platform-specific IPC stream
+/// Alias for the server's half of a platform-specific IPC stream
 ///
 /// On Windows `ClientStream` and `ServerStream` differ
 pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
-#[allow(clippy::unused_async)]
 #[allow(clippy::wildcard_enum_match_arm)]
 pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
