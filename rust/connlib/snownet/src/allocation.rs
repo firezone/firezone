@@ -2512,14 +2512,14 @@ mod tests {
 
         fn with_binding_response(mut self, srflx_addr: SocketAddr) -> Self {
             let binding = self.next_message().unwrap();
-            self.handle_test_input_ip4(&binding_response(&binding, srflx_addr), Instant::now());
+            self.handle_test_input_ip4(&binding_response(&binding, srflx_addr), self.last_now);
 
             self
         }
 
         fn with_allocate_response(mut self, relay_addrs: &[SocketAddr]) -> Self {
             let allocate = self.next_message().unwrap();
-            self.handle_test_input_ip4(&allocate_response(&allocate, relay_addrs), Instant::now());
+            self.handle_test_input_ip4(&allocate_response(&allocate, relay_addrs), self.last_now);
 
             self
         }
