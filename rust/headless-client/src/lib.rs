@@ -82,6 +82,10 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    // Needed to preserve CLI arg compatibility
+    // TODO: Remove when we can break CLI compatibility for headless Clients
+    _command: Option<String>,
+
     #[command(flatten)]
     common: CliCommon,
 
@@ -165,14 +169,7 @@ struct CliCommon {
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
 }
-/*
-#[derive(clap::Subcommand, Clone, Copy)]
-enum Cmd {
-    #[command(hide = true)]
-    IpcService,
-    Standalone,
-}
-*/
+
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcClientMsg {
     Connect { api_url: String, token: String },
