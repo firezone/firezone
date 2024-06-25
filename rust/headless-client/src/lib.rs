@@ -82,11 +82,6 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    // Needed to preserve CLI arg compatibility
-    // TODO: Remove
-    #[command(subcommand)]
-    _command: Option<Cmd>,
-
     #[command(flatten)]
     common: CliCommon,
 
@@ -143,7 +138,7 @@ struct CliIpcService {
     common: CliCommon,
 }
 
-#[derive(clap::Subcommand, Debug, PartialEq, Eq)]
+#[derive(clap::Subcommand)]
 enum CmdIpc {
     /// Needed to test the IPC service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
@@ -170,14 +165,14 @@ struct CliCommon {
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
 }
-
+/*
 #[derive(clap::Subcommand, Clone, Copy)]
 enum Cmd {
     #[command(hide = true)]
     IpcService,
     Standalone,
 }
-
+*/
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcClientMsg {
     Connect { api_url: String, token: String },
@@ -753,11 +748,11 @@ mod tests {
 
         let actual =
             CliIpcService::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
-        assert_eq!(actual.command, CmdIpc::RunDebug);
+        assert!(matches!(actual.command, CmdIpc::RunDebug));
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = CliIpcService::parse_from([exe_name, "run"]);
-        assert_eq!(actual.command, CmdIpc::Run);
+        assert!(matches!(actual.command, CmdIpc::Run));
 
         Ok(())
     }
