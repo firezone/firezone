@@ -1,6 +1,6 @@
 //! Implementation, Linux-specific
 
-use super::{CliCommon, SignalKind, TOKEN_ENV_KEY};
+use super::{SignalKind, TOKEN_ENV_KEY};
 use anyhow::{bail, Result};
 use futures::future::{select, Either};
 use std::{
