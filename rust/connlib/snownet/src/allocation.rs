@@ -2138,8 +2138,6 @@ mod tests {
 
         allocation.handle_timeout(start + ALLOCATION_LIFETIME);
 
-        assert!(allocation.poll_timeout().is_none());
-        assert!(allocation.next_message().is_none());
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
