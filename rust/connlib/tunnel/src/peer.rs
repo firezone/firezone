@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
+use connlib_shared::messages::gateway::ResourceDescription;
 use connlib_shared::messages::{
     gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
 };
@@ -170,9 +170,10 @@ impl ClientOnGateway {
         let old_ips: HashSet<&IpAddr> =
             HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
                 (state.name == name && state.resource_id == resource_id)
-                    .then_some(&state.resolved_ip)
+                    .then_some(state.resolved_ip.as_ref()?)
             }));
         let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
+
         if old_ips == new_ips {
             return;
         }
@@ -196,7 +197,7 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    fn assign_translations(
+    pub(crate) fn assign_translations(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
@@ -204,6 +205,23 @@ impl ClientOnGateway {
         proxy_ips: Vec<IpAddr>,
         now: Instant,
     ) {
+        if mapped_ips.is_empty() {
+            for ip in proxy_ips {
+                self.permanent_translations.insert(
+                    ip,
+                    TranslationState {
+                        resolved_ip: None,
+                        resource_id,
+                        name: name.clone(),
+                        last_response: now,
+                        slated_for_refresh: true,
+                    },
+                );
+            }
+
+            return;
+        }
+
         let mapped_ipv4 = mapped_ipv4(mapped_ips);
         let mapped_ipv6 = mapped_ipv6(mapped_ips);
 
@@ -225,7 +243,7 @@ impl ClientOnGateway {
             self.permanent_translations.insert(
                 *proxy_ip,
                 TranslationState {
-                    resolved_ip: real_ip,
+                    resolved_ip: Some(real_ip),
                     resource_id,
                     name: name.clone(),
                     last_response: now,
@@ -233,29 +251,6 @@ impl ClientOnGateway {
                 },
             );
         }
-    }
-
-    pub(crate) fn assign_proxies(
-        &mut self,
-        resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
-        domain_ips: Option<(DomainName, Vec<IpAddr>)>,
-        now: Instant,
-    ) -> connlib_shared::Result<()> {
-        match (resource, domain_ips) {
-            (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
-                if resource_ips.is_empty() {
-                    tracing::debug!("Client hasn't sent us any proxy IPs, skipping IP translation");
-                    return Ok(());
-                }
-
-                self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
-            }
-            (ResourceDescription::Cidr(_), None) => {}
-            _ => {
-                return Err(connlib_shared::Error::InvalidResource);
-            }
-        }
-        Ok(())
     }
 
     pub(crate) fn is_emptied(&self) -> bool {
@@ -276,38 +271,50 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        let expired_translations = self
+        let conn_id = self.id;
+
+        // FIXME: This is O(n^2) with n being the number of proxy IPs (8 per resolved domain).
+        let events = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.slated_for_refresh);
-        let mut for_refresh = HashSet::new();
-        for (proxy_ip, expired_state) in expired_translations {
-            if self
-                .permanent_translations
-                .values()
-                .filter_map(|state| {
-                    (state.resource_id == expired_state.resource_id
-                        && state.name == expired_state.name)
-                        .then_some((state.last_response, state.slated_for_refresh))
-                })
-                .all(|(last_seen, slated_for_refresh)| {
-                    slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
-                })
-            {
-                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.resolved_ip, %proxy_ip , "Refreshing DNS");
+            .filter(|(_, state)| state.should_refresh(now))
+            .filter(|(_, expired_state)| {
+                Self::all_ips_due_for_refresh(&self.permanent_translations, &expired_state.name, expired_state.resource_id, now)
+            })
+            .map(|(proxy_ip, state)| (proxy_ip, state.resource_id, &state.name, state.resolved_ip))
+            .unique()
+            .map(|(proxy_ip, resource_id, domain, resolved_ip)| {
+                tracing::debug!(%domain, %conn_id, %resource_id, resolved_ip = ?resolved_ip, %proxy_ip , "Refreshing DNS");
 
-                for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
-            }
-        }
+                GatewayEvent::RefreshDns {
+                    name: domain.clone(),
+                    conn_id,
+                    resource_id,
+                }},
+            );
+        self.buffered_events.extend(events);
 
-        for (name, resource_id) in for_refresh {
-            self.buffered_events.push_back(GatewayEvent::RefreshDns {
-                name,
-                conn_id: self.id,
-                resource_id,
-            });
-        }
         self.nat_table.handle_timeout(now);
+    }
+
+    /// Checks if all IPs for a given resource and domain are due for a refresh.
+    ///
+    /// This ensures we don't refresh IPs that are actively in use by a client and thus break their connection.
+    fn all_ips_due_for_refresh(
+        translations: &HashMap<IpAddr, TranslationState>,
+        name: &DomainName,
+        resource: ResourceId,
+        now: Instant,
+    ) -> bool {
+        translations
+            .values()
+            .filter_map(|state| {
+                (state.resource_id == resource && state.name == name)
+                    .then_some((state.last_response, state.slated_for_refresh))
+            })
+            .all(|(last_seen, slated_for_refresh)| {
+                slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
+            })
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
@@ -385,13 +392,19 @@ impl ClientOnGateway {
             return Ok(packet);
         };
 
+        let Some(resolved_ip) = state.resolved_ip else {
+            tracing::debug!(proxy_ip = %packet.destination(), "Proxy IP has not yet been resolved");
+
+            state.slated_for_refresh = true; // We are trying to access a resource via a proxy IP that hasn't been resolved yet: Refresh DNS.
+
+            return Ok(packet);
+        };
+
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
+                .translate_outgoing(packet.as_immutable(), resolved_ip, now)?;
 
-        if now.duration_since(state.last_response) >= Duration::from_secs(30) {
-            state.slated_for_refresh = true;
-        }
+        state.record_outgoing_traffic(now);
 
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, real_ip)
@@ -431,13 +444,10 @@ impl ClientOnGateway {
         let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
             return Ok(None);
         };
-        let state = self
-            .permanent_translations
+        self.permanent_translations
             .get_mut(&ip)
-            .expect("inconsistent state");
-
-        state.last_response = now;
-        state.slated_for_refresh = false;
+            .expect("inconsistent state")
+            .record_incoming_traffic(now);
 
         packet.set_destination_protocol(proto.value());
         packet.update_checksum();
@@ -470,8 +480,7 @@ impl ClientOnGateway {
             .longest_match(dst)
             .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
         {
-            tracing::warn!(%dst, "unallowed packet");
-            return Err(connlib_shared::Error::InvalidDst);
+            return Err(connlib_shared::Error::Filtered(dst));
         };
 
         Ok(())
@@ -523,10 +532,27 @@ struct TranslationState {
     /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
     name: DomainName,
     /// The IP we have resolved for the domain.
-    resolved_ip: IpAddr,
+    resolved_ip: Option<IpAddr>,
     /// When we've last seen a packet from the resolved IP.
     last_response: Instant,
     slated_for_refresh: bool,
+}
+
+impl TranslationState {
+    fn should_refresh(&self, now: Instant) -> bool {
+        self.slated_for_refresh || now.duration_since(self.last_response) > Duration::from_secs(30)
+    }
+
+    fn record_outgoing_traffic(&mut self, now: Instant) {
+        if now.duration_since(self.last_response) >= Duration::from_secs(30) {
+            self.slated_for_refresh = true;
+        }
+    }
+
+    fn record_incoming_traffic(&mut self, now: Instant) {
+        self.last_response = now;
+        self.slated_for_refresh = false;
+    }
 }
 
 /// The state of one client on a gateway.
@@ -610,7 +636,7 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
         assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
@@ -618,11 +644,11 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
         assert!(matches!(
             peer.ensure_allowed_dst(&udp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
     }
 
@@ -884,7 +910,7 @@ mod proptests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
     }
 
@@ -946,7 +972,7 @@ mod proptests {
         assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(matches!(
             peer.ensure_allowed_dst(&packet_rejected),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::Filtered(..))
         ));
     }
 

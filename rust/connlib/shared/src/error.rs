@@ -50,9 +50,8 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Invalid destination for packet
-    #[error("Invalid dest address")]
-    InvalidDst,
+    #[error("Filter engine disallowed packet to {0}")]
+    Filtered(IpAddr),
     /// Exhausted nat table
     #[error("exhausted nat")]
     ExhaustedNat,

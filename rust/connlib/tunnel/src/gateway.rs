@@ -48,10 +48,7 @@ where
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         relays: Vec<Relay>,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
-    ) -> Result<Answer> {
+    ) -> Answer {
         self.role_state.accept(
             client_id,
             snownet::Offer {
@@ -66,9 +63,6 @@ where
             ipv6,
             stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
             turn(&relays),
-            domain,
-            expires_at,
-            resource,
             Instant::now(),
         )
     }
@@ -241,43 +235,21 @@ impl GatewayState {
         ipv6: Ipv6Addr,
         stun_servers: HashSet<SocketAddr>,
         turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
-    ) -> Result<Answer> {
-        match (&domain, &resource) {
-            (Some((domain, _)), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
-            _ => {}
-        }
-
+    ) -> Answer {
         let answer =
             self.node
                 .accept_connection(client_id, offer, client, stun_servers, turn_servers, now);
 
-        let mut peer = ClientOnGateway::new(client_id, ipv4, ipv6);
-
-        peer.add_resource(
-            resource.addresses(),
-            resource.id(),
-            resource.filters(),
-            expires_at,
-            domain.clone().map(|(n, _)| n),
+        self.peers.insert(
+            ClientOnGateway::new(client_id, ipv4, ipv6),
+            &[ipv4.into(), ipv6.into()],
         );
 
-        peer.assign_proxies(&resource, domain, now)?;
-
-        self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
-
-        Ok(Answer {
+        Answer {
             username: answer.credentials.username,
             password: answer.credentials.password,
-        })
+        }
     }
 
     pub fn refresh_translation(
@@ -303,22 +275,28 @@ impl GatewayState {
         domain: Option<(DomainName, Vec<IpAddr>)>,
         now: Instant,
     ) -> Result<()> {
-        match (&domain, &resource) {
-            (Some((domain, _)), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
-            _ => {}
-        }
-
         let Some(peer) = self.peers.get_mut(&client) else {
             return Err(Error::ControlProtocolError);
         };
 
-        peer.assign_proxies(&resource, domain.clone(), now)?;
+        match (&domain, &resource) {
+            (Some((domain, proxy_ips)), ResourceDescription::Dns(r)) if !proxy_ips.is_empty() => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
+                    return Err(Error::InvalidResource);
+                }
 
+                peer.assign_translations(domain.clone(), r.id, &r.addresses, proxy_ips.clone(), now)
+            }
+            (Some((domain, _)), ResourceDescription::Dns(r)) => {
+                if !crate::dns::is_subdomain(domain, &r.domain) {
+                    return Err(Error::InvalidResource);
+                }
+
+                tracing::debug!("Client hasn't sent us any proxy IPs, skipping IP translation");
+            }
+            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
+            _ => {}
+        }
         peer.add_resource(
             resource.addresses(),
             resource.id(),

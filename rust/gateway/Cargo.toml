@@ -33,7 +33,6 @@ dns-lookup = { workspace = true }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 either = "1"
 http-health-check = { workspace = true }
-static_assertions = "1.1.0"
 snownet = { workspace = true }
 
 [dev-dependencies]
