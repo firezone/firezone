@@ -63,11 +63,50 @@ resource "aws_route_table_association" "private" {
 resource "aws_security_group" "instance" {
   vpc_id = aws_vpc.main.id
 
+  // allow SSH from other machines on the subnet
+  ingress {
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
+    cidr_blocks = [
+      aws_subnet.private.cidr_block,
+      aws_subnet.public.cidr_block
+    ]
+  }
+
   egress {
     from_port   = 0
     to_port     = 65535
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "instance_connect" {
+  name        = "allow egress to all vpc subnets"
+  description = "Security group to allow SSH to vpc subnets. Created for use with EC2 Instance Connect Endpoint."
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
+    cidr_blocks = [
+      var.private_subnet_cidr,
+      var.public_subnet_cidr
+    ]
+  }
+}
+
+resource "aws_ec2_instance_connect_endpoint" "instance_connect_endpoint" {
+  subnet_id          = aws_subnet.public.id
+  preserve_client_ip = false
+  security_group_ids = [
+    aws_security_group.instance_connect.id
+  ]
+
+  tags = {
+    Name = "firezone-gateway-instance-connect-endpoint"
   }
 }
 
