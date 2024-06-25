@@ -509,6 +509,8 @@ where
         // First, invalidate all candidates from relays that we should stop using.
         for id in to_remove {
             let Some(allocation) = self.allocations.remove(&id) else {
+                tracing::debug!(%id, "Cannot delete unknown allocation");
+
                 continue;
             };
 
