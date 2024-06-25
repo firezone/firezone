@@ -76,6 +76,8 @@ impl TunDeviceManager {
             .await
             .context("Failed to delete existing addresses")?;
 
+        self.routes.clear(); // Deleting the IPs clears all routes.
+
         handle
             .link()
             .set(index)
