@@ -1,9 +1,12 @@
 "use client";
 import { motion } from "framer-motion";
 import { isSafari } from "react-device-detect";
+import Image from "next/image";
 
 export default function SpeedChart() {
-  return (
+  return isSafari ? (
+    <Image src="/images/scale.png" width="656" height="464" alt="Speed Chart" />
+  ) : (
     <svg viewBox="0 0 656 464" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="656" height="464" rx="6" fill="#FCFCFC" />
       <path
@@ -20,7 +23,7 @@ export default function SpeedChart() {
         strokeWidth="8"
         strokeLinecap="round"
         strokeLinejoin="round"
-        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
+        initial={{ pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 2, type: "spring" }}
         viewport={{ once: true }}
@@ -40,7 +43,7 @@ export default function SpeedChart() {
         strokeLinejoin="round"
       />
       <motion.circle
-        initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
+        initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ delay: 1.1, duration: 0.2, type: "spring" }}
         viewport={{ once: true }}
@@ -50,7 +53,7 @@ export default function SpeedChart() {
         fill="#FF7300"
       />
       <motion.circle
-        initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
+        initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.2, type: "spring" }}
         viewport={{ once: true }}
@@ -60,7 +63,7 @@ export default function SpeedChart() {
         fill="#FF7300"
       />
       <motion.circle
-        initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
+        initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ delay: 1.35, duration: 0.2, type: "spring" }}
         viewport={{ once: true }}
@@ -70,7 +73,7 @@ export default function SpeedChart() {
         fill="#FF7300"
       />
       <motion.circle
-        initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
+        initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ delay: 1.5, duration: 0.2, type: "spring" }}
         viewport={{ once: true }}
@@ -80,7 +83,7 @@ export default function SpeedChart() {
         fill="#FF7300"
       />
       <motion.circle
-        initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
+        initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         transition={{ delay: 1.6, duration: 0.2, type: "spring" }}
         viewport={{ once: true }}
