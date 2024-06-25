@@ -6,7 +6,7 @@ variable "base_ami" {
 variable "instance_type" {
   description = "The instance type"
   type        = string
-  default     = "t2.micro"
+  default     = "t3.nano"
 }
 
 variable "desired_capacity" {
