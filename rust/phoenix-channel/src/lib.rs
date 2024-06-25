@@ -64,16 +64,9 @@ enum State {
 impl State {
     fn connect(url: Secret<LoginUrl>, user_agent: String) -> Self {
         Self::Connecting(Box::pin(async move {
-            let (stream, _) = connect_async_with_config(
-                make_request(url, user_agent),
-                Some(WebSocketConfig {
-                    write_buffer_size: 0,
-                    ..WebSocketConfig::default()
-                }),
-                true,
-            )
-            .await
-            .map_err(InternalError::WebSocket)?;
+            let (stream, _) = connect_async_with_config(make_request(url, user_agent), None, true)
+                .await
+                .map_err(InternalError::WebSocket)?;
 
             Ok(stream)
         }))
@@ -532,6 +525,18 @@ where
                 }
                 Poll::Ready(Err(MissedLastHeartbeat {})) => {
                     self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            // Priority 4: Flush out.
+            match stream.poll_flush_unpin(cx) {
+                Poll::Ready(Ok(())) => {
+                    tracing::trace!("Flushed websocket");
+                }
+                Poll::Ready(Err(e)) => {
+                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
