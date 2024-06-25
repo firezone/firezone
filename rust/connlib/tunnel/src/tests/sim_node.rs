@@ -25,6 +25,8 @@ pub(crate) struct SimNode<ID, S> {
     pub(crate) ip4_socket: Option<SocketAddrV4>,
     pub(crate) ip6_socket: Option<SocketAddrV6>,
 
+    pub(crate) old_sockets: Vec<SocketAddr>,
+
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
 
@@ -48,6 +50,7 @@ impl<ID, S> SimNode<ID, S> {
             tunnel_ip4,
             tunnel_ip6,
             span: Span::none(),
+            old_sockets: Default::default(),
         }
     }
 }
@@ -65,6 +68,7 @@ where
             ip6_socket: self.ip6_socket,
             tunnel_ip4: self.tunnel_ip4,
             tunnel_ip6: self.tunnel_ip6,
+            old_sockets: self.old_sockets.clone(),
             span,
         }
     }
@@ -111,6 +115,31 @@ impl SimNode<ClientId, ClientState> {
         self.span.in_scope(|| {
             self.state.remove_resources(&[resource]);
         })
+    }
+
+    pub(crate) fn roam(
+        &mut self,
+        ip4_socket: Option<SocketAddrV4>,
+        ip6_socket: Option<SocketAddrV6>,
+        now: Instant,
+    ) {
+        // 1. Remember what the current sockets were.
+        self.old_sockets.extend(self.ip4_socket.map(SocketAddr::V4));
+        self.old_sockets.extend(self.ip6_socket.map(SocketAddr::V6));
+
+        // 2. Update to the new sockets.
+        self.ip4_socket = ip4_socket;
+        self.ip6_socket = ip6_socket;
+
+        // 3. Ensure our new sockets aren't present in old sockets (a client should be able to roam "back" to a previous network interface).
+        if let Some(s4) = self.ip4_socket.map(SocketAddr::V4) {
+            self.old_sockets.retain(|s| s != &s4);
+        }
+        if let Some(s6) = self.ip6_socket.map(SocketAddr::V6) {
+            self.old_sockets.retain(|s| s != &s6);
+        }
+
+        self.state.reconnect(now);
     }
 }
 
@@ -164,6 +193,7 @@ impl<ID: fmt::Debug, S: fmt::Debug> fmt::Debug for SimNode<ID, S> {
             .field("ip6_socket", &self.ip6_socket)
             .field("tunnel_ip4", &self.tunnel_ip4)
             .field("tunnel_ip6", &self.tunnel_ip6)
+            .field("old_sockets", &self.old_sockets)
             .finish()
     }
 }
