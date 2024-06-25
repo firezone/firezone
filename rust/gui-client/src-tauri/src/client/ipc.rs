@@ -2,7 +2,10 @@ use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::{ipc::{self, Error}, IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{
+    ipc::{self, Error},
+    IpcClientMsg, IpcServerMsg,
+};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, sync::Arc};
