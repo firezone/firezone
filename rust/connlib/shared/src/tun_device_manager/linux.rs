@@ -117,7 +117,6 @@ impl TunDeviceManager {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
@@ -125,9 +124,13 @@ impl TunDeviceManager {
             .chain(ipv6.into_iter().map(IpNetwork::from))
             .collect();
         if new_routes == self.routes {
+            tracing::debug!("Routes are unchanged");
+
             return Ok(());
         }
-        tracing::info!(?new_routes, "set_routes");
+
+        tracing::info!(?new_routes, "Setting new routes");
+
         let handle = &self.connection.handle;
 
         let index = handle
