@@ -389,6 +389,19 @@ where
                         match stream.start_send_unpin(Message::Text(message.clone())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire", to="portal", %message);
+
+                                match stream.poll_flush_unpin(cx) {
+                                    Poll::Ready(Ok(())) => {
+                                        tracing::trace!("Flushed websocket");
+                                    }
+                                    Poll::Ready(Err(e)) => {
+                                        self.reconnect_on_transient_error(
+                                            InternalError::WebSocket(e),
+                                        );
+                                        continue;
+                                    }
+                                    Poll::Pending => {}
+                                }
                             }
                             Err(e) => {
                                 self.pending_messages.push_front(message);
@@ -525,18 +538,6 @@ where
                 }
                 Poll::Ready(Err(MissedLastHeartbeat {})) => {
                     self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            // Priority 4: Flush out.
-            match stream.poll_flush_unpin(cx) {
-                Poll::Ready(Ok(())) => {
-                    tracing::trace!("Flushed websocket");
-                }
-                Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
                     continue;
                 }
                 Poll::Pending => {}
