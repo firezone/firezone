@@ -913,7 +913,17 @@ impl ClientState {
                     self.stub_resolver.add_resource(dns);
                 }
                 ResourceDescription::Cidr(cidr) => {
-                    self.cidr_resources.insert(cidr.address, cidr.clone());
+                    let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+
+                    match existing {
+                        Some(existing) if existing.id != cidr.id => {
+                            tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
+                        }
+                        Some(_) => {}
+                        None => {
+                            tracing::info!(address = %cidr.address, name = %cidr.name, "Activating CIDR resource");
+                        }
+                    }
                 }
             }
 
@@ -927,7 +937,14 @@ impl ClientState {
         for id in ids {
             self.awaiting_connection_details.remove(id);
             self.stub_resolver.remove_resource(*id);
-            self.cidr_resources.retain(|_, r| r.id != *id);
+            self.cidr_resources.retain(|_, r| {
+                if r.id == *id {
+                    tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
+                    return false;
+                }
+
+                true
+            });
 
             self.resource_ids.remove(id);
 
@@ -960,8 +977,6 @@ impl ClientState {
                 // TODO: should we have a Node::remove_connection?
             }
         }
-
-        tracing::debug!("Resources removed")
     }
 
     fn update_dns_mapping(&mut self) -> bool {

@@ -111,12 +111,24 @@ impl StubResolver {
     }
 
     pub(crate) fn add_resource(&mut self, resource: &ResourceDescriptionDns) {
-        self.dns_resources
+        let existing = self
+            .dns_resources
             .insert(resource.address.clone(), resource.clone());
+
+        if existing.is_none() {
+            tracing::info!(address = %resource.address, "Activating DNS resource");
+        }
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|_, r| r.id != id);
+        self.dns_resources.retain(|_, r| {
+            if r.id == id {
+                tracing::info!(address = %r.address, "Deactivating DNS resource");
+                return false;
+            }
+
+            true
+        });
     }
 
     fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
