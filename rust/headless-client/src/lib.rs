@@ -76,7 +76,8 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 struct Cli {
     // Needed to preserve CLI arg compatibility
     // TODO: Remove when we can break CLI compatibility for headless Clients
-    _command: Option<String>,
+    #[command(subcommand)]
+    _command: Option<Cmd>,
 
     #[command(flatten)]
     common: CliCommon,
@@ -135,6 +136,13 @@ struct CliCommon {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
+}
+
+#[derive(clap::Subcommand, Clone, Copy)]
+enum Cmd {
+    #[command(hide = true)]
+    IpcService,
+    Standalone,
 }
 
 enum InternalServerMsg {
