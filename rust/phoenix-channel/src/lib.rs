@@ -131,6 +131,8 @@ pub enum Error {
     TokenExpired,
     #[error("max retries reached")]
     MaxRetriesReached,
+    #[error("login failed")]
+    LoginFailed,
 }
 
 impl Error {
@@ -139,6 +141,7 @@ impl Error {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
             Error::MaxRetriesReached => false,
+            Error::LoginFailed => false,
         }
     }
 }
@@ -221,6 +224,8 @@ where
         reconnect_backoff: ExponentialBackoff,
     ) -> Self {
         let next_request_id = Arc::new(AtomicU64::new(0));
+
+        tracing::debug!(host = %url.expose_secret().host(), %user_agent, "Connecting to portal");
 
         Self {
             reconnect_backoff,
@@ -435,6 +440,12 @@ where
                             continue;
                         }
                         (Payload::Reply(Reply::Error { reason }), Some(req_id)) => {
+                            if message.topic == self.login
+                                && self.pending_join_requests.contains(&req_id)
+                            {
+                                return Poll::Ready(Err(Error::LoginFailed));
+                            }
+
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id,
