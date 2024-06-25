@@ -618,17 +618,23 @@ defmodule API.Client.Channel do
   end
 
   defp select_gateway_version_requirement(client) do
-    gateway_version_requirement =
-      Enum.find_value(
-        @gateway_compatibility,
-        fn {client_version_requirement, gateway_version_requirement} ->
-          if Version.match?(client.last_seen_version, client_version_requirement) do
-            gateway_version_requirement
-          end
-        end
-      )
+    case Version.parse(client.last_seen_version) do
+      {:ok, _version} ->
+        gateway_version_requirement =
+          Enum.find_value(
+            @gateway_compatibility,
+            fn {client_version_requirement, gateway_version_requirement} ->
+              if Version.match?(client.last_seen_version, client_version_requirement) do
+                gateway_version_requirement
+              end
+            end
+          )
 
-    gateway_version_requirement || "> 0.0.0"
+        gateway_version_requirement || "> 0.0.0"
+
+      :error ->
+        "> 0.0.0"
+    end
   end
 
   defp filter_compatible_gateways(gateways, gateway_version_requirement) do
