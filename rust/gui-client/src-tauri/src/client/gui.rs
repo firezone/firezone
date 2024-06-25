@@ -46,6 +46,8 @@ pub(crate) use os::set_autostart;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
+const TRAY_ICON_TOOLTIP: &str = "Firezone";
+
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
 /// Note that this never gets Dropped because of
@@ -86,7 +88,9 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
+    let tray = SystemTray::new()
+        .with_menu(system_tray_menu::signed_out())
+        .with_tooltip(TRAY_ICON_TOOLTIP);
 
     tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
@@ -647,10 +651,10 @@ impl Controller {
 
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&self) -> Result<()> {
-        Ok(self
-            .app
-            .tray_handle()
-            .set_menu(self.build_system_tray_menu())?)
+        let tray = self.app.tray_handle();
+        tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
+        tray.set_menu(self.build_system_tray_menu())?;
+        Ok(())
     }
 
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
