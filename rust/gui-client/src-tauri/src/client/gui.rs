@@ -88,8 +88,10 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
+    // We can't call `refresh_system_tray_menu` yet because `Controller`
+    // is built inside Tauri's setup
     let tray = SystemTray::new()
-        .with_menu(system_tray_menu::signed_out())
+        .with_menu(system_tray_menu::loading())
         .with_tooltip(TRAY_ICON_TOOLTIP);
 
     tracing::info!("Setting up Tauri app instance...");
@@ -437,7 +439,6 @@ struct Session {
 }
 
 impl Controller {
-    // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
         if self.session.is_some() {
@@ -719,6 +720,7 @@ async fn run_controller(
         controller.start_session(token).await?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
+        controller.refresh_system_tray_menu()?;
     }
 
     if !ran_before::get().await? {

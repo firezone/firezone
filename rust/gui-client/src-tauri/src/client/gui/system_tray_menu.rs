@@ -46,6 +46,10 @@ fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
     submenu.item(Event::Url(url), address_description)
 }
 
+pub(crate) fn loading() -> SystemTrayMenu {
+    SystemTrayMenu::new().disabled("Loading...")
+}
+
 pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .disabled(format!("Signed in as {user_name}"))
