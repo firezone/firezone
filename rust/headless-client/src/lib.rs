@@ -416,6 +416,7 @@ impl Callbacks for CallbackHandler {
         self.cb_tx
             .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");
+
         None
     }
 
