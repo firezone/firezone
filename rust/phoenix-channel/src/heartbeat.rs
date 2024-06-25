@@ -49,7 +49,6 @@ impl Heartbeat {
 
     pub fn reset(&mut self) {
         self.pending = None;
-        self.interval.reset();
     }
 
     pub fn poll(
