@@ -273,7 +273,7 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.no_response_in_30s(now));
+            .filter(|(_, state)| state.no_response_in_30s(now) && state.is_used(now));
 
         let mut for_refresh = HashSet::new();
 
