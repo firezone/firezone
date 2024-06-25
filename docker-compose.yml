@@ -342,7 +342,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
-      FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAF3gLBONAWIAAVGA.DCT0Qv80qzF5OQ6CccLKXPLgzC3Rzx5DqzDAh9mWAww"
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAI0Qi02QAWIAAVGA.emd2izXZdGngSMDruiTNgwRYbNtsVLYf_fouNyoKv8Q"
       RUST_LOG: ${RUST_LOG:-phoenix_channel=trace,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,phoenix_channel=debug,boringtun=debug,snownet=debug,str0m=debug,info}
       FIREZONE_ENABLE_MASQUERADE: 1
       FIREZONE_API_URL: ws://api:8081
