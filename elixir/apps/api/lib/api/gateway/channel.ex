@@ -280,6 +280,8 @@ defmodule API.Gateway.Channel do
         attributes: %{
           relay_id: relay_id
         } do
+        :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
+
         relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
         {:ok, relays} = select_relays(socket)
 
