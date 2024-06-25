@@ -2122,7 +2122,7 @@ mod tests {
     }
 
     #[test]
-    fn expires_allocation_invalidates_candidaets() {
+    fn expires_allocation_invalidates_candidates() {
         let start = Instant::now();
         let mut allocation = Allocation::for_test_ip4(start).with_binding_response(PEER1);
 
