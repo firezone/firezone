@@ -48,7 +48,7 @@ pub mod platform;
 pub mod platform;
 
 mod ipc_service;
-pub use ipc_service::{ipc, run_only_ipc_service, IpcClientMsg};
+pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 
 use dns_control::DnsController;
 

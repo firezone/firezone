@@ -11,7 +11,7 @@ use tokio::signal::unix::{signal, Signal, SignalKind as TokioSignalKind};
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
-    let _handle = crate::setup_ipc_service_logging(cli.log_dir)?;
+    let _handle = crate::setup_logging(cli.log_dir)?;
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }

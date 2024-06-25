@@ -36,16 +36,16 @@ const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
-struct CliIpcService {
+struct Cli {
     #[command(subcommand)]
-    command: CmdIpc,
+    command: Cmd,
 
     #[command(flatten)]
     common: CliCommon,
 }
 
 #[derive(clap::Subcommand)]
-enum CmdIpc {
+enum Cmd {
     /// Needed to test the IPC service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
     Install,
@@ -53,14 +53,14 @@ enum CmdIpc {
     RunDebug,
 }
 
-impl Default for CmdIpc {
+impl Default for Cmd {
     fn default() -> Self {
         Self::Run
     }
 }
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub enum IpcClientMsg {
+pub enum ClientMsg {
     Connect { api_url: String, token: String },
     Disconnect,
     Reconnect,
@@ -79,11 +79,11 @@ pub fn run_only_ipc_service() -> Result<()> {
         std::env::remove_var(TOKEN_ENV_KEY);
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
-    let cli = CliIpcService::try_parse()?;
+    let cli = Cli::try_parse()?;
     match cli.command {
-        CmdIpc::Install => platform::install_ipc_service(),
-        CmdIpc::Run => platform::run_ipc_service(cli.common),
-        CmdIpc::RunDebug => run_debug_ipc_service(),
+        Cmd::Install => platform::install_ipc_service(),
+        Cmd::Run => platform::run_ipc_service(cli.common),
+        Cmd::RunDebug => run_debug_ipc_service(),
     }
 }
 
@@ -141,7 +141,7 @@ struct Handler {
 
 enum Event {
     Callback(InternalServerMsg),
-    Ipc(IpcClientMsg),
+    Ipc(ClientMsg),
 }
 
 impl Handler {
@@ -231,9 +231,9 @@ impl Handler {
         Ok(())
     }
 
-    fn handle_ipc_msg(&mut self, msg: IpcClientMsg) -> Result<()> {
+    fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
-            IpcClientMsg::Connect { api_url, token } => {
+            ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 assert!(self.connlib.is_none());
                 let device_id =
@@ -262,19 +262,19 @@ impl Handler {
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);
             }
-            IpcClientMsg::Disconnect => {
+            ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
                     connlib.disconnect();
                 } else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }
             }
-            IpcClientMsg::Reconnect => self
+            ClientMsg::Reconnect => self
                 .connlib
                 .as_mut()
                 .context("No connlib session")?
                 .reconnect(),
-            IpcClientMsg::SetDns(v) => self
+            ClientMsg::SetDns(v) => self
                 .connlib
                 .as_mut()
                 .context("No connlib session")?
@@ -288,9 +288,7 @@ impl Handler {
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-fn setup_ipc_service_logging(
-    log_dir: Option<PathBuf>,
-) -> Result<connlib_client_shared::file_logger::Handle> {
+fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file_logger::Handle> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_dir = log_dir.map_or_else(
         || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
@@ -337,7 +335,7 @@ pub(crate) fn get_log_filter() -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CliIpcService, CmdIpc};
+    use super::{Cli, Cmd};
     use clap::Parser;
     use std::path::PathBuf;
 
@@ -347,12 +345,11 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-client-ipc";
 
-        let actual =
-            CliIpcService::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
-        assert!(matches!(actual.command, CmdIpc::RunDebug));
+        let actual = Cli::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
+        assert!(matches!(actual.command, Cmd::RunDebug));
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = CliIpcService::parse_from([exe_name, "run"]);
-        assert!(matches!(actual.command, CmdIpc::Run));
+        let actual = Cli::parse_from([exe_name, "run"]);
+        assert!(matches!(actual.command, Cmd::Run));
     }
 }
