@@ -114,15 +114,19 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     let (sender, mut receiver) = mpsc::channel::<Interface>(10);
 
     let mut tun_device = TunDeviceManager::new()?;
-    tun_device
-        .set_routes(
-            vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
-            vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
-        )
-        .await?;
 
     let update_device_task = async move {
         while let Some(next_interface) = receiver.next().await {
+            if let Err(e) = tun_device
+                .set_routes(
+                    vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
+                    vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
+                )
+                .await
+            {
+                tracing::warn!("Failed to set routes: {e}");
+            };
+
             if let Err(e) = tun_device
                 .set_ips(next_interface.ipv4, next_interface.ipv6)
                 .await

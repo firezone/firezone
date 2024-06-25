@@ -235,6 +235,9 @@ impl Eventloop {
                 };
                 self.tunnel.update_relays(HashSet::default(), init.relays);
 
+                // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
+                // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
+                // That requires more refactoring of other platforms, so for now, we need to rely on the `Tunnel` interface and cause the side-effect separately via the `TunDeviceManager`.
                 if let Err(e) = self.tun_device_channel.try_send(init.interface) {
                     tracing::warn!("Failed to set interface: {e}");
                 }
