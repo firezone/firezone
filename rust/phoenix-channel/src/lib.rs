@@ -20,7 +20,6 @@ use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async_with_config;
 use tokio_tungstenite::tungstenite::http::StatusCode;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{handshake::client::Request, Message},
