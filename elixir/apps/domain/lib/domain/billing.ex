@@ -161,7 +161,7 @@ defmodule Domain.Billing do
            ) do
       {:ok, account}
     else
-      {:ok, {status, body}} ->
+      {:error, {status, body}} ->
         :ok =
           Logger.error("Cannot update Stripe customer",
             status: status,
@@ -187,15 +187,6 @@ defmodule Domain.Billing do
            APIClient.fetch_customer(secret_key, customer_id) do
       {:ok, account_id}
     else
-      {:ok, params} ->
-        :ok =
-          Logger.info("Stripe customer does not have account_id in metadata",
-            customer_id: customer_id,
-            metadata: inspect(params["metadata"])
-          )
-
-        {:error, :customer_not_provisioned}
-
       {:ok, {status, body}} ->
         :ok =
           Logger.error("Cannot fetch Stripe customer",
@@ -204,6 +195,15 @@ defmodule Domain.Billing do
           )
 
         {:error, :retry_later}
+
+      {:ok, params} ->
+        :ok =
+          Logger.info("Stripe customer does not have account_id in metadata",
+            customer_id: customer_id,
+            metadata: inspect(params["metadata"])
+          )
+
+        {:error, :customer_not_provisioned}
 
       {:error, reason} ->
         :ok =
@@ -256,7 +256,7 @@ defmodule Domain.Billing do
     with {:ok, product} <- APIClient.fetch_product(secret_key, product_id) do
       {:ok, product}
     else
-      {:ok, {status, body}} ->
+      {:error, {status, body}} ->
         :ok =
           Logger.error("Cannot fetch Stripe product",
             status: status,

@@ -153,8 +153,6 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            version: 1.1.0
-            # mark:next-headless-version
             release_name: headless-client-1.1.0
           - package: firezone-relay
             artifact: firezone-relay
@@ -162,8 +160,6 @@ jobs:
           - package: firezone-gateway
             artifact: firezone-gateway
             image_name: gateway
-            # mark:next-gateway-version
-            version: 1.1.1
             # mark:next-gateway-version
             release_name: gateway-1.1.1
           - package: snownet-tests
@@ -202,9 +198,7 @@ jobs:
             PROFILE=""
           fi
 
-          # Override version by setting it inside cross container if it's provided
-          ${{ matrix.name.version && format('CROSS_CONTAINER_OPTS="--env FIREZONE_PACKAGE_VERSION={0}"', matrix.name.version) }} \
-            cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}

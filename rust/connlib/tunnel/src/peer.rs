@@ -1,8 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
-use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
 use connlib_shared::messages::{
@@ -16,7 +15,6 @@ use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
-use crate::client::IpProvider;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
@@ -110,8 +108,6 @@ impl AllowRules {
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
     pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
-
-    pub translations: BiMap<IpAddr, IpAddr>,
 }
 
 impl GatewayOnClient {
@@ -135,31 +131,7 @@ impl GatewayOnClient {
             allowed_ips.insert(*ip, resource.clone());
         }
 
-        GatewayOnClient {
-            id,
-            allowed_ips,
-            translations: Default::default(),
-        }
-    }
-
-    #[tracing::instrument(name = "translation", level = "debug", skip_all, fields(gateway = %self.id))]
-    pub fn get_or_assign_translation(
-        &mut self,
-        real_ip: &IpAddr,
-        ip_provider: &mut IpProvider,
-    ) -> Option<IpAddr> {
-        if let Some(proxy_ip) = self.translations.get_by_right(real_ip) {
-            tracing::debug!("Existing translation: {real_ip} -> {proxy_ip}");
-
-            return Some(*proxy_ip);
-        }
-
-        let proxy_ip = ip_provider.get_proxy_ip_for(real_ip)?;
-
-        tracing::debug!("New translation: {real_ip} -> {proxy_ip}");
-
-        self.translations.insert(proxy_ip, *real_ip);
-        Some(proxy_ip)
+        GatewayOnClient { id, allowed_ips }
     }
 }
 
@@ -252,13 +224,7 @@ impl ClientOnGateway {
 
             self.permanent_translations.insert(
                 *proxy_ip,
-                TranslationState {
-                    resolved_ip: real_ip,
-                    resource_id,
-                    name: name.clone(),
-                    last_response: now,
-                    slated_for_refresh: false,
-                },
+                TranslationState::new(resource_id, name.clone(), real_ip, now),
             );
         }
     }
@@ -307,22 +273,23 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.slated_for_refresh);
+            .filter(|(_, state)| state.no_response_in_30s(now));
+
         let mut for_refresh = HashSet::new();
+
         for (proxy_ip, expired_state) in expired_translations {
+            let domain = &expired_state.name;
+            let resource_id = expired_state.resource_id;
+            let resolved_ip = expired_state.resolved_ip;
+
+            // Only refresh DNS for a domain if all of the resolved IPs stop responding in order to not kill existing connections.
             if self
                 .permanent_translations
                 .values()
-                .filter_map(|state| {
-                    (state.resource_id == expired_state.resource_id
-                        && state.name == expired_state.name)
-                        .then_some((state.last_response, state.slated_for_refresh))
-                })
-                .all(|(last_seen, slated_for_refresh)| {
-                    slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
-                })
+                .filter(|state| state.resource_id == resource_id && state.name == domain)
+                .all(|state| state.no_response_in_30s(now))
             {
-                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.resolved_ip, %proxy_ip , "Refreshing DNS");
+                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
                 for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
             }
@@ -335,6 +302,9 @@ impl ClientOnGateway {
                 resource_id,
             });
         }
+
+        self.check_for_dead_ips(now);
+
         self.nat_table.handle_timeout(now);
     }
 
@@ -417,15 +387,13 @@ impl ClientOnGateway {
             self.nat_table
                 .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
 
-        if now.duration_since(state.last_response) >= Duration::from_secs(30) {
-            state.slated_for_refresh = true;
-        }
-
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, real_ip)
             .ok_or(connlib_shared::Error::FailedTranslation)?;
         packet.set_source_protocol(source_protocol.value());
         packet.update_checksum();
+
+        state.on_outgoing_traffic(now);
 
         Ok(packet)
     }
@@ -459,13 +427,11 @@ impl ClientOnGateway {
         let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
             return Ok(None);
         };
-        let state = self
-            .permanent_translations
-            .get_mut(&ip)
-            .expect("inconsistent state");
 
-        state.last_response = now;
-        state.slated_for_refresh = false;
+        self.permanent_translations
+            .get_mut(&ip)
+            .expect("inconsistent state")
+            .on_incoming_traffic(now);
 
         packet.set_destination_protocol(proto.value());
         packet.update_checksum();
@@ -480,7 +446,6 @@ impl ClientOnGateway {
         if !self.allowed_ips().contains(&packet.source()) {
             return Err(connlib_shared::Error::UnallowedPacket {
                 src: packet.source(),
-                allowed_ips: HashSet::from(self.allowed_ips()),
             });
         }
 
@@ -508,46 +473,44 @@ impl ClientOnGateway {
     pub fn id(&self) -> ClientId {
         self.id
     }
+
+    /// Check all [`TranslationState`]s for dead but used IPs.
+    ///
+    /// We don't want to be spamming this warning but it also shouldn't go unnoticed.
+    /// Thus, the strategy is to only print the log if:
+    /// - An IP has recently been used (we have seen outgoing traffic in the last 30s)
+    /// - An IP has not responded in the last 10s
+    fn check_for_dead_ips(&self, now: Instant) {
+        let mut dead_ips = BTreeMap::<DomainName, BTreeSet<IpAddr>>::new();
+
+        for state in self.permanent_translations.values() {
+            if state.is_used(now) && state.is_dead(now) {
+                dead_ips
+                    .entry(state.name.clone())
+                    .or_default()
+                    .insert(state.resolved_ip);
+            }
+        }
+
+        if !dead_ips.is_empty() {
+            tracing::warn!(
+                ?dead_ips,
+                "Dead IPs detected (never received any traffic); check your DNS configuration"
+            );
+        }
+    }
 }
 
 impl GatewayOnClient {
-    /// Transform a packet that arrived via the network for the TUN device.
-    pub(crate) fn transform_network_to_tun<'a>(
-        &mut self,
-        mut pkt: MutableIpPacket<'a>,
-    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
-        let addr = pkt.source();
-        let src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
-
-        if self.allowed_ips.longest_match(src).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket {
-                src,
-
-                allowed_ips: self
-                    .allowed_ips
-                    .iter()
-                    .map(|(ip, _)| ip.network_address())
-                    .collect(),
-            });
+    pub(crate) fn ensure_allowed_src(
+        &self,
+        pkt: &MutableIpPacket,
+    ) -> Result<(), connlib_shared::Error> {
+        if self.allowed_ips.longest_match(pkt.source()).is_none() {
+            return Err(connlib_shared::Error::UnallowedPacket { src: pkt.source() });
         }
 
-        pkt.set_src(src);
-        pkt.update_checksum();
-
-        Ok(pkt)
-    }
-
-    /// Transform a packet that arrvied on the TUN device for the network.
-    pub(crate) fn transform_tun_to_network<'a>(
-        &mut self,
-        mut packet: MutableIpPacket<'a>,
-    ) -> MutableIpPacket<'a> {
-        if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
-            packet.set_dst(*translated_ip);
-            packet.update_checksum();
-        }
-
-        packet
+        Ok(())
     }
 
     pub fn id(&self) -> GatewayId {
@@ -572,9 +535,72 @@ struct TranslationState {
     name: DomainName,
     /// The IP we have resolved for the domain.
     resolved_ip: IpAddr,
-    /// When we've last seen a packet from the resolved IP.
-    last_response: Instant,
-    slated_for_refresh: bool,
+
+    /// When we've last received a packet from the resolved IP.
+    ///
+    /// Initially set to `created_at`.
+    last_incoming: Instant,
+    /// When we've sent the first packet to the resolved IP.
+    ///
+    /// Initially set to `created_at`.
+    first_outgoing: Instant,
+    /// When we've last sent a packet to the resolved IP.
+    ///
+    /// Initially set to `created_at`.
+    last_outgoing: Instant,
+
+    /// When this translation state was created.
+    created_at: Instant,
+}
+
+impl TranslationState {
+    fn new(
+        resource_id: ResourceId,
+        name: DomainName,
+        resolved_ip: IpAddr,
+        created_at: Instant,
+    ) -> Self {
+        Self {
+            resource_id,
+            name,
+            resolved_ip,
+            last_incoming: created_at,
+            first_outgoing: created_at,
+            last_outgoing: created_at,
+            created_at,
+        }
+    }
+
+    /// We define a [`TranslationState`] as dead if we have seen outgoing traffic that is at least 10s old and _never_ received incoming traffic.
+    fn is_dead(&self, now: Instant) -> bool {
+        let sent_at_least_one_packet_10s_ago =
+            now.duration_since(self.first_outgoing) >= Duration::from_secs(10);
+        let received_no_packets = self.last_incoming == self.created_at;
+
+        sent_at_least_one_packet_10s_ago && received_no_packets
+    }
+
+    /// We define a [`TranslationState`] as used if we have seen outgoing traffic in the last 10s.
+    fn is_used(&self, now: Instant) -> bool {
+        now.duration_since(self.last_outgoing) <= Duration::from_secs(10)
+    }
+
+    fn no_response_in_30s(&self, now: Instant) -> bool {
+        now.duration_since(self.last_incoming) >= Duration::from_secs(30)
+    }
+
+    fn on_incoming_traffic(&mut self, now: Instant) {
+        self.last_incoming = now;
+    }
+
+    fn on_outgoing_traffic(&mut self, now: Instant) {
+        self.last_outgoing = now;
+
+        if self.first_outgoing > self.created_at {
+            return;
+        }
+        self.first_outgoing = now;
+    }
 }
 
 /// The state of one client on a gateway.
@@ -592,8 +618,8 @@ pub struct ClientOnGateway {
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{Ipv4Addr, Ipv6Addr},
-        time::Duration,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        time::{Duration, Instant},
     };
 
     use chrono::Utc;
@@ -603,7 +629,7 @@ mod tests {
     };
     use ip_network::Ipv4Network;
 
-    use super::ClientOnGateway;
+    use super::{ClientOnGateway, TranslationState};
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -672,6 +698,88 @@ mod tests {
             peer.ensure_allowed_dst(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
+    }
+
+    #[test]
+    fn initial_translation_state_is_not_dead() {
+        let now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        assert!(!state.is_dead(now))
+    }
+
+    #[test]
+    fn initial_translation_state_is_not_active_if_last_packet_was_more_than_30s_ago() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(31);
+
+        assert!(!state.is_used(now))
+    }
+
+    #[test]
+    fn initial_translation_state_is_active_if_last_packet_was_1s_ago() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(state.is_used(now))
+    }
+
+    #[test]
+    fn is_only_dead_if_initial_outgoing_traffic_is_at_least_10s_old() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(1);
+        state.on_outgoing_traffic(now);
+
+        assert!(
+            !state.is_dead(now),
+            "1 second after outgoing traffic is not yet dead"
+        );
+
+        now += Duration::from_secs(9);
+        state.on_outgoing_traffic(now);
+        assert!(
+            !state.is_dead(now),
+            "9 second after outgoing traffic is not yet dead"
+        );
+
+        now += Duration::from_secs(1);
+        state.on_outgoing_traffic(now);
+        assert!(
+            state.is_dead(now),
+            "10 second after outgoing traffic is not yet dead"
+        );
     }
 
     fn source_v4_addr() -> Ipv4Addr {

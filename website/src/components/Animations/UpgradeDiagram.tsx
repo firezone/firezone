@@ -1,5 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
+import { isSafari } from "react-device-detect";
 
 export default function UpgradeDiagram() {
   return (
@@ -10,7 +11,7 @@ export default function UpgradeDiagram() {
       viewBox="0 0 798 373"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      initial={{ opacity: 0 }}
+      initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 1.0, delay: 0.5, type: "tween" }}
@@ -165,7 +166,7 @@ export default function UpgradeDiagram() {
         strokeWidth="3"
         strokeLinejoin="bevel"
         strokeDasharray="6 6"
-        initial={{ pathLength: 0 }}
+        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 1, type: "tween" }}
         viewport={{ once: true }}
@@ -176,7 +177,7 @@ export default function UpgradeDiagram() {
         strokeWidth="3"
         strokeLinejoin="bevel"
         strokeDasharray="6 6"
-        initial={{ pathLength: 0 }}
+        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 1, type: "tween" }}
         viewport={{ once: true }}
@@ -187,7 +188,7 @@ export default function UpgradeDiagram() {
         strokeWidth="3"
         strokeLinejoin="bevel"
         strokeDasharray="6 6"
-        initial={{ pathLength: 0 }}
+        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 1, type: "tween" }}
         viewport={{ once: true }}
@@ -198,7 +199,7 @@ export default function UpgradeDiagram() {
         strokeWidth="3"
         strokeLinejoin="bevel"
         strokeDasharray="6 6"
-        initial={{ pathLength: 0 }}
+        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 1, type: "tween" }}
         viewport={{ once: true }}
@@ -209,7 +210,7 @@ export default function UpgradeDiagram() {
         strokeWidth="3"
         strokeLinejoin="bevel"
         strokeDasharray="6 6"
-        initial={{ pathLength: 0 }}
+        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 1, type: "tween" }}
         viewport={{ once: true }}
@@ -220,7 +221,7 @@ export default function UpgradeDiagram() {
         strokeWidth="3"
         strokeLinejoin="bevel"
         strokeDasharray="6 6"
-        initial={{ pathLength: 0 }}
+        initial={isSafari ? { pathLength: 1 } : { pathLength: 0 }}
         whileInView={{ pathLength: 1 }}
         transition={{ delay: 1, duration: 1, type: "tween" }}
         viewport={{ once: true }}
