@@ -511,6 +511,8 @@ where
                     remove_local_candidate(id, agent, &candidate, &mut self.pending_events);
                 }
             }
+
+            tracing::info!(%id, address = ?allocation.server(), "Removed TURN server");
         }
 
         // Second, upsert all new relays.
