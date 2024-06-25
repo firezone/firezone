@@ -9,10 +9,22 @@ variable "instance_type" {
   default     = "t2.micro"
 }
 
-variable "instance_count" {
-  description = "The number of instances to create"
+variable "desired_capacity" {
+  description = "The desired number of instances"
   type        = number
   default     = 3
+}
+
+variable "min_size" {
+  description = "The minimum number of instances"
+  type        = number
+  default     = 2
+}
+
+variable "max_size" {
+  description = "The maximum number of instances"
+  type        = number
+  default     = 10
 }
 
 variable "firezone_token" {

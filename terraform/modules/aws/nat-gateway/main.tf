@@ -110,14 +110,32 @@ resource "aws_ec2_instance_connect_endpoint" "instance_connect_endpoint" {
   }
 }
 
-resource "aws_instance" "firezone-gateway" {
-  count           = var.instance_count
-  ami             = var.base_ami
-  instance_type   = var.instance_type
-  subnet_id       = aws_subnet.private.id
-  security_groups = [aws_security_group.instance.id]
+resource "aws_launch_configuration" "lc" {
+  name                        = "firezone-gateway-lc"
+  image_id                    = var.base_ami
+  instance_type               = var.instance_type
+  security_groups             = [aws_security_group.instance.id]
+  associate_public_ip_address = false
 
-  tags = {
-    Name = "firezone-gateway-instance-${count.index}"
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_autoscaling_group" "asg" {
+  desired_capacity     = var.desired_capacity
+  max_size             = var.max_size
+  min_size             = var.min_size
+  vpc_zone_identifier  = [aws_subnet.private.id]
+  launch_configuration = aws_launch_configuration.lc.id
+
+  tag {
+    key                 = "Name"
+    value               = "firezone-gateway-instance"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }

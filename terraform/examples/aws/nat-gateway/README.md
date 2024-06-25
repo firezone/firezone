@@ -39,9 +39,10 @@ load balance for each other. No other configuration is necessary.
 
 ## Sizing
 
-Simply update the number of replicas to deploy more or fewer Firezone Gateways.
-There's no limit to the number of Firezone Gateways you can deploy in a single
-VPC.
+Simply update the number of `desired_capacity` to deploy more or fewer Firezone
+Gateways. There's no limit to the number of Firezone Gateways you can deploy in
+a single VPC. A basic AutoScaling Group is provisioned as part of the linked
+module.
 
 We've tested with `t2.micro` instances which still work quite well for most
 applications. However, you may want to consider a larger instance type if you
