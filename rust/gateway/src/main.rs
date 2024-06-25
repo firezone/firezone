@@ -121,7 +121,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
                 .set_ips(next_interface.ipv4, next_interface.ipv6)
                 .await
             {
-                tracing::warn!("Failed to set interface: {e}");
+                tracing::warn!("Failed to set interface: {e:#}");
             }
 
             if let Err(e) = tun_device
@@ -131,7 +131,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
                 )
                 .await
             {
-                tracing::warn!("Failed to set routes: {e}");
+                tracing::warn!("Failed to set routes: {e:#}");
             };
         }
     };
