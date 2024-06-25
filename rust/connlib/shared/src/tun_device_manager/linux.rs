@@ -62,7 +62,7 @@ impl TunDeviceManager {
             .execute()
             .try_next()
             .await?
-            .ok_or_else(|| anyhow!("No interface"))?
+            .ok_or_else(|| anyhow!("Interface '{IFACE_NAME}' does not exist"))?
             .header
             .index;
 
@@ -73,9 +73,16 @@ impl TunDeviceManager {
             .execute();
 
         ips.try_for_each(|ip| handle.address().del(ip).execute())
-            .await?;
+            .await
+            .context("Failed to delete existing addresses")?;
 
-        handle.link().set(index).mtu(DEFAULT_MTU).execute().await?;
+        handle
+            .link()
+            .set(index)
+            .mtu(DEFAULT_MTU)
+            .execute()
+            .await
+            .context("Failed to set default MTU")?;
 
         let res_v4 = handle.address().add(index, ipv4.into(), 32).execute().await;
         let res_v6 = handle
@@ -84,7 +91,13 @@ impl TunDeviceManager {
             .execute()
             .await;
 
-        handle.link().set(index).up().execute().await?;
+        handle
+            .link()
+            .set(index)
+            .up()
+            .execute()
+            .await
+            .context("Failed to bring up interface")?;
 
         if res_v4.is_ok() {
             if let Err(e) = make_rule(handle).v4().execute().await {
