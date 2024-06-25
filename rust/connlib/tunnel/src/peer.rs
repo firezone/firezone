@@ -446,7 +446,6 @@ impl ClientOnGateway {
         if !self.allowed_ips().contains(&packet.source()) {
             return Err(connlib_shared::Error::UnallowedPacket {
                 src: packet.source(),
-                allowed_ips: HashSet::from(self.allowed_ips()),
             });
         }
 
@@ -508,15 +507,7 @@ impl GatewayOnClient {
         pkt: &MutableIpPacket,
     ) -> Result<(), connlib_shared::Error> {
         if self.allowed_ips.longest_match(pkt.source()).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket {
-                src: pkt.source(),
-
-                allowed_ips: self
-                    .allowed_ips
-                    .iter()
-                    .map(|(ip, _)| ip.network_address())
-                    .collect(),
-            });
+            return Err(connlib_shared::Error::UnallowedPacket { src: pkt.source() });
         }
 
         Ok(())
