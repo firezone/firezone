@@ -104,7 +104,7 @@ defmodule Web.LiveTable do
         class={[
           "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
           "block w-1/2 mr-1",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
           "focus:outline-none focus:border-1 focus:ring-0",
           @field.errors != [] && "border-rose-400"
         ]}
@@ -120,7 +120,7 @@ defmodule Web.LiveTable do
           "bg-neutral-50 border text-neutral-900 text-sm rounded",
           "block w-1/2",
           "border-neutral-300",
-          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+          "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
           "focus:outline-none focus:border-1 focus:ring-0",
           @field.errors != [] && "border-rose-400"
         ]}
@@ -202,7 +202,7 @@ defmodule Web.LiveTable do
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
             "block w-full pl-10 p-2",
-            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
             "focus:outline-none focus:border-1 focus:ring-0",
             @form[@filter.name].errors != [] && "border-rose-400"
           ]}
@@ -235,7 +235,7 @@ defmodule Web.LiveTable do
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
             "block w-full pl-10 p-2",
-            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
+            "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
             "focus:outline-none focus:border-1 focus:ring-0",
             @form[@filter.name].errors != [] && "border-rose-400"
           ]}
@@ -279,7 +279,7 @@ defmodule Web.LiveTable do
             <label
               for={"#{@live_table_id}-#{@filter.name}-__all__"}
               class={[
-                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
                 "hover:bg-neutral-200 hover:text-neutral-700",
                 "cursor-pointer",
                 "border-y border-l rounded-l",
@@ -302,7 +302,7 @@ defmodule Web.LiveTable do
             <label
               for={"#{@live_table_id}-#{@filter.name}-#{value}"}
               class={[
-                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
                 "hover:bg-neutral-200 hover:text-neutral-700",
                 "cursor-pointer",
                 @form[@filter.name].value == value && "bg-neutral-100",
@@ -338,7 +338,7 @@ defmodule Web.LiveTable do
             <label
               for={"#{@live_table_id}-#{@filter.name}-__all__"}
               class={[
-                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
                 "hover:bg-neutral-200 hover:text-neutral-700",
                 "cursor-pointer",
                 "border-y border-l rounded-l",
@@ -361,7 +361,7 @@ defmodule Web.LiveTable do
             <label
               for={"#{@live_table_id}-#{@filter.name}-#{value}"}
               class={[
-                "px-4 py-2 text-sm border-neutral-200 text-neutral-900",
+                "px-4 py-2 text-sm border-neutral-300 text-neutral-900",
                 "hover:bg-neutral-200 hover:text-neutral-700",
                 "cursor-pointer",
                 @form[@filter.name].value && value in @form[@filter.name].value && "bg-neutral-100",
