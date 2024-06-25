@@ -60,13 +60,18 @@ defmodule Web.FormComponents do
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     errors =
-      if assigns.value_index do
-        Enum.filter(field.errors, fn {_error, meta} ->
-          Keyword.get(meta, :validated_as) == :list and
-            Keyword.get(meta, :at) == assigns.value_index
-        end)
-      else
-        field.errors
+      cond do
+        not Phoenix.Component.used_input?(field) ->
+          []
+
+        not is_nil(assigns.value_index) ->
+          Enum.filter(field.errors, fn {_error, meta} ->
+            Keyword.get(meta, :validated_as) == :list and
+              Keyword.get(meta, :at) == assigns.value_index
+          end)
+
+        true ->
+          field.errors
       end
       |> Enum.map(&translate_error(&1))
 
@@ -94,7 +99,7 @@ defmodule Web.FormComponents do
 
   def input(%{type: "radio"} = assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <label class="flex items-center gap-2 text-neutral-900">
         <input
           type="radio"
@@ -126,7 +131,7 @@ defmodule Web.FormComponents do
       end)
 
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <label class="flex items-center gap-4 text-sm leading-6 text-neutral-600">
         <input
           type="checkbox"
@@ -153,7 +158,7 @@ defmodule Web.FormComponents do
 
   def input(%{type: "group_select"} = assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         :if={not is_nil(@value) and @rest[:disabled] == true}
@@ -168,7 +173,7 @@ defmodule Web.FormComponents do
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
           "block w-full p-2.5",
-          @errors != [] && "border-rose-400"
+          @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         multiple={@multiple}
         {@rest}
@@ -194,7 +199,7 @@ defmodule Web.FormComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         :if={@rest[:disabled] in [true, "true"] and not is_nil(@value)}
@@ -209,7 +214,7 @@ defmodule Web.FormComponents do
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
           "block w-full p-2.5",
-          @errors != [] && "border-rose-400"
+          @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         multiple={@multiple}
         {@rest}
@@ -226,7 +231,7 @@ defmodule Web.FormComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div phx-feedback-for={@name}>
+    <div>
       <.label :if={@label} for={@id}><%= @label %></.label>
       <textarea
         id={@id}
@@ -234,10 +239,9 @@ defmodule Web.FormComponents do
         class={[
           "block w-full rounded sm:text-sm sm:leading-6",
           "bg-neutral-50",
-          "border border-neutral-300 text-neutral-900 rounded",
-          "phx-no-feedback:border-neutral-300",
-          "min-h-[6rem] border-neutral-300",
-          @errors != [] && "border-rose-400"
+          "border border-neutral-300 rounded",
+          "min-h-[6rem]",
+          @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
@@ -284,17 +288,16 @@ defmodule Web.FormComponents do
 
   def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
     ~H"""
-    <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
+    <div class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={@label} for={@id}><%= @label %></.label>
       <div class={[
         "flex",
         "text-sm text-neutral-900 bg-neutral-50",
-        "border-neutral-300 border rounded",
+        "border border-neutral-300 rounded",
         "w-full",
-        "phx-no-feedback:border-neutral-300",
         "focus-within:outline-none focus-within:border-accent-600",
         "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
-        @errors != [] && "border-rose-400"
+        @errors != [] && "border-rose-400 focus:border-rose-400"
       ]}>
         <span
           class={[
@@ -328,7 +331,7 @@ defmodule Web.FormComponents do
 
   def input(assigns) do
     ~H"""
-    <div phx-feedback-for={@name} class={@inline_errors && "flex flex-row items-center"}>
+    <div class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={@label} for={@id}><%= @label %></.label>
       <input
         type={@type}
@@ -336,11 +339,12 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "bg-neutral-50 p-2.5 block w-full rounded border text-neutral-900 text-sm",
-          "phx-no-feedback:border-neutral-300",
+          "block w-full",
+          "p-2.5 rounded",
+          "bg-neutral-50 text-neutral-900 text-sm",
+          "border border-neutral-300",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          "border-neutral-300",
-          @errors != [] && "border-rose-400"
+          @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         {@rest}
       />

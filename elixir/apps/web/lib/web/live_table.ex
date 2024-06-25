@@ -91,7 +91,7 @@ defmodule Web.LiveTable do
 
   def datetime_input(assigns) do
     ~H"""
-    <div phx-feedback-for={@field.name} class={["flex items-center"]}>
+    <div class={["flex items-center"]}>
       <input
         placeholder={"#{@filter.title} Started At"}
         type="date"
@@ -104,10 +104,8 @@ defmodule Web.LiveTable do
         class={[
           "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
           "block w-1/2 mr-1",
-          "phx-no-feedback:border-neutral-300",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
           "focus:outline-none focus:border-1 focus:ring-0",
-          "border-neutral-300",
           @field.errors != [] && "border-rose-400"
         ]}
       />
@@ -119,12 +117,11 @@ defmodule Web.LiveTable do
         id={@field.id <> "[#{@from_or_to}][time]"}
         value={normalize_value("time", Map.get(@field.value || %{}, @from_or_to)) || "00:00:00"}
         class={[
-          "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
+          "bg-neutral-50 border text-neutral-900 text-sm rounded",
           "block w-1/2",
-          "phx-no-feedback:border-neutral-300",
+          "border-neutral-300",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
           "focus:outline-none focus:border-1 focus:ring-0",
-          "border-neutral-300",
           @field.errors != [] && "border-rose-400"
         ]}
       />
@@ -205,10 +202,8 @@ defmodule Web.LiveTable do
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
             "block w-full pl-10 p-2",
-            "phx-no-feedback:border-neutral-300",
             "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
             "focus:outline-none focus:border-1 focus:ring-0",
-            "border-neutral-300",
             @form[@filter.name].errors != [] && "border-rose-400"
           ]}
         />
@@ -240,10 +235,8 @@ defmodule Web.LiveTable do
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
             "block w-full pl-10 p-2",
-            "phx-no-feedback:border-neutral-300",
             "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
             "focus:outline-none focus:border-1 focus:ring-0",
-            "border-neutral-300",
             @form[@filter.name].errors != [] && "border-rose-400"
           ]}
         />
