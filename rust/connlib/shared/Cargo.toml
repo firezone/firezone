@@ -44,9 +44,6 @@ tokio = { version = "1.38", features = ["macros", "rt"] }
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 swift-bridge = { workspace = true }
 
-[target.'cfg(target_os = "android")'.dependencies]
-tracing-android = "0.2"
-
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
