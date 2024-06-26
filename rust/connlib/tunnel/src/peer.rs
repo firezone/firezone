@@ -595,9 +595,10 @@ impl TranslationState {
     }
 
     fn is_expired(&self, now: Instant) -> bool {
-        self.no_response_in_120s(now)
-            && self.is_used(now)
-            && now.duration_since(self.missing_responses_detected_at) >= Duration::from_secs(1)
+        let ack_grace_period_expired =
+            now.duration_since(self.missing_responses_detected_at) >= Duration::from_secs(1);
+
+        self.no_response_in_120s(now) && self.is_used(now) && ack_grace_period_expired
     }
 
     fn no_response_in_120s(&self, now: Instant) -> bool {
