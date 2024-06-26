@@ -42,11 +42,11 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        tracing::info!(
+        tracing::debug!(
             channel_capacity = self.packet_rx.capacity(),
             "Shutting down packet channel..."
         );
-        self.packet_rx.close();
+        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
             tracing::error!(?error, "wintun::Session::shutdown");
         }
