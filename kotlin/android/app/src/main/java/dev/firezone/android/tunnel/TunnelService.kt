@@ -131,6 +131,8 @@ class TunnelService : VpnService() {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
 
+                stopNetworkMonitoring()
+
                 // Clear any user tokens and actorNames
                 repo.clearToken()
                 repo.clearActorName()
@@ -209,7 +211,8 @@ class TunnelService : VpnService() {
     fun disconnect() {
         Log.d(TAG, "disconnect")
 
-        // Connlib should call onDisconnect() when it's done, with no error.
+        stopNetworkMonitoring()
+
         connlibSessionPtr?.let {
             ConnlibSession.disconnect(it)
         }
@@ -219,8 +222,6 @@ class TunnelService : VpnService() {
 
     private fun shutdown() {
         Log.d(TAG, "shutdown")
-
-        stopNetworkMonitoring()
 
         connlibSessionPtr = null
         stopSelf()
