@@ -273,7 +273,7 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.refresh_needed(now));
+            .filter(|(_, state)| state.is_expired(now));
 
         let mut for_refresh = HashSet::new();
 
@@ -592,7 +592,7 @@ impl TranslationState {
         now.duration_since(self.last_outgoing) <= Duration::from_secs(10)
     }
 
-    fn refresh_needed(&self, now: Instant) -> bool {
+    fn is_expired(&self, now: Instant) -> bool {
         self.no_response_in_120s(now)
             && self.is_used(now)
             && now.duration_since(self.translation_expired_at) >= Duration::from_secs(1)
@@ -765,7 +765,7 @@ mod tests {
             now,
         );
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -780,7 +780,7 @@ mod tests {
 
         now += Duration::from_secs(121);
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -798,7 +798,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        assert!(state.refresh_needed(now));
+        assert!(state.is_expired(now));
     }
 
     #[test]
@@ -816,7 +816,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        assert!(state.refresh_needed(now));
+        assert!(state.is_expired(now));
     }
     #[test]
     fn translation_state_is_not_expired_with_incoming_packets() {
@@ -833,7 +833,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -852,7 +852,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -868,7 +868,7 @@ mod tests {
         now += Duration::from_secs(120);
         state.on_outgoing_traffic(now);
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -886,7 +886,7 @@ mod tests {
         now += Duration::from_secs(5);
         state.on_outgoing_traffic(now);
 
-        assert!(state.refresh_needed(now));
+        assert!(state.is_expired(now));
     }
 
     #[test]
@@ -905,7 +905,7 @@ mod tests {
         state.on_incoming_traffic(now);
         now += Duration::from_secs(5);
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -922,7 +922,7 @@ mod tests {
         state.on_outgoing_traffic(now);
         now += Duration::from_millis(20);
 
-        assert!(!state.refresh_needed(now));
+        assert!(!state.is_expired(now));
     }
 
     #[test]
@@ -939,7 +939,7 @@ mod tests {
         state.on_outgoing_traffic(now);
         now += Duration::from_secs(1);
 
-        assert!(state.refresh_needed(now));
+        assert!(state.is_expired(now));
     }
 
     #[test]
