@@ -134,6 +134,9 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
         .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
         .with(
             tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_level(false)
                 .with_writer(make_writer::MakeWriter::new("connlib"))
                 .with_filter(EnvFilter::new(log_filter)),
         )
