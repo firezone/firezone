@@ -30,6 +30,7 @@ pub(crate) mod device_id;
 // Pub because the GUI reads the system resolvers
 pub mod dns_control;
 pub mod heartbeat;
+pub mod ipc;
 mod ipc_service;
 pub mod known_dirs;
 mod standalone;
@@ -42,7 +43,7 @@ pub mod platform;
 #[path = "windows.rs"]
 pub mod platform;
 
-pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
+pub use ipc_service::{run_only_ipc_service, ClientMsg as IpcClientMsg};
 pub use standalone::run_only_headless_client;
 
 use dns_control::DnsController;

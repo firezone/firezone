@@ -1,6 +1,7 @@
 use crate::{
     device_id,
     dns_control::{self, DnsController},
+    ipc::{self, Server as IpcServer, ServiceId},
     known_dirs, CallbackHandler, CliCommon, InternalServerMsg, IpcClientMsg, IpcServerMsg,
     SignalKind, Signals, TOKEN_ENV_KEY,
 };
@@ -15,8 +16,6 @@ use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
 
-pub mod ipc;
-use ipc::{Server as IpcServer, ServiceId};
 type ServerRead = ipc::ServerRead<IpcClientMsg>;
 type ServerWrite = ipc::ServerWrite<IpcServerMsg>;
 
