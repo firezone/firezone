@@ -1511,9 +1511,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod testutils {
+#[cfg(all(test, feature = "proptest"))]
+mod proptests {
     use super::*;
+    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
 
     pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
         HashSet::from_iter(
@@ -1530,13 +1531,6 @@ mod testutils {
     ) -> HashSet<T> {
         HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
-}
-
-#[cfg(all(test, feature = "proptest"))]
-mod proptests {
-    use super::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
-    use testutils::*;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
