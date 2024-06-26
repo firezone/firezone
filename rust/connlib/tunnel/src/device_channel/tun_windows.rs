@@ -42,6 +42,8 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::info!(channel_capacity = self.packet_rx.capacity(), "Shutting down packet channel...");
+        self.packet_rx.close();
         tracing::info!("Telling wintun to shut down...");
         if let Err(error) = self.session.shutdown() {
             tracing::error!(?error, "wintun::Session::shutdown");
@@ -126,6 +128,7 @@ impl Tun {
     }
 
     pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        return Poll::Pending;
         let pkt = ready!(self.packet_rx.poll_recv(cx));
 
         match pkt {
@@ -250,6 +253,7 @@ fn start_recv_thread(
                     Ok(pkt) => {
                         if packet_tx.blocking_send(pkt).is_err() {
                             // Most likely the receiver was dropped and we're closing down the connlib session.
+                            tracing::warn!("`packet_tx` destroyed while we were in `blocking_send`");
                             break;
                         }
                     }
