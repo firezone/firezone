@@ -29,6 +29,7 @@ import dev.firezone.android.tunnel.model.Resource
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -50,6 +51,10 @@ class TunnelService : VpnService() {
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var networkCallback: NetworkMonitor? = null
+
+    // General purpose mutex lock for preventing network monitoring from calling connlib
+    // during shutdown.
+    val lock = ReentrantLock()
 
     var startedByUser: Boolean = false
     var connlibSessionPtr: Long? = null
@@ -131,6 +136,8 @@ class TunnelService : VpnService() {
                 Log.d(TAG, "onDisconnect: $error")
                 Firebase.crashlytics.log("onDisconnect: $error")
 
+                stopNetworkMonitoring()
+
                 // Clear any user tokens and actorNames
                 repo.clearToken()
                 repo.clearActorName()
@@ -209,18 +216,23 @@ class TunnelService : VpnService() {
     fun disconnect() {
         Log.d(TAG, "disconnect")
 
-        // Connlib should call onDisconnect() when it's done, with no error.
+        // Acquire mutex lock
+        lock.lock()
+
+        stopNetworkMonitoring()
+
         connlibSessionPtr?.let {
             ConnlibSession.disconnect(it)
         }
 
         shutdown()
+
+        // Release mutex lock
+        lock.unlock()
     }
 
     private fun shutdown() {
         Log.d(TAG, "shutdown")
-
-        stopNetworkMonitoring()
 
         connlibSessionPtr = null
         stopSelf()
