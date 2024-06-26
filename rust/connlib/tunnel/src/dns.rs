@@ -82,22 +82,30 @@ pub struct StubResolver {
     hosts: HashSet<DomainName>,
 }
 
+fn fqdn_to_ips_for_hosts(hosts: &HashMap<String, Vec<IpAddr>>) -> HashMap<DomainName, Vec<IpAddr>> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
+        .collect()
+}
+
+fn ips_to_fqdn_for_hosts(hosts: &HashMap<String, Vec<IpAddr>>) -> HashMap<IpAddr, DomainName> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| {
+            DomainName::vec_from_str(d)
+                .ok()
+                .map(|d| a.iter().map(move |a| (*a, d.clone())))
+        })
+        .flatten()
+        .collect()
+}
+
 impl StubResolver {
     pub(crate) fn new(hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
         StubResolver {
-            fqdn_to_ips: hosts
-                .iter()
-                .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
-                .collect(),
-            ips_to_fqdn: hosts
-                .iter()
-                .filter_map(|(d, a)| {
-                    DomainName::vec_from_str(d)
-                        .ok()
-                        .map(|d| a.iter().map(move |a| (*a, d.clone())))
-                })
-                .flatten()
-                .collect(),
+            fqdn_to_ips: fqdn_to_ips_for_hosts(&hosts),
+            ips_to_fqdn: ips_to_fqdn_for_hosts(&hosts),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
             hosts: hosts
