@@ -42,9 +42,11 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::info!("Telling wintun to shut down...");
         if let Err(error) = self.session.shutdown() {
             tracing::error!(?error, "wintun::Session::shutdown");
         }
+        tracing::info!("Joining worker thread...");
         if let Err(error) = self
             .recv_thread
             .take()
@@ -258,7 +260,7 @@ fn start_recv_thread(
                     }
                 }
             }
-            tracing::debug!("recv_task exiting gracefully");
+            tracing::info!("recv_task exiting gracefully");
         })
 }
 
