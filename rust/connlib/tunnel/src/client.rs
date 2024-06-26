@@ -299,7 +299,10 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
+    pub(crate) fn new(
+        private_key: impl Into<StaticSecret>,
+        hosts: HashMap<String, Vec<IpAddr>>,
+    ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -316,7 +319,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(),
+            stub_resolver: StubResolver::new(hosts),
         }
     }
 
@@ -1458,7 +1461,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng))
+            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
         }
     }
 

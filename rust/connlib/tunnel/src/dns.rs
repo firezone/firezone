@@ -15,7 +15,7 @@ use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
 use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const DNS_TTL: u32 = 1;
@@ -78,25 +78,32 @@ pub struct StubResolver {
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
     dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
+    hosts: HashSet<DomainName>,
 }
 
-// We don't need to support multiple questions/qname in a single query because
-// nobody does it and since this run with each packet we want to squeeze as much optimization
-// as we can therefore we won't do it.
-//
-// See: https://stackoverflow.com/a/55093896
-/// Parses an incoming packet as a DNS query and decides how to respond to it
-///
-/// Returns:
-/// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
-/// - Otherwise, a strategy for responding to the query
 impl StubResolver {
-    pub(crate) fn new() -> StubResolver {
+    pub(crate) fn new(hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
         StubResolver {
-            fqdn_to_ips: Default::default(),
-            ips_to_fqdn: Default::default(),
+            fqdn_to_ips: hosts
+                .iter()
+                .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
+                .collect(),
+            ips_to_fqdn: hosts
+                .iter()
+                .filter_map(|(d, a)| {
+                    DomainName::vec_from_str(d)
+                        .ok()
+                        .map(|d| a.iter().map(move |a| (*a, d.clone())))
+                })
+                .flatten()
+                .collect(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
+            hosts: hosts
+                .keys()
+                .filter_map(|d| DomainName::vec_from_str(d).ok())
+                .collect(),
         }
     }
 
@@ -194,6 +201,16 @@ impl StubResolver {
     }
 
     // TODO: we can save a few allocations here still
+    // We don't need to support multiple questions/qname in a single query because
+    // nobody does it and since this run with each packet we want to squeeze as much optimization
+    // as we can therefore we won't do it.
+    //
+    // See: https://stackoverflow.com/a/55093896
+    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    ///
+    /// Returns:
+    /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
+    /// - Otherwise, a strategy for responding to the query
     pub(crate) fn handle<'a>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
@@ -210,7 +227,11 @@ impl StubResolver {
 
         tracing::trace!("Parsed packet as DNS query: '{question}'");
 
-        if !self.is_resource(&question) {
+        if !self.is_resource(&question)
+            && !self
+                .hosts
+                .contains::<DomainName>(&question.qname().to_name())
+        {
             return Some(ResolveStrategy::ForwardQuery(DnsQuery {
                 name: ToName::to_vec(question.qname()),
                 record_type: u16::from(question.qtype()).into(),
