@@ -10,6 +10,7 @@ use connlib_client_shared::{
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
+    sys::jlong,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
@@ -437,6 +438,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
         None => return std::ptr::null(),
     };
 
+    // Note: this pointer will probably be casted into a jlong after it is received by android.
+    // jlong is 64bits so the worst case scenario it will be padded, in that case, when casting it back to a pointer we expect `as` to select only the relevant bytes
     Box::into_raw(Box::new(session))
 }
 
@@ -448,14 +451,15 @@ pub struct SessionWrapper {
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut SessionWrapper,
+    session_ptr: jlong,
 ) {
+    let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).inner.disconnect();
     });
@@ -467,13 +471,14 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 /// <https://github.com/firezone/firezone/issues/4350>
 ///
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
     dns_list: JString,
 ) {
     let dns = String::from(
@@ -485,18 +490,20 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
             .expect("Invalid string returned from android client"),
     );
     let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
-    let session = &*session;
+    let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_dns(dns);
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
     _: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
 ) {
-    (*session).inner.reconnect();
+    let session = &*(session_ptr as *const SessionWrapper);
+    session.inner.reconnect();
 }
