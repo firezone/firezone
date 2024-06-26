@@ -1,18 +1,47 @@
-use super::ServiceId;
+use super::{Error, ServiceId};
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::BUNDLE_ID;
-use std::{ffi::c_void, os::windows::io::AsRawHandle, time::Duration};
+use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::HANDLE, Security as WinSec, System::Pipes::GetNamedPipeClientProcessId,
+    Foundation::HANDLE,
+    Security as WinSec,
+    System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
 };
 
 pub(crate) struct Server {
     pipe_path: String,
 }
 
-/// Opaque wrapper around platform-specific IPC stream
-pub(crate) type Stream = named_pipe::NamedPipeServer;
+/// Alias for the client's half of a platform-specific IPC stream
+pub type ClientStream = named_pipe::NamedPipeClient;
+
+/// Alias for the server's half of a platform-specific IPC stream
+pub(crate) type ServerStream = named_pipe::NamedPipeServer;
+
+/// Connect to the IPC service
+///
+/// This is async on Linux
+#[allow(clippy::unused_async)]
+#[allow(clippy::wildcard_enum_match_arm)]
+pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
+    let path = ipc_path(id);
+    let stream = named_pipe::ClientOptions::new()
+        .open(&path)
+        .map_err(|error| match error.kind() {
+            ErrorKind::NotFound => Error::NotFound(path),
+            _ => Error::Other(error.into()),
+        })?;
+    let handle = HANDLE(stream.as_raw_handle() as isize);
+    let mut server_pid: u32 = 0;
+    // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
+    // from Tokio, so it should be valid.
+    unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
+        .context("Couldn't get PID of named pipe server")
+        .map_err(Error::Other)?;
+    tracing::info!(?server_pid, "Made IPC connection");
+    Ok(stream)
+}
 
 impl Server {
     /// Platform-specific setup
@@ -21,12 +50,12 @@ impl Server {
     #[allow(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
         crate::platform::setup_before_connlib()?;
-        let pipe_path = pipe_path(id);
+        let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
     }
 
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<Stream> {
+    pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
         // Fixes #5143. In the IPC service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -55,7 +84,7 @@ impl Server {
         Ok(server)
     }
 
-    async fn bind_to_pipe(&self) -> Result<Stream> {
+    async fn bind_to_pipe(&self) -> Result<ServerStream> {
         const NUM_ITERS: usize = 10;
         // This loop is defense-in-depth. The `yield_now` in `next_client` is enough
         // to fix #5143, but Tokio doesn't guarantee any behavior when yielding, so
@@ -126,7 +155,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 }
 
 /// Named pipe for IPC between GUI client and IPC service
-pub fn pipe_path(id: ServiceId) -> String {
+fn ipc_path(id: ServiceId) -> String {
     let name = match id {
         ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
         ServiceId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
@@ -139,12 +168,19 @@ pub fn pipe_path(id: ServiceId) -> String {
 /// # Arguments
 ///
 /// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
+///
+/// Public because the GUI Client re-uses this for deep links. Eventually that code
+/// will be de-duped into this code.
 pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{Server, ServiceId};
+    use anyhow::Context as _;
+    use futures::StreamExt;
+
     #[test]
     fn named_pipe_path() {
         assert_eq!(
@@ -154,7 +190,32 @@ mod tests {
     }
 
     #[test]
-    fn pipe_path() {
-        assert!(super::pipe_path(super::ServiceId::Prod).starts_with(r"\\.\pipe\"));
+    fn ipc_path() {
+        assert!(super::ipc_path(ServiceId::Prod).starts_with(r"\\.\pipe\"));
+    }
+
+    #[tokio::test]
+    async fn single_instance() -> anyhow::Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        const ID: ServiceId = ServiceId::Test("2GOCMPBG");
+        let mut server_1 = Server::new(ID).await?;
+        let pipe_path = server_1.pipe_path.clone();
+
+        tokio::spawn(async move {
+            let (mut rx, _tx) = server_1.next_client_split().await?;
+            rx.next().await;
+            Ok::<_, anyhow::Error>(())
+        });
+
+        let (_rx, _tx) = crate::ipc::connect_to_service(ID).await?;
+
+        match super::create_pipe_server(&pipe_path) {
+            Err(super::PipeError::AccessDenied) => {}
+            Err(error) => {
+                Err(error).context("Expected `PipeError::AccessDenied` but got another error")?
+            }
+            Ok(_) => anyhow::bail!("Expected `PipeError::AccessDenied` but got `Ok`"),
+        }
+        Ok(())
     }
 }

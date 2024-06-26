@@ -1,6 +1,7 @@
 "use client";
 
 import { TabsGroup, TabsItem } from "@/components/Tabs";
+import Link from "next/link";
 import Android from "./Android";
 import Apple from "./Apple";
 import Gateway from "./Gateway";
@@ -9,7 +10,7 @@ import Headless from "./Headless";
 import { HiServerStack } from "react-icons/hi2";
 import { FaApple, FaAndroid, FaWindows, FaLinux } from "react-icons/fa";
 
-export default function Changelog() {
+export default function Changelog({ sha }: { sha: string | undefined }) {
   return (
     <section className="mx-auto max-w-xl md:max-w-screen-xl">
       <TabsGroup>
@@ -32,6 +33,18 @@ export default function Changelog() {
           <Headless />
         </TabsItem>
       </TabsGroup>
+      {sha && (
+        <p className="text-sm md:text-lg mt-4 md:mt-8">
+          Current SHA of Portal and Relays in production is{" "}
+          <Link
+            href={`https://www.github.com/firezone/firezone/tree/${sha}`}
+            className="underline hover:no-underline text-accent-500"
+          >
+            {sha}
+          </Link>
+          .
+        </p>
+      )}
     </section>
   );
 }

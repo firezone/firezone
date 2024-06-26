@@ -398,7 +398,11 @@ impl<T> Eventloop<T> {
             Some(snownet::Event::ConnectionFailed(conn)) => {
                 return Poll::Ready(Ok(Event::ConnectionFailed { conn }))
             }
-            Some(snownet::Event::InvalidateIceCandidate { .. }) | None => {}
+            Some(
+                snownet::Event::InvalidateIceCandidate { .. }
+                | snownet::Event::ConnectionsCleared { .. },
+            )
+            | None => {}
         }
 
         if let Poll::Ready(Some(wire::Candidate { conn, candidate })) =

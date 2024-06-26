@@ -1,15 +1,17 @@
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
-use crate::messages::InitGateway;
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
+use connlib_shared::messages::Interface;
+use connlib_shared::tun_device_manager::TunDeviceManager;
 use connlib_shared::{get_user_agent, keypair, Callbacks, Cidrv4, Cidrv6, LoginUrl, StaticSecret};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayTunnel, Sockets};
-use futures::{future, TryFutureExt};
+use futures::channel::mpsc;
+use futures::{future, StreamExt, TryFutureExt};
 use ip_network::{Ipv4Network, Ipv6Network};
+use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::collections::HashSet;
 use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
@@ -98,39 +100,48 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(private_key, Sockets::new(), CallbackHandler)?;
-
-    let (portal, init) = phoenix_channel::init::<_, InitGateway, _, _>(
+    let tunnel = GatewayTunnel::new(private_key, Sockets::new(), CallbackHandler)?;
+    let portal = PhoenixChannel::connect(
         Secret::new(login),
-        get_user_agent(None),
+        get_user_agent(None, env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
-    )
-    .await??;
+    );
 
-    tunnel
-        .set_interface(&init.interface)
-        .context("Failed to set interface")?;
-    let mut tun_device = connlib_shared::tun_device_manager::TunDeviceManager::new()?;
-    tun_device
-        .set_ips(init.interface.ipv4, init.interface.ipv6)
-        .await?;
-    tun_device
-        .set_routes(
-            vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
-            vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
-        )
-        .await?;
-    tunnel.update_relays(HashSet::default(), init.relays);
+    let (sender, mut receiver) = mpsc::channel::<Interface>(10);
 
-    let mut eventloop = Eventloop::new(tunnel, portal);
+    let mut tun_device = TunDeviceManager::new()?;
 
-    future::poll_fn(|cx| eventloop.poll(cx))
-        .await
-        .context("Eventloop failed")?;
+    let update_device_task = async move {
+        while let Some(next_interface) = receiver.next().await {
+            if let Err(e) = tun_device
+                .set_ips(next_interface.ipv4, next_interface.ipv6)
+                .await
+            {
+                tracing::warn!("Failed to set interface: {e:#}");
+            }
+
+            if let Err(e) = tun_device
+                .set_routes(
+                    vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
+                    vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
+                )
+                .await
+            {
+                tracing::warn!("Failed to set routes: {e:#}");
+            };
+        }
+    };
+
+    let mut eventloop = Eventloop::new(tunnel, portal, sender);
+    let eventloop_task = future::poll_fn(move |cx| eventloop.poll(cx));
+
+    let ((), result) = futures::join!(update_device_task, eventloop_task);
+
+    result.context("Eventloop failed")?;
 
     unreachable!()
 }

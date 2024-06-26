@@ -31,42 +31,54 @@ pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, H
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let (appender, handle) = new_appender(log_dir.to_path_buf());
-    let layer = tracing_stackdriver::layer().with_writer(appender).boxed();
+    let (appender_json, handle_json) = new_appender(log_dir.to_path_buf(), "jsonl");
+    let layer_json = tracing_stackdriver::layer()
+        .with_writer(appender_json)
+        .boxed();
+
+    let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), "log");
+    let layer_fmt = tracing_subscriber::fmt::layer()
+        .with_writer(appender_fmt)
+        .boxed();
+
+    let handle = Handle {
+        _guard_json: Arc::new(handle_json),
+        _guard_fmt: Arc::new(handle_fmt),
+    };
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
     // See https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html
-    (layer, handle)
+    (vec![layer_json, layer_fmt].boxed(), handle)
 }
 
-fn new_appender(directory: PathBuf) -> (NonBlocking, Handle) {
+fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlocking, WorkerGuard) {
     let appender = Appender {
         directory,
         current: None,
+        file_extension,
     };
 
     let (non_blocking, guard) = tracing_appender::non_blocking(appender);
-    let handle = Handle {
-        _guard: Arc::new(guard),
-    };
 
-    (non_blocking, handle)
+    (non_blocking, guard)
 }
 
 /// A handle to our file-logger.
 ///
-/// This handle houses the [`WorkerGuard`] of the underlying non-blocking appender.
-/// Thus, you MUST NOT drop this handle for as long as you want messages to arrive at the log file.
+/// This handle houses the [`WorkerGuard`]s of the underlying non-blocking appenders.
+/// Thus, you MUST NOT drop this handle for as long as you want messages to arrive at the log files.
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct Handle {
-    _guard: Arc<WorkerGuard>,
+    _guard_json: Arc<WorkerGuard>,
+    _guard_fmt: Arc<WorkerGuard>,
 }
 
 #[derive(Debug)]
 struct Appender {
     directory: PathBuf,
+    file_extension: &'static str,
     // Leaving this so that I/O errors come up through `write` instead of panicking
     // in `layer`
     current: Option<(fs::File, String)>,
@@ -100,7 +112,7 @@ impl Appender {
             .format(&format)
             .expect("static format description to be valid");
 
-        let filename = format!("{LOG_FILE_BASE_NAME}.{date}.log");
+        let filename = format!("{LOG_FILE_BASE_NAME}.{date}.{}", self.file_extension);
 
         let path = self.directory.join(&filename);
         let mut open_options = fs::OpenOptions::new();
