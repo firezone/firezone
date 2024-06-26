@@ -602,8 +602,16 @@ impl TranslationState {
     }
 
     fn no_response_in_120s(&self, now: Instant) -> bool {
-        // 120s is the default timeout for a confirmed UDP connection in conntrack
-        now.duration_since(self.last_incoming) >= Duration::from_secs(120)
+        const CONNTRACK_UDP_STREAM_TIMEOUT: Duration = Duration::from_secs(120);
+
+        self.no_response_in_window(now - CONNTRACK_UDP_STREAM_TIMEOUT, now)
+    }
+
+    fn no_response_in_window(&self, start: Instant, finish: Instant) -> bool {
+        let before_start = self.last_incoming < start;
+        let after_finish = self.last_incoming > finish;
+
+        before_start || after_finish
     }
 
     fn on_incoming_traffic(&mut self, now: Instant) {
