@@ -4,7 +4,7 @@
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
 use crate::client::auth::Response as AuthResponse;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context as _, Result};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
