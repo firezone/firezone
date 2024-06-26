@@ -438,6 +438,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
         None => return std::ptr::null(),
     };
 
+    // Note: this pointer will probably be casted into a jlong after it is received by android.
+    // jlong is 64bits so the worst case scenario it will be padded, in that case, when casting it back to a pointer we expect `as` to select only the relevant bytes
     Box::into_raw(Box::new(session))
 }
 
@@ -449,7 +451,7 @@ pub struct SessionWrapper {
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
@@ -469,7 +471,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 /// <https://github.com/firezone/firezone/issues/4350>
 ///
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
@@ -492,7 +495,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
