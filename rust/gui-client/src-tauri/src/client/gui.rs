@@ -13,6 +13,8 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
+    collections::HashSet,
+    net::IpAddr,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -740,28 +742,30 @@ async fn run_controller(
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
     let mut dns_listener = network_changes::DnsListener::new()?;
-    let mut last_resolvers_sent = vec![];
+    let mut last_resolvers_sent: HashSet<IpAddr> = HashSet::default();
 
     loop {
         tokio::select! {
             () = controller.notify_controller.notified() => {
                 let tunnel_became_ready = !controller.tunnel_ready;
+                // Must set `tunnel_ready` here since `build_system_tray_menu` will read it.
                 controller.tunnel_ready = true;
                 tracing::debug!("Controller notified of new resources");
                 if let Err(error) = controller.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to reload resource list");
+                    tracing::error!(?error, "Failed to refresh tray menu");
                 }
-                if tunnel_became_ready {
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                    if let Some(instant) = controller.last_connlib_start.take() {
-                        let elapsed = instant.elapsed();
-                        tracing::info!(?elapsed, "Tunnel ready");
-                    } else {
-                        tracing::error!("Impossible - tunnel is ready but we didn't record when connlib started");
-                    }
+                if ! tunnel_became_ready {
+                    continue;
+                }
+                os::show_notification(
+                    "Firezone connected",
+                    "You are now signed in and able to access resources.",
+                )?;
+                if let Some(instant) = controller.last_connlib_start.take() {
+                    let elapsed = instant.elapsed();
+                    tracing::info!(?elapsed, "Tunnel ready");
+                } else {
+                    unreachable!("We should always have `last_connlib_start` when the tunnel becomes ready");
                 }
             }
             () = com_worker.notified() => {
@@ -775,13 +779,15 @@ async fn run_controller(
                 }
             },
             resolvers = dns_listener.notified() => {
-                let mut resolvers = resolvers?;
-                resolvers.sort();
-                if resolvers != last_resolvers_sent {
-                    last_resolvers_sent.clone_from(&resolvers);
+                let resolvers = resolvers?;
+                let resolver_set = HashSet::from_iter(resolvers.iter().cloned());
+                if resolver_set != last_resolvers_sent {
+                    last_resolvers_sent = resolver_set;
                     if let Some(session) = controller.session.as_mut() {
                         tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                         session.connlib.set_dns(resolvers).await?;
+                    } else {
+                        tracing::debug!("Resolvers stayed the same");
                     }
                 }
             },
@@ -807,6 +813,7 @@ async fn run_controller(
                 }
             },
         }
+        // Code down here may not run because the `select` sometimes `continue`s.
     }
 
     if let Err(error) = com_worker.close() {
