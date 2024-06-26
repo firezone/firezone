@@ -120,6 +120,21 @@ resource "aws_launch_configuration" "lc" {
   lifecycle {
     create_before_destroy = true
   }
+
+  user_data = <<-EOF
+  #!/bin/bash
+  set -e
+
+  sudo apt-get update
+  sudo apt-get install -y curl uuid-runtime
+
+  FIREZONE_TOKEN=${var.firezone_token} \
+  FIREZONE_VERSION=${var.firezone_version} \
+  FIREZONE_ID=$(uuidgen) \
+  FIREZONE_API_URL=${var.firezone_api_url} \
+  bash <(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh)
+
+  EOF
 }
 
 resource "aws_autoscaling_group" "asg" {

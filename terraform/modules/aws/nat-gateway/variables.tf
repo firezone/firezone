@@ -24,19 +24,26 @@ variable "min_size" {
 variable "max_size" {
   description = "The maximum number of instances"
   type        = number
-  default     = 10
+  default     = 5
 }
 
 variable "firezone_token" {
   description = "The Firezone token"
   type        = string
   nullable    = false
+  sensitive   = true
 }
 
 variable "firezone_version" {
   description = "The Gateway version to deploy"
   type        = string
   default     = "latest"
+}
+
+variable "firezone_api_url" {
+  description = "The Firezone API URL"
+  type        = string
+  default     = "wss://api.firezone.dev"
 }
 
 variable "region" {
