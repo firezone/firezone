@@ -5,7 +5,7 @@ use super::FZ_SCHEME;
 use anyhow::{Context, Result};
 use connlib_shared::BUNDLE_ID;
 use secrecy::Secret;
-use std::{io, path::Path};
+use std::{io, path::Path, time::Duration};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 
 /// A server for a named pipe, so we can receive deep links from other instances
@@ -19,21 +19,12 @@ impl Server {
     ///
     /// Panics if there is no Tokio runtime
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-    pub(crate) fn new() -> Result<Self, super::Error> {
+    pub(crate) async fn new() -> Result<Self, super::Error> {
         // This isn't air-tight - We recreate the whole server on each loop,
         // rather than binding 1 socket and accepting many streams like a normal socket API.
-        // I can only assume Tokio is following Windows' underlying API.
-
-        // We could instead pick an ephemeral TCP port and write that to a file,
-        // akin to how Unix processes will write their PID to a file to manage long-running instances
-        // But this doesn't require us to listen on TCP.
-
-        let mut server_options = named_pipe::ServerOptions::new();
-        server_options.first_pipe_instance(true);
-
-        let server = server_options
-            .create(pipe_path())
-            .map_err(|_| super::Error::CantListen)?;
+        // Tokio appears to be following Windows' underlying API here, so not
+        // much we can do until Unix domain sockets have wide support in Windows.
+        let server = bind_to_pipe(&pipe_path()).await?;
 
         tracing::debug!("server is bound");
         Ok(Server { inner: server })
@@ -64,6 +55,33 @@ impl Server {
         self.inner.disconnect().ok();
         Ok(bytes)
     }
+}
+
+async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, super::Error> {
+    const NUM_ITERS: usize = 10;
+    // Relating to #5143 and #5566, sometimes re-creating a named pipe server
+    // in a loop fails. This is copied from `firezone_headless_client::ipc_service::ipc::windows`.
+    for i in 0..NUM_ITERS {
+        match create_pipe_server(pipe_path) {
+            Ok(server) => return Ok(server),
+            Err(super::Error::CantListen) => {
+                tracing::warn!("`create_pipe_server` failed, sleeping... (loop {i})");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+            Err(error) => Err(error)?,
+        }
+    }
+    Err(super::Error::CantListen)
+}
+
+fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, super::Error> {
+    let mut server_options = named_pipe::ServerOptions::new();
+    server_options.first_pipe_instance(true);
+
+    let server = server_options
+        .create(pipe_path)
+        .map_err(|_| super::Error::CantListen)?;
+    Ok(server)
 }
 
 /// Open a deep link by sending it to the already-running instance of the app
