@@ -17,7 +17,7 @@ use itertools::Itertools;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -29,7 +29,7 @@ use std::{
 pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
-    pub(crate) client: SimNode<ClientId, PrivateKey>,
+    pub(crate) client: SimNode<ClientId, (PrivateKey, HashMap<String, Vec<IpAddr>>)>,
     pub(crate) gateway: SimNode<GatewayId, PrivateKey>,
     pub(crate) relay: SimRelay<u64>,
 
@@ -83,8 +83,8 @@ impl ReferenceStateMachine for ReferenceState {
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
         (
-            sim_node_prototype(client_id()),
-            sim_node_prototype(gateway_id()),
+            sim_node_prototype(client_id(), client_state()),
+            sim_node_prototype(gateway_id(), gateway_state()),
             sim_relay_prototype(),
             system_dns_servers(),
             upstream_dns_servers(),
@@ -94,7 +94,7 @@ impl ReferenceStateMachine for ReferenceState {
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, _)| c.state != g.state,
+                |(c, g, _, _, _, _, _, _)| c.state.0 != g.state,
             )
             .prop_filter(
                 "client, gateway and relay ip must be different",

@@ -87,7 +87,7 @@ impl StateMachineTest for TunnelTest {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
-            .map_state(ClientState::new, debug_span!("client"));
+            .map_state(|(k, h)| ClientState::new(k, h), debug_span!("client"));
         let mut gateway = ref_state
             .gateway
             .map_state(GatewayState::new, debug_span!("gateway"));

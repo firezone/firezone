@@ -10,7 +10,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use proptest::{prelude::*, sample};
 use rand::rngs::StdRng;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::Instant,
@@ -58,12 +58,12 @@ impl<ID, S> SimNode<ID, S> {
 impl<ID, S> SimNode<ID, S>
 where
     ID: Copy,
-    S: Copy,
+    S: Clone,
 {
     pub(crate) fn map_state<T>(&self, f: impl FnOnce(S) -> T, span: Span) -> SimNode<ID, T> {
         SimNode {
             id: self.id,
-            state: f(self.state),
+            state: f(self.state.clone()),
             ip4_socket: self.ip4_socket,
             ip6_socket: self.ip6_socket,
             tunnel_ip4: self.tunnel_ip4,
@@ -215,15 +215,17 @@ impl fmt::Debug for PrivateKey {
     }
 }
 
-pub(crate) fn sim_node_prototype<ID>(
+pub(crate) fn sim_node_prototype<ID, S>(
     id: impl Strategy<Value = ID>,
-) -> impl Strategy<Value = SimNode<ID, PrivateKey>>
+    state: impl Strategy<Value = S>,
+) -> impl Strategy<Value = SimNode<ID, S>>
 where
     ID: fmt::Debug,
+    S: fmt::Debug,
 {
     (
         id,
-        private_key(),
+        state,
         firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
@@ -232,14 +234,14 @@ where
     )
         .prop_filter_map(
             "must have at least one socket address",
-            |(id, key, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
+            |(id, state, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
                 let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
                 let ip6_socket = ip_stack
                     .as_v6()
                     .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
 
                 Some(SimNode::new(
-                    id, key, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6,
+                    id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6,
                 ))
             },
         )
@@ -278,4 +280,12 @@ pub(crate) fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
 
 fn private_key() -> impl Strategy<Value = PrivateKey> {
     any::<[u8; 32]>().prop_map(PrivateKey)
+}
+
+pub(crate) fn gateway_state() -> impl Strategy<Value = PrivateKey> {
+    private_key()
+}
+
+pub(crate) fn client_state() -> impl Strategy<Value = (PrivateKey, HashMap<String, Vec<IpAddr>>)> {
+    (private_key(), Just(HashMap::new()))
 }
