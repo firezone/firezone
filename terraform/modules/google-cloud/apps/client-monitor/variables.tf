@@ -153,6 +153,7 @@ variable "firezone_token" {
   default = ""
 
   description = "Firezone token to allow client to connect to portal"
+  sensitive   = true
 }
 
 variable "firezone_client_log_level" {

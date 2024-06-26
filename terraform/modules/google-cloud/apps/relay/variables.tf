@@ -137,6 +137,7 @@ variable "application_environment_variables" {
 variable "token" {
   type        = string
   description = "Portal token to use for authentication."
+  sensitive   = true
 }
 
 variable "api_url" {
