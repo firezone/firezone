@@ -602,7 +602,7 @@ impl TranslationState {
     }
 
     fn no_response_in_120s(&self, now: Instant) -> bool {
-        // This is the default timeout for a confirmed UDP connection in conntrack
+        // 120s is the default timeout for a confirmed UDP connection in conntrack
         now.duration_since(self.last_incoming) >= Duration::from_secs(120)
     }
 
