@@ -273,7 +273,7 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.no_response_in_30s(now) && state.is_used(now));
+            .filter(|(_, state)| state.no_response_in_120s(now) && state.is_used(now));
 
         let mut for_refresh = HashSet::new();
 
@@ -287,7 +287,7 @@ impl ClientOnGateway {
                 .permanent_translations
                 .values()
                 .filter(|state| state.resource_id == resource_id && state.name == domain)
-                .all(|state| state.no_response_in_30s(now))
+                .all(|state| state.no_response_in_120s(now))
             {
                 tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
@@ -585,8 +585,8 @@ impl TranslationState {
         now.duration_since(self.last_outgoing) <= Duration::from_secs(10)
     }
 
-    fn no_response_in_30s(&self, now: Instant) -> bool {
-        now.duration_since(self.last_incoming) >= Duration::from_secs(30)
+    fn no_response_in_120s(&self, now: Instant) -> bool {
+        now.duration_since(self.last_incoming) >= Duration::from_secs(120)
     }
 
     fn on_incoming_traffic(&mut self, now: Instant) {
