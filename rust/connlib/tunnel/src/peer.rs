@@ -273,7 +273,7 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.no_response_in_120s(now) && state.is_used(now));
+            .filter(|(_, state)| state.refresh_needed(now));
 
         let mut for_refresh = HashSet::new();
 
@@ -548,6 +548,11 @@ struct TranslationState {
     ///
     /// Initially set to `created_at`.
     last_outgoing: Instant,
+    /// When the outgoing packet that marks this translation as expired
+    /// Is used to give a 1 second grace time before refreshing dns
+    ///
+    /// Initially set to created_at
+    translation_expired_at: Instant,
 
     /// When this translation state was created.
     created_at: Instant,
@@ -567,6 +572,7 @@ impl TranslationState {
             last_incoming: created_at,
             first_outgoing: created_at,
             last_outgoing: created_at,
+            translation_expired_at: created_at,
             created_at,
         }
     }
@@ -585,7 +591,21 @@ impl TranslationState {
         now.duration_since(self.last_outgoing) <= Duration::from_secs(10)
     }
 
+    fn refresh_needed(&self, now: Instant) -> bool {
+        self.grace_time_started(now) && self.grace_time_ended(now)
+    }
+
+    fn grace_time_started(&self, now: Instant) -> bool {
+        self.no_response_in_120s(now) && self.is_used(now)
+    }
+
+    fn grace_time_ended(&self, now: Instant) -> bool {
+        now.duration_since(self.translation_expired_at) >= Duration::from_secs(1)
+            && now.duration_since(self.translation_expired_at) < Duration::from_secs(120)
+    }
+
     fn no_response_in_120s(&self, now: Instant) -> bool {
+        // This is the default timeout for a confirmed UDP connection in conntrack
         now.duration_since(self.last_incoming) >= Duration::from_secs(120)
     }
 
@@ -594,11 +614,18 @@ impl TranslationState {
     }
 
     fn on_outgoing_traffic(&mut self, now: Instant) {
+        let was_grace_time_started = self.grace_time_started(now);
+
         self.last_outgoing = now;
+
+        if self.grace_time_started(now) != was_grace_time_started {
+            self.translation_expired_at = now;
+        }
 
         if self.first_outgoing > self.created_at {
             return;
         }
+
         self.first_outgoing = now;
     }
 }
@@ -729,6 +756,176 @@ mod tests {
         now += Duration::from_secs(31);
 
         assert!(!state.is_used(now))
+    }
+
+    #[test]
+    fn initial_translation_state_is_not_expired() {
+        let now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_is_not_used_but_expired_after_120s() {
+        let mut now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(121);
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_is_used_and_expired_after_120s_with_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_is_not_expired_with_incoming_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_incoming_and_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_incoming_traffic(now);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_first_packet_after_silence() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_expires_after_silence_even_with_multiple_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+
+        assert!(state.refresh_needed(now));
+    }
+
+    #[test]
+    fn incoming_traffic_prevents_expiration() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(500);
+        state.on_incoming_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_packet_that_didnt_had_time_to_be_responded() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_millis(119990);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(20);
+
+        assert!(!state.refresh_needed(now));
+    }
+
+    #[test]
+    fn translation_state_expires_with_packet_that_had_time_to_be_responded() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_millis(119990);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(1000);
+
+        assert!(!state.refresh_needed(now));
     }
 
     #[test]
