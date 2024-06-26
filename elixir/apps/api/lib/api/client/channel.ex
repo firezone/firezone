@@ -88,7 +88,7 @@ defmodule API.Client.Channel do
 
       # Return all connected relays for the account
       {:ok, relays} = select_relays(socket)
-      :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+      :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
 
       :ok =
         push(socket, "init", %{
@@ -261,6 +261,7 @@ defmodule API.Client.Channel do
         actor_group_id: actor_group_id,
         resource_id: resource_id
       } do
+      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
@@ -327,7 +328,12 @@ defmodule API.Client.Channel do
           relay_id: relay_id
         } do
         {:ok, relays} = select_relays(socket)
-        :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
+        :ok =
+          Enum.each(relays, fn relay ->
+            :ok = Relays.unsubscribe_from_relay_presence(relay)
+            :ok = Relays.subscribe_to_relay_presence(relay)
+          end)
 
         push(socket, "relays_presence", %{
           disconnected_ids: [relay_id],
@@ -397,7 +403,11 @@ defmodule API.Client.Channel do
            {:ok, gateways} <-
              filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement),
            {:ok, [_ | _] = relays} <- select_relays(socket) do
-        :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+        :ok =
+          Enum.each(relays, fn relay ->
+            :ok = Relays.unsubscribe_from_relay_presence(relay)
+            :ok = Relays.subscribe_to_relay_presence(relay)
+          end)
 
         location = {
           socket.assigns.client.last_seen_remote_ip_location_lat,

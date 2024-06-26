@@ -201,12 +201,24 @@ defmodule Domain.Policies do
     policy_or_id |> policy_topic() |> PubSub.subscribe()
   end
 
+  def unsubscribe_from_events_for_policy(policy_or_id) do
+    policy_or_id |> policy_topic() |> PubSub.unsubscribe()
+  end
+
   def subscribe_to_events_for_account(account_or_id) do
     account_or_id |> account_topic() |> PubSub.subscribe()
   end
 
+  def unsubscribe_from_events_for_account(account_or_id) do
+    account_or_id |> account_topic() |> PubSub.unsubscribe()
+  end
+
   def subscribe_to_events_for_actor(actor_or_id) do
     actor_or_id |> actor_topic() |> PubSub.subscribe()
+  end
+
+  def unsubscribe_from_events_for_actor(actor_or_id) do
+    actor_or_id |> actor_topic() |> PubSub.unsubscribe()
   end
 
   def subscribe_to_events_for_actor_group(actor_group_or_id) do

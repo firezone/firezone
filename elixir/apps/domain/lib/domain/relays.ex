@@ -389,15 +389,30 @@ defmodule Domain.Relays do
     PubSub.subscribe(presence_topic(relay_or_id))
   end
 
+  def unsubscribe_from_relay_presence(relay_or_id) do
+    PubSub.unsubscribe(presence_topic(relay_or_id))
+  end
+
   def subscribe_to_relays_presence_in_account(%Accounts.Account{} = account) do
     PubSub.subscribe(global_groups_presence_topic())
     PubSub.subscribe(account_presence_topic(account))
+  end
+
+  def unsubscribe_from_relays_presence_in_account(%Accounts.Account{} = account) do
+    PubSub.unsubscribe(global_groups_presence_topic())
+    PubSub.unsubscribe(account_presence_topic(account))
   end
 
   def subscribe_to_relays_presence_in_group(group_or_id) do
     group_or_id
     |> group_presence_topic()
     |> PubSub.subscribe()
+  end
+
+  def unsubscribe_from_relays_presence_in_group(group_or_id) do
+    group_or_id
+    |> group_presence_topic()
+    |> PubSub.unsubscribe()
   end
 
   def broadcast_to_relay(relay_or_id, payload) do

@@ -401,13 +401,27 @@ defmodule Domain.Gateways do
   defp group_topic(group_id), do: "group_gateways:#{group_id}"
 
   def subscribe_to_gateways_presence_in_account(%Accounts.Account{} = account) do
-    PubSub.subscribe(account_presence_topic(account))
+    account
+    |> account_presence_topic()
+    |> PubSub.subscribe()
+  end
+
+  def unsubscribe_from_gateways_presence_in_account(%Accounts.Account{} = account) do
+    account
+    |> account_presence_topic()
+    |> PubSub.unsubscribe()
   end
 
   def subscribe_to_gateways_presence_in_group(group_or_id) do
     group_or_id
     |> group_presence_topic()
     |> PubSub.subscribe()
+  end
+
+  def unsubscribe_from_gateways_presence_in_group(group_or_id) do
+    group_or_id
+    |> group_presence_topic()
+    |> PubSub.unsubscribe()
   end
 
   def broadcast_to_gateway(gateway_or_id, payload) do
