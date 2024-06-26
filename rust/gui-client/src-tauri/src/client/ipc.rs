@@ -46,7 +46,7 @@ impl CallbackHandler {
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: ipc::ClientWrite,
+    tx: ipc::ClientWrite<IpcClientMsg>,
 }
 
 impl Client {

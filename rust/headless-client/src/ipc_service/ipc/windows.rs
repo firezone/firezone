@@ -202,12 +202,12 @@ mod tests {
         let pipe_path = server_1.pipe_path.clone();
 
         tokio::spawn(async move {
-            let (mut rx, _tx) = server_1.next_client_split().await?;
+            let (mut rx, _tx) = server_1.next_client_split::<(), ()>().await?;
             rx.next().await;
             Ok::<_, anyhow::Error>(())
         });
 
-        let (_rx, _tx) = crate::ipc::connect_to_service(ID).await?;
+        let (_rx, _tx) = crate::ipc::connect_to_service::<(), ()>(ID).await?;
 
         match super::create_pipe_server(&pipe_path) {
             Err(super::PipeError::AccessDenied) => {}

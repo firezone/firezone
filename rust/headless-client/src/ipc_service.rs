@@ -1,8 +1,8 @@
 use crate::{
     device_id,
     dns_control::{self, DnsController},
-    known_dirs, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg, SignalKind, Signals,
-    TOKEN_ENV_KEY,
+    known_dirs, CallbackHandler, CliCommon, InternalServerMsg, IpcClientMsg, IpcServerMsg,
+    SignalKind, Signals, TOKEN_ENV_KEY,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -17,6 +17,8 @@ use url::Url;
 
 pub mod ipc;
 use ipc::{Server as IpcServer, ServiceId};
+type ServerRead = ipc::ServerRead<IpcClientMsg>;
+type ServerWrite = ipc::ServerWrite<IpcServerMsg>;
 
 #[cfg(target_os = "linux")]
 #[path = "ipc_service/linux.rs"]
@@ -133,8 +135,8 @@ struct Handler {
     cb_rx: mpsc::Receiver<InternalServerMsg>,
     connlib: Option<connlib_client_shared::Session>,
     dns_controller: DnsController,
-    ipc_rx: ipc::ServerRead,
-    ipc_tx: ipc::ServerWrite,
+    ipc_rx: ServerRead,
+    ipc_tx: ServerWrite,
     last_connlib_start_instant: Option<Instant>,
     tun_device: tun_device_manager::TunDeviceManager,
 }
@@ -145,7 +147,7 @@ enum Event {
 }
 
 impl Handler {
-    fn new(ipc_rx: ipc::ServerRead, ipc_tx: ipc::ServerWrite) -> Result<Self> {
+    fn new(ipc_rx: ServerRead, ipc_tx: ServerWrite) -> Result<Self> {
         let (cb_tx, cb_rx) = mpsc::channel(10);
         let tun_device = tun_device_manager::TunDeviceManager::new()?;
 

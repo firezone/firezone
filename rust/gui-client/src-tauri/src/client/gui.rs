@@ -81,6 +81,11 @@ pub(crate) fn run(
     let _guard = rt.enter();
     rt.spawn(firezone_headless_client::heartbeat::heartbeat());
 
+    // Make sure we're single-instance
+    // We register our deep links to call the `open-deep-link` subcommand,
+    // so if we're at this point, we know we've been launched manually
+    let deep_link_server = deep_link::Server::new()?;
+
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
 
     let managed = Managed {
@@ -151,11 +156,6 @@ pub(crate) fn run(
                     }
                 });
 
-                // Make sure we're single-instance
-                // We register our deep links to call the `open-deep-link` subcommand,
-                // so if we're at this point, we know we've been launched manually
-                let server = deep_link::Server::new()?;
-
                 if let Some(client::Cmd::SmokeTest) = &cli.command {
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
@@ -171,7 +171,7 @@ pub(crate) fn run(
                     // The single-instance check is done, so register our exe
                     // to handle deep links
                     deep_link::register().context("Failed to register deep link handler")?;
-                    tokio::spawn(accept_deep_links(server, ctlr_tx.clone()));
+                    tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
                 }
 
                 if let Some(failure) = cli.fail_on_purpose() {
@@ -363,6 +363,7 @@ async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: boo
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
+        tracing::debug!("Waiting for deep link...");
         match server.accept().await {
             Ok(bytes) => {
                 let url = SecretString::from_str(
@@ -529,7 +530,11 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(url) => self.handle_deep_link(&url).await?,
+            Req::SchemeRequest(url) => {
+                if let Err(error) = self.handle_deep_link(&url).await {
+                    tracing::error!(?error, "`handle_deep_link`");
+                }
+            }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self
                     .auth

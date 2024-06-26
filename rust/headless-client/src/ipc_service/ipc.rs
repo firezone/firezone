@@ -1,5 +1,5 @@
-use crate::{IpcClientMsg, IpcServerMsg};
 use anyhow::{Context as _, Result};
+use serde::{de::DeserializeOwned, Serialize};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -19,10 +19,10 @@ pub mod platform;
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 
-pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServerMsg>>;
-pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<IpcClientMsg>>;
-pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClientMsg>>;
-pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;
+pub(crate) type ClientRead<ServerMsg> = FramedRead<ReadHalf<ClientStream>, Decoder<ServerMsg>>;
+pub type ClientWrite<ClientMsg> = FramedWrite<WriteHalf<ClientStream>, Encoder<ClientMsg>>;
+pub(crate) type ServerRead<ClientMsg> = FramedRead<ReadHalf<ServerStream>, Decoder<ClientMsg>>;
+pub(crate) type ServerWrite<ServerMsg> = FramedWrite<WriteHalf<ServerStream>, Encoder<ServerMsg>>;
 
 // pub so that the GUI can display a human-friendly message
 #[derive(Debug, thiserror::Error)]
@@ -103,7 +103,7 @@ impl<E> Default for Encoder<E> {
     }
 }
 
-impl<D: serde::de::DeserializeOwned> tokio_util::codec::Decoder for Decoder<D> {
+impl<D: DeserializeOwned> tokio_util::codec::Decoder for Decoder<D> {
     type Error = anyhow::Error;
     type Item = D;
 
@@ -117,7 +117,7 @@ impl<D: serde::de::DeserializeOwned> tokio_util::codec::Decoder for Decoder<D> {
     }
 }
 
-impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
+impl<E: Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
     type Error = anyhow::Error;
 
     fn encode(&mut self, msg: &E, buf: &mut BytesMut) -> Result<()> {
@@ -130,7 +130,9 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
 /// Connect to the IPC service
 ///
 /// Public because the GUI Client will need it
-pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite), Error> {
+pub async fn connect_to_service<ClientMsg: Serialize, ServerMsg: DeserializeOwned>(
+    id: ServiceId,
+) -> Result<(ClientRead<ServerMsg>, ClientWrite<ClientMsg>), Error> {
     // This is how ChatGPT recommended, and I couldn't think of any more clever
     // way before I asked it.
     let mut last_err = None;
@@ -159,7 +161,9 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
 }
 
 impl platform::Server {
-    pub(crate) async fn next_client_split(&mut self) -> Result<(ServerRead, ServerWrite)> {
+    pub(crate) async fn next_client_split<ClientMsg: DeserializeOwned, ServerMsg: Serialize>(
+        &mut self,
+    ) -> Result<(ServerRead<ClientMsg>, ServerWrite<ServerMsg>)> {
         let (rx, tx) = tokio::io::split(self.next_client().await?);
         let rx = FramedRead::new(rx, Decoder::default());
         let tx = FramedWrite::new(tx, Encoder::default());
@@ -181,7 +185,7 @@ mod tests {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         const ID: ServiceId = ServiceId::Test("H56FRXVH");
 
-        if super::connect_to_service(ID).await.is_ok() {
+        if super::connect_to_service::<(), ()>(ID).await.is_ok() {
             bail!("`connect_to_service` should have failed for a non-existent service");
         }
         Ok(())
@@ -201,7 +205,7 @@ mod tests {
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
                 let (mut rx, mut tx) = server
-                    .next_client_split()
+                    .next_client_split::<IpcClientMsg, IpcServerMsg>()
                     .await
                     .expect("Error while waiting for next IPC client");
                 while let Some(req) = rx.next().await {
@@ -218,7 +222,7 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = super::connect_to_service(ID)
+                let (mut rx, mut tx) = super::connect_to_service::<IpcClientMsg, IpcServerMsg>(ID)
                     .await
                     .context("Error while connecting to IPC server")?;
 
