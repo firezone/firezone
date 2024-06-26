@@ -10,6 +10,7 @@ use connlib_client_shared::{
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
+    sys::jlong,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
@@ -454,8 +455,9 @@ pub struct SessionWrapper {
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut SessionWrapper,
+    session_ptr: jlong,
 ) {
+    let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).inner.disconnect();
     });
@@ -473,7 +475,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
     dns_list: JString,
 ) {
     let dns = String::from(
@@ -485,7 +487,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
             .expect("Invalid string returned from android client"),
     );
     let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
-    let session = &*session;
+    let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_dns(dns);
 }
 
@@ -496,7 +498,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
     _: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
 ) {
-    (*session).inner.reconnect();
+    let session = &*(session_ptr as *const SessionWrapper);
+    session.inner.reconnect();
 }
