@@ -77,26 +77,12 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        // On Android / Linux we recreate the tunnel every time we re-configure it
-        self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
-
-        Ok(())
-    }
-
-    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
+    #[cfg(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "windows",
+        target_os = "linux"
+    ))]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
