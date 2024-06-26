@@ -1,3 +1,5 @@
+use crate::dns::StubResolver;
+use crate::io::DnsQueryError;
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
 use anyhow::Context;
@@ -5,19 +7,19 @@ use bimap::BiMap;
 use connlib_shared::callbacks::Status;
 use connlib_shared::error::ConnlibError as Error;
 use connlib_shared::messages::client::{Site, SiteId};
+use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, client::ResourceDescriptionDns,
-    Answer, ClientPayload, DnsServer, DomainResponse, GatewayId, Interface as InterfaceConfig,
-    IpDnsServer, Key, Offer, Relay, RelayId, RequestConnection, ResourceId, ReuseConnection,
+    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, ClientPayload, DnsServer,
+    GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
+    RequestConnection, ResourceId, ReuseConnection,
 };
 use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
-use domain::base::Rtype;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
+use tracing::Level;
 
-use crate::io::DnsQueryError;
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, stun, turn};
 use crate::{ClientEvent, ClientTunnel};
@@ -30,7 +32,6 @@ use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
-use tracing::Level;
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
 const IPV4_RESOURCES: &str = "100.96.0.0/11";
@@ -40,32 +41,9 @@ const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
 const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 
-// With this single timer this might mean that some DNS are refreshed too often
-// however... this also mean any resource is refresh within a 5 mins interval
-// therefore, only the first time it's added that happens, after that it doesn't matter.
-const DNS_REFRESH_INTERVAL: Duration = Duration::from_secs(300);
-
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct DnsResource {
-    pub id: ResourceId,
-    pub address: DomainName,
-}
-
-impl DnsResource {
-    pub fn from_description(
-        description: &ResourceDescriptionDns,
-        address: DomainName,
-    ) -> DnsResource {
-        DnsResource {
-            id: description.id,
-            address,
-        }
-    }
-}
 
 impl<CB> ClientTunnel<CB>
 where
@@ -225,7 +203,6 @@ where
         &mut self,
         resource_id: ResourceId,
         answer: Answer,
-        domain_response: Option<DomainResponse>,
         gateway_public_key: PublicKey,
     ) -> connlib_shared::Result<()> {
         self.role_state.accept_answer(
@@ -237,20 +214,8 @@ where
             },
             resource_id,
             gateway_public_key,
-            domain_response,
             Instant::now(),
         )?;
-
-        Ok(())
-    }
-
-    pub fn received_domain_parameters(
-        &mut self,
-        resource_id: ResourceId,
-        domain_response: DomainResponse,
-    ) -> connlib_shared::Result<()> {
-        self.role_state
-            .received_domain_parameters(resource_id, domain_response)?;
 
         Ok(())
     }
@@ -273,29 +238,9 @@ impl Request {
     /// The domain that we need to resolve as part of the connection request.
     pub fn domain_name(&self) -> Option<DomainName> {
         match self {
-            Request::NewConnection(i) => i.client_payload.domain.clone(),
-            Request::ReuseConnection(i) => i.payload.clone(),
+            Request::NewConnection(i) => i.client_payload.domain.as_ref().map(|r| r.name.clone()),
+            Request::ReuseConnection(i) => i.payload.as_ref().map(|r| r.name.clone()),
         }
-    }
-}
-
-fn send_dns_answer(
-    role_state: &mut ClientState,
-    qtype: Rtype,
-    resource_description: &DnsResource,
-    addrs: &HashSet<IpAddr>,
-) {
-    let packet = role_state
-        .deferred_dns_queries
-        .remove(&(resource_description.clone(), qtype));
-    if let Some(packet) = packet {
-        let Some(packet) = dns::create_local_answer(addrs, packet) else {
-            return;
-        };
-
-        tracing::debug!(domain = %resource_description.address, ips = ?addrs, "Resolved DNS query");
-
-        role_state.buffered_packets.push_back(packet);
     }
 }
 
@@ -310,7 +255,7 @@ pub struct ClientState {
     /// All gateways we are connected to and the associated, connection-specific state.
     peers: PeerStore<GatewayId, GatewayOnClient>,
     /// Which Resources we are trying to connect to.
-    awaiting_connection: HashMap<ResourceId, AwaitingConnectionDetails>,
+    awaiting_connection_details: HashMap<ResourceId, AwaitingConnectionDetails>,
 
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
@@ -319,8 +264,6 @@ pub struct ClientState {
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, Status>,
 
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// All resources indexed by their ID.
@@ -332,24 +275,14 @@ pub struct ClientState {
     /// DNS queries that we need to forward to the system resolver.
     buffered_dns_queries: VecDeque<DnsQuery<'static>>,
 
-    /// The (internal) IPs we have assigned for certain DNS resources.
-    ///
-    /// IPs for DNS resources are assigned on a per-peer (i.e. gateway) basis but can point to multiple DNS resources on the same gateway.
-    dns_resources_internal_ips: HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
-    /// DNS queries we can only answer once we have connected to the resource.
-    ///
-    /// See [`dns::ResolveStrategy`] for details.
-    deferred_dns_queries: HashMap<(DnsResource, Rtype), IpPacket<'static>>,
-    /// Hands out IPs for DNS resources.
-    ip_provider: IpProvider,
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
-    mangled_dns_queries: HashMap<u16, std::time::Instant>,
-    /// When to next refresh DNS resources.
     ///
-    /// "Refreshing" DNS resources means triggering a new DNS lookup for this domain on the gateway.
-    next_dns_refresh: Option<Instant>,
+    /// The [`Instant`] tracks when the DNS query expires.
+    mangled_dns_queries: HashMap<u16, Instant>,
+    /// Manages internal dns records and emits forwarding event when not internally handled
+    stub_resolver: StubResolver,
 
     /// Configuration of the TUN device, when it is up.
     interface_config: Option<InterfaceConfig>,
@@ -360,34 +293,30 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AwaitingConnectionDetails {
-    pub domain: Option<DomainName>,
     gateways: HashSet<GatewayId>,
     pub last_intent_sent_at: Instant,
+    domain: Option<ResolveRequest>,
 }
 
 impl ClientState {
     pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
         Self {
-            awaiting_connection: Default::default(),
+            awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
-            ip_provider: IpProvider::for_resources(),
-            dns_resources_internal_ips: Default::default(),
-            dns_resources: Default::default(),
             cidr_resources: IpNetworkTable::new(),
             resource_ids: Default::default(),
             peers: Default::default(),
-            deferred_dns_queries: Default::default(),
             dns_mapping: Default::default(),
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
-            next_dns_refresh: Default::default(),
             node: ClientNode::new(private_key.into()),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
+            stub_resolver: StubResolver::new(),
         }
     }
 
@@ -438,13 +367,39 @@ impl ClientState {
         self.node.public_key()
     }
 
+    fn send_proxy_ips(
+        &mut self,
+        resource_ip: &IpAddr,
+        resource_id: ResourceId,
+        gateway_id: GatewayId,
+    ) {
+        let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
+            return;
+        };
+        self.peers.add_ips_with_resource(
+            &gateway_id,
+            &ips.iter().copied().map_into().collect_vec(),
+            &resource_id,
+        );
+        self.buffered_events.push_back(ClientEvent::SendProxyIps {
+            connections: vec![ReuseConnection {
+                resource_id,
+                gateway_id,
+                payload: Some(ResolveRequest {
+                    name: fqdn.clone(),
+                    proxy_ips: ips.clone(),
+                }),
+            }],
+        })
+    }
+
     #[tracing::instrument(level = "trace", skip_all, fields(dst))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let (packet, dest) = match self.handle_dns(packet, now) {
+        let (packet, dest) = match self.handle_dns(packet) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
                 return None;
@@ -465,14 +420,9 @@ impl ClientState {
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
-            // If we don't have a peer but we have an ip for a resource it's then not a DNS resource
-            debug_assert!(self.cidr_resources.longest_match(dest).is_some());
-
-            self.on_not_connected_resource(resource, None, now);
+            self.on_not_connected_resource(resource, &dest, now);
             return None;
         };
-
-        let packet = peer.transform_tun_to_network(packet);
 
         let packet = maybe_mangle_dns_query_to_cidr_resource(
             packet,
@@ -480,6 +430,12 @@ impl ClientState {
             &mut self.mangled_dns_queries,
             now,
         );
+
+        if peer.allowed_ips.longest_match(dest).is_none() {
+            let gateway_id = peer.id();
+            self.send_proxy_ips(&dest, resource, gateway_id);
+            return None;
+        }
 
         let gateway_id = peer.id();
 
@@ -516,14 +472,9 @@ impl ClientState {
             return None;
         };
 
-        let packet = match peer.transform_network_to_tun(packet) {
-            Ok(packet) => packet,
-            Err(e) => {
-                tracing::warn!(%conn_id, %local, %from, "Failed to transform packet: {e}");
-
-                return None;
-            }
-        };
+        peer.ensure_allowed_src(&packet)
+            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "{e}"))
+            .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
             packet,
@@ -549,37 +500,15 @@ impl ClientState {
         answer: snownet::Answer,
         resource_id: ResourceId,
         gateway: PublicKey,
-        domain_response: Option<DomainResponse>,
         now: Instant,
     ) -> connlib_shared::Result<()> {
-        debug_assert!(!self.awaiting_connection.contains_key(&resource_id));
+        debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
 
         let gateway_id = self
             .gateway_by_resource(&resource_id)
             .ok_or(Error::UnknownResource)?;
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
-
-        let desc = self
-            .resource_ids
-            .get(&resource_id)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let ips = self.get_resource_ip(desc, &domain_response.as_ref().map(|d| d.domain.clone()));
-
-        let resource_ids = HashSet::from([resource_id]);
-        let peer = GatewayOnClient::new(gateway_id, &ips, resource_ids);
-
-        self.peers.insert(peer, &[]);
-
-        let peer_ips = if let Some(domain_response) = domain_response {
-            self.dns_response(&resource_id, &domain_response, &gateway_id)?
-        } else {
-            ips
-        };
-
-        self.peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
 
         Ok(())
     }
@@ -593,7 +522,7 @@ impl ClientState {
         allowed_stun_servers: HashSet<SocketAddr>,
         allowed_turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
     ) -> anyhow::Result<Option<Request>> {
-        tracing::trace!("create_or_reuse_connection");
+        tracing::trace!("Creating or reusing connection");
 
         let desc = self
             .resource_ids
@@ -604,10 +533,11 @@ impl ClientState {
             return Ok(None);
         }
 
-        let awaiting_connection = self
-            .awaiting_connection
+        let awaiting_connection_details = self
+            .awaiting_connection_details
             .remove(&resource_id)
             .context("No connection details found for resource")?;
+        let ips = get_addresses_for_awaiting_resource(desc, &awaiting_connection_details);
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
@@ -618,24 +548,28 @@ impl ClientState {
         self.gateways_site.insert(gateway_id, site_id);
 
         if self.peers.get(&gateway_id).is_some() {
-            self.peers.add_ips_with_resource(
-                &gateway_id,
-                &self.get_resource_ip(desc, &awaiting_connection.domain),
-                &resource_id,
-            );
+            self.peers
+                .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
             return Ok(Some(Request::ReuseConnection(ReuseConnection {
                 resource_id,
                 gateway_id,
-                payload: awaiting_connection.domain,
+                payload: awaiting_connection_details.domain,
             })));
         };
+
+        self.peers.insert(
+            GatewayOnClient::new(gateway_id, &ips, HashSet::from([resource_id])),
+            &[],
+        );
+        self.peers
+            .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
         let offer = self.node.new_connection(
             gateway_id,
             allowed_stun_servers,
             allowed_turn_servers,
-            awaiting_connection.last_intent_sent_at,
+            awaiting_connection_details.last_intent_sent_at,
             Instant::now(),
         );
 
@@ -648,26 +582,47 @@ impl ClientState {
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain: awaiting_connection.domain,
+                domain: awaiting_connection_details.domain,
             },
         })));
     }
 
-    pub fn received_domain_parameters(
+    /// Attempt to handle the given packet as a DNS packet.
+    ///
+    /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
+    /// Returns `Err` if the packet is not a DNS query.
+    fn handle_dns<'a>(
         &mut self,
-        resource_id: ResourceId,
-        domain_response: DomainResponse,
-    ) -> connlib_shared::Result<()> {
-        let gateway_id = self
-            .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
+        packet: MutableIpPacket<'a>,
+    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
+        match self
+            .stub_resolver
+            .handle(&self.dns_mapping, packet.as_immutable())
+        {
+            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
+            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
+                // There's an edge case here, where the resolver's ip has been resolved before as
+                // a dns resource... we will ignore that weird case for now.
+                // Assuming a single upstream dns until #3123 lands
+                if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
+                {
+                    let ip = upstream_dns.ip();
 
-        let peer_ips = self.dns_response(&resource_id, &domain_response, &gateway_id)?;
+                    // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
+                    if self.cidr_resources.longest_match(ip).is_some() {
+                        return Err((packet, ip));
+                    }
+                }
 
-        self.peers
-            .add_ips_with_resource(&gateway_id, &peer_ips, &resource_id);
+                self.buffered_dns_queries.push_back(query.into_owned());
 
-        Ok(())
+                Ok(None)
+            }
+            None => {
+                let dest = packet.destination();
+                Err((packet, dest))
+            }
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(name = %query.name, server = %query.query.destination()))] // On debug level, we can log potentially sensitive information such as domain names.
@@ -712,130 +667,16 @@ impl ClientState {
         self.buffered_packets.push_back(dns_reply);
     }
 
-    fn dns_response(
-        &mut self,
-        resource_id: &ResourceId,
-        domain_response: &DomainResponse,
-        peer_id: &GatewayId,
-    ) -> connlib_shared::Result<Vec<IpNetwork>> {
-        let peer = self
-            .peers
-            .get_mut(peer_id)
-            .ok_or(Error::ControlProtocolError)?;
-
-        let resource_description = self
-            .resource_ids
-            .get(resource_id)
-            .ok_or(Error::UnknownResource)?
-            .clone();
-
-        let ResourceDescription::Dns(resource_description) = resource_description else {
-            // We should never get a domain_response for a CIDR resource!
-            return Err(Error::ControlProtocolError);
-        };
-
-        tracing::debug!(domain = %domain_response.domain, addresses = ?domain_response.address, "Received DNS response");
-
-        let resource_description =
-            DnsResource::from_description(&resource_description, domain_response.domain.clone());
-
-        let proxy_ips: HashSet<_> = domain_response
-            .address
-            .iter()
-            .filter_map(|external_ip| {
-                peer.get_or_assign_translation(external_ip, &mut self.ip_provider)
-            })
-            .collect();
-
-        for proxy_ip in proxy_ips.clone() {
-            self.dns_resources_internal_ips
-                .entry(proxy_ip)
-                .and_modify(|(existing_peer, dns_resources)| {
-                    assert_eq!(existing_peer, peer_id);
-
-                    dns_resources.insert(resource_description.clone());
-                })
-                .or_insert_with(|| (*peer_id, HashSet::from([resource_description.clone()])));
-        }
-
-        send_dns_answer(self, Rtype::AAAA, &resource_description, &proxy_ips);
-        send_dns_answer(self, Rtype::A, &resource_description, &proxy_ips);
-
-        Ok(proxy_ips.iter().copied().map(Into::into).collect())
-    }
-
-    /// Attempt to handle the given packet as a DNS packet.
-    ///
-    /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
-    /// Returns `Err` if the packet is not a DNS query.
-    fn handle_dns<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-        now: Instant,
-    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
-        match dns::parse(
-            &self.dns_resources,
-            &self.dns_resources_internal_ips,
-            &self.dns_mapping,
-            packet.as_immutable(),
-        ) {
-            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
-            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                // There's an edge case here, where the resolver's ip has been resolved before as
-                // a dns resource... we will ignore that weird case for now.
-                // Assuming a single upstream dns until #3123 lands
-                if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
-                {
-                    let ip = upstream_dns.ip();
-
-                    if self.cidr_resources.longest_match(ip).is_some() {
-                        tracing::debug!(%ip, "DNS server is a CIDR resource");
-
-                        return Err((packet, ip));
-                    }
-                }
-
-                self.buffered_dns_queries.push_back(query.into_owned());
-
-                Ok(None)
-            }
-            Some(dns::ResolveStrategy::DeferredResponse((resource, r_type))) => {
-                self.deferred_dns_queries
-                    .insert((resource.clone(), r_type), packet.as_immutable().to_owned());
-
-                let Some(peer) = self.peer_by_resource(resource.id) else {
-                    self.on_not_connected_resource(resource.id, Some(resource.address), now);
-                    return Ok(None);
-                };
-
-                self.buffered_events
-                    .push_back(ClientEvent::RefreshResources {
-                        connections: vec![ReuseConnection {
-                            resource_id: resource.id,
-                            gateway_id: peer.id(),
-                            payload: Some(resource.address),
-                        }],
-                    });
-
-                Ok(None)
-            }
-            None => {
-                let dest = packet.destination();
-                Err((packet, dest))
-            }
-        }
-    }
-
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
-        self.awaiting_connection.remove(&resource);
+        self.awaiting_connection_details.remove(&resource);
         self.resources_gateways.remove(&resource);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource, ?domain))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
     fn on_not_connected_resource(
         &mut self,
         resource: ResourceId,
-        domain: Option<DomainName>,
+        destination: &IpAddr,
         now: Instant,
     ) {
         debug_assert!(self.resource_ids.contains_key(&resource));
@@ -855,7 +696,7 @@ impl ClientState {
             return;
         }
 
-        match self.awaiting_connection.entry(resource) {
+        match self.awaiting_connection_details.entry(resource) {
             Entry::Occupied(mut occupied) => {
                 let time_since_last_intent = now.duration_since(occupied.get().last_intent_sent_at);
 
@@ -869,9 +710,14 @@ impl ClientState {
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
-                    domain,
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
+                    domain: self.stub_resolver.get_fqdn(destination).map(|(fqdn, ips)| {
+                        ResolveRequest {
+                            name: fqdn.clone(),
+                            proxy_ips: ips.clone(),
+                        }
+                    }),
                 });
             }
         }
@@ -898,40 +744,10 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    fn get_resource_ip(
-        &self,
-        resource: &ResourceDescription,
-        domain: &Option<DomainName>,
-    ) -> Vec<IpNetwork> {
-        match resource {
-            ResourceDescription::Dns(dns_resource) => {
-                let Some(domain) = domain else {
-                    return vec![];
-                };
-
-                let description = DnsResource::from_description(dns_resource, domain.clone());
-                dns::ips_of_resource(&self.dns_resources_internal_ips, &description)
-                    .map(Into::into)
-                    .collect()
-            }
-            ResourceDescription::Cidr(cidr) => vec![cidr.address],
-        }
-    }
-
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %gateway_id))]
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
         self.update_site_status_by_gateway(gateway_id, Status::Unknown);
         self.peers.remove(gateway_id);
-        self.dns_resources_internal_ips
-            .retain(|proxy_ip, (candidate, resources)| {
-                if candidate == gateway_id {
-                    tracing::debug!(%proxy_ip, num_domains = %resources.len(), "Disassociating proxy IP");
-
-                    return false;
-                }
-
-                true
-            });
         self.resources_gateways.retain(|_, g| g != gateway_id);
     }
 
@@ -948,12 +764,12 @@ impl ClientState {
         let maybe_cidr_resource_id = self
             .cidr_resources
             .longest_match(destination)
-            .map(|(_, r)| r.id);
+            .map(|(_, res)| res.id);
 
         let maybe_dns_resource_id = self
-            .dns_resources_internal_ips
-            .get(&destination)
-            .map(|(_, r)| r.iter().next().expect("to have at least one resource").id);
+            .stub_resolver
+            .get_description(&destination)
+            .map(|r| r.id);
 
         maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
@@ -981,51 +797,31 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(self.next_dns_refresh, self.node.poll_timeout())
+        // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
+        // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
+        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
+        let next_node_timeout = self.node.poll_timeout();
+
+        earliest(next_dns_query_expiry, next_node_timeout)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-
-        match self.next_dns_refresh {
-            Some(next_dns_refresh) if now >= next_dns_refresh => {
-                let mut connections = Vec::new();
-
-                self.mangled_dns_queries
-                    .retain(|_, exp| exp.elapsed() < IDS_EXPIRE);
-
-                for resource in self
-                    .dns_resources_internal_ips
-                    .values()
-                    .flat_map(|(_, resources)| resources)
-                {
-                    let Some(peer) = self.peer_by_resource(resource.id) else {
-                        // filter inactive connections
-                        continue;
-                    };
-
-                    tracing::debug!(domain = %resource.address, "Refreshing DNS record");
-
-                    connections.push(ReuseConnection {
-                        resource_id: resource.id,
-                        gateway_id: peer.id(),
-                        payload: Some(resource.address.clone()),
-                    });
-                }
-
-                self.buffered_events
-                    .push_back(ClientEvent::RefreshResources { connections });
-
-                self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL);
-            }
-            None => self.next_dns_refresh = Some(now + DNS_REFRESH_INTERVAL),
-            Some(_) => {}
-        }
+        self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
         while let Some(event) = self.node.poll_event() {
             match event {
                 snownet::Event::ConnectionFailed(id) => {
                     self.cleanup_connected_gateway(&id);
+                    self.buffered_events
+                        .push_back(ClientEvent::ResourcesChanged {
+                            resources: self.resources(),
+                        });
+                }
+                snownet::Event::ConnectionsCleared(ids) => {
+                    for id in ids {
+                        self.cleanup_connected_gateway(&id);
+                    }
                     self.buffered_events
                         .push_back(ClientEvent::ResourcesChanged {
                             resources: self.resources(),
@@ -1076,8 +872,9 @@ impl ClientState {
     }
 
     pub(crate) fn reconnect(&mut self, now: Instant) {
-        tracing::info!("Network change detected, refreshing connections");
-        self.node.reconnect(now)
+        tracing::info!("Network change detected");
+        self.node.reconnect(now);
+        self.handle_timeout(now); // Ensure we process all events.
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
@@ -1123,10 +920,20 @@ impl ClientState {
 
             match &resource_description {
                 ResourceDescription::Dns(dns) => {
-                    self.dns_resources.insert(dns.address.clone(), dns.clone());
+                    self.stub_resolver.add_resource(dns);
                 }
                 ResourceDescription::Cidr(cidr) => {
-                    self.cidr_resources.insert(cidr.address, cidr.clone());
+                    let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+
+                    match existing {
+                        Some(existing) if existing.id != cidr.id => {
+                            tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
+                        }
+                        Some(_) => {}
+                        None => {
+                            tracing::info!(address = %cidr.address, name = %cidr.name, "Activating CIDR resource");
+                        }
+                    }
                 }
             }
 
@@ -1138,15 +945,16 @@ impl ClientState {
     #[tracing::instrument(level = "debug", skip_all, fields(?ids))]
     pub(crate) fn remove_resources(&mut self, ids: &[ResourceId]) {
         for id in ids {
-            self.awaiting_connection.remove(id);
-            self.dns_resources_internal_ips
-                .iter_mut()
-                .for_each(|(_, (_, r))| r.retain(|r| r.id != *id));
-            self.dns_resources_internal_ips
-                .retain(|_, (_, r)| !r.is_empty());
-            self.dns_resources.retain(|_, r| r.id != *id);
-            self.cidr_resources.retain(|_, r| r.id != *id);
-            self.deferred_dns_queries.retain(|(r, _), _| r.id != *id);
+            self.awaiting_connection_details.remove(id);
+            self.stub_resolver.remove_resource(*id);
+            self.cidr_resources.retain(|_, r| {
+                if r.id == *id {
+                    tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
+                    return false;
+                }
+
+                true
+            });
 
             self.resource_ids.remove(id);
 
@@ -1157,7 +965,7 @@ impl ClientState {
             let gateway_id = peer.id();
 
             // First we remove the id from all allowed ips
-            for (network, resources) in peer
+            for (_, resources) in peer
                 .allowed_ips
                 .iter_mut()
                 .filter(|(_, resources)| resources.contains(id))
@@ -1167,10 +975,6 @@ impl ClientState {
                 if !resources.is_empty() {
                     continue;
                 }
-
-                // If the allowed_ips doesn't correspond to any resource anymore we
-                // clean up any related translation.
-                peer.translations.remove_by_left(&network.network_address());
             }
 
             // We remove all empty allowed ips entry since there's no resource that corresponds to it
@@ -1183,8 +987,6 @@ impl ClientState {
                 // TODO: should we have a Node::remove_connection?
             }
         }
-
-        tracing::debug!("Resources removed")
     }
 
     fn update_dns_mapping(&mut self) -> bool {
@@ -1232,13 +1034,6 @@ impl ClientState {
     ) {
         self.node.update_relays(to_remove, &to_add, now);
     }
-
-    fn peer_by_resource(&self, resource: ResourceId) -> Option<&GatewayOnClient> {
-        let gateway_id = self.resources_gateways.get(&resource)?;
-        let peer = self.peers.get(gateway_id)?;
-
-        Some(peer)
-    }
 }
 
 fn peer_by_resource_mut<'p>(
@@ -1250,6 +1045,24 @@ fn peer_by_resource_mut<'p>(
     let peer = peers.get_mut(gateway_id)?;
 
     Some(peer)
+}
+
+fn get_addresses_for_awaiting_resource(
+    desc: &ResourceDescription,
+    awaiting_connection_details: &AwaitingConnectionDetails,
+) -> Vec<IpNetwork> {
+    match desc {
+        ResourceDescription::Dns(_) => awaiting_connection_details
+            .domain
+            .as_ref()
+            .expect("for dns resources the awaiting connection should have an ip")
+            .proxy_ips
+            .iter()
+            .copied()
+            .map_into()
+            .collect_vec(),
+        ResourceDescription::Cidr(r) => vec![r.address],
+    }
 }
 
 fn effective_dns_servers(
@@ -1352,9 +1165,9 @@ fn maybe_mangle_dns_query_to_cidr_resource<'p>(
         return packet;
     };
 
-    tracing::debug!(old_dst = %dst, new_dst = %srv.ip(), "Packet is a DNS query to a DNS server configured as a CIDR resource");
+    tracing::trace!(old_dst = %dst, new_dst = %srv.ip(), "Mangling DNS query to CIDR resource");
 
-    mangeled_dns_queries.insert(message.header().id(), now);
+    mangeled_dns_queries.insert(message.header().id(), now + IDS_EXPIRE);
     packet.set_dst(srv.ip());
     packet.update_checksum();
 
@@ -1383,15 +1196,21 @@ fn maybe_mangle_dns_response_from_cidr_resource<'p>(
         return packet;
     };
 
-    let Some(query_sent_at) = mangeled_dns_queries.remove(&message.header().id()) else {
+    let Some(query_sent_at) = mangeled_dns_queries
+        .remove(&message.header().id())
+        .map(|expires_at| expires_at - IDS_EXPIRE)
+    else {
         return packet;
     };
 
-    if now.duration_since(query_sent_at) > IDS_EXPIRE {
-        return packet;
-    }
+    let rtt = now.duration_since(query_sent_at);
 
-    tracing::debug!(old_src = %src_ip, new_src = %sentinel, "Packet is a DNS response from a DNS server configured as a CIDR resource");
+    let domains = message
+        .question()
+        .filter_map(|q| Some(q.ok()?.into_qname()))
+        .join(",");
+
+    tracing::trace!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
 
     packet.set_src(*sentinel);
     packet.update_checksum();
@@ -1452,6 +1271,14 @@ impl IpProvider {
         }
 
         proxy_ip
+    }
+
+    pub fn get_n_ipv4(&mut self, n: usize) -> Vec<IpAddr> {
+        self.ipv4.by_ref().take(n).map_into().collect_vec()
+    }
+
+    pub fn get_n_ipv6(&mut self, n: usize) -> Vec<IpAddr> {
+        self.ipv6.by_ref().take(n).map_into().collect_vec()
     }
 }
 
@@ -1684,9 +1511,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod testutils {
+#[cfg(all(test, feature = "proptest"))]
+mod proptests {
     use super::*;
+    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
 
     pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
         HashSet::from_iter(
@@ -1703,13 +1531,6 @@ mod testutils {
     ) -> HashSet<T> {
         HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
-}
-
-#[cfg(all(test, feature = "proptest"))]
-mod proptests {
-    use super::*;
-    use connlib_shared::proptest::*;
-    use testutils::*;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(

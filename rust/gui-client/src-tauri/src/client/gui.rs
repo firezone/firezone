@@ -10,7 +10,7 @@ use crate::client::{
     settings::{self, AdvancedSettings},
     Failure,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -21,6 +21,7 @@ use url::Url;
 
 use ControllerRequest as Req;
 
+mod errors;
 mod ran_before;
 pub(crate) mod system_tray_menu;
 
@@ -40,9 +41,12 @@ mod os;
 #[allow(clippy::unnecessary_wraps)]
 mod os;
 
+pub(crate) use errors::{show_error_dialog, Error};
 pub(crate) use os::set_autostart;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
+
+const TRAY_ICON_TOOLTIP: &str = "Firezone";
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -51,24 +55,6 @@ pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 pub(crate) struct Managed {
     pub ctlr_tx: CtlrTx,
     pub inject_faults: bool,
-}
-
-// TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
-#[allow(dead_code)]
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
-    #[error("Deep-link module error: {0}")]
-    DeepLink(#[from] deep_link::Error),
-    #[error("Logging module error: {0}")]
-    Logging(#[from] logging::Error),
-
-    // `client.rs` provides a more user-friendly message when showing the error dialog box for certain variants
-    #[error("UserNotInFirezoneGroup")]
-    UserNotInFirezoneGroup,
-    #[error("WebViewNotInstalled")]
-    WebViewNotInstalled,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
@@ -102,7 +88,11 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let tray = SystemTray::new().with_menu(system_tray_menu::signed_out());
+    // We can't call `refresh_system_tray_menu` yet because `Controller`
+    // is built inside Tauri's setup
+    let tray = SystemTray::new()
+        .with_menu(system_tray_menu::loading())
+        .with_tooltip(TRAY_ICON_TOOLTIP);
 
     tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
@@ -232,6 +222,7 @@ pub(crate) fn run(
                         }
                         Ok(Err(error)) => {
                             tracing::error!(?error, "run_controller returned an error");
+                            errors::show_error_dialog(&error).unwrap();
                             1
                         }
                         Ok(Ok(_)) => 0,
@@ -448,11 +439,10 @@ struct Session {
 }
 
 impl Controller {
-    // TODO: Figure out how re-starting sessions automatically will work
     /// Pre-req: the auth module must be signed in
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
         if self.session.is_some() {
-            bail!("can't start session, we're already in a session");
+            Err(anyhow!("can't start session, we're already in a session"))?;
         }
 
         let callback_handler = CallbackHandler {
@@ -482,20 +472,21 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<(), Error> {
         let auth_response =
             client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
         tracing::info!("Received deep link over IPC");
         // Uses `std::fs`
-        let token = self.auth.handle_response(auth_response)?;
-        self.start_session(token)
-            .await
-            .context("Couldn't start connlib session")?;
+        let token = self
+            .auth
+            .handle_response(auth_response)
+            .context("Couldn't handle auth response")?;
+        self.start_session(token).await?;
         Ok(())
     }
 
-    async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
+    async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
         match req {
             Req::ApplySettings(settings) => {
                 self.advanced_settings = settings;
@@ -525,36 +516,43 @@ impl Controller {
                         .set_title("Firezone Error")
                         .set_text(&error_msg)
                         .set_type(native_dialog::MessageType::Error)
-                        .show_alert()?;
+                        .show_alert()
+                        .context("Couldn't show Disconnected alert")?;
                 }
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
-            Req::Fail(_) => bail!("Impossible error: `Fail` should be handled before this"),
+            Req::Fail(_) => Err(anyhow!(
+                "Impossible error: `Fail` should be handled before this"
+            ))?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(url) => self
-                .handle_deep_link(&url)
-                .await
-                .context("Couldn't handle deep link")?,
+            Req::SchemeRequest(url) => self.handle_deep_link(&url).await?,
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self.auth.start_sign_in()? {
+                if let Some(req) = self
+                    .auth
+                    .start_sign_in()
+                    .context("Couldn't start sign-in flow")?
+                {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)?;
+                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)
+                        .context("Couldn't open auth page")?;
                     self.app
                         .get_window("welcome")
                         .context("Couldn't get handle to Welcome window")?
-                        .hide()?;
+                        .hide()
+                        .context("Couldn't hide Welcome window")?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
                 &self.app.shell_scope(),
                 &self.advanced_settings.auth_base_url,
                 None,
-            )?,
+            )
+            .context("Couldn't open auth page")?,
             Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
                 .context("Couldn't access clipboard")?
                 .set_text(s)
@@ -591,11 +589,12 @@ impl Controller {
                 self.sign_out().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
-                tauri::api::shell::open(&self.app.shell_scope(), url, None)?
+                tauri::api::shell::open(&self.app.shell_scope(), url, None)
+                    .context("Couldn't open URL from system tray")?
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
-                bail!("Impossible error: `Quit` should be handled before this")
-            }
+            Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
+                "Impossible error: `Quit` should be handled before this"
+            ))?,
             Req::TunnelReady => {
                 if !self.tunnel_ready {
                     os::show_notification(
@@ -616,7 +615,8 @@ impl Controller {
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
-                tauri::api::shell::open(&self.app.shell_scope(), download_url, None)?;
+                tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
+                    .context("Couldn't open update page")?;
             }
         }
         Ok(())
@@ -652,10 +652,10 @@ impl Controller {
 
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&self) -> Result<()> {
-        Ok(self
-            .app
-            .tray_handle()
-            .set_menu(self.build_system_tray_menu())?)
+        let tray = self.app.tray_handle();
+        tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
+        tray.set_menu(self.build_system_tray_menu())?;
+        Ok(())
     }
 
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
@@ -699,7 +699,7 @@ async fn run_controller(
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
-) -> Result<()> {
+) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let mut controller = Controller {
         advanced_settings,
@@ -717,19 +717,17 @@ async fn run_controller(
         .token()
         .context("Failed to load token from disk during app start")?
     {
-        controller
-            .start_session(token)
-            .await
-            .context("Failed to restart session during app start")?;
+        controller.start_session(token).await?;
     } else {
         tracing::info!("No token / actor_name on disk, starting in signed-out state");
+        controller.refresh_system_tray_menu()?;
     }
 
     if !ran_before::get().await? {
         let win = app
             .get_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
-        win.show()?;
+        win.show().context("Couldn't show Welcome window")?;
     }
 
     let mut have_internet =
@@ -778,15 +776,13 @@ async fn run_controller(
                         tracing::error!("Crashing on purpose");
                         unsafe { sadness_generator::raise_segfault() }
                     },
-                    Req::Fail(Failure::Error) => bail!("Test error"),
+                    Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
                     Req::Fail(Failure::Panic) => panic!("Test panic"),
                     Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                         tracing::info!("User clicked Quit in the menu");
                         break
                     }
-                    req => if let Err(error) = controller.handle_request(req).await {
-                        tracing::error!(?error, "Failed to handle a ControllerRequest");
-                    }
+                    req => controller.handle_request(req).await?,
                 }
             },
         }

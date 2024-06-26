@@ -1,6 +1,6 @@
-use crate::client::DnsResource;
-use connlib_shared::messages::GatewayId;
-use connlib_shared::messages::{client::ResourceDescriptionDns, DnsServer};
+use crate::client::IpProvider;
+use connlib_shared::messages::client::ResourceDescriptionDns;
+use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
 use domain::base::RelativeName;
 use domain::base::{
@@ -15,7 +15,7 @@ use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
 use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const DNS_TTL: u32 = 1;
@@ -27,13 +27,11 @@ const DNS_PORT: u16 = 53;
 
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
-pub(crate) enum ResolveStrategy<T, U, V> {
+pub(crate) enum ResolveStrategy<'a> {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(T),
+    LocalResponse(IpPacket<'static>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver
-    ForwardQuery(U),
-    /// The query is for a Resource, but we can't map an IP until we connect to it, so defer the response while we connect in the background
-    DeferredResponse(V),
+    ForwardQuery(DnsQuery<'a>),
 }
 
 #[derive(Debug)]
@@ -74,28 +72,12 @@ impl Clone for DnsQuery<'static> {
     }
 }
 
-struct DnsQueryParams {
-    name: DomainName,
-    record_type: RecordType,
-}
-
-impl DnsQueryParams {
-    fn into_query(self, query: IpPacket) -> DnsQuery {
-        DnsQuery {
-            name: self.name,
-            record_type: self.record_type,
-            query,
-        }
-    }
-}
-
-impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
-    fn forward(name: DomainName, record_type: Rtype) -> ResolveStrategy<T, DnsQueryParams, V> {
-        ResolveStrategy::ForwardQuery(DnsQueryParams {
-            name,
-            record_type: u16::from(record_type).into(),
-        })
-    }
+pub struct StubResolver {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+    ip_provider: IpProvider,
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    dns_resources: HashMap<String, ResourceDescriptionDns>,
 }
 
 // We don't need to support multiple questions/qname in a single query because
@@ -108,76 +90,141 @@ impl<T, V> ResolveStrategy<T, DnsQueryParams, V> {
 /// Returns:
 /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
 /// - Otherwise, a strategy for responding to the query
-pub(crate) fn parse<'a>(
-    dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
-    dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-    packet: IpPacket<'a>,
-) -> Option<ResolveStrategy<IpPacket<'static>, DnsQuery<'a>, (DnsResource, Rtype)>> {
-    dns_mapping.get_by_left(&packet.destination())?;
-    let datagram = packet.as_udp()?;
-    let message = as_dns(&datagram)?;
-    if message.header().qr() {
-        return None;
+impl StubResolver {
+    pub(crate) fn new() -> StubResolver {
+        StubResolver {
+            fqdn_to_ips: Default::default(),
+            ips_to_fqdn: Default::default(),
+            ip_provider: IpProvider::for_resources(),
+            dns_resources: Default::default(),
+        }
     }
 
-    let question = message.first_question()?;
+    pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceDescriptionDns> {
+        let name = self.ips_to_fqdn.get(ip)?;
+        get_description(name, &self.dns_resources)
+    }
 
-    tracing::trace!("Parsed packet as DNS query: '{question}'");
+    pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
+        let fqdn = self.ips_to_fqdn.get(ip)?;
+        Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
+    }
 
-    // In general we prefer to always have a response NxDomain to deal with with domains we don't expect
-    // For systems with splitdns, in theory, we should only see Ptr queries we don't handle(e.g. apple's dns-sd)
-    let resource =
-        match resource_from_question(dns_resources, dns_resources_internal_ips, &question) {
-            Some(ResolveStrategy::LocalResponse(resource)) => Some(resource),
-            Some(ResolveStrategy::ForwardQuery(params)) => {
-                return Some(ResolveStrategy::ForwardQuery(params.into_query(packet)));
+    pub(crate) fn add_resource(&mut self, resource: &ResourceDescriptionDns) {
+        let existing = self
+            .dns_resources
+            .insert(resource.address.clone(), resource.clone());
+
+        if existing.is_none() {
+            tracing::info!(address = %resource.address, "Activating DNS resource");
+        }
+    }
+
+    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        self.dns_resources.retain(|_, r| {
+            if r.id == id {
+                tracing::info!(address = %r.address, "Deactivating DNS resource");
+                return false;
             }
-            Some(ResolveStrategy::DeferredResponse(resource)) => {
-                return Some(ResolveStrategy::DeferredResponse((
-                    resource,
-                    question.qtype(),
-                )))
-            }
-            None => None,
-        };
-    let response = build_dns_with_answer(message, question.qname(), &resource)?;
-    let response = build_response(packet, response);
 
-    Some(ResolveStrategy::LocalResponse(response))
-}
+            true
+        });
+    }
 
-pub(crate) fn create_local_answer<'a>(
-    ips: &HashSet<IpAddr>,
-    packet: IpPacket<'a>,
-) -> Option<IpPacket<'a>> {
-    let datagram = packet.unwrap_as_udp();
-    let message = as_dns(&datagram).unwrap();
-    let question = message.first_question().unwrap();
-    let qtype = question.qtype();
+    fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
+        let ips = self
+            .fqdn_to_ips
+            .entry(fqdn.clone())
+            .or_insert_with(|| {
+                // TODO: the side effeccts are executed even if this is not inserted
+                // make it so that's not the case
+                let mut ips = self.ip_provider.get_n_ipv4(4);
+                ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+                ips
+            })
+            .clone();
+        for ip in &ips {
+            self.ips_to_fqdn.insert(*ip, fqdn.clone());
+        }
 
-    #[allow(clippy::wildcard_enum_match_arm)]
-    let resource = match qtype {
-        Rtype::A => RecordData::A(
-            ips.iter()
+        ips
+    }
+
+    // This function will panic if it's called with an invalid PTR question
+    fn get_records<N: ToName>(&mut self, question: &Question<N>) -> Vec<RecordData<DomainName>> {
+        match question.qtype() {
+            Rtype::A => self
+                .get_or_assign_ips(question.qname().to_name())
+                .iter()
                 .copied()
                 .filter_map(get_v4)
                 .map(domain::rdata::A::new)
-                .collect(),
-        ),
-        Rtype::AAAA => RecordData::Aaaa(
-            ips.iter()
+                .map(RecordData::A)
+                .collect_vec(),
+
+            Rtype::AAAA => self
+                .get_or_assign_ips(question.qname().to_name())
+                .iter()
                 .copied()
                 .filter_map(get_v6)
                 .map(domain::rdata::Aaaa::new)
-                .collect(),
-        ),
-        _ => unreachable!(),
-    };
+                .map(RecordData::Aaaa)
+                .collect_vec(),
+            Rtype::PTR => {
+                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
+                    .expect("ptr isn't a valid");
+                let Some(fqdn) = self.ips_to_fqdn.get(&ip) else {
+                    debug_assert!(false, "we expect this function to be called only with PTR records for resource ips");
+                    return Vec::new();
+                };
 
-    let response = build_dns_with_answer(message, question.qname(), &Some(resource))?;
+                vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
+            }
+            _ => Vec::new(),
+        }
+    }
 
-    Some(build_response(packet, response))
+    fn is_resource(&self, question: &Question<impl ToName>) -> bool {
+        // TODO: we can shave off time from the lookup if we keep a hashset of ips
+        match question.qtype() {
+            Rtype::PTR => reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
+                .is_some_and(|addr| self.fqdn_to_ips.values().flatten().contains(&addr)),
+            _ => get_description(&question.qname().to_name(), &self.dns_resources).is_some(),
+        }
+    }
+
+    // TODO: we can save a few allocations here still
+    pub(crate) fn handle<'a>(
+        &mut self,
+        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
+        packet: IpPacket<'a>,
+    ) -> Option<ResolveStrategy<'a>> {
+        dns_mapping.get_by_left(&packet.destination())?;
+        let datagram = packet.as_udp()?;
+        let message = as_dns(&datagram)?;
+        if message.header().qr() {
+            return None;
+        }
+
+        let question = message.first_question()?;
+
+        tracing::trace!("Parsed packet as DNS query: '{question}'");
+
+        if !self.is_resource(&question) {
+            return Some(ResolveStrategy::ForwardQuery(DnsQuery {
+                name: ToName::to_vec(question.qname()),
+                record_type: u16::from(question.qtype()).into(),
+                query: packet,
+            }));
+        }
+
+        let resource_records = self.get_records(&question);
+
+        let response = build_dns_with_answer(message, question.qname(), resource_records)?;
+        Some(ResolveStrategy::LocalResponse(build_response(
+            packet, response,
+        )))
+    }
 }
 
 pub(crate) fn build_response_from_resolve_result(
@@ -256,7 +303,7 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
 fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
-    resource: &Option<RecordData<DomainName>>,
+    records: Vec<RecordData<DomainName>>,
 ) -> Option<Vec<u8>>
 where
     N: ToName + ?Sized,
@@ -266,33 +313,32 @@ where
         "Developer error: we should be always be able to create a MessageBuilder from a Vec",
     );
 
-    let Some(resource) = resource else {
+    if records.is_empty() {
         tracing::debug!("No records for {}, returning NXDOMAIN", qname.to_vec());
-
         return Some(
             msg_builder
                 .start_answer(message, Rcode::NXDOMAIN)
                 .ok()?
                 .finish(),
         );
-    };
+    }
 
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
     answer_builder.header_mut().set_ra(true);
 
-    // W/O object-safety there's no other way to access the inner type
-    // we could as well implement the ComposeRecordData trait for RecordData
-    // but the code would look like this but for each method instead
-    match resource {
-        RecordData::A(r) => r
-            .iter()
-            .try_for_each(|r| answer_builder.push((qname, Class::IN, DNS_TTL, r))),
-        RecordData::Aaaa(r) => r
-            .iter()
-            .try_for_each(|r| answer_builder.push((qname, Class::IN, DNS_TTL, r))),
-        RecordData::Ptr(r) => answer_builder.push((qname, Class::IN, DNS_TTL, r)),
+    for record in records {
+        match record {
+            RecordData::A(record) => answer_builder
+                .push((qname, Class::IN, DNS_TTL, record))
+                .ok()?,
+            RecordData::Aaaa(record) => answer_builder
+                .push((qname, Class::IN, DNS_TTL, record))
+                .ok()?,
+            RecordData::Ptr(record) => answer_builder
+                .push((qname, Class::IN, DNS_TTL, record))
+                .ok()?,
+        }
     }
-    .ok()?;
 
     Some(answer_builder.finish())
 }
@@ -303,11 +349,12 @@ pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
         .flatten()
 }
 
-// No object safety =_=
+// No object safety for ComposeRecordData
+// meaning we need to have this enum to move them around
 #[derive(Clone)]
 enum RecordData<T> {
-    A(Vec<domain::rdata::A>),
-    Aaaa(Vec<domain::rdata::Aaaa>),
+    A(domain::rdata::A),
+    Aaaa(domain::rdata::Aaaa),
     Ptr(domain::rdata::Ptr<T>),
 }
 
@@ -368,101 +415,6 @@ fn get_description(
             .get(&RelativeName::wildcard_vec().chain(n).ok()?.to_string())
             .cloned()
     })
-}
-
-/// Decide how to reply to an incoming DNS query
-///
-/// The Client will use this decision to make its response.
-///
-/// If the query is not for a Firezone Resource, the Client should forward it to an
-/// upstream (or system default) resolver.
-/// If we are connected to the Resource, the Client should reply immediately with the IP address(es) of the Resource.
-/// If we are not connected yet, the Client should defer the response and begin connecting.
-fn resource_from_question<N: ToName>(
-    dns_resources: &HashMap<String, ResourceDescriptionDns>,
-    dns_resources_internal_ips: &HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
-    question: &Question<N>,
-) -> Option<ResolveStrategy<RecordData<DomainName>, DnsQueryParams, DnsResource>> {
-    let name = ToName::to_vec(question.qname());
-    let qtype = question.qtype();
-
-    #[allow(clippy::wildcard_enum_match_arm)]
-    match qtype {
-        Rtype::A => {
-            let Some(description) = get_description(&name, dns_resources) else {
-                return Some(ResolveStrategy::forward(name, qtype));
-            };
-
-            let description = DnsResource::from_description(&description, name);
-
-            if !dns_resources_internal_ips
-                .iter()
-                .any(|(_, (_, r))| r.contains(&description))
-            {
-                return Some(ResolveStrategy::DeferredResponse(description));
-            }
-
-            Some(ResolveStrategy::LocalResponse(RecordData::A(
-                ips_of_resource(dns_resources_internal_ips, &description)
-                    .filter_map(get_v4)
-                    .map(domain::rdata::A::new)
-                    .collect(),
-            )))
-        }
-        Rtype::AAAA => {
-            let Some(description) = get_description(&name, dns_resources) else {
-                return Some(ResolveStrategy::forward(name, qtype));
-            };
-            let description = DnsResource::from_description(&description, name);
-
-            if !dns_resources_internal_ips
-                .iter()
-                .any(|(_, (_, r))| r.contains(&description))
-            {
-                return Some(ResolveStrategy::DeferredResponse(description));
-            }
-
-            Some(ResolveStrategy::LocalResponse(RecordData::Aaaa(
-                ips_of_resource(dns_resources_internal_ips, &description)
-                    .filter_map(get_v6)
-                    .map(domain::rdata::Aaaa::new)
-                    .collect(),
-            )))
-        }
-        Rtype::PTR => {
-            let Some(ip) = reverse_dns_addr(&name.to_string()) else {
-                return Some(ResolveStrategy::forward(name, qtype));
-            };
-            let Some((_, resources)) = dns_resources_internal_ips.get(&ip) else {
-                return Some(ResolveStrategy::forward(name, qtype));
-            };
-            Some(ResolveStrategy::LocalResponse(RecordData::Ptr(
-                domain::rdata::Ptr::new(
-                    resources
-                        .iter()
-                        .next()
-                        .expect("to have at least a resource")
-                        .address
-                        .clone(),
-                ),
-            )))
-        }
-        _ => {
-            if get_description(&name, dns_resources).is_some() {
-                return None;
-            };
-
-            Some(ResolveStrategy::forward(name, qtype))
-        }
-    }
-}
-
-pub(crate) fn ips_of_resource<'a>(
-    ips: &'a HashMap<IpAddr, (GatewayId, HashSet<DnsResource>)>,
-    resource: &'a DnsResource,
-) -> impl Iterator<Item = IpAddr> + 'a {
-    ips.iter()
-        .filter_map(move |(ip, (_, r))| (r.contains(resource)).then_some(*ip))
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {

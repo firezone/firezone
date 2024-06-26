@@ -69,7 +69,7 @@ defmodule Domain.MixProject do
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
-      {:logger_json, "~> 6.0.0-rc.3"},
+      {:logger_json, "~> 6.0"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},

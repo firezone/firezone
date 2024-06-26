@@ -148,15 +148,26 @@ where
             binding.refresh(now);
         }
 
+        // FIXME(tech-debt): A refresh here is unnecessary.
+        // We always rebind the sockets one layer up, which changes our outgoing port and thus means we are a "new" client from TURN's perspective (TURN operates on 3-tuples).
+        // Thus, a "reset" operation that just clears the local state would be sufficient here and would likely simplify the internals of `Allocation`.
         for allocation in self.allocations.values_mut() {
             allocation.refresh(now);
         }
 
-        for candidate in self.host_candidates.drain() {
-            for (id, agent) in self.connections.agents_mut() {
-                remove_local_candidate(id, agent, &candidate, &mut self.pending_events)
-            }
-        }
+        self.pending_events.clear();
+
+        let connections = self.connections.iter_ids().collect::<Vec<_>>();
+        let num_connections = connections.len();
+
+        self.pending_events
+            .push_back(Event::ConnectionsCleared(connections));
+
+        self.host_candidates.clear();
+        self.connections.clear();
+        self.buffered_transmits.clear();
+
+        tracing::debug!("Cleared {num_connections} connections");
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -498,6 +509,8 @@ where
         // First, invalidate all candidates from relays that we should stop using.
         for id in to_remove {
             let Some(allocation) = self.allocations.remove(&id) else {
+                tracing::debug!(%id, "Cannot delete unknown allocation");
+
                 continue;
             };
 
@@ -511,6 +524,8 @@ where
                     remove_local_candidate(id, agent, &candidate, &mut self.pending_events);
                 }
             }
+
+            tracing::info!(%id, address = ?allocation.server(), "Removed TURN server");
         }
 
         // Second, upsert all new relays.
@@ -1095,6 +1110,15 @@ where
     fn len(&self) -> usize {
         self.initial.len() + self.established.len()
     }
+
+    fn clear(&mut self) {
+        self.initial.clear();
+        self.established.clear();
+    }
+
+    fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
+        self.initial.keys().chain(self.established.keys()).copied()
+    }
 }
 
 /// Wraps the message as a channel data message via the relay, iff:
@@ -1245,6 +1269,9 @@ pub enum Event<TId> {
     ///
     /// All state associated with the connection has been cleared.
     ConnectionFailed(TId),
+
+    /// The referenced connections had their state cleared.
+    ConnectionsCleared(Vec<TId>),
 }
 
 #[derive(Clone, PartialEq)]

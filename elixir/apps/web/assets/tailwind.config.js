@@ -41,7 +41,7 @@ const firezoneColors = {
   },
   // neutral: chicago
   "chicago": {
-    50:  "#f6f6f6",
+    50: "#f6f6f6",
     100: "#e7e7e7",
     200: "#d1d1d1",
     300: "#b0b0b0",
@@ -82,7 +82,6 @@ module.exports = {
       charts: true,
     }),
     require("@tailwindcss/forms"),
-    plugin(({ addVariant }) => addVariant("phx-no-feedback", [".phx-no-feedback&", ".phx-no-feedback &"])),
     plugin(({ addVariant }) => addVariant("phx-click-loading", [".phx-click-loading&", ".phx-click-loading &"])),
     plugin(({ addVariant }) => addVariant("phx-submit-loading", [".phx-submit-loading&", ".phx-submit-loading &"])),
     plugin(({ addVariant }) => addVariant("phx-change-loading", [".phx-change-loading&", ".phx-change-loading &"])),

@@ -1,6 +1,6 @@
 //! Error module.
 use base64::DecodeError;
-use std::{collections::HashSet, net::IpAddr};
+use std::net::IpAddr;
 use thiserror::Error;
 
 /// Unified Result type to use across connlib.
@@ -79,11 +79,8 @@ pub enum ConnlibError {
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
 
-    #[error("Unallowed packet! source: {src}; allowed_ips: {allowed_ips:?}")]
-    UnallowedPacket {
-        src: IpAddr,
-        allowed_ips: HashSet<IpAddr>,
-    },
+    #[error("Packet not allowed; source = {src}")]
+    UnallowedPacket { src: IpAddr },
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
