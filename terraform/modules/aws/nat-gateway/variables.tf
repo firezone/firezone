@@ -46,25 +46,34 @@ variable "firezone_api_url" {
   default     = "wss://api.firezone.dev"
 }
 
-variable "region" {
-  description = "The AWS region to deploy to"
+variable "vpc" {
+  description = "The VPC id to use"
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "The IPv4 CIDR block for the VPC"
+variable "private_subnet" {
+  description = "The private subnet id"
   type        = string
-  default     = "10.0.0.0/16"
 }
 
-variable "public_subnet_cidr" {
-  description = "The IPv4 CIDR block for the public subnet"
+variable "public_subnet" {
+  description = "The public subnet id"
   type        = string
-  default     = "10.0.1.0/24"
 }
 
-variable "private_subnet_cidr" {
-  description = "The IPv4 CIDR block for the private subnet"
-  type        = string
-  default     = "10.0.2.0/24"
+variable "instance_security_groups" {
+  description = "The security group ids to attach to the instances"
+  type        = list(string)
+}
+
+variable "extra_tags" {
+  description = "Extra tags for the Auto Scaling group"
+
+  type = map(object({
+    key                 = string
+    value               = string
+    propagate_at_launch = bool
+  }))
+
+  default = {}
 }

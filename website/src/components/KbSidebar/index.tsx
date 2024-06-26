@@ -117,6 +117,16 @@ export default function KbSidebar() {
               </li>
             </Collapse>
           </li>
+          <li>
+            <Collapse expanded={p.startsWith("/kb/automate")} label="Automate">
+              <li>
+                <Item href="/kb/automate">Overview</Item>
+              </li>
+              <li>
+                <Item href="/kb/automate/terraform/aws">Terraform: AWS</Item>
+              </li>
+            </Collapse>
+          </li>
           <li className="ml-3 pt-3 border-t border-neutral-200 uppercase font-bold text-neutral-800">
             Use Firezone
           </li>
