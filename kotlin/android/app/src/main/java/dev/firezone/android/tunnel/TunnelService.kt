@@ -29,6 +29,7 @@ import dev.firezone.android.tunnel.model.Resource
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -50,6 +51,10 @@ class TunnelService : VpnService() {
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var networkCallback: NetworkMonitor? = null
+
+    // General purpose mutex lock for preventing network monitoring from calling connlib
+    // during shutdown.
+    val lock = ReentrantLock()
 
     var startedByUser: Boolean = false
     var connlibSessionPtr: Long? = null
@@ -211,6 +216,9 @@ class TunnelService : VpnService() {
     fun disconnect() {
         Log.d(TAG, "disconnect")
 
+        // Acquire mutex lock
+        lock.lock()
+
         stopNetworkMonitoring()
 
         connlibSessionPtr?.let {
@@ -218,6 +226,9 @@ class TunnelService : VpnService() {
         }
 
         shutdown()
+
+        // Release mutex lock
+        lock.unlock()
     }
 
     private fun shutdown() {
