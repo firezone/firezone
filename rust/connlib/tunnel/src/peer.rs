@@ -548,12 +548,14 @@ struct TranslationState {
     ///
     /// Initially set to `created_at`.
     last_outgoing: Instant,
-    /// When was the first packet that marked this translation as expired
+    /// When we first detected that we aren't getting any responses from this IP.
     ///
-    /// Is used to give a 1 second grace time before refreshing dns
+    /// This is set upon outgoing traffic if we haven't received inbound traffic for a while.
+    /// We don't want to immediately trigger a refresh in that case because protocols like TCP and ICMP have responses.
+    /// Thus, a DNS refresh is triggered after a grace-period of 1s after the packet that detected the missing responses.
     ///
-    /// Initially set to created_at
-    translation_expired_at: Instant,
+    /// Initially set to `created_at`.
+    missing_responses_detected_at: Instant,
 
     /// When this translation state was created.
     created_at: Instant,
@@ -573,7 +575,7 @@ impl TranslationState {
             last_incoming: created_at,
             first_outgoing: created_at,
             last_outgoing: created_at,
-            translation_expired_at: created_at,
+            missing_responses_detected_at: created_at,
             created_at,
         }
     }
@@ -595,7 +597,7 @@ impl TranslationState {
     fn is_expired(&self, now: Instant) -> bool {
         self.no_response_in_120s(now)
             && self.is_used(now)
-            && now.duration_since(self.translation_expired_at) >= Duration::from_secs(1)
+            && now.duration_since(self.missing_responses_detected_at) >= Duration::from_secs(1)
     }
 
     fn no_response_in_120s(&self, now: Instant) -> bool {
@@ -614,7 +616,7 @@ impl TranslationState {
 
     fn on_outgoing_traffic(&mut self, now: Instant) {
         if self.this_packets_will_make_grace_period_start(now) {
-            self.translation_expired_at = now;
+            self.missing_responses_detected_at = now;
         }
 
         self.last_outgoing = now;
