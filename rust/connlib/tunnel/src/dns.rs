@@ -15,7 +15,7 @@ use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
 use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const DNS_TTL: u32 = 1;
@@ -72,6 +72,58 @@ impl Clone for DnsQuery<'static> {
     }
 }
 
+struct KnownHosts {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+}
+
+impl KnownHosts {
+    fn new(hosts: HashMap<String, Vec<IpAddr>>) -> KnownHosts {
+        KnownHosts {
+            fqdn_to_ips: fqdn_to_ips_for_known_hosts(&hosts),
+            ips_to_fqdn: ips_to_fqdn_for_known_hosts(&hosts),
+        }
+    }
+
+    // This function will panic if it's called with an invalid PTR question
+    fn get_records<N: ToName>(
+        &self,
+        question: &Question<N>,
+    ) -> Option<Vec<RecordData<DomainName>>> {
+        match question.qtype() {
+            Rtype::A => Some(
+                self.fqdn_to_ips
+                    .get::<DomainName>(&question.qname().to_name())?
+                    .iter()
+                    .copied()
+                    .filter_map(get_v4)
+                    .map(domain::rdata::A::new)
+                    .map(RecordData::A)
+                    .collect_vec(),
+            ),
+
+            Rtype::AAAA => Some(
+                self.fqdn_to_ips
+                    .get::<DomainName>(&question.qname().to_name())?
+                    .iter()
+                    .copied()
+                    .filter_map(get_v6)
+                    .map(domain::rdata::Aaaa::new)
+                    .map(RecordData::Aaaa)
+                    .collect_vec(),
+            ),
+            Rtype::PTR => {
+                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
+                    .expect("ptr isn't a valid");
+                let fqdn = self.ips_to_fqdn.get(&ip)?;
+
+                Some(vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))])
+            }
+            _ => None,
+        }
+    }
+}
+
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, DomainName>,
@@ -79,17 +131,21 @@ pub struct StubResolver {
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
     dns_resources: HashMap<String, ResourceDescriptionDns>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
-    hosts: HashSet<DomainName>,
+    known_hosts: KnownHosts,
 }
 
-fn fqdn_to_ips_for_hosts(hosts: &HashMap<String, Vec<IpAddr>>) -> HashMap<DomainName, Vec<IpAddr>> {
+fn fqdn_to_ips_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<DomainName, Vec<IpAddr>> {
     hosts
         .iter()
         .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
         .collect()
 }
 
-fn ips_to_fqdn_for_hosts(hosts: &HashMap<String, Vec<IpAddr>>) -> HashMap<IpAddr, DomainName> {
+fn ips_to_fqdn_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<IpAddr, DomainName> {
     hosts
         .iter()
         .filter_map(|(d, a)| {
@@ -102,16 +158,13 @@ fn ips_to_fqdn_for_hosts(hosts: &HashMap<String, Vec<IpAddr>>) -> HashMap<IpAddr
 }
 
 impl StubResolver {
-    pub(crate) fn new(hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
+    pub(crate) fn new(known_hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
         StubResolver {
-            fqdn_to_ips: fqdn_to_ips_for_hosts(&hosts),
-            ips_to_fqdn: ips_to_fqdn_for_hosts(&hosts),
+            fqdn_to_ips: Default::default(),
+            ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
-            hosts: hosts
-                .keys()
-                .filter_map(|d| DomainName::vec_from_str(d).ok())
-                .collect(),
+            known_hosts: KnownHosts::new(known_hosts),
         }
     }
 
@@ -235,11 +288,14 @@ impl StubResolver {
 
         tracing::trace!("Parsed packet as DNS query: '{question}'");
 
-        if !self.is_resource(&question)
-            && !self
-                .hosts
-                .contains::<DomainName>(&question.qname().to_name())
-        {
+        if let Some(records) = self.known_hosts.get_records(&question) {
+            let response = build_dns_with_answer(message, question.qname(), records)?;
+            return Some(ResolveStrategy::LocalResponse(build_response(
+                packet, response,
+            )));
+        }
+
+        if !self.is_resource(&question) {
             return Some(ResolveStrategy::ForwardQuery(DnsQuery {
                 name: ToName::to_vec(question.qname()),
                 record_type: u16::from(question.qtype()).into(),

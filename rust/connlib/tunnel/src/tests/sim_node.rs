@@ -4,10 +4,11 @@ use connlib_shared::{
     messages::{
         client::ResourceDescription, ClientId, DnsServer, GatewayId, Interface, ResourceId,
     },
+    proptest::domain_name,
     StaticSecret,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
-use proptest::{prelude::*, sample};
+use proptest::{collection, prelude::*, sample};
 use rand::rngs::StdRng;
 use std::{
     collections::{HashMap, HashSet},
@@ -287,5 +288,13 @@ pub(crate) fn gateway_state() -> impl Strategy<Value = PrivateKey> {
 }
 
 pub(crate) fn client_state() -> impl Strategy<Value = (PrivateKey, HashMap<String, Vec<IpAddr>>)> {
-    (private_key(), Just(HashMap::new()))
+    (private_key(), known_hosts())
+}
+
+pub(crate) fn known_hosts() -> impl Strategy<Value = HashMap<String, Vec<IpAddr>>> {
+    collection::hash_map(
+        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
+        collection::vec(any::<IpAddr>(), 1..6),
+        0..15,
+    )
 }

@@ -77,12 +77,12 @@ where
         private_key: StaticSecret,
         sockets: Sockets,
         callbacks: CB,
-        hosts: HashMap<String, Vec<IpAddr>>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(sockets)?,
             callbacks,
-            role_state: ClientState::new(private_key, hosts),
+            role_state: ClientState::new(private_key, known_hosts),
             write_buf: Box::new([0u8; MTU + 16 + 20]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),

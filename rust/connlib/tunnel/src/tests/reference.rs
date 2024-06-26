@@ -60,6 +60,9 @@ pub(crate) struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
+    /// Ips that the client know about without querying the global records
+    pub(crate) client_known_host_records: HashMap<String, Vec<IpAddr>>,
+
     /// The expected ICMP handshakes.
     pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
     /// The expected DNS handshakes.
@@ -156,12 +159,13 @@ impl ReferenceStateMachine for ReferenceState {
                 )| Self {
                     now,
                     utc_now,
-                    client,
+                    client: client.clone(),
                     gateway,
                     relay,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     global_dns_records,
+                    client_known_host_records: client.state.1,
                     client_cidr_resources: IpNetworkTable::new(),
                     client_connected_cidr_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
@@ -326,7 +330,12 @@ impl ReferenceStateMachine for ReferenceState {
                 query_id,
                 ..
             } => match state.dns_query_via_cidr_resource(dns_server.ip(), domain) {
-                Some(resource) if !state.client_connected_cidr_resources.contains(&resource) => {
+                Some(resource)
+                    if !state.client_connected_cidr_resources.contains(&resource)
+                        && !state
+                            .client_known_host_records
+                            .contains_key(&domain.to_string()) =>
+                {
                     state.client_connected_cidr_resources.insert(resource);
                 }
                 Some(_) | None => {
@@ -637,7 +646,15 @@ impl ReferenceState {
     }
 
     fn all_domains(&self) -> Vec<DomainName> {
-        self.global_dns_records.keys().cloned().collect()
+        self.global_dns_records
+            .keys()
+            .cloned()
+            .chain(
+                self.client_known_host_records
+                    .keys()
+                    .map(|h| DomainName::vec_from_str(h).unwrap()),
+            )
+            .collect()
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<RecordType>)> + '_ {

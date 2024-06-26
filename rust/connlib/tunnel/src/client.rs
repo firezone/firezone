@@ -301,7 +301,7 @@ pub(crate) struct AwaitingConnectionDetails {
 impl ClientState {
     pub(crate) fn new(
         private_key: impl Into<StaticSecret>,
-        hosts: HashMap<String, Vec<IpAddr>>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
@@ -319,7 +319,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(hosts),
+            stub_resolver: StubResolver::new(known_hosts),
         }
     }
 

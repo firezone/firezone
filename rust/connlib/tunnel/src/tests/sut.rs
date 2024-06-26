@@ -54,7 +54,7 @@ pub(crate) struct TunnelTest {
     /// The DNS records created on the client as a result of received DNS responses.
     ///
     /// This contains results from both, queries to DNS resources and non-resources.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    pub(crate) client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -229,6 +229,7 @@ impl StateMachineTest for TunnelTest {
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
         assert_icmp_packets_properties(state, ref_state);
         assert_dns_packets_properties(state, ref_state);
+        assert_known_hosts_are_valid(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
