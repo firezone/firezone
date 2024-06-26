@@ -571,6 +571,12 @@ impl Controller {
                     self.sign_out().await?;
                 }
             }
+            Req::SystemTrayMenu(TrayMenuEvent::Reconnect) => {
+                if let Some(session) = self.session.as_mut() {
+                    tracing::info!("Manually calling reconnect");
+                    session.connlib.reconnect().await?;
+                }
+            }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
                 self.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the

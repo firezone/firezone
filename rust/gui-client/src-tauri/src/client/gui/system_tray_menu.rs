@@ -13,6 +13,7 @@ pub(crate) enum Event {
     AdminPortal,
     CancelSignIn,
     Copy(String),
+    Reconnect,
     SignIn,
     SignOut,
     ShowWindow(Window),
@@ -169,6 +170,7 @@ impl FirezoneMenu for SystemTrayMenu {
     /// Things that always show, like About, Settings, Help, Quit, etc.
     fn add_bottom_section(self, quit_text: &str) -> Self {
         self.separator()
+            .item(Event::Reconnect, "Reconnect")
             .item(Event::ShowWindow(Window::About), "About Firezone")
             .item(Event::AdminPortal, "Admin Portal...")
             .add_submenu(SystemTraySubmenu::new(
