@@ -400,7 +400,7 @@ impl<T> Eventloop<T> {
             }
             Some(
                 snownet::Event::InvalidateIceCandidate { .. }
-                | snownet::Event::ConnectionsCleared { .. },
+                | snownet::Event::ConnectionClosed { .. },
             )
             | None => {}
         }

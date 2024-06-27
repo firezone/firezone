@@ -634,7 +634,7 @@ impl<R> TestNode<R> {
                     .in_scope(|| other.node.remove_remote_candidate(connection, candidate)),
                 Event::ConnectionEstablished(_)
                 | Event::ConnectionFailed(_)
-                | Event::ConnectionsCleared(_) => {}
+                | Event::ConnectionClosed(_) => {}
             };
         }
     }

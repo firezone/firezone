@@ -812,23 +812,13 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
+        let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
+
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
-                }
-                snownet::Event::ConnectionsCleared(ids) => {
-                    for id in ids {
-                        self.cleanup_connected_gateway(&id);
-                    }
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
+                    resources_changed = true;
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
@@ -850,12 +840,16 @@ impl ClientState {
                     }),
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
+                    resources_changed = true;
                 }
             }
+        }
+
+        if resources_changed {
+            self.buffered_events
+                .push_back(ClientEvent::ResourcesChanged {
+                    resources: self.resources(),
+                });
         }
     }
 
