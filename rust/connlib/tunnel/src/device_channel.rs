@@ -135,7 +135,7 @@ impl Device {
             )
         })?;
 
-        tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
     }
@@ -169,7 +169,7 @@ impl Device {
             )
         })?;
 
-        tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
     }
@@ -191,7 +191,7 @@ impl Device {
     }
 
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
-        tracing::trace!(target: "wire", to = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
             IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),

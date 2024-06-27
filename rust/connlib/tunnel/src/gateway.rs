@@ -378,7 +378,7 @@ impl GatewayState {
                             candidate,
                         });
                 }
-                snownet::Event::ConnectionEstablished(_) => {}
+                snownet::Event::ConnectionEstablished(_) | snownet::Event::ConnectionClosed(_) => {}
             }
         }
     }

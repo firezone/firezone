@@ -299,7 +299,10 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
+    pub(crate) fn new(
+        private_key: impl Into<StaticSecret>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
+    ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -316,7 +319,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(),
+            stub_resolver: StubResolver::new(known_hosts),
         }
     }
 
@@ -463,7 +466,7 @@ impl ClientState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         let Some(peer) = self.peers.get_mut(&conn_id) else {
@@ -1452,7 +1455,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng))
+            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
         }
     }
 
