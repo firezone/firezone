@@ -96,12 +96,12 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      MULTI_SITE_RESOURCES_ENABLED: "true"
-      SELF_HOSTED_RELAYS_ENABLED: "true"
-      IDP_SYNC_ENABLED: "true"
-      REST_API_ENABLED: "true"
+      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
+      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_REST_API_ENABLED: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
       start_period: 10s
@@ -165,12 +165,12 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      MULTI_SITE_RESOURCES_ENABLED: "true"
-      SELF_HOSTED_RELAYS_ENABLED: "true"
-      IDP_SYNC_ENABLED: "true"
-      REST_API_ENABLED: "true"
+      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
+      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_REST_API_ENABLED: "true"
     depends_on:
       vault:
         condition: "service_healthy"
@@ -228,12 +228,12 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      MULTI_SITE_RESOURCES_ENABLED: "true"
-      SELF_HOSTED_RELAYS_ENABLED: "true"
-      IDP_SYNC_ENABLED: "true"
-      REST_API_ENABLED: "true"
+      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
+      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_REST_API_ENABLED: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
       start_period: 10s
@@ -297,12 +297,12 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FLOW_ACTIVITIES_ENABLED: "true"
+      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      MULTI_SITE_RESOURCES_ENABLED: "true"
-      SELF_HOSTED_RELAYS_ENABLED: "true"
-      IDP_SYNC_ENABLED: "true"
-      REST_API_ENABLED: "true"
+      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
+      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_REST_API_ENABLED: "true"
     depends_on:
       postgres:
         condition: "service_healthy"
