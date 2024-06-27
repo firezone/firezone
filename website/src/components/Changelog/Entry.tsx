@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Entry({
   version,
   date = new Date(),
