@@ -157,17 +157,20 @@ where
 
         self.pending_events.clear();
 
-        let connections = self.connections.iter_ids().collect::<Vec<_>>();
-        let num_connections = connections.len();
+        let closed_connections = self
+            .connections
+            .iter_ids()
+            .map(Event::ConnectionClosed)
+            .collect::<Vec<_>>();
+        let num_connections = closed_connections.len();
 
-        self.pending_events
-            .push_back(Event::ConnectionsCleared(connections));
+        self.pending_events.extend(closed_connections);
 
         self.host_candidates.clear();
         self.connections.clear();
         self.buffered_transmits.clear();
 
-        tracing::debug!("Cleared {num_connections} connections");
+        tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -1270,8 +1273,8 @@ pub enum Event<TId> {
     /// All state associated with the connection has been cleared.
     ConnectionFailed(TId),
 
-    /// The referenced connections had their state cleared.
-    ConnectionsCleared(Vec<TId>),
+    /// We closed a connection (e.g. due to inactivity, roaming, etc).
+    ConnectionClosed(TId),
 }
 
 #[derive(Clone, PartialEq)]
