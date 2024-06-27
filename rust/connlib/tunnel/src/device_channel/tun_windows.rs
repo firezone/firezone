@@ -91,7 +91,7 @@ impl Tun {
 
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+        let session = Arc::new(adapter.start_session(0x10_0000)?);
         // 4 is a nice power of two. Wintun already queues packets for us, so we don't
         // need much capacity here.
         let (packet_tx, packet_rx) = mpsc::channel(4);
