@@ -355,7 +355,7 @@ impl GatewayState {
 
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.peers.remove(&id);
                 }
                 snownet::Event::NewIceCandidate {
@@ -378,7 +378,7 @@ impl GatewayState {
                             candidate,
                         });
                 }
-                snownet::Event::ConnectionEstablished(_) | snownet::Event::ConnectionClosed(_) => {}
+                snownet::Event::ConnectionEstablished(_) => {}
             }
         }
     }
