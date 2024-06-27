@@ -614,7 +614,7 @@ impl TranslationState {
 
     fn on_outgoing_traffic(&mut self, now: Instant) {
         // We need this because it means that if a packet arrives at some point less than 120s but more than 110s
-        // we still start the grace period so that the connection expires
+        // we still start the grace period so that the connection expires at some point after 120s
         let with_this_packet_the_connection_will_be_considered_used_when_it_expires =
             self.no_incoming_in_120s(now + Self::USED_WINDOW);
         if self.ack_grace_period_started_at.is_none()
