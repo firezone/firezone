@@ -10,6 +10,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -119,7 +120,21 @@ where
         max_partition_time,
     } = args;
 
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks)?;
+    // Note on the first connect these addresses won't be used yet, though coincidentally phoenix_channel might resolve to the same ones, however thereafter they will.
+    // also we don't care that we are blocking here.
+    let addrs = url
+        .inner()
+        .socket_addrs(|| None)?
+        .iter()
+        .map(|addr| addr.ip())
+        .collect();
+
+    let tunnel = ClientTunnel::new(
+        private_key,
+        sockets,
+        callbacks,
+        HashMap::from([(url.host().to_string(), addrs)]),
+    )?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
@@ -207,11 +222,14 @@ mod tests {
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn device_common() {
+        use std::collections::HashMap;
+
         let (private_key, _public_key) = connlib_shared::keypair();
         let sockets = crate::Sockets::new();
         let callbacks = Callbacks::default();
         let mut tunnel =
-            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks).unwrap();
+            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks, HashMap::new())
+                .unwrap();
         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
         let interface = connlib_shared::messages::Interface {
             ipv4: [100, 71, 96, 96].into(),
