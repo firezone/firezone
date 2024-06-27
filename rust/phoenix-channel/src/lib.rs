@@ -2,6 +2,9 @@ mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
+use std::mem;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 use std::{fmt, future, marker::PhantomData};
 
 use backoff::backoff::Backoff;
@@ -15,6 +18,7 @@ use secrecy::{ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
+use tokio_tungstenite::connect_async_with_config;
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
     connect_async,
@@ -23,9 +27,6 @@ use tokio_tungstenite::{
 };
 
 pub use login_url::{LoginUrl, LoginUrlError};
-use std::mem;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     state: State,
@@ -57,69 +58,17 @@ enum State {
     Closed,
 }
 
-/// Creates a new [PhoenixChannel] to the given endpoint and waits for an `init` message.
-///
-/// The provided URL must contain a host.
-/// Additionally, you must already provide any query parameters required for authentication.
-#[allow(clippy::type_complexity)]
-pub async fn init<TInitReq, TInitRes, TInboundMsg, TOutboundRes>(
-    url: Secret<LoginUrl>,
-    user_agent: String,
-    login_topic: &'static str,
-    payload: TInitReq,
-    reconnect_backoff: ExponentialBackoff,
-) -> Result<
-    Result<
-        (
-            PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>,
-            TInitRes,
-        ),
-        UnexpectedEventDuringInit,
-    >,
-    Error,
->
-where
-    TInitReq: Serialize + Clone,
-    TInitRes: DeserializeOwned + fmt::Debug,
-    TInboundMsg: DeserializeOwned,
-    TOutboundRes: DeserializeOwned,
-{
-    let mut channel = PhoenixChannel::<_, InitMessage<TInitRes>, ()>::connect(
-        url,
-        user_agent,
-        login_topic,
-        payload,
-        reconnect_backoff,
-    );
+impl State {
+    fn connect(url: Secret<LoginUrl>, user_agent: String) -> Self {
+        Self::Connecting(Box::pin(async move {
+            let (stream, _) = connect_async_with_config(make_request(url, user_agent), None, true)
+                .await
+                .map_err(InternalError::WebSocket)?;
 
-    let (channel, init_message) = loop {
-        #[allow(clippy::wildcard_enum_match_arm)]
-        match future::poll_fn(|cx| channel.poll(cx)).await? {
-            Event::InboundMessage {
-                topic,
-                msg: InitMessage::Init(msg),
-            } if topic == login_topic => {
-                tracing::info!("Received init message from portal");
-
-                break (channel, msg);
-            }
-            Event::HeartbeatSent => {}
-            e => return Ok(Err(UnexpectedEventDuringInit(format!("{e:?}")))),
-        }
-    };
-
-    Ok(Ok((channel.cast(), init_message)))
+            Ok(stream)
+        }))
+    }
 }
-
-#[derive(serde::Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-pub enum InitMessage<M> {
-    Init(M),
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("encountered unexpected event during init: {0}")]
-pub struct UnexpectedEventDuringInit(String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -129,8 +78,8 @@ pub enum Error {
     TokenExpired,
     #[error("max retries reached")]
     MaxRetriesReached,
-    #[error("login failed")]
-    LoginFailed,
+    #[error("login failed: {0}")]
+    LoginFailed(ErrorReply),
 }
 
 impl Error {
@@ -139,7 +88,7 @@ impl Error {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
             Error::MaxRetriesReached => false,
-            Error::LoginFailed => false,
+            Error::LoginFailed(_) => false,
         }
     }
 }
@@ -229,13 +178,7 @@ where
             reconnect_backoff,
             url: url.clone(),
             user_agent: user_agent.clone(),
-            state: State::Connecting(Box::pin(async move {
-                let (stream, _) = connect_async(make_request(url, user_agent))
-                    .await
-                    .map_err(InternalError::WebSocket)?;
-
-                Ok(stream)
-            })),
+            state: State::connect(url, user_agent),
             waker: None,
             pending_messages: Default::default(),
             _phantom: PhantomData,
@@ -277,13 +220,7 @@ where
         // 2. Set state to `Connecting` without a timer.
         let url = self.url.clone();
         let user_agent = self.user_agent.clone();
-        self.state = State::Connecting(Box::pin(async move {
-            let (stream, _) = connect_async(make_request(url, user_agent))
-                .await
-                .map_err(InternalError::WebSocket)?;
-
-            Ok(stream)
-        }));
+        self.state = State::connect(url, user_agent);
 
         // 3. In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
@@ -384,7 +321,20 @@ where
                     if let Some(message) = self.pending_messages.pop_front() {
                         match stream.start_send_unpin(Message::Text(message.clone())) {
                             Ok(()) => {
-                                tracing::trace!(target: "wire", to="portal", %message);
+                                tracing::trace!(target: "wire::api::send", %message);
+
+                                match stream.poll_flush_unpin(cx) {
+                                    Poll::Ready(Ok(())) => {
+                                        tracing::trace!("Flushed websocket");
+                                    }
+                                    Poll::Ready(Err(e)) => {
+                                        self.reconnect_on_transient_error(
+                                            InternalError::WebSocket(e),
+                                        );
+                                        continue;
+                                    }
+                                    Poll::Pending => {}
+                                }
                             }
                             Err(e) => {
                                 self.pending_messages.push_front(message);
@@ -409,7 +359,7 @@ where
                         continue;
                     };
 
-                    tracing::trace!(target: "wire", from="portal", %message);
+                    tracing::trace!(target: "wire::api::recv", %message);
 
                     let message = match serde_json::from_str::<
                         PhoenixMessage<TInboundMsg, TOutboundRes>,
@@ -441,7 +391,7 @@ where
                             if message.topic == self.login
                                 && self.pending_join_requests.contains(&req_id)
                             {
-                                return Poll::Ready(Err(Error::LoginFailed));
+                                return Poll::Ready(Err(Error::LoginFailed(reason)));
                             }
 
                             return Poll::Ready(Ok(Event::ErrorResponse {
@@ -526,18 +476,6 @@ where
                 Poll::Pending => {}
             }
 
-            // Priority 4: Flush out.
-            match stream.poll_flush_unpin(cx) {
-                Poll::Ready(Ok(())) => {
-                    tracing::trace!("Flushed websocket");
-                }
-                Poll::Ready(Err(e)) => {
-                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
             return Poll::Pending;
         }
     }
@@ -568,26 +506,6 @@ where
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         OutboundRequestId(next_id)
-    }
-
-    /// Cast this instance of [PhoenixChannel] to new message types.
-    fn cast<TInboundMsgNew, TOutboundResNew>(
-        self,
-    ) -> PhoenixChannel<TInitReq, TInboundMsgNew, TOutboundResNew> {
-        PhoenixChannel {
-            state: self.state,
-            pending_messages: self.pending_messages,
-            next_request_id: self.next_request_id,
-            heartbeat: self.heartbeat,
-            _phantom: PhantomData,
-            pending_join_requests: self.pending_join_requests,
-            url: self.url,
-            user_agent: self.user_agent,
-            reconnect_backoff: self.reconnect_backoff,
-            login: self.login,
-            init_req: self.init_req,
-            waker: self.waker,
-        }
     }
 }
 
@@ -669,10 +587,24 @@ pub enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
     NotFound,
+    InvalidVersion,
     Offline,
     Disabled,
     #[serde(other)]
     Other,
+}
+
+impl fmt::Display for ErrorReply {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ErrorReply::UnmatchedTopic => write!(f, "unmatched topic"),
+            ErrorReply::NotFound => write!(f, "not found"),
+            ErrorReply::InvalidVersion => write!(f, "invalid version"),
+            ErrorReply::Offline => write!(f, "offline"),
+            ErrorReply::Disabled => write!(f, "disabled"),
+            ErrorReply::Other => write!(f, "other"),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -794,22 +726,6 @@ mod tests {
             })
         );
     }
-    #[test]
-    fn can_deserialize_init_message() {
-        #[derive(Deserialize, PartialEq, Debug)]
-        struct EmptyInit {}
-
-        let msg = r#"{"event":"init","payload":{},"ref":null,"topic":"relay"}"#;
-
-        let msg = serde_json::from_str::<PhoenixMessage<InitMessage<EmptyInit>, ()>>(msg).unwrap();
-
-        assert_eq!(msg.topic, "relay");
-        assert_eq!(msg.reference, None);
-        assert_eq!(
-            msg.payload,
-            Payload::Message(InitMessage::Init(EmptyInit {}))
-        );
-    }
 
     #[test]
     fn unmatched_topic_reply() {
@@ -905,6 +821,28 @@ mod tests {
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
         let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::Other,
+        });
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn invalid_version_reply() {
+        let actual_reply = r#"
+            {
+                "event": "phx_reply",
+                "ref": "12",
+                "topic": "client",
+                "payload":{
+                    "status": "error",
+                    "response":{
+                        "reason": "invalid_version"
+                    }
+                }
+            }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
+            reason: ErrorReply::InvalidVersion,
         });
         assert_eq!(actual_reply, expected_reply);
     }

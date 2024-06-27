@@ -6,12 +6,13 @@ use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_shared::messages::{
-    ClientId, ConnectionAccepted, RelaysPresence, ResourceAccepted, ResourceId,
+    ClientId, ConnectionAccepted, Interface, RelaysPresence, ResourceAccepted, ResourceId,
 };
 use connlib_shared::{messages::GatewayResponse, DomainName};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_tunnel::GatewayTunnel;
+use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::PhoenixChannel;
 use std::collections::HashSet;
@@ -41,6 +42,7 @@ enum ResolveTrigger {
 pub struct Eventloop {
     tunnel: GatewayTunnel<CallbackHandler>,
     portal: PhoenixChannel<(), IngressMessages, ()>,
+    tun_device_channel: mpsc::Sender<Interface>,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
 }
@@ -49,11 +51,13 @@ impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel<CallbackHandler>,
         portal: PhoenixChannel<(), IngressMessages, ()>,
+        tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
         Self {
             tunnel,
             portal,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 100),
+            tun_device_channel,
         }
     }
 }
@@ -223,10 +227,20 @@ impl Eventloop {
                 .tunnel
                 .update_relays(HashSet::from_iter(disconnected_ids), connected),
             phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::Init(_),
+                msg: IngressMessages::Init(init),
                 ..
             } => {
-                // TODO: Handle `init` message during operation.
+                if let Err(e) = self.tunnel.set_interface(&init.interface) {
+                    tracing::warn!("Failed to set interface: {e}");
+                };
+                self.tunnel.update_relays(HashSet::default(), init.relays);
+
+                // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
+                // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
+                // That requires more refactoring of other platforms, so for now, we need to rely on the `Tunnel` interface and cause the side-effect separately via the `TunDeviceManager`.
+                if let Err(e) = self.tun_device_channel.try_send(init.interface) {
+                    tracing::warn!("Failed to set interface: {e}");
+                }
             }
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::ResourceUpdated(resource_description),

@@ -72,31 +72,98 @@ impl Clone for DnsQuery<'static> {
     }
 }
 
+struct KnownHosts {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+}
+
+impl KnownHosts {
+    fn new(hosts: HashMap<String, Vec<IpAddr>>) -> KnownHosts {
+        KnownHosts {
+            fqdn_to_ips: fqdn_to_ips_for_known_hosts(&hosts),
+            ips_to_fqdn: ips_to_fqdn_for_known_hosts(&hosts),
+        }
+    }
+
+    // This function will panic if it's called with an invalid PTR question
+    fn get_records<N: ToName>(
+        &self,
+        question: &Question<N>,
+    ) -> Option<Vec<RecordData<DomainName>>> {
+        match question.qtype() {
+            Rtype::A => Some(
+                self.fqdn_to_ips
+                    .get::<DomainName>(&question.qname().to_name())?
+                    .iter()
+                    .copied()
+                    .filter_map(get_v4)
+                    .map(domain::rdata::A::new)
+                    .map(RecordData::A)
+                    .collect_vec(),
+            ),
+
+            Rtype::AAAA => Some(
+                self.fqdn_to_ips
+                    .get::<DomainName>(&question.qname().to_name())?
+                    .iter()
+                    .copied()
+                    .filter_map(get_v6)
+                    .map(domain::rdata::Aaaa::new)
+                    .map(RecordData::Aaaa)
+                    .collect_vec(),
+            ),
+            Rtype::PTR => {
+                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
+                let fqdn = self.ips_to_fqdn.get(&ip)?;
+
+                Some(vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))])
+            }
+            _ => None,
+        }
+    }
+}
+
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
     dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
+    known_hosts: KnownHosts,
 }
 
-// We don't need to support multiple questions/qname in a single query because
-// nobody does it and since this run with each packet we want to squeeze as much optimization
-// as we can therefore we won't do it.
-//
-// See: https://stackoverflow.com/a/55093896
-/// Parses an incoming packet as a DNS query and decides how to respond to it
-///
-/// Returns:
-/// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
-/// - Otherwise, a strategy for responding to the query
+fn fqdn_to_ips_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<DomainName, Vec<IpAddr>> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
+        .collect()
+}
+
+fn ips_to_fqdn_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<IpAddr, DomainName> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| {
+            DomainName::vec_from_str(d)
+                .ok()
+                .map(|d| a.iter().map(move |a| (*a, d.clone())))
+        })
+        .flatten()
+        .collect()
+}
+
 impl StubResolver {
-    pub(crate) fn new() -> StubResolver {
+    pub(crate) fn new(known_hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
         StubResolver {
             fqdn_to_ips: Default::default(),
             ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
+            known_hosts: KnownHosts::new(known_hosts),
         }
     }
 
@@ -171,8 +238,10 @@ impl StubResolver {
                 .map(RecordData::Aaaa)
                 .collect_vec(),
             Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                    .expect("ptr isn't a valid");
+                let Some(ip) = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
+                else {
+                    return Vec::new();
+                };
                 let Some(fqdn) = self.ips_to_fqdn.get(&ip) else {
                     debug_assert!(false, "we expect this function to be called only with PTR records for resource ips");
                     return Vec::new();
@@ -194,6 +263,16 @@ impl StubResolver {
     }
 
     // TODO: we can save a few allocations here still
+    // We don't need to support multiple questions/qname in a single query because
+    // nobody does it and since this run with each packet we want to squeeze as much optimization
+    // as we can therefore we won't do it.
+    //
+    // See: https://stackoverflow.com/a/55093896
+    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    ///
+    /// Returns:
+    /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
+    /// - Otherwise, a strategy for responding to the query
     pub(crate) fn handle<'a>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
@@ -209,6 +288,13 @@ impl StubResolver {
         let question = message.first_question()?;
 
         tracing::trace!("Parsed packet as DNS query: '{question}'");
+
+        if let Some(records) = self.known_hosts.get_records(&question) {
+            let response = build_dns_with_answer(message, question.qname(), records)?;
+            return Some(ResolveStrategy::LocalResponse(build_response(
+                packet, response,
+            )));
+        }
 
         if !self.is_resource(&question) {
             return Some(ResolveStrategy::ForwardQuery(DnsQuery {

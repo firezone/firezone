@@ -340,7 +340,9 @@ where
             ErrorReply::UnmatchedTopic => {
                 self.portal.join(topic, ());
             }
-            ErrorReply::NotFound | ErrorReply::Other => {}
+            reason @ (ErrorReply::InvalidVersion | ErrorReply::NotFound | ErrorReply::Other) => {
+                tracing::debug!(%req_id, %reason, "Request failed");
+            }
         }
     }
 }

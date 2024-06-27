@@ -1,6 +1,6 @@
-use super::ServiceId;
-use anyhow::{Context as _, Result};
-use std::{os::unix::fs::PermissionsExt, path::PathBuf};
+use super::{Error, ServiceId};
+use anyhow::{anyhow, Context as _, Result};
+use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
 pub(crate) struct Server {
@@ -16,16 +16,25 @@ pub type ClientStream = UnixStream;
 pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
-#[allow(clippy::unused_async)]
-pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
+#[allow(clippy::wildcard_enum_match_arm)]
+pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
-    let stream = UnixStream::connect(&path).await.with_context(|| {
-        format!(
-            "Couldn't connect to Unix domain socket at `{}`",
-            path.display()
-        )
-    })?;
-    let cred = stream.peer_cred()?;
+    let stream = UnixStream::connect(&path)
+        .await
+        .map_err(|error| match error.kind() {
+            ErrorKind::ConnectionRefused => {
+                Error::Other(anyhow!("ConnectionRefused by Unix domain socket"))
+            }
+            ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
+            ErrorKind::PermissionDenied => Error::PermissionDenied,
+            _ => Error::Other(
+                anyhow!(error.to_string()).context("Couldn't connect to Unix domain socket"),
+            ),
+        })?;
+    let cred = stream
+        .peer_cred()
+        .context("Couldn't get PID of UDS server")
+        .map_err(Error::Other)?;
     tracing::info!(
         uid = cred.uid(),
         gid = cred.gid(),
