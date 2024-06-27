@@ -4,6 +4,28 @@ import Entries from "./Entries";
 export default function Headless() {
   return (
     <Entries title="Linux headless">
+      <Entry version="1.1.0" date={new Date("2024-06-27")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Introduces the new DNS routing system supported by 1.1.0 Gateways
+            which should result in much more stable connections for DNS
+            Resources.
+          </li>
+          <li className="pl-2">
+            Closes idle connections to Gateways that have not seen traffic for
+            more than 5 minutes which can reduce power consumption when not
+            accessing Resources.
+          </li>
+          <li className="pl-2">
+            Updates log file endings to JSONL and adds syslog-style logs for
+            easier readability.
+          </li>
+        </ul>
+        <p>
+          <strong>Note:</strong> Client versions 1.1.x are incompatible with
+          Gateways running 1.0.x.
+        </p>
+      </Entry>
       <Entry version="1.0.8" date={new Date("2024-06-17")}>
         This is a maintenance release with no major user-facing changes.
       </Entry>
