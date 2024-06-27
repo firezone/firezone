@@ -463,7 +463,7 @@ impl ClientState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         let Some(peer) = self.peers.get_mut(&conn_id) else {
