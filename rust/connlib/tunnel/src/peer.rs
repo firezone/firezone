@@ -889,8 +889,6 @@ mod tests {
         now += Duration::from_secs(5);
         state.on_outgoing_traffic(now);
 
-        now += Duration::from_secs(1); // Let grace period expire
-
         assert!(state.is_expired(now));
     }
 
