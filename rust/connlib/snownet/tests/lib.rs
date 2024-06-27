@@ -120,11 +120,11 @@ fn idle_connection_is_closed_after_5_minutes() {
     alice.ping(ip("9.9.9.9"), ip("8.8.8.8"), &bob, clock.now);
     bob.ping(ip("8.8.8.8"), ip("9.9.9.9"), &alice, clock.now);
 
-    while clock.elapsed() < Duration::from_secs(5 * 60) {
+    let start = clock.now;
+
+    while clock.elapsed(start) <= Duration::from_secs(5 * 60) {
         progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     }
-
-    progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock); // One more tick to close the idle connection.
 
     assert_eq!(alice.packets_from(ip("8.8.8.8")).count(), 1);
     assert_eq!(bob.packets_from(ip("9.9.9.9")).count(), 1);
@@ -350,7 +350,7 @@ impl Clock {
     fn tick(&mut self) {
         self.now += self.tick_rate;
 
-        let elapsed = self.elapsed();
+        let elapsed = self.elapsed(self.start);
 
         if elapsed.as_millis() % 60_000 == 0 {
             tracing::info!("Time since start: {elapsed:?}")
@@ -361,8 +361,8 @@ impl Clock {
         }
     }
 
-    fn elapsed(&self) -> Duration {
-        self.now.duration_since(self.start)
+    fn elapsed(&self, start: Instant) -> Duration {
+        self.now.duration_since(start)
     }
 }
 
@@ -805,4 +805,7 @@ fn progress<R1, R2>(
             }
         }
     }
+
+    a1.drain_events(a2, clock.now);
+    a2.drain_events(a1, clock.now);
 }
