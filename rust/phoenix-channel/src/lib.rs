@@ -78,8 +78,8 @@ pub enum Error {
     TokenExpired,
     #[error("max retries reached")]
     MaxRetriesReached,
-    #[error("login failed")]
-    LoginFailed,
+    #[error("login failed: {0}")]
+    LoginFailed(ErrorReply),
 }
 
 impl Error {
@@ -88,7 +88,7 @@ impl Error {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
             Error::MaxRetriesReached => false,
-            Error::LoginFailed => false,
+            Error::LoginFailed(_) => false,
         }
     }
 }
@@ -321,7 +321,7 @@ where
                     if let Some(message) = self.pending_messages.pop_front() {
                         match stream.start_send_unpin(Message::Text(message.clone())) {
                             Ok(()) => {
-                                tracing::trace!(target: "wire", to="portal", %message);
+                                tracing::trace!(target: "wire::api::send", %message);
 
                                 match stream.poll_flush_unpin(cx) {
                                     Poll::Ready(Ok(())) => {
@@ -359,7 +359,7 @@ where
                         continue;
                     };
 
-                    tracing::trace!(target: "wire", from="portal", %message);
+                    tracing::trace!(target: "wire::api::recv", %message);
 
                     let message = match serde_json::from_str::<
                         PhoenixMessage<TInboundMsg, TOutboundRes>,
@@ -391,7 +391,7 @@ where
                             if message.topic == self.login
                                 && self.pending_join_requests.contains(&req_id)
                             {
-                                return Poll::Ready(Err(Error::LoginFailed));
+                                return Poll::Ready(Err(Error::LoginFailed(reason)));
                             }
 
                             return Poll::Ready(Ok(Event::ErrorResponse {
@@ -587,10 +587,24 @@ pub enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
     NotFound,
+    InvalidVersion,
     Offline,
     Disabled,
     #[serde(other)]
     Other,
+}
+
+impl fmt::Display for ErrorReply {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ErrorReply::UnmatchedTopic => write!(f, "unmatched topic"),
+            ErrorReply::NotFound => write!(f, "not found"),
+            ErrorReply::InvalidVersion => write!(f, "invalid version"),
+            ErrorReply::Offline => write!(f, "offline"),
+            ErrorReply::Disabled => write!(f, "disabled"),
+            ErrorReply::Other => write!(f, "other"),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -807,6 +821,28 @@ mod tests {
         let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
         let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
             reason: ErrorReply::Other,
+        });
+        assert_eq!(actual_reply, expected_reply);
+    }
+
+    #[test]
+    fn invalid_version_reply() {
+        let actual_reply = r#"
+            {
+                "event": "phx_reply",
+                "ref": "12",
+                "topic": "client",
+                "payload":{
+                    "status": "error",
+                    "response":{
+                        "reason": "invalid_version"
+                    }
+                }
+            }
+        "#;
+        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
+        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
+            reason: ErrorReply::InvalidVersion,
         });
         assert_eq!(actual_reply, expected_reply);
     }

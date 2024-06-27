@@ -50,6 +50,28 @@ defmodule Domain.Ops do
     end)
   end
 
+  def provision_account_user(account_id, type, name, email) do
+    account = Domain.Accounts.fetch_account_by_id!(account_id)
+
+    provider =
+      Domain.Auth.all_active_providers_for_account!(account)
+      |> Enum.find(fn provider -> provider.adapter == :email end)
+
+    {:ok, actor} =
+      Domain.Actors.create_actor(account, %{
+        type: type,
+        name: name
+      })
+
+    {:ok, identity} =
+      Domain.Auth.upsert_identity(actor, provider, %{
+        provider_identifier: email,
+        provider_identifier_confirmation: email
+      })
+
+    {:ok, %{actor: actor, identity: identity}}
+  end
+
   def provision_support_by_account_slug(account_slug) do
     Domain.Repo.transaction(fn ->
       {:ok, account} = Domain.Accounts.fetch_account_by_id_or_slug(account_slug)

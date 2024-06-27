@@ -299,7 +299,10 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
+    pub(crate) fn new(
+        private_key: impl Into<StaticSecret>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
+    ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -316,7 +319,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(),
+            stub_resolver: StubResolver::new(known_hosts),
         }
     }
 
@@ -463,7 +466,7 @@ impl ClientState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         let Some(peer) = self.peers.get_mut(&conn_id) else {
@@ -473,7 +476,7 @@ impl ClientState {
         };
 
         peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "{e}"))
+            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "{e}"))
             .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
@@ -1458,7 +1461,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng))
+            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
         }
     }
 
@@ -1511,9 +1514,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod testutils {
+#[cfg(all(test, feature = "proptest"))]
+mod proptests {
     use super::*;
+    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
 
     pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
         HashSet::from_iter(
@@ -1530,13 +1534,6 @@ mod testutils {
     ) -> HashSet<T> {
         HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
-}
-
-#[cfg(all(test, feature = "proptest"))]
-mod proptests {
-    use super::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
-    use testutils::*;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(

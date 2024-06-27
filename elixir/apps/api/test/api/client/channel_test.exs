@@ -192,17 +192,15 @@ defmodule API.Client.ChannelTest do
 
       client = %{client | last_seen_version: "development"}
 
-      {:ok, _reply, socket} =
-        API.Client.Socket
-        |> socket("client:#{client.id}", %{
-          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
-          client: client,
-          subject: subject
-        })
-        |> subscribe_and_join(API.Client.Channel, "client")
-
-      assert socket.assigns.gateway_version_requirement == "> 0.0.0"
+      assert API.Client.Socket
+             |> socket("client:#{client.id}", %{
+               opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+               opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+               client: client,
+               subject: subject
+             })
+             |> subscribe_and_join(API.Client.Channel, "client") ==
+               {:error, %{reason: :invalid_version}}
     end
 
     test "sends list of resources after join", %{
