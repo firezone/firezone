@@ -100,7 +100,7 @@ private final class LogWriter {
 
     let logFileURL = folderURL
       .appendingPathComponent(dateFormatter.string(from: Date()))
-      .appendingPathExtension("log")
+      .appendingPathExtension("jsonl")
 
     // Create log file
     guard fileManager.createFile(atPath: logFileURL.path, contents: "".data(using: .utf8)),
