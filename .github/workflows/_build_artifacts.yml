@@ -348,7 +348,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.1.1
+            version: 1.1.2
           - name: client
             # mark:next-client-version
             version: 1.0.6
