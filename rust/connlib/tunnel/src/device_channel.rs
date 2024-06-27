@@ -169,7 +169,7 @@ impl Device {
             )
         })?;
 
-        tracing::trace!(target: "wire::dev::recv" dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
     }
