@@ -8,28 +8,22 @@ export default function Android() {
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
             Introduces the new DNS routing system supported by 1.1.0 Gateways
-            which should result in much more stable connections for DNS
-            Resources.
+            which results in much more stable connections for DNS Resources,
+            especially when wildcards are used.
+          </li>
+          <li className="pl-2">
+            Improves reliability when roaming between networks.
           </li>
           <li className="pl-2">
             Closes idle connections to Gateways that have not seen traffic for
-            more than 5 minutes which can reduce power consumption when not
+            more than 5 minutes which reduces power consumption when not
             accessing Resources.
           </li>
           <li className="pl-2">
             Updates log file endings to JSONL and adds syslog-style logs for
             easier readability.
           </li>
-          <li className="pl-2">
-            Fixes a crash on 32-bit Android devices when signing in.
-          </li>
-          <li className="pl-2">
-            Fixes a NullPointerException that could occur when signing out.
-          </li>
-          <li className="pl-2">
-            Fixes a NullPointerException that could occur when revoking the
-            Firezone VPN from System Settings while Firezone is connected.
-          </li>
+          <li className="pl-2">Fixes various crashes.</li>
         </ul>
         <p>
           <strong>Note:</strong> Client versions 1.1.x are incompatible with
