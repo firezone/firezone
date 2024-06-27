@@ -34,7 +34,7 @@ jobs:
   build_release:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
-    name: build # TODO: Rename once jobs are updated.
+    name: build-release
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
