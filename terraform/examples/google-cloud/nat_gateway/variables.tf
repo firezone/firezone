@@ -46,6 +46,7 @@ variable "log_level" {
 variable "token" {
   type        = string
   description = "Gateway token to use for authentication."
+  sensitive   = true
 }
 
 variable "subnet_cidr" {

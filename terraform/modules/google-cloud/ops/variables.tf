@@ -10,12 +10,14 @@ variable "slack_alerts_channel" {
 variable "slack_alerts_auth_token" {
   type        = string
   description = "Slack auth token for the infra alerts channel"
+  sensitive   = true
 }
 
 variable "pagerduty_auth_token" {
   type        = string
   description = "Pagerduty auth token for the infra alerts channel"
   default     = null
+  sensitive   = true
 }
 
 variable "additional_notification_channels" {
