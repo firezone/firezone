@@ -1,5 +1,4 @@
 import Entries from "./Entries";
-import Link from "next/link";
 import Entry from "./Entry";
 
 export default function Android() {
