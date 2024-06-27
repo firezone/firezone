@@ -283,7 +283,7 @@ impl Socket {
                         packet,
                     })
                     .inspect(|r| {
-                        tracing::trace!(target: "wire", from = "network", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
+                        tracing::trace!(target: "wire::net::recv", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
                     });
 
                 return Poll::Ready(Ok(iter));
@@ -322,7 +322,7 @@ impl Socket {
     }
 
     fn send(&mut self, transmit: quinn_udp::Transmit) {
-        tracing::trace!(target: "wire", to = "network", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
+        tracing::trace!(target: "wire::net::send", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
 
         self.buffered_transmits.push(transmit);
 

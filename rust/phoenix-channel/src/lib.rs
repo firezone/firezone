@@ -321,7 +321,7 @@ where
                     if let Some(message) = self.pending_messages.pop_front() {
                         match stream.start_send_unpin(Message::Text(message.clone())) {
                             Ok(()) => {
-                                tracing::trace!(target: "wire", to="portal", %message);
+                                tracing::trace!(target: "wire::api::send", %message);
 
                                 match stream.poll_flush_unpin(cx) {
                                     Poll::Ready(Ok(())) => {
@@ -359,7 +359,7 @@ where
                         continue;
                     };
 
-                    tracing::trace!(target: "wire", from="portal", %message);
+                    tracing::trace!(target: "wire::api::recv", %message);
 
                     let message = match serde_json::from_str::<
                         PhoenixMessage<TInboundMsg, TOutboundRes>,
