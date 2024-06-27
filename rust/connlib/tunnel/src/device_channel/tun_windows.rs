@@ -336,14 +336,209 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod tests {
-    /// Checks for regressions in issue #4765, un-initializing Wintun
+    use super::Tun;
+    use anyhow::Result;
+    use ip_packet::{
+        udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket as _, Packet as _,
+        PacketSize as _,
+    };
+    use std::{
+        future::poll_fn,
+        net::{Ipv4Addr, Ipv6Addr},
+        time::Duration,
+    };
+    use tokio::{
+        net::UdpSocket,
+        time::{timeout, Instant},
+    };
+    use tracing_subscriber::EnvFilter;
+
+    /// Runs multiple Wintun tests.
+    ///
+    /// We don't have test names and UUIDs for the interfaces, and some are performance
+    /// tests, so we don't want to run these in parallel in multiple tests.
     #[test]
     #[ignore = "Needs admin privileges"]
-    fn resource_management() {
+    fn wintun() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
+        perf().unwrap();
+        tunnel_drop();
+    }
+
+    /// Synthetic performance test
+    ///
+    /// Echoes UDP packets between a local socket and the Wintun interface
+    fn perf() -> Result<()> {
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(async {
+            let mut tun = Tun::new()?;
+
+            const MTU: usize = 1_280;
+            const NUM_REQUESTS: u64 = 1_000;
+            const REQ_CODE: u8 = 42;
+            const REQ_LEN: usize = 1_000;
+            const RESP_CODE: u8 = 43;
+            const UDP_HEADER_SIZE: usize = 8;
+            const SERVER_PORT: u16 = 3000;
+
+            let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
+            let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
+            let mut device_manager =
+                connlib_shared::tun_device_manager::platform::TunDeviceManager::new()?;
+            device_manager.set_ips(ipv4, ipv6).await?;
+            tun.add_route(ipv4.into())?;
+
+            let server_addr = (ipv4, SERVER_PORT).into();
+
+            // Listen for incoming packets on Wintun, and echo them.
+            let server_task = tokio::spawn(async move {
+                tracing::debug!("Server task entered");
+                let mut requests_served = 0;
+                // We aren't interested in allocator speed or doing any processing,
+                // so just cache the response packet
+                let mut response_pkt = None;
+                let mut time_spent = Duration::from_millis(0);
+                loop {
+                    let mut req_buf = [0u8; MTU];
+                    poll_fn(|cx| tun.poll_read(&mut req_buf, cx)).await?;
+                    let start = Instant::now();
+                    // Copied from the DNS module in `firezone-tunnel`
+                    let mut answer = vec![RESP_CODE];
+                    let response_len = answer.len();
+                    let original_pkt = IpPacket::new(&req_buf).unwrap();
+                    let Some(original_dgm) = original_pkt.as_udp() else {
+                        continue;
+                    };
+                    if original_dgm.get_destination() != SERVER_PORT {
+                        continue;
+                    }
+                    if original_dgm.payload()[0] != REQ_CODE {
+                        panic!("Wrong request code");
+                    }
+                    let res_buf = response_pkt.get_or_insert_with(|| {
+                        let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
+                        let mut res_buf = Vec::with_capacity(hdr_len + response_len + 20);
+
+                        // TODO: this is some weirdness due to how MutableIpPacket is implemented
+                        // we need an extra 20 bytes padding.
+                        res_buf.extend_from_slice(&[0; 20]);
+                        res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
+                        res_buf.append(&mut answer);
+
+                        let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
+                        let dgm_len = UDP_HEADER_SIZE + response_len;
+                        match &mut pkt {
+                            MutableIpPacket::Ipv4(p) => {
+                                p.set_total_length((hdr_len + response_len) as u16)
+                            }
+                            MutableIpPacket::Ipv6(p) => p.set_payload_length(dgm_len as u16),
+                        }
+                        pkt.swap_src_dst();
+
+                        let mut dgm = MutableUdpPacket::new(pkt.payload_mut()).unwrap();
+                        dgm.set_length(dgm_len as u16);
+                        dgm.set_source(original_dgm.get_destination());
+                        dgm.set_destination(original_dgm.get_source());
+
+                        let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
+                        let udp_checksum = pkt
+                            .to_immutable()
+                            .udp_checksum(&pkt.to_immutable().unwrap_as_udp());
+                        pkt.unwrap_as_udp().set_checksum(udp_checksum);
+                        pkt.set_ipv4_checksum();
+
+                        // TODO: more of this weirdness
+                        res_buf.drain(0..20);
+                        res_buf
+                    });
+                    tun.write(res_buf)?;
+                    requests_served += 1;
+                    time_spent += start.elapsed();
+                    if requests_served >= NUM_REQUESTS {
+                        break;
+                    }
+                }
+
+                tracing::info!(time_spent = format!("{:?}", time_spent), "Server all good");
+                Ok::<_, anyhow::Error>(())
+            });
+
+            // Wait for Wintun to be ready, then send it UDP packets and listen for
+            // the echo.
+            let client_task = tokio::spawn(async move {
+                // We'd like to hit 100 Mbps up which is nothing special but it's a good
+                // start.
+                const EXPECTED_BITS_PER_SECOND: u64 = 100_000_000;
+                // This has to be an `Option` because Windows takes about 4 seconds
+                // to get the interface ready.
+                let mut start_instant = None;
+
+                tracing::debug!("Client task entered");
+                let sock = UdpSocket::bind("0.0.0.0:0").await?;
+                let mut responses_received = 0;
+                let mut req_buf = vec![0u8; REQ_LEN];
+                req_buf[0] = REQ_CODE;
+                loop {
+                    let Ok(_) = sock.send_to(&req_buf, server_addr).await else {
+                        // It seems to take a few seconds for Windows to set everything up.
+                        tracing::warn!("Failed to send");
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        continue;
+                    };
+                    start_instant.get_or_insert_with(|| Instant::now());
+                    let mut recv_buf = [0u8; MTU];
+                    let Ok((bytes_received, packet_src)) = sock.recv_from(&mut recv_buf).await
+                    else {
+                        tracing::warn!("Timeout or couldn't recv packet");
+                        continue;
+                    };
+                    if packet_src != server_addr {
+                        tracing::warn!("Packet not from server");
+                        continue;
+                    }
+                    assert_eq!(bytes_received, 1);
+                    assert_eq!(recv_buf[0], RESP_CODE);
+                    responses_received += 1;
+                    if responses_received >= NUM_REQUESTS {
+                        break;
+                    }
+                }
+
+                let actual_dur = start_instant.unwrap().elapsed();
+                // The 1_000_000 is needed to get decent precision without floats
+                let actual_bps =
+                    NUM_REQUESTS * REQ_LEN as u64 * 8 * 1_000_000 / actual_dur.as_micros() as u64;
+                assert!(
+                    actual_bps >= EXPECTED_BITS_PER_SECOND,
+                    "{:?} < {:?}",
+                    actual_bps,
+                    EXPECTED_BITS_PER_SECOND
+                );
+                tracing::info!(?actual_bps, "Client all good");
+                Ok::<_, anyhow::Error>(())
+            });
+
+            timeout(Duration::from_secs(30), async move {
+                client_task.await??;
+                server_task.await??;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await??;
+
+            Ok(())
+        })
+    }
+
+    /// Checks for regressions in issue #4765, un-initializing Wintun
+    fn tunnel_drop() {
         // Each cycle takes about half a second, so this will need over a minute to run.
         for _ in 0..150 {
-            let _tun = super::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+            let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
 }
