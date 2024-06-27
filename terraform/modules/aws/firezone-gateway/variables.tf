@@ -18,7 +18,7 @@ variable "desired_capacity" {
 variable "min_size" {
   description = "The minimum number of instances"
   type        = number
-  default     = 2
+  default     = 3
 }
 
 variable "max_size" {
@@ -38,6 +38,12 @@ variable "firezone_version" {
   description = "The Gateway version to deploy"
   type        = string
   default     = "latest"
+}
+
+variable "firezone_name" {
+  description = "Name for the Gateways used in the admin portal"
+  type        = string
+  default     = "$(hostname)"
 }
 
 variable "firezone_api_url" {

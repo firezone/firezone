@@ -1,8 +1,18 @@
-module "firezone_gateway_example" {
-  # Required inputs
-  source         = "github.com/firezone/firezone/terraform/modules/aws/nat-gateway"
+module "gateway_aws_example" {
+  source = "github.com/firezone/firezone/terraform/modules/aws/firezone-gateway"
+
+  ###################
+  # Required inputs #
+  ###################
+
+  # Generate a token from the admin portal in Sites -> <site> -> Deploy Gateway.
+  # Only one token is needed for the cluster.
   firezone_token = "YOUR_FIREZONE_TOKEN"
-  base_ami       = "ami-0a640b520696dc6a8" # Ubuntu 22.04
+
+  # Pick an AMI to use. We recommend Ubuntu LTS or Amazon Linux 2.
+  base_ami = data.aws_ami_ids.ubuntu.ids[0]
+
+  # Attach the Gateways to your VPC and subnets.
   vpc            = aws_vpc.main.id
   public_subnet  = aws_subnet.public.id
   private_subnet = aws_subnet.private.id
@@ -10,13 +20,33 @@ module "firezone_gateway_example" {
     aws_security_group.instance.id
   ]
 
-  # Optional inputs
+  ###################
+  # Optional inputs #
+  ###################
+
+  # Deploy a specific version of the Gateway. Generally, we recommend using the latest version.
   # firezone_version    = "latest"
+
+  # Override the default API URL. This should almost never be needed.
   # firezone_api_url    = "wss://api.firezone.dev"
+
+  # Gateways are very lightweight.
+  # See https://www.firezone.dev/kb/deploy/gateways#sizing-recommendations.
   # instance_type       = "t3.nano"
-  # min_size            = 2
+
+  # We recommend a minimum of 3 instances for high availability.
+  # min_size            = 3
   # max_size            = 5
   # desired_capacity    = 3
+}
+
+data "aws_ami_ids" "ubuntu" {
+  owners = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-*-22.04-amd64-server-*"]
+  }
 }
 
 provider "aws" {

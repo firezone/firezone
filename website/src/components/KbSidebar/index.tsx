@@ -125,6 +125,9 @@ export default function KbSidebar() {
               <li>
                 <Item href="/kb/automate/terraform/aws">Terraform: AWS</Item>
               </li>
+              <li>
+                <Item href="/kb/automate/terraform/gcp">Terraform: GCP</Item>
+              </li>
             </Collapse>
           </li>
           <li className="ml-3 pt-3 border-t border-neutral-200 uppercase font-bold text-neutral-800">
