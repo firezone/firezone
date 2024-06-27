@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function Gateway() {
   return (
     <Entries title="Gateway">
-      <Entry version="1.1.0" date={new Date("2024-06-27")}>
+      <Entry version="1.1.1" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
             Extends Gateway NAT session mappings for ICMP, UDP, and TCP traffic
