@@ -85,7 +85,7 @@ where
         domain: Option<(DomainName, Vec<IpAddr>)>,
     ) -> Result<()> {
         self.role_state
-            .allow_access(resource, client, expires_at, domain, Instant::now())
+            .allow_access(resource, client, expires_at, domain)
     }
 
     pub fn refresh_translation(
@@ -96,7 +96,7 @@ where
         resolved_ips: Vec<IpAddr>,
     ) {
         self.role_state
-            .refresh_translation(client, resource_id, name, resolved_ips, Instant::now())
+            .refresh_translation(client, resource_id, name, resolved_ips)
     }
 
     pub fn update_resource(&mut self, resource: ResourceDescription) {
@@ -270,7 +270,7 @@ impl GatewayState {
             domain.clone().map(|(n, _)| n),
         );
 
-        peer.assign_proxies(&resource, domain, now)?;
+        peer.assign_proxies(&resource, domain)?;
 
         self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
 
@@ -286,13 +286,12 @@ impl GatewayState {
         resource_id: ResourceId,
         name: DomainName,
         resolved_ips: Vec<IpAddr>,
-        now: Instant,
     ) {
         let Some(peer) = self.peers.get_mut(&client) else {
             return;
         };
 
-        peer.refresh_translation(name, resource_id, resolved_ips, now);
+        peer.refresh_translation(name, resource_id, resolved_ips);
     }
 
     pub fn allow_access(
@@ -301,7 +300,6 @@ impl GatewayState {
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
-        now: Instant,
     ) -> Result<()> {
         match (&domain, &resource) {
             (Some((domain, _)), ResourceDescription::Dns(r)) => {
@@ -317,7 +315,7 @@ impl GatewayState {
             return Err(Error::ControlProtocolError);
         };
 
-        peer.assign_proxies(&resource, domain.clone(), now)?;
+        peer.assign_proxies(&resource, domain.clone())?;
 
         peer.add_resource(
             resource.addresses(),

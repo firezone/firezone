@@ -161,7 +161,6 @@ impl ClientOnGateway {
         name: DomainName,
         resource_id: ResourceId,
         resolved_ips: Vec<IpAddr>,
-        now: Instant,
     ) {
         let Some(resource) = self.resources.get_mut(&resource_id) else {
             return;
@@ -192,7 +191,7 @@ impl ClientOnGateway {
             })
             .collect_vec();
 
-        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now);
+        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips);
         self.recalculate_filters();
     }
 
@@ -202,7 +201,6 @@ impl ClientOnGateway {
         resource_id: ResourceId,
         mapped_ips: &[IpAddr],
         proxy_ips: Vec<IpAddr>,
-        now: Instant,
     ) {
         let mapped_ipv4 = mapped_ipv4(mapped_ips);
         let mapped_ipv6 = mapped_ipv6(mapped_ips);
@@ -224,7 +222,7 @@ impl ClientOnGateway {
 
             self.permanent_translations.insert(
                 *proxy_ip,
-                TranslationState::new(resource_id, name.clone(), real_ip, now),
+                TranslationState::new(resource_id, name.clone(), real_ip),
             );
         }
     }
@@ -233,7 +231,6 @@ impl ClientOnGateway {
         &mut self,
         resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
         domain_ips: Option<(DomainName, Vec<IpAddr>)>,
-        now: Instant,
     ) -> connlib_shared::Result<()> {
         match (resource, domain_ips) {
             (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
@@ -242,7 +239,7 @@ impl ClientOnGateway {
                     return Ok(());
                 }
 
-                self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
+                self.assign_translations(name, r.id, &r.addresses, resource_ips);
             }
             (ResourceDescription::Cidr(_), None) => {}
             _ => {
@@ -287,7 +284,7 @@ impl ClientOnGateway {
                 .permanent_translations
                 .values()
                 .filter(|state| state.resource_id == resource_id && state.name == domain)
-                .all(|state| state.no_response_in_120s(now))
+                .all(|state| state.no_incoming_in_120s(now))
             {
                 tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
@@ -537,104 +534,109 @@ struct TranslationState {
     resolved_ip: IpAddr,
 
     /// When we've last received a packet from the resolved IP.
-    ///
-    /// Initially set to `created_at`.
-    last_incoming: Instant,
+    last_incoming: Option<Instant>,
     /// When we've sent the first packet to the resolved IP.
-    ///
-    /// Initially set to `created_at`.
-    first_outgoing: Instant,
+    first_outgoing: Option<Instant>,
     /// When we've last sent a packet to the resolved IP.
-    ///
-    /// Initially set to `created_at`.
-    last_outgoing: Instant,
+    last_outgoing: Option<Instant>,
     /// When we first detected that we aren't getting any responses from this IP.
     ///
     /// This is set upon outgoing traffic if we haven't received inbound traffic for a while.
     /// We don't want to immediately trigger a refresh in that case because protocols like TCP and ICMP have responses.
     /// Thus, a DNS refresh is triggered after a grace-period of 1s after the packet that detected the missing responses.
-    ///
-    /// Initially set to `created_at`.
-    missing_responses_detected_at: Instant,
-
-    /// When this translation state was created.
-    created_at: Instant,
+    missing_responses_detected_at: Option<Instant>,
 }
 
 impl TranslationState {
-    fn new(
-        resource_id: ResourceId,
-        name: DomainName,
-        resolved_ip: IpAddr,
-        created_at: Instant,
-    ) -> Self {
+    fn new(resource_id: ResourceId, name: DomainName, resolved_ip: IpAddr) -> Self {
         Self {
             resource_id,
             name,
             resolved_ip,
-            last_incoming: created_at,
-            first_outgoing: created_at,
-            last_outgoing: created_at,
-            missing_responses_detected_at: created_at,
-            created_at,
+            last_incoming: None,
+            first_outgoing: None,
+            last_outgoing: None,
+            missing_responses_detected_at: None,
         }
     }
 
     /// We define a [`TranslationState`] as dead if we have seen outgoing traffic that is at least 10s old and _never_ received incoming traffic.
     fn is_dead(&self, now: Instant) -> bool {
-        let sent_at_least_one_packet_10s_ago =
-            now.duration_since(self.first_outgoing) >= Duration::from_secs(10);
-        let received_no_packets = self.last_incoming == self.created_at;
+        let sent_at_least_one_packet_10s_ago = self.first_outgoing.is_some_and(|first_outgoing| {
+            now.duration_since(first_outgoing) >= Duration::from_secs(10)
+        });
+        let received_no_packets = self.last_incoming.is_none();
 
         sent_at_least_one_packet_10s_ago && received_no_packets
     }
 
     /// We define a [`TranslationState`] as used if we have seen outgoing traffic in the last 10s.
     fn is_used(&self, now: Instant) -> bool {
-        now.duration_since(self.last_outgoing) <= Duration::from_secs(10)
+        self.last_outgoing.is_some_and(|last_outgoing| {
+            now.duration_since(last_outgoing) <= Duration::from_secs(10)
+        })
     }
 
     fn is_expired(&self, now: Instant) -> bool {
         let ack_grace_period_expired =
-            now.duration_since(self.missing_responses_detected_at) >= Duration::from_secs(1);
+            self.missing_responses_detected_at
+                .is_some_and(|missing_responses_detected_at| {
+                    now.duration_since(missing_responses_detected_at) >= Duration::from_secs(1)
+                });
 
-        self.no_response_in_120s(now) && self.is_used(now) && ack_grace_period_expired
+        self.no_incoming_in_120s(now) && self.is_used(now) && ack_grace_period_expired
     }
 
-    fn no_response_in_120s(&self, now: Instant) -> bool {
+    fn no_incoming_in_120s(&self, now: Instant) -> bool {
         const CONNTRACK_UDP_STREAM_TIMEOUT: Duration = Duration::from_secs(120);
 
-        self.no_response_in_window(now - CONNTRACK_UDP_STREAM_TIMEOUT, now)
+        self.no_incoming_in_window(now - CONNTRACK_UDP_STREAM_TIMEOUT, now)
     }
 
-    fn no_response_in_window(&self, start: Instant, finish: Instant) -> bool {
-        let before_start = self.last_incoming < start;
-        let after_finish = self.last_incoming > finish;
+    fn no_incoming_in_window(&self, start: Instant, finish: Instant) -> bool {
+        let Some(last_incoming) = self.last_incoming else {
+            return true;
+        };
+
+        debug_assert!(start <= finish);
+
+        let before_start = last_incoming < start;
+        let after_finish = last_incoming > finish;
 
         before_start || after_finish
     }
 
     fn on_incoming_traffic(&mut self, now: Instant) {
-        self.last_incoming = now;
+        self.last_incoming = Some(now);
     }
 
-    fn this_packets_will_make_grace_period_start(&self, now: Instant) -> bool {
-        self.no_response_in_120s(now + Duration::from_secs(10))
-            != self.no_response_in_120s(self.last_outgoing + Duration::from_secs(10))
+    fn missing_multiple_responses(&self, now: Instant) -> bool {
+        /// The maximum time we expect a packet to be acknowledged in.
+        const MAX_ACK_DELAY: Duration = Duration::from_secs(110);
+
+        let no_incoming_before_last_packet = self
+            .last_outgoing
+            .map(|last_outgoing| {
+                self.no_incoming_in_window(last_outgoing - MAX_ACK_DELAY, last_outgoing)
+            })
+            .unwrap_or(true); // No outgoing packet means we also don't have a response!
+        let no_incoming_now = self.no_incoming_in_window(now - MAX_ACK_DELAY, now);
+
+        no_incoming_now && no_incoming_before_last_packet
     }
 
     fn on_outgoing_traffic(&mut self, now: Instant) {
-        if self.this_packets_will_make_grace_period_start(now) {
-            self.missing_responses_detected_at = now;
+        if self.missing_multiple_responses(now) {
+            self.missing_responses_detected_at = Some(now);
         }
 
-        self.last_outgoing = now;
+        self.last_outgoing = Some(now);
 
-        if self.first_outgoing > self.created_at {
+        if self.first_outgoing.is_some() {
             return;
         }
 
-        self.first_outgoing = now;
+        self.first_outgoing = Some(now);
     }
 }
 
@@ -742,7 +744,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         assert!(!state.is_dead(now))
@@ -755,7 +756,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(5);
@@ -773,7 +773,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         assert!(!state.is_expired(now));
@@ -786,7 +785,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(121);
@@ -801,7 +799,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(120);
@@ -819,7 +816,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(121);
@@ -836,7 +832,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(120);
@@ -854,7 +849,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(120);
@@ -873,7 +867,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(120);
@@ -889,13 +882,14 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(120);
         state.on_outgoing_traffic(now);
         now += Duration::from_secs(5);
         state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1); // Let grace period expire
 
         assert!(state.is_expired(now));
     }
@@ -907,7 +901,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(120);
@@ -926,7 +919,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_millis(119990);
@@ -943,7 +935,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_millis(119990);
@@ -960,7 +951,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(5);
@@ -978,7 +968,6 @@ mod tests {
             ResourceId::random(),
             "example.com".parse().unwrap(),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
         );
 
         now += Duration::from_secs(1);

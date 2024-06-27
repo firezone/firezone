@@ -709,7 +709,6 @@ impl TunnelTest {
                                     self.client.id,
                                     None,
                                     reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                    self.now,
                                 )
                             })
                             .unwrap();
@@ -743,7 +742,6 @@ impl TunnelTest {
                                 self.client.id,
                                 None,
                                 reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                self.now,
                             )
                         })
                         .unwrap();
