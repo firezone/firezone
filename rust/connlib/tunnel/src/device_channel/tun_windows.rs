@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
     task::{ready, Context, Poll},
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TrySendError};
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
@@ -42,6 +42,11 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::debug!(
+            channel_capacity = self.packet_rx.capacity(),
+            "Shutting down packet channel..."
+        );
+        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
             tracing::error!(?error, "wintun::Session::shutdown");
         }
@@ -246,9 +251,17 @@ fn start_recv_thread(
             loop {
                 match session.receive_blocking() {
                     Ok(pkt) => {
-                        if packet_tx.blocking_send(pkt).is_err() {
-                            // Most likely the receiver was dropped and we're closing down the connlib session.
-                            break;
+                        match packet_tx.try_send(pkt) {
+                            Ok(()) => {}
+                            Err(TrySendError::Closed(_)) => {
+                                // This is redundant since we aren't using
+                                // `blocking_send` anymore but it's defense in depth.
+                                tracing::info!(
+                                    "Closing worker thread because packet channel closed"
+                                );
+                                break;
+                            }
+                            Err(TrySendError::Full(_)) => {} // Just drop the packet, it's IP
                         }
                     }
                     Err(wintun::Error::ShuttingDown) => break,
@@ -258,7 +271,7 @@ fn start_recv_thread(
                     }
                 }
             }
-            tracing::debug!("recv_task exiting gracefully");
+            tracing::info!("recv_task exiting gracefully");
         })
 }
 

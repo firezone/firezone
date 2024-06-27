@@ -138,7 +138,7 @@ defmodule Web.AuthController do
               })
           end
         end,
-        500
+        1000
       )
 
     put_auth_state(conn, provider.id, {fragment, provider_identifier, redirect_params})

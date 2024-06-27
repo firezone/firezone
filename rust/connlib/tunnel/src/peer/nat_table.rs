@@ -108,7 +108,7 @@ impl NatTable {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
     use ip_packet::{proptest::*, MutableIpPacket};
