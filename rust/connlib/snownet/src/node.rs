@@ -351,7 +351,7 @@ where
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut self.buffer[4..])?
+            .encapsulate(packet.packet(), &mut self.buffer[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -474,7 +474,7 @@ where
                 }
                 None => true,
             });
-        self.connections.remove_failed(&mut self.pending_events);
+        self.connections.gc(&mut self.pending_events);
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -593,6 +593,8 @@ where
                 possible_sockets: HashSet::default(),
                 buffered: RingBuffer::new(10),
             },
+            last_outgoing: now,
+            last_incoming: now,
         }
     }
 
@@ -1053,7 +1055,7 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
-    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>) {
+    fn gc(&mut self, events: &mut VecDeque<Event<TId>>) {
         self.initial.retain(|id, conn| {
             if conn.is_failed {
                 events.push_back(Event::ConnectionFailed(*id));
@@ -1066,6 +1068,11 @@ where
         self.established.retain(|id, conn| {
             if conn.is_failed() {
                 events.push_back(Event::ConnectionFailed(*id));
+                return false;
+            }
+
+            if conn.is_idle() {
+                events.push_back(Event::ConnectionClosed(*id));
                 return false;
             }
 
@@ -1372,6 +1379,9 @@ struct Connection<RId> {
     signalling_completed_at: Instant,
 
     buffer: Box<[u8; MAX_UDP_SIZE]>,
+
+    last_outgoing: Instant,
+    last_incoming: Instant,
 }
 
 enum ConnectionState<RId> {
@@ -1394,6 +1404,8 @@ enum ConnectionState<RId> {
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
+    /// The connection is idle and will be GC'd.
+    Idle,
 }
 
 impl<RId> ConnectionState<RId> {
@@ -1405,7 +1417,7 @@ impl<RId> ConnectionState<RId> {
             ConnectionState::Connected {
                 possible_sockets, ..
             } => possible_sockets,
-            ConnectionState::Failed => return,
+            ConnectionState::Idle | ConnectionState::Failed => return,
         };
 
         possible_sockets.insert(socket);
@@ -1450,7 +1462,7 @@ where
 
                 from_nominated || possible_sockets.contains(addr)
             }
-            ConnectionState::Failed => false,
+            ConnectionState::Idle | ConnectionState::Failed => false,
         }
     }
 
@@ -1467,8 +1479,12 @@ where
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = Some(self.next_timer_update);
         let candidate_timeout = self.candidate_timeout();
+        let idle_timeout = self.idle_timeout();
 
-        earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout))
+        earliest(
+            Some(idle_timeout),
+            earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout)),
+        )
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
@@ -1477,6 +1493,12 @@ where
         }
 
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
+    }
+
+    fn idle_timeout(&self) -> Instant {
+        const MAX_IDLE: Duration = Duration::from_secs(5 * 60);
+
+        self.last_incoming.max(self.last_outgoing) + MAX_IDLE
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
@@ -1499,6 +1521,11 @@ where
             tracing::info!("Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
+        }
+
+        if now >= self.idle_timeout() {
+            tracing::info!("Connection is idle");
+            self.state = ConnectionState::Idle;
         }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
@@ -1601,7 +1628,7 @@ where
 
                             Some(peer_socket)
                         }
-                        ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
+                        ConnectionState::Idle | ConnectionState::Failed => continue, // Failed and idle connections are cleaned up, don't bother handling events.
                     };
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
@@ -1651,6 +1678,7 @@ where
         &mut self,
         packet: &[u8],
         buffer: &'b mut [u8],
+        now: Instant,
     ) -> Result<Option<&'b [u8]>, Error> {
         let len = match self.tunnel.encapsulate(packet, buffer) {
             TunnResult::Done => return Ok(None),
@@ -1660,6 +1688,8 @@ where
                 unreachable!("never returned from encapsulate")
             }
         };
+
+        self.last_outgoing = now;
 
         Ok(Some(&buffer[..len]))
     }
@@ -1673,7 +1703,7 @@ where
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
-        match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
+        let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
@@ -1737,12 +1767,18 @@ where
                             ));
                         }
                     }
-                    ConnectionState::Failed => {}
+                    ConnectionState::Idle | ConnectionState::Failed => {}
                 }
 
                 ControlFlow::Break(Ok(()))
             }
+        };
+
+        if control_flow.is_continue() {
+            self.last_incoming = now;
         }
+
+        control_flow
     }
 
     fn force_handshake(
@@ -1776,12 +1812,18 @@ where
     fn socket(&self) -> Option<PeerSocket<RId>> {
         match self.state {
             ConnectionState::Connected { peer_socket, .. } => Some(peer_socket),
-            ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
+            ConnectionState::Connecting { .. }
+            | ConnectionState::Idle
+            | ConnectionState::Failed => None,
         }
     }
 
     fn is_failed(&self) -> bool {
         matches!(self.state, ConnectionState::Failed)
+    }
+
+    fn is_idle(&self) -> bool {
+        matches!(self.state, ConnectionState::Idle)
     }
 }
 
