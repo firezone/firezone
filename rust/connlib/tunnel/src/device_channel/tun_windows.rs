@@ -490,7 +490,7 @@ mod tests {
                         tokio::time::sleep(Duration::from_secs(1)).await;
                         continue;
                     };
-                    start_instant.get_or_insert_with(|| Instant::now());
+                    start_instant.get_or_insert_with(Instant::now);
                     let mut recv_buf = [0u8; MTU];
                     let Ok((bytes_received, packet_src)) = sock.recv_from(&mut recv_buf).await
                     else {
