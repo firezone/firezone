@@ -123,10 +123,10 @@ export default function KbSidebar() {
                 <Item href="/kb/automate">Overview</Item>
               </li>
               <li>
-                <Item href="/kb/automate/terraform/aws">Terraform: AWS</Item>
+                <Item href="/kb/automate/terraform/aws">Terraform + AWS</Item>
               </li>
               <li>
-                <Item href="/kb/automate/terraform/gcp">Terraform: GCP</Item>
+                <Item href="/kb/automate/terraform/gcp">Terraform + GCP</Item>
               </li>
             </Collapse>
           </li>
