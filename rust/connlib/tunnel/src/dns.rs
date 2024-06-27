@@ -113,8 +113,7 @@ impl KnownHosts {
                     .collect_vec(),
             ),
             Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                    .expect("ptr isn't a valid");
+                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
                 let fqdn = self.ips_to_fqdn.get(&ip)?;
 
                 Some(vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))])
@@ -239,8 +238,10 @@ impl StubResolver {
                 .map(RecordData::Aaaa)
                 .collect_vec(),
             Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                    .expect("ptr isn't a valid");
+                let Some(ip) = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
+                else {
+                    return Vec::new();
+                };
                 let Some(fqdn) = self.ips_to_fqdn.get(&ip) else {
                     debug_assert!(false, "we expect this function to be called only with PTR records for resource ips");
                     return Vec::new();
