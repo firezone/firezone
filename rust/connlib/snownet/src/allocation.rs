@@ -1388,7 +1388,7 @@ mod tests {
     }
 
     #[test]
-    fn uses_unused_channels_first_before_reusing_expired_one_() {
+    fn uses_next_channel_as_long_as_its_available_before_reusing() {
         let mut channel_bindings = ChannelBindings::default();
         let mut now = Instant::now();
 
@@ -1398,7 +1398,7 @@ mod tests {
         }
 
         now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
-        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now);
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now); // Last channel is in use
 
         let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
         channel_bindings.set_confirmed(channel, now);
@@ -1406,9 +1406,10 @@ mod tests {
         assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
 
         now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
-        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now);
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now); // Last channel is in use
         let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
 
+        // We don't reuse the first channel, instead we should prefer the second channel
         assert_ne!(channel, ChannelBindings::FIRST_CHANNEL)
     }
 
