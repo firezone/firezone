@@ -1352,7 +1352,7 @@ mod tests {
         let mut channel_bindings = ChannelBindings::default();
         let start = Instant::now();
 
-        for channel in ChannelBindings::FIRST_CHANNEL..ChannelBindings::LAST_CHANNEL {
+        for channel in ChannelBindings::FIRST_CHANNEL..=ChannelBindings::LAST_CHANNEL {
             let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
 
             assert_eq!(channel, allocated_channel)
