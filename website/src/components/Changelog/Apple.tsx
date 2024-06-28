@@ -3,7 +3,10 @@ import Entries from "./Entries";
 
 export default function Apple() {
   return (
-    <Entries title="macOS / iOS">
+    <Entries
+      href="https://apps.apple.com/us/app/firezone/id6443661826"
+      title="macOS / iOS"
+    >
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

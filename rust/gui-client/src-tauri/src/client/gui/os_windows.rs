@@ -71,7 +71,7 @@ pub(crate) fn show_clickable_notification(
         .title(title)
         .text1(body)
         .scenario(tauri_winrt_notification::Scenario::Reminder)
-        .on_activated(move || {
+        .on_activated(move |_| {
             if let Some(req) = req.take() {
                 if let Err(error) = tx.blocking_send(req) {
                     tracing::error!(
