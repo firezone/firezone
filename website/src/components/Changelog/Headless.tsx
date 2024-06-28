@@ -2,8 +2,11 @@ import Entry from "./Entry";
 import Entries from "./Entries";
 
 export default function Headless() {
+  const href = "/dl/firezone-client-headless-linux/:version/:arch";
+  const arches = ["x86_64", "aarch64", "armv7"];
+
   return (
-    <Entries title="Linux headless">
+    <Entries href={href} arches={arches} title="Linux headless">
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

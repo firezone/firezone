@@ -52,7 +52,7 @@ jobs:
           - release_name: headless-client-1.1.1
             config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - release_name: gui-client-1.1.1
+          - release_name: gui-client-1.1.2
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6

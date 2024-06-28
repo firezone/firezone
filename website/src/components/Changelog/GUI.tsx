@@ -2,8 +2,21 @@ import Entry from "./Entry";
 import Entries from "./Entries";
 
 export default function GUI({ title }: { title: string }) {
+  const href =
+    title === "Windows"
+      ? "/dl/firezone-client-gui-windows/:version/:arch"
+      : "/dl/firezone-client-gui-linux/:version/:arch";
+  const arches = ["x86_64"];
+
   return (
-    <Entries title={title}>
+    <Entries href={href} arches={arches} title={title}>
+      <Entry version="1.1.1" date={new Date("2024-06-27")}>
+        {title === "Windows" ? (
+          <p>This release fixes a performance issue.</p>
+        ) : (
+          <p>This is a maintenance release with no user-facing changes.</p>
+        )}
+      </Entry>
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

@@ -1,12 +1,18 @@
 import React from "react";
+import { Route } from "next";
 import Entry from "./Entry";
+import Link from "next/link";
 
 function Latest({
+  arches,
+  href,
   title,
   version,
   date,
   children,
 }: {
+  arches?: string[];
+  href: string;
   title: string;
   version: string;
   date: Date;
@@ -28,11 +34,36 @@ function Latest({
         <p>
           Version: <span className="font-semibold">{version}</span>
         </p>
-        <p className="mb-4 md:mb-6 xl:mb-8">
+        <p>
           Released:{" "}
           <span className="font-semibold">
             <time dateTime={date.toDateString()}>{utcDateString}</time>
           </span>
+        </p>
+        <p className="mb-4 md:mb-6 xl:mb-8">
+          <span className="mr-2">Download:</span>
+          {arches ? (
+            arches.map((arch) => (
+              <Link
+                key={arch}
+                href={{
+                  pathname: href
+                    .replace(":arch", arch)
+                    .replace(":version", version),
+                }}
+                className="hover:no-underline underline text-accent-500 mr-2"
+              >
+                {arch}
+              </Link>
+            ))
+          ) : (
+            <Link
+              href={new URL(href)}
+              className="hover:no-underline underline text-accent-500"
+            >
+              Download for all platforms
+            </Link>
+          )}
         </p>
         {children}
       </div>
@@ -82,9 +113,13 @@ function Previous({
 }
 
 export default function Entries({
+  href,
+  arches,
   title,
   children,
 }: {
+  href: string;
+  arches?: string[];
   title: string;
   children: React.ReactNode;
 }) {
@@ -100,7 +135,13 @@ export default function Entries({
 
   return (
     <div className="relative overflow-x-auto p-4 md:p-6 xl:p-8">
-      <Latest title={title} version={version} date={date}>
+      <Latest
+        href={href}
+        arches={arches}
+        title={title}
+        version={version}
+        date={date}
+      >
         {firstEntryChildren}
       </Latest>
       <Previous title={title}>{previousEntries}</Previous>

@@ -3,7 +3,10 @@ import Entry from "./Entry";
 
 export default function Android() {
   return (
-    <Entries title="Android">
+    <Entries
+      href="https://play.google.com/store/apps/details?id=dev.firezone.android"
+      title="Android"
+    >
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
