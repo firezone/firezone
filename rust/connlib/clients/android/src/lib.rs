@@ -26,6 +26,8 @@ use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+mod make_writer;
+
 /// The Android client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Android clients
 /// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days.
@@ -108,22 +110,6 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-#[cfg(target_os = "android")]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
-{
-    tracing_android::layer("connlib").unwrap()
-}
-
-#[cfg(not(target_os = "android"))]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber,
-{
-    tracing_subscriber::layer::Identity::new()
-}
-
 fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
@@ -146,7 +132,14 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 
     let _ = tracing_subscriber::registry()
         .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
-        .with(android_layer().with_filter(EnvFilter::new(log_filter)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_level(false)
+                .with_writer(make_writer::MakeWriter::new("connlib"))
+                .with_filter(EnvFilter::new(log_filter)),
+        )
         .try_init();
 
     handle

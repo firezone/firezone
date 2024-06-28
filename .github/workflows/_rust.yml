@@ -98,10 +98,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
-        with:
-          cache_backend: 'github'
-          # Cache needs to be scoped per OS version
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
       - name: pnpm install
@@ -114,6 +110,9 @@ jobs:
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
         run: cargo build -p firezone-gui-client
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: dump_syms,minidump-stackwalk
       - name: Run smoke tests (Linux)
         if: ${{ runner.os == 'Linux' }}
         run: bash ../../scripts/tests/smoke-test-gui-linux.sh
