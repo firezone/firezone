@@ -73,6 +73,7 @@ fn android_log(level: Level, tag: &CStr, msg: &CStr) {
         Level::TRACE => android_log_sys::LogPriority::VERBOSE,
     };
 
+    // Safety: FFI calls are unsafe.
     unsafe {
         android_log_sys::__android_log_write(
             prio as android_log_sys::c_int,
