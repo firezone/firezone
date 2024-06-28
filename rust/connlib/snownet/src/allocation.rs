@@ -1388,6 +1388,31 @@ mod tests {
     }
 
     #[test]
+    fn uses_unused_channels_first_before_reusing_expired_one_() {
+        let mut channel_bindings = ChannelBindings::default();
+        let mut now = Instant::now();
+
+        for _ in 0..=4095 {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+            channel_bindings.set_confirmed(allocated_channel, now);
+        }
+
+        now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now);
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+        channel_bindings.set_confirmed(channel, now);
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+
+        now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now);
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+
+        assert_ne!(channel, ChannelBindings::FIRST_CHANNEL)
+    }
+
+    #[test]
     fn bound_channel_can_decode_data() {
         let mut channel_bindings = ChannelBindings::default();
         let start = Instant::now();
