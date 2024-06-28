@@ -62,7 +62,7 @@ pub struct GatewaysIceCandidates {
     /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<String>,
+    pub candidates: HashSet<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -118,10 +118,10 @@ mod test {
             "client",
             EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                 gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
-                candidates: vec![
+                candidates: HashSet::from([
                     "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
                         .to_owned(),
-                ],
+                ]),
             }),
             Some(OutboundRequestId::for_test(6)),
         );

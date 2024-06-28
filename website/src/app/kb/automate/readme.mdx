@@ -1,0 +1,49 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import Image from "next/image";
+import Link from "next/link";
+import NextStep from "@/components/NextStep";
+import { KbCards, KbCard } from "@/components/KbCards";
+import { FaPlus } from "react-icons/fa";
+
+# Automate Firezone
+
+These guides contain automation recipes for deploying Firezone using various
+infrastructure as code (IaC) tools.
+
+## Get started
+
+Follow one of the guides below to setup a production-ready deployment of
+Firezone on your infrastructure.
+
+<KbCards>
+  <KbCard
+    title="Deploy Firezone on AWS"
+    href="/kb/automate/terraform/aws"
+    logo={
+    <div>
+      <Image width={200} height={200} alt="Terraform" src="/images/kb/automate/terraform-logo.svg" className="mx-auto mb-8" />
+      <FaPlus size={32} className="mx-auto mb-8" />
+      <Image width={100} height={100} alt="AWS" src="/images/kb/automate/aws-logo.svg" className="mx-auto mb-8" />
+    </div>
+  }>
+    Deploy a scalable cluster of Firezone Gateways behind a NAT gateway on AWS
+    with a single egress IP.
+  </KbCard>
+  <KbCard
+    title="Deploy Firezone on GCP"
+    href="/kb/automate/terraform/gcp"
+    logo={
+    <div>
+      <Image width={200} height={200} alt="Terraform" src="/images/kb/automate/terraform-logo.svg" className="mx-auto mb-8" />
+      <FaPlus size={32} className="mx-auto mb-8" />
+      <Image width={220} height={220} alt="GCP" src="/images/kb/automate/gcp-logo.svg" className="mx-auto mb-8" />
+    </div>
+    }>
+    Deploy a scalable cluster of Firezone Gateways behind a Cloud NAT on GCP
+    with a single egress IP.
+
+  </KbCard>
+</KbCards>
+
+<SupportOptions />

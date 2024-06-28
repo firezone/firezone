@@ -299,7 +299,10 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
+    pub(crate) fn new(
+        private_key: impl Into<StaticSecret>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
+    ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -316,7 +319,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(),
+            stub_resolver: StubResolver::new(known_hosts),
         }
     }
 
@@ -463,7 +466,7 @@ impl ClientState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         let Some(peer) = self.peers.get_mut(&conn_id) else {
@@ -473,7 +476,7 @@ impl ClientState {
         };
 
         peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "{e}"))
+            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "{e}"))
             .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
@@ -809,50 +812,62 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
+        let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
+        let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+        let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
-                }
-                snownet::Event::ConnectionsCleared(ids) => {
-                    for id in ids {
-                        self.cleanup_connected_gateway(&id);
-                    }
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
+                    resources_changed = true;
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
-                } => self
-                    .buffered_events
-                    .push_back(ClientEvent::NewIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    }),
+                } => {
+                    added_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
                     candidate,
-                } => self
-                    .buffered_events
-                    .push_back(ClientEvent::InvalidatedIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    }),
+                } => {
+                    removed_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
+                    resources_changed = true;
                 }
             }
+        }
+
+        if resources_changed {
+            self.buffered_events
+                .push_back(ClientEvent::ResourcesChanged {
+                    resources: self.resources(),
+                });
+        }
+
+        for (conn_id, candidates) in added_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(ClientEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
+        }
+
+        for (conn_id, candidates) in removed_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(ClientEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
         }
     }
 
@@ -1458,7 +1473,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng))
+            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
         }
     }
 

@@ -18,6 +18,15 @@ pub(crate) struct Release {
 /// Returns the latest release, even if ours is already newer
 pub(crate) async fn check() -> Result<Release> {
     // Don't follow any redirects, just tell us what the Firezone site says the URL is
+    // If we follow multiple redirects, we'll end up with a messier URL like
+    // ```
+    // https://objects.githubusercontent.com/github-production-release-asset-2e65be/257787813/b3816cc1-87e4-42ae-b354-2dbb7f98721c?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=releaseassetproduction%2F20240627%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240627T210330Z&X-Amz-Expires=300&X-Amz-Signature=fd367bcdc7e64ffac0b318ab710dd5f673dd5b5ac3a9ccdc621adf5d304df557&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=257787813&response-content-disposition=attachment%3B%20filename%3Dfirezone-client-gui-windows_1.1.0_x86_64.msi&response-content-type=application%2Foctet-stream
+    // ```
+    // The version number is still in there, but it's easier to just disable redirects
+    // and parse the number from the Firezone website, instead of making multiple HTTP requests
+    // and then hoping Github and Amazon's APIs don't change.
+    //
+    // When we need to do auto-updates later, we can leave redirects enabled for those.
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
@@ -56,7 +65,6 @@ pub(crate) async fn check() -> Result<Release> {
 
 #[allow(clippy::print_stderr)]
 fn parse_version_from_url(url: &Url) -> Result<semver::Version> {
-    tracing::debug!(?url);
     let filename = url
         .path_segments()
         .context("URL must have a path")?

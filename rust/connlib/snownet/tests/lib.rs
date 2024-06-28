@@ -80,6 +80,63 @@ fn migrate_connection_to_new_relay() {
 }
 
 #[test]
+fn idle_connection_is_closed_after_5_minutes() {
+    let _guard = setup_tracing();
+    let mut clock = Clock::new();
+
+    let (alice, bob) = alice_and_bob();
+
+    let mut relays = [(
+        1,
+        TestRelay::new(
+            SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478),
+            debug_span!("Roger"),
+        ),
+    )];
+    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
+        "alice",
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
+    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
+        "bob",
+        HashSet::default(),
+        &mut relays,
+        clock.now,
+    );
+    let firewall = Firewall::default();
+
+    handshake(&mut alice, &mut bob, &clock);
+
+    loop {
+        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
+            break;
+        }
+
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    }
+
+    alice.ping(ip("9.9.9.9"), ip("8.8.8.8"), &bob, clock.now);
+    bob.ping(ip("8.8.8.8"), ip("9.9.9.9"), &alice, clock.now);
+
+    let start = clock.now;
+
+    while clock.elapsed(start) <= Duration::from_secs(5 * 60) {
+        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
+    }
+
+    assert_eq!(alice.packets_from(ip("8.8.8.8")).count(), 1);
+    assert_eq!(bob.packets_from(ip("9.9.9.9")).count(), 1);
+    assert!(alice
+        .events
+        .contains(&(Event::ConnectionClosed(1), clock.now)));
+    assert!(bob
+        .events
+        .contains(&(Event::ConnectionClosed(1), clock.now)));
+}
+
+#[test]
 fn connection_times_out_after_20_seconds() {
     let (mut alice, _) = alice_and_bob();
 
@@ -293,7 +350,7 @@ impl Clock {
     fn tick(&mut self) {
         self.now += self.tick_rate;
 
-        let elapsed = self.now.duration_since(self.start);
+        let elapsed = self.elapsed(self.start);
 
         if elapsed.as_millis() % 60_000 == 0 {
             tracing::info!("Time since start: {elapsed:?}")
@@ -302,6 +359,10 @@ impl Clock {
         if self.now >= self.max_time {
             panic!("Time exceeded")
         }
+    }
+
+    fn elapsed(&self, start: Instant) -> Duration {
+        self.now.duration_since(start)
     }
 }
 
@@ -634,7 +695,7 @@ impl<R> TestNode<R> {
                     .in_scope(|| other.node.remove_remote_candidate(connection, candidate)),
                 Event::ConnectionEstablished(_)
                 | Event::ConnectionFailed(_)
-                | Event::ConnectionsCleared(_) => {}
+                | Event::ConnectionClosed(_) => {}
             };
         }
     }
@@ -744,4 +805,7 @@ fn progress<R1, R2>(
             }
         }
     }
+
+    a1.drain_events(a2, clock.now);
+    a2.drain_events(a1, clock.now);
 }

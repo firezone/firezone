@@ -99,31 +99,31 @@ where
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::ClientEvent::NewIceCandidate {
+            firezone_tunnel::ClientEvent::AddedIceCandidates {
                 conn_id: gateway,
-                candidate,
+                candidates,
             } => {
-                tracing::debug!(%gateway, %candidate, "Sending new ICE candidate to gateway");
+                tracing::debug!(%gateway, ?candidates, "Sending new ICE candidates to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gateway],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
-            firezone_tunnel::ClientEvent::InvalidatedIceCandidate {
+            firezone_tunnel::ClientEvent::RemovedIceCandidates {
                 conn_id: gateway,
-                candidate,
+                candidates,
             } => {
-                tracing::debug!(%gateway, %candidate, "Sending invalidated ICE candidate to gateway");
+                tracing::debug!(%gateway, ?candidates, "Sending invalidated ICE candidates to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gateway],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
@@ -340,7 +340,9 @@ where
             ErrorReply::UnmatchedTopic => {
                 self.portal.join(topic, ());
             }
-            ErrorReply::NotFound | ErrorReply::Other => {}
+            reason @ (ErrorReply::InvalidVersion | ErrorReply::NotFound | ErrorReply::Other) => {
+                tracing::debug!(%req_id, %reason, "Request failed");
+            }
         }
     }
 }

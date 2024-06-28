@@ -42,6 +42,11 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::debug!(
+            channel_capacity = self.packet_rx.capacity(),
+            "Shutting down packet channel..."
+        );
+        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
             tracing::error!(?error, "wintun::Session::shutdown");
         }
@@ -87,7 +92,9 @@ impl Tun {
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
         let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
-        let (packet_tx, packet_rx) = mpsc::channel(5);
+        // 4 is a nice power of two. Wintun already queues packets for us, so we don't
+        // need much capacity here.
+        let (packet_tx, packet_rx) = mpsc::channel(4);
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
 
         Ok(Self {
@@ -123,6 +130,7 @@ impl Tun {
         Ok(())
     }
 
+    // Moves packets from the user towards the Internet
     pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let pkt = ready!(self.packet_rx.poll_recv(cx));
 
@@ -158,6 +166,7 @@ impl Tun {
         self.write(bytes)
     }
 
+    // Moves packets from the Internet towards the user
     #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
@@ -236,6 +245,7 @@ pub(crate) fn flush_dns() -> Result<()> {
     Ok(())
 }
 
+// Moves packets from the user towards the Internet
 fn start_recv_thread(
     packet_tx: mpsc::Sender<wintun::Packet>,
     session: Arc<wintun::Session>,
@@ -246,19 +256,29 @@ fn start_recv_thread(
             loop {
                 match session.receive_blocking() {
                     Ok(pkt) => {
-                        if packet_tx.blocking_send(pkt).is_err() {
-                            // Most likely the receiver was dropped and we're closing down the connlib session.
-                            break;
+                        // Use `blocking_send` so that if connlib is behind by a few packets,
+                        // Wintun will queue up new packets in its ring buffer while we
+                        // wait for our MPSC channel to clear.
+                        match packet_tx.blocking_send(pkt) {
+                            Ok(()) => {}
+                            Err(_) => {
+                                tracing::info!(
+                                    "Stopping outbound worker thread because the packet channel closed"
+                                );
+                                break;
+                            }
                         }
                     }
-                    Err(wintun::Error::ShuttingDown) => break,
+                    Err(wintun::Error::ShuttingDown) => {
+                        tracing::info!("Stopping outbound worker thread because Wintun is shutting down");
+                        break;
+                    }
                     Err(e) => {
                         tracing::error!("wintun::Session::receive_blocking: {e:#?}");
                         break;
                     }
                 }
             }
-            tracing::debug!("recv_task exiting gracefully");
         })
 }
 
