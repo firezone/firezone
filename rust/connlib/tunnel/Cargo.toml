@@ -59,10 +59,6 @@ netlink-packet-route = { version = "0.19", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 rtnetlink = { workspace = true }
 
-# Android tunnel dependencies
-[target.'cfg(target_os = "android")'.dependencies]
-tracing-android = "0.2"
-
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 uuid = { version = "1.7.0", features = ["v4"] }
