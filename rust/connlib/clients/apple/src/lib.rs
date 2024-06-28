@@ -158,7 +158,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Han
                     "dev.firezone.firezone",
                     "connlib",
                 ))
-                .with_filter(EnvFilter::new(log_filter)),
+                .with_filter(EnvFilter::new(log_filter.clone())),
         )
         .with(file_layer.with_filter(EnvFilter::new(log_filter)))
         .try_init()?;

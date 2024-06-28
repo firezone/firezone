@@ -1,11 +1,7 @@
 //! Heavily inspired from https://github.com/Actyx/tracing-android/blob/master/src/android.rs.
 
 use oslog::OsLog;
-use std::{
-    ffi::{CStr, CString},
-    io::{self, BufWriter},
-};
-use tracing::Level;
+use std::io;
 
 const LOGGING_MSG_MAX_LEN: usize = 4000;
 
@@ -25,27 +21,25 @@ impl MakeWriter {
         }
     }
 
-    fn make_writer_for_level(&self, level: Level) -> BufWriter<Writer<'_>> {
-        let inner = Writer {
+    fn make_writer_for_level(&self, level: tracing::Level) -> Writer<'_> {
+        Writer {
             level: match level {
-                Level::TRACE => oslog::Level::Debug,
-                Level::DEBUG => oslog::Level::Info,
-                Level::INFO => oslog::Level::Default,
-                Level::WARN => oslog::Level::Error,
-                Level::ERROR => oslog::Level::Fault,
+                tracing::Level::TRACE => oslog::Level::Debug,
+                tracing::Level::DEBUG => oslog::Level::Info,
+                tracing::Level::INFO => oslog::Level::Default,
+                tracing::Level::WARN => oslog::Level::Error,
+                tracing::Level::ERROR => oslog::Level::Fault,
             },
             oslog: &self.oslog,
-        };
-
-        BufWriter::with_capacity(LOGGING_MSG_MAX_LEN, inner)
+        }
     }
 }
 
 impl<'l> tracing_subscriber::fmt::MakeWriter<'l> for MakeWriter {
-    type Writer = BufWriter<Writer<'l>>;
+    type Writer = Writer<'l>;
 
     fn make_writer(&self) -> Self::Writer {
-        self.make_writer_for_level(Level::INFO)
+        self.make_writer_for_level(tracing::Level::INFO)
     }
 
     fn make_writer_for(&self, meta: &tracing::Metadata<'_>) -> Self::Writer {
@@ -53,9 +47,10 @@ impl<'l> tracing_subscriber::fmt::MakeWriter<'l> for MakeWriter {
     }
 }
 
-impl io::Write for Writer {
+impl<'l> io::Write for Writer<'l> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let message = std::str::from_utf8(buf)?;
+        let message =
+            std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         self.oslog.with_level(self.level, message);
 
