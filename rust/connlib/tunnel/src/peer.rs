@@ -273,7 +273,7 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.no_response_in_120s(now) && state.is_used(now));
+            .filter(|(_, state)| state.is_expired(now));
 
         let mut for_refresh = HashSet::new();
 
@@ -287,7 +287,7 @@ impl ClientOnGateway {
                 .permanent_translations
                 .values()
                 .filter(|state| state.resource_id == resource_id && state.name == domain)
-                .all(|state| state.no_response_in_120s(now))
+                .all(|state| state.no_incoming_in_120s(now))
             {
                 tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
@@ -537,69 +537,99 @@ struct TranslationState {
     resolved_ip: IpAddr,
 
     /// When we've last received a packet from the resolved IP.
-    ///
-    /// Initially set to `created_at`.
-    last_incoming: Instant,
+    last_incoming: Option<Instant>,
     /// When we've sent the first packet to the resolved IP.
-    ///
-    /// Initially set to `created_at`.
-    first_outgoing: Instant,
+    first_outgoing: Option<Instant>,
     /// When we've last sent a packet to the resolved IP.
-    ///
-    /// Initially set to `created_at`.
-    last_outgoing: Instant,
-
-    /// When this translation state was created.
+    last_outgoing: Option<Instant>,
+    /// When was this translation created
     created_at: Instant,
+    /// When we first detected that we aren't getting any responses from this IP.
+    ///
+    /// This is set upon outgoing traffic if we haven't received inbound traffic for a while.
+    /// We don't want to immediately trigger a refresh in that case because protocols like TCP and ICMP have responses.
+    /// Thus, a DNS refresh is triggered after a grace-period of 1s after the packet that detected the missing responses.
+    ack_grace_period_started_at: Option<Instant>,
 }
 
 impl TranslationState {
-    fn new(
-        resource_id: ResourceId,
-        name: DomainName,
-        resolved_ip: IpAddr,
-        created_at: Instant,
-    ) -> Self {
+    const USED_WINDOW: Duration = Duration::from_secs(10);
+
+    fn new(resource_id: ResourceId, name: DomainName, resolved_ip: IpAddr, now: Instant) -> Self {
         Self {
             resource_id,
             name,
             resolved_ip,
-            last_incoming: created_at,
-            first_outgoing: created_at,
-            last_outgoing: created_at,
-            created_at,
+            created_at: now,
+            last_incoming: None,
+            first_outgoing: None,
+            last_outgoing: None,
+            ack_grace_period_started_at: None,
         }
     }
 
     /// We define a [`TranslationState`] as dead if we have seen outgoing traffic that is at least 10s old and _never_ received incoming traffic.
     fn is_dead(&self, now: Instant) -> bool {
-        let sent_at_least_one_packet_10s_ago =
-            now.duration_since(self.first_outgoing) >= Duration::from_secs(10);
-        let received_no_packets = self.last_incoming == self.created_at;
+        let sent_at_least_one_packet_10s_ago = self
+            .first_outgoing
+            .is_some_and(|first_outgoing| now.duration_since(first_outgoing) >= Self::USED_WINDOW);
+        let received_no_packets = self.last_incoming.is_none();
 
         sent_at_least_one_packet_10s_ago && received_no_packets
     }
 
     /// We define a [`TranslationState`] as used if we have seen outgoing traffic in the last 10s.
     fn is_used(&self, now: Instant) -> bool {
-        now.duration_since(self.last_outgoing) <= Duration::from_secs(10)
+        self.last_outgoing.is_some_and(|last_outgoing| {
+            now.duration_since(last_outgoing) <= Duration::from_secs(10)
+        })
     }
 
-    fn no_response_in_120s(&self, now: Instant) -> bool {
-        now.duration_since(self.last_incoming) >= Duration::from_secs(120)
+    fn is_expired(&self, now: Instant) -> bool {
+        // Note: we don't need to check that it's used here because the ack grace period already implies it
+        self.ack_grace_period_expired(now) && self.no_incoming_in_120s(now)
+    }
+
+    fn ack_grace_period_expired(&self, now: Instant) -> bool {
+        self.ack_grace_period_started_at
+            .is_some_and(|missing_responses_detected_at| {
+                now.duration_since(missing_responses_detected_at) >= Duration::from_secs(1)
+            })
+    }
+
+    fn no_incoming_in_120s(&self, now: Instant) -> bool {
+        const CONNTRACK_UDP_STREAM_TIMEOUT: Duration = Duration::from_secs(120);
+
+        if let Some(last_incoming) = self.last_incoming {
+            now.duration_since(last_incoming) >= CONNTRACK_UDP_STREAM_TIMEOUT
+        } else {
+            now.duration_since(self.created_at) >= CONNTRACK_UDP_STREAM_TIMEOUT
+        }
     }
 
     fn on_incoming_traffic(&mut self, now: Instant) {
-        self.last_incoming = now;
+        self.last_incoming = Some(now);
+        self.ack_grace_period_started_at = None;
     }
 
     fn on_outgoing_traffic(&mut self, now: Instant) {
-        self.last_outgoing = now;
+        // We need this because it means that if a packet arrives at some point less than 120s but more than 110s
+        // we still start the grace period so that the connection expires at some point after 120s
+        let with_this_packet_the_connection_will_be_considered_used_when_it_expires =
+            self.no_incoming_in_120s(now + Self::USED_WINDOW);
+        if self.ack_grace_period_started_at.is_none()
+            && with_this_packet_the_connection_will_be_considered_used_when_it_expires
+        {
+            self.ack_grace_period_started_at = Some(now);
+        }
 
-        if self.first_outgoing > self.created_at {
+        self.last_outgoing = Some(now);
+
+        if self.first_outgoing.is_some() {
             return;
         }
-        self.first_outgoing = now;
+
+        self.first_outgoing = Some(now);
     }
 }
 
@@ -729,6 +759,273 @@ mod tests {
         now += Duration::from_secs(31);
 
         assert!(!state.is_used(now))
+    }
+
+    #[test]
+    fn initial_translation_state_is_not_expired() {
+        let now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_is_not_used_but_expired_after_120s() {
+        let mut now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(121);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_is_used_and_expired_after_120s_with_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_is_used_and_expired_after_121s_with_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(121);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
+    }
+    #[test]
+    fn translation_state_is_not_expired_with_incoming_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_incoming_and_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(200);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_still_has_grace_period_after_incoming_traffic() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(200);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_still_expires_after_grace_period_after_incoming_traffic_resetted_it() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(200);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_first_packet_after_silence() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_expires_after_silence_even_with_multiple_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_doesnt_expire_before_expected_period() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(110);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_expire_after_expected_period() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(110);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn incoming_traffic_prevents_expiration() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(500);
+        state.on_incoming_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_packet_that_didnt_had_time_to_be_responded() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_millis(119990);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(20);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_expires_with_packet_that_had_time_to_be_responded() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_millis(119990);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
     }
 
     #[test]
