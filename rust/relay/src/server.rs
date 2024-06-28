@@ -968,9 +968,13 @@ where
             request.transaction_id(),
         );
 
+        let is_auth_error = error_code == ErrorCode::from(Unauthorized)
+            || error_code == ErrorCode::from(StaleNonce);
+
+        message.add_attribute(Attribute::from(error_code));
+
         // In case of a 401 or 438 response, attach a realm and nonce.
-        if error_code == ErrorCode::from(Unauthorized) || error_code == ErrorCode::from(StaleNonce)
-        {
+        if is_auth_error {
             let new_nonce = Uuid::from_u128(self.rng.gen());
 
             self.add_nonce(new_nonce);
@@ -978,8 +982,6 @@ where
             message.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
             message.add_attribute((*FIREZONE).clone());
         }
-
-        message.add_attribute(Attribute::from(error_code));
 
         message
     }
