@@ -200,7 +200,7 @@ impl GatewayState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         tracing::Span::current().record("src", tracing::field::display(packet.source()));
@@ -214,7 +214,7 @@ impl GatewayState {
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "Invalid packet: {e}"))
             .ok()?;
 
         tracing::trace!("Decapsulated packet");
