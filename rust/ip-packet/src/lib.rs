@@ -11,7 +11,7 @@ mod proptests;
 use pnet_packet::{
     icmp::{
         destination_unreachable::IcmpCodes, echo_reply::MutableEchoReplyPacket,
-        echo_request::MutableEchoRequestPacket, IcmpCode, IcmpType, IcmpTypes, MutableIcmpPacket,
+        echo_request::MutableEchoRequestPacket, IcmpCode, IcmpTypes, MutableIcmpPacket,
     },
     icmpv6::{Icmpv6Code, Icmpv6Type, Icmpv6Types, MutableIcmpv6Packet},
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
@@ -94,6 +94,13 @@ pub enum IcmpPacket<'a> {
 }
 
 impl<'a> IcmpPacket<'a> {
+    pub fn icmp_type(&self) -> IcmpType {
+        match self {
+            IcmpPacket::Ipv4(v4) => IcmpType::V4(v4.get_icmp_type()),
+            IcmpPacket::Ipv6(v6) => IcmpType::V6(v6.get_icmpv6_type()),
+        }
+    }
+
     pub fn identifier(&self) -> Option<u16> {
         let request_id = self.as_echo_request().map(|r| r.identifier());
         let reply_id = self.as_echo_reply().map(|r| r.identifier());
@@ -107,6 +114,11 @@ impl<'a> IcmpPacket<'a> {
 
         request_id.or(reply_id)
     }
+}
+
+pub enum IcmpType {
+    V4(icmp::IcmpType),
+    V6(icmpv6::Icmpv6Type),
 }
 
 #[derive(Debug, PartialEq)]
@@ -835,39 +847,39 @@ impl<'a> ConvertibleIpv6Packet<'a> {
             }
             //  Timestamp and Timestamp Reply (Type 13 and Type 14):  Obsoleted in
             //    ICMPv6.  Silently drop.
-            IcmpType(13..=14) => {
+            icmp::IcmpType(13..=14) => {
                 return None;
             }
             //  Information Request/Reply (Type 15 and Type 16):  Obsoleted in
             //    ICMPv6.  Silently drop.
-            IcmpType(15..=16) => {
+            icmp::IcmpType(15..=16) => {
                 return None;
             }
             //  Address Mask Request/Reply (Type 17 and Type 18):  Obsoleted in
             //     ICMPv6.  Silently drop.
-            IcmpType(17..=18) => {
+            icmp::IcmpType(17..=18) => {
                 return None;
             }
             //  ICMP Router Advertisement (Type 9):  Single-hop message.  Silently
             //    drop.
-            IcmpType(9) => {
+            icmp::IcmpType(9) => {
                 return None;
             }
             //  ICMP Router Solicitation (Type 10):  Single-hop message.  Silently
             //    drop.
-            IcmpType(10) => {
+            icmp::IcmpType(10) => {
                 return None;
             }
             // Redirect (Type 5):  Single-hop message.  Silently drop.
-            IcmpType(5) => {
+            icmp::IcmpType(5) => {
                 return None;
             }
             // Alternative Host Address (Type 6):  Silently drop.
-            IcmpType(6) => {
+            icmp::IcmpType(6) => {
                 return None;
             }
             // Source Quench (Type 4):  Obsoleted in ICMPv6.  Silently drop.
-            IcmpType(4) => {
+            icmp::IcmpType(4) => {
                 return None;
             }
             //  Unknown ICMPv4 types:  Silently drop.
@@ -1296,14 +1308,17 @@ impl<'a> IpPacket<'a> {
         }
 
         if let Some(p) = self.as_icmp() {
-            let id = p
-                .identifier()
-                .ok_or(UnsupportedProtocol(self.next_header()))?;
+            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
+                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4.0),
+                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6.0),
+            })?;
 
             return Ok(Protocol::Icmp(id));
         }
 
-        Err(UnsupportedProtocol(self.next_header()))
+        Err(UnsupportedProtocol::UnsupportedIpPayload(
+            self.next_header(),
+        ))
     }
 
     pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
@@ -1316,14 +1331,17 @@ impl<'a> IpPacket<'a> {
         }
 
         if let Some(p) = self.as_icmp() {
-            let id = p
-                .identifier()
-                .ok_or(UnsupportedProtocol(self.next_header()))?;
+            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
+                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4.0),
+                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6.0),
+            })?;
 
             return Ok(Protocol::Icmp(id));
         }
 
-        Err(UnsupportedProtocol(self.next_header()))
+        Err(UnsupportedProtocol::UnsupportedIpPayload(
+            self.next_header(),
+        ))
     }
 
     pub fn source(&self) -> IpAddr {
@@ -1584,5 +1602,11 @@ impl<'a> PacketSize for IpPacket<'a> {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Unsupported IP protocol: {0}")]
-pub struct UnsupportedProtocol(IpNextHeaderProtocol);
+pub enum UnsupportedProtocol {
+    #[error("Unsupported IP protocol: {0}")]
+    UnsupportedIpPayload(IpNextHeaderProtocol),
+    #[error("Unsupported ICMPv4 type: {0}")]
+    UnsupportedIcmpv4Type(u8),
+    #[error("Unsupported ICMPv6 type: {0}")]
+    UnsupportedIcmpv6Type(u8),
+}
