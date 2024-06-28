@@ -1,4 +1,8 @@
-# GCP NAT Gateway Example
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import Image from "next/image";
+
+# Deploy Firezone on GCP with Terraform
 
 In this example, we will deploy one or more Firezone Gateways in a single VPC on
 Google Cloud Platform (GCP) that are configured to egress traffic through a
@@ -31,12 +35,12 @@ load balance for each other. No other configuration is necessary.
 1. [Google Cloud Platform (GCP) account](https://cloud.google.com/)
 1. [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
 1. [Enable the Compute Engine API](https://console.cloud.google.com/flows/enableapi?apiid=compute.googleapis.com)
-1. A [Firezone Site](https://www.firezone.dev/kb/deploy/sites) dedicated to use
-   for this example. This Site should contain **only** the Firezone Gateway(s)
-   deployed in this example and any associated Resources.
+1. A [Firezone Site](/kb/deploy/sites) dedicated to use for this example. This
+   Site should contain **only** the Firezone Gateway(s) deployed in this example
+   and any associated Resources.
 1. A Firezone Gateway token. See
-   [Multiple Gateways](https://www.firezone.dev/kb/deploy/gateways#deploy-multiple-gateways)
-   for instructions on how to obtain a Firezone Gateway token that can be used
+   [Multiple Gateways](/kb/deploy/gateways#deploy-multiple-gateways) for
+   instructions on how to obtain a Firezone Gateway token that can be used
    across multiple instances.
 
 ## Sizing
@@ -51,6 +55,8 @@ have a high volume of traffic or lots of concurrent connections.
 
 ## Deployment
 
+1. [Download](https://raw.githubusercontent.com/firezone/firezone/main/terraform/examples/google-cloud/nat_gateway/main.tf)
+   the `main.tf` from the example module.
 1. Configure the necessary Terraform
    [variables](https://developer.hashicorp.com/terraform/language/values/variables).
    Here's an example `terraform.tfvars` you can use as a starting point:
@@ -78,11 +84,13 @@ You can verify all Firezone Gateways are using this IP by viewing the Site in
 the Firezone admin portal, where you should now see the Firezone Gateway(s)
 listed as `Online`.
 
-<center>
-
-![Online Gateways](./online-gateways.png)
-
-</center>
+<Image
+  src="/images/kb/automate/terraform/gcp/online-gateways.png"
+  alt="Online Gateways"
+  width={1200}
+  height={1200}
+  className="rounded shadow mx-auto"
+/>
 
 ## Upgrading
 

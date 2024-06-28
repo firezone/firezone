@@ -50,10 +50,18 @@ const versionedRedirects = [
   },
 ];
 
-// Restrict the middleware to execute only on the following paths in order
-// to avoid unnecessary processing and invocations
 export const config = {
-  matcher: versionedRedirects.map((redirect) => redirect.source),
+  matcher: [
+    "/dl/firezone-client-gui-windows/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/aarch64",
+    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/aarch64",
+    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/armv7",
+    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/aarch64",
+    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/armv7",
+  ],
 };
 
 export function middleware(request: NextRequest) {

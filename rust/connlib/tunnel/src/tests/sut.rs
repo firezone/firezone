@@ -591,15 +591,22 @@ impl TunnelTest {
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
-            ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
-                .gateway
-                .span
-                .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
+            ClientEvent::AddedIceCandidates { candidates, .. } => {
+                self.gateway.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.gateway
+                            .state
+                            .add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            ClientEvent::RemovedIceCandidates { candidates, .. } => {
+                self.gateway.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.gateway.state.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
             ClientEvent::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
@@ -761,15 +768,22 @@ impl TunnelTest {
 
     fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
         match event {
-            GatewayEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
-                self.client
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            GatewayEvent::InvalidIceCandidate { candidate, .. } => self
-                .client
-                .span
-                .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
+            GatewayEvent::AddedIceCandidates { candidates, .. } => {
+                self.client.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.client
+                            .state
+                            .add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            GatewayEvent::RemovedIceCandidates { candidates, .. } => {
+                self.client.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.client.state.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
             GatewayEvent::RefreshDns { .. } => todo!(),
         }
     }

@@ -12,7 +12,7 @@ use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
@@ -200,7 +200,7 @@ impl GatewayState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         tracing::Span::current().record("src", tracing::field::display(packet.source()));
@@ -214,10 +214,8 @@ impl GatewayState {
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "Invalid packet: {e}"))
             .ok()?;
-
-        tracing::trace!("Decapsulated packet");
 
         Some(packet.into_immutable())
     }
@@ -353,6 +351,9 @@ impl GatewayState {
             Some(_) => {}
         }
 
+        let mut added_ice_candidates = HashMap::<ClientId, HashSet<String>>::default();
+        let mut removed_ice_candidates = HashMap::<ClientId, HashSet<String>>::default();
+
         while let Some(event) = self.node.poll_event() {
             match event {
                 snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
@@ -362,24 +363,38 @@ impl GatewayState {
                     connection,
                     candidate,
                 } => {
-                    self.buffered_events
-                        .push_back(GatewayEvent::NewIceCandidate {
-                            conn_id: connection,
-                            candidate,
-                        });
+                    added_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
                     candidate,
                 } => {
-                    self.buffered_events
-                        .push_back(GatewayEvent::InvalidIceCandidate {
-                            conn_id: connection,
-                            candidate,
-                        });
+                    removed_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
             }
+        }
+
+        for (conn_id, candidates) in added_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(GatewayEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
+        }
+
+        for (conn_id, candidates) in removed_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(GatewayEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
         }
     }
 

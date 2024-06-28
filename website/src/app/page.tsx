@@ -329,8 +329,8 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col p-4">
+            <div className="mb-12 grid grid-cols-2 gap-4">
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/user-guides/macos-client">
                   <span className="inline-block pt-4 w-full text-center">
@@ -374,74 +374,80 @@ export default function Page() {
                 </AppleIcon>
               </div>
             </div>
-            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
-              Clients are available for every major platform, require no
-              configuration, and stay connected even when switching WiFi
-              networks.
-            </p>
-            <p className="mt-4">
-              <ActionLink
-                className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="/kb/user-guides"
-              >
-                Download Client apps
-              </ActionLink>
-            </p>
-          </div>
-          <div className="p-4">
-            <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
-              <div className="mx-8 md:mx-16 flex justify-start">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/docker.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-end">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/terraform.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-start">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/kubernetes.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-end">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/pulumi.svg"
-                />
-              </div>
+            <div className="mt-auto">
+              <p className="text-md md:text-xl tracking-tight md:text-justify">
+                Clients are available for every major platform, require no
+                configuration, and stay connected even when switching WiFi
+                networks.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  href="/kb/user-guides"
+                >
+                  Download Client apps
+                </ActionLink>
+              </p>
             </div>
-            <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
-              <code>
-                <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
-                <strong>firezone-gateway</strong>
-              </code>
-            </pre>
-            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
-              Gateways are lightweight Linux binaries you deploy anywhere you
-              need access. Just configure a token with your preferred
-              orchestration tool and you're done.
-            </p>
-            <p className="mt-4">
-              <ActionLink
-                className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="/kb/deploy/gateways"
-              >
-                Deploy your first Gateway
-              </ActionLink>
-            </p>
+          </div>
+          <div className="flex flex-col p-4">
+            <div className="mb-12">
+              <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/docker.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/terraform.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/kubernetes.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/pulumi.svg"
+                  />
+                </div>
+              </div>
+              <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
+                <code>
+                  <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
+                  <strong>firezone-gateway</strong>
+                </code>
+              </pre>
+            </div>
+            <div className="mt-auto">
+              <p className="text-md md:text-xl tracking-tight md:text-justify">
+                Gateways are lightweight Linux binaries you deploy anywhere you
+                need access. Just configure a token with your preferred
+                orchestration tool and you're done.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  href="/kb/deploy/gateways"
+                >
+                  Deploy your first Gateway
+                </ActionLink>
+              </p>
+            </div>
           </div>
         </div>
       </section>
