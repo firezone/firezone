@@ -236,6 +236,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: Some("cidr resource".to_string()),
+                        filters: vec![],
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -246,6 +247,7 @@ mod test {
                         address: "172.173.0.0/16".parse().unwrap(),
                         name: "172.173.0.0/16".to_string(),
                         address_description: None,
+                        filters: vec![],
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -256,6 +258,7 @@ mod test {
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
                         address_description: Some("dns resource".to_string()),
+                        filters: vec![],
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -266,6 +269,7 @@ mod test {
                         address: "github.mycorp.com".to_string(),
                         name: "github.mycorp.com".to_string(),
                         address_description: None,
+                        filters: vec![],
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -291,6 +295,7 @@ mod test {
                         "name": "172.172.0.0/16",
                         "address_description": "cidr resource",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "filters": [],
                         "type": "cidr"
                     },
                     {
@@ -299,6 +304,7 @@ mod test {
                         "name": "172.173.0.0/16",
                         "address_description": null,
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "filters": [],
                         "type": "cidr"
                     },
                     {
@@ -309,6 +315,7 @@ mod test {
                         "name": "gitlab.mycorp.com",
                         "address_description": "dns resource",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "filters": [],
                         "type": "dns"
                     },
                     {
@@ -316,6 +323,7 @@ mod test {
                         "id": "03000143-e25e-45c7-aafb-144990e57dce",
                         "name": "github.mycorp.com",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "filters": [],
                         "type": "dns"
                     }
                 ]
@@ -344,6 +352,7 @@ mod test {
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
                         address_description: Some("cidr resource".to_string()),
+                        filters: vec![],
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -354,6 +363,7 @@ mod test {
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
                         address_description: Some("dns resource".to_string()),
+                        filters: vec![],
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -381,6 +391,7 @@ mod test {
                         "type": "cidr",
                         "address_description": "cidr resource",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "filters": [],
                         "not": "relevant"
                     },
                     {
@@ -392,6 +403,7 @@ mod test {
                         "type": "dns",
                         "address_description": "dns resource",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "filters": [],
                         "not": "relevant"
                     }
                 ]

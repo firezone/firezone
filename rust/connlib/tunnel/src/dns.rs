@@ -566,7 +566,8 @@ mod test {
                 "address": "*.foo.com",
                 "name": "foo.com wildcard",
                 "address_description": "foo",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}],
+                "filters": []
             }"#,
         )
         .unwrap()
@@ -579,7 +580,8 @@ mod test {
                 "address": "*.bar.com",
                 "name": "bar.com wildcard",
                 "address_description": "bar",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}],
+                "filters": []
             }"#,
         )
         .unwrap()
@@ -592,7 +594,8 @@ mod test {
                 "address": "baz.com",
                 "name": "baz.com",
                 "address_description": "baz",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}],
+                "filters": []
             }"#,
         )
         .unwrap()

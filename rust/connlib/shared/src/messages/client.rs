@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::callbacks::Status;
 
-use super::ResourceId;
+use super::{Filters, ResourceId};
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
@@ -25,6 +25,9 @@ pub struct ResourceDescriptionDns {
     pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+
+    /// Filters for the given resource
+    pub filters: Filters,
 }
 
 impl ResourceDescriptionDns {
@@ -36,12 +39,13 @@ impl ResourceDescriptionDns {
             address_description: self.address_description,
             sites: self.sites,
             status,
+            filters: self.filters,
         }
     }
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -55,6 +59,9 @@ pub struct ResourceDescriptionCidr {
     pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+
+    /// Filters for the given resource
+    pub filters: Filters,
 }
 
 impl ResourceDescriptionCidr {
@@ -66,6 +73,7 @@ impl ResourceDescriptionCidr {
             address_description: self.address_description,
             sites: self.sites,
             status,
+            filters: self.filters,
         }
     }
 }
