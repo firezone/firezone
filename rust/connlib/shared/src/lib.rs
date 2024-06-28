@@ -76,7 +76,7 @@ fn additional_info() -> String {
     match (info.architecture(), kernel_version()) {
         (None, None) => "".to_string(),
         (None, Some(k)) => format!(" ({k})"),
-        (Some(a), None) => format!(" ({a}"),
+        (Some(a), None) => format!(" ({a})"),
         (Some(a), Some(k)) => format!(" ({a}; {k})"),
     }
 }
