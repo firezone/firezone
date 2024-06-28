@@ -103,12 +103,18 @@ product documentation, organized as follows:
 - [kotlin/](../kotlin/android): Android / ChromeOS clients.
 - [website/](../website): Marketing website and product documentation.
 - [terraform/](../terraform): Terraform files for various example deployments.
-  - [terraform/examples/google-cloud/nat_gateway](../terraform/examples/google-cloud/nat_gateway):
-    Example Terraform configurations for deploying a cluster of Firezone
-    gateways behind a NAT gateway on GCP with single egress IP.
+  - [terraform/examples/google-cloud/nat-gateway](../terraform/examples/google-cloud/nat-gateway):
+    Example Terraform configuration for deploying a cluster of Firezone Gateways
+    behind a NAT gateway on GCP with single egress IP.
+  - [terraform/examples/aws/nat-gateway](../terraform/examples/aws/nat-gateway):
+    Example Terraform configuration for deploying a cluster of Firezone Gateways
+    behind a NAT gateway on AWS with single egress IP.
   - [terraform/modules/google-cloud/apps/gateway-region-instance-group](../terraform/modules/google-cloud/apps/gateway-region-instance-group):
-    Production-ready Terraform module for deploying regional Firezone gateways
+    Production-ready Terraform module for deploying regional Firezone Gateways
     to Google Cloud Compute using Regional Instance Groups.
+  - [terraform/modules/aws/firezone-gateway](../terraform/modules/aws/firezone-gateway):
+    Production-ready Terraform module for deploying Firezone Gateways to AWS
+    using Auto Scaling Groups.
 
 ## Quickstart
 
