@@ -217,8 +217,6 @@ impl GatewayState {
             .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "Invalid packet: {e}"))
             .ok()?;
 
-        tracing::trace!("Decapsulated packet");
-
         Some(packet.into_immutable())
     }
 
