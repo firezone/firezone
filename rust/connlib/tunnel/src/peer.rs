@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -303,8 +303,6 @@ impl ClientOnGateway {
             });
         }
 
-        self.check_for_dead_ips(now);
-
         self.nat_table.handle_timeout(now);
     }
 
@@ -473,32 +471,6 @@ impl ClientOnGateway {
     pub fn id(&self) -> ClientId {
         self.id
     }
-
-    /// Check all [`TranslationState`]s for dead but used IPs.
-    ///
-    /// We don't want to be spamming this warning but it also shouldn't go unnoticed.
-    /// Thus, the strategy is to only print the log if:
-    /// - An IP has recently been used (we have seen outgoing traffic in the last 30s)
-    /// - An IP has not responded in the last 10s
-    fn check_for_dead_ips(&self, now: Instant) {
-        let mut dead_ips = BTreeMap::<DomainName, BTreeSet<IpAddr>>::new();
-
-        for state in self.permanent_translations.values() {
-            if state.is_used(now) && state.is_dead(now) {
-                dead_ips
-                    .entry(state.name.clone())
-                    .or_default()
-                    .insert(state.resolved_ip);
-            }
-        }
-
-        if !dead_ips.is_empty() {
-            tracing::warn!(
-                ?dead_ips,
-                "Dead IPs detected (never received any traffic); check your DNS configuration"
-            );
-        }
-    }
 }
 
 impl GatewayOnClient {
@@ -566,23 +538,6 @@ impl TranslationState {
             last_outgoing: None,
             ack_grace_period_started_at: None,
         }
-    }
-
-    /// We define a [`TranslationState`] as dead if we have seen outgoing traffic that is at least 10s old and _never_ received incoming traffic.
-    fn is_dead(&self, now: Instant) -> bool {
-        let sent_at_least_one_packet_10s_ago = self
-            .first_outgoing
-            .is_some_and(|first_outgoing| now.duration_since(first_outgoing) >= Self::USED_WINDOW);
-        let received_no_packets = self.last_incoming.is_none();
-
-        sent_at_least_one_packet_10s_ago && received_no_packets
-    }
-
-    /// We define a [`TranslationState`] as used if we have seen outgoing traffic in the last 10s.
-    fn is_used(&self, now: Instant) -> bool {
-        self.last_outgoing.is_some_and(|last_outgoing| {
-            now.duration_since(last_outgoing) <= Duration::from_secs(10)
-        })
     }
 
     fn is_expired(&self, now: Instant) -> bool {
@@ -728,37 +683,6 @@ mod tests {
             peer.ensure_allowed_dst(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
-    }
-
-    #[test]
-    fn initial_translation_state_is_not_dead() {
-        let now = Instant::now();
-        let state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        assert!(!state.is_dead(now))
-    }
-
-    #[test]
-    fn initial_translation_state_is_not_active_if_last_packet_was_more_than_30s_ago() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(5);
-        state.on_outgoing_traffic(now);
-
-        now += Duration::from_secs(31);
-
-        assert!(!state.is_used(now))
     }
 
     #[test]
@@ -1026,57 +950,6 @@ mod tests {
         now += Duration::from_secs(1);
 
         assert!(state.is_expired(now));
-    }
-
-    #[test]
-    fn initial_translation_state_is_active_if_last_packet_was_1s_ago() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(5);
-        state.on_outgoing_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(state.is_used(now))
-    }
-
-    #[test]
-    fn is_only_dead_if_initial_outgoing_traffic_is_at_least_10s_old() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(1);
-        state.on_outgoing_traffic(now);
-
-        assert!(
-            !state.is_dead(now),
-            "1 second after outgoing traffic is not yet dead"
-        );
-
-        now += Duration::from_secs(9);
-        state.on_outgoing_traffic(now);
-        assert!(
-            !state.is_dead(now),
-            "9 second after outgoing traffic is not yet dead"
-        );
-
-        now += Duration::from_secs(1);
-        state.on_outgoing_traffic(now);
-        assert!(
-            state.is_dead(now),
-            "10 second after outgoing traffic is not yet dead"
-        );
     }
 
     fn source_v4_addr() -> Ipv4Addr {
