@@ -249,8 +249,8 @@ where
                 return self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
-            Ok(Err(error_code)) => {
-                self.queue_error_response(sender, error_code);
+            Ok(Err(error_response)) => {
+                self.send_message(error_response, sender);
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
@@ -298,34 +298,9 @@ where
             return None;
         };
 
-        self.queue_error_response(sender, error_response);
+        self.send_message(error_response, sender);
 
         None
-    }
-
-    fn queue_error_response(
-        &mut self,
-        sender: ClientSocket,
-        mut error_response: Message<Attribute>,
-    ) {
-        let Some(error) = error_response.get_attribute::<ErrorCode>().cloned() else {
-            debug_assert!(false, "Error response without an `ErrorCode`");
-            return;
-        };
-
-        // In case of a 401 or 438 response, attach a realm and nonce.
-        if error == ErrorCode::from(Unauthorized) || error == ErrorCode::from(StaleNonce) {
-            let new_nonce = Uuid::from_u128(self.rng.gen());
-
-            self.add_nonce(new_nonce);
-
-            error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
-            error_response.add_attribute((*FIREZONE).clone());
-        }
-
-        tracing::warn!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
-
-        self.send_message(error_response, sender);
     }
 
     /// Process the bytes received from an allocation.
@@ -456,21 +431,21 @@ where
             Span::current().record("allocation", display(&allocation.port));
             tracing::warn!(target: "relay", "Client already has an allocation");
 
-            return Err(error_response(AllocationMismatch, &request));
+            return Err(self.make_warn_error_response(AllocationMismatch, &request));
         }
 
         let max_available_ports = self.max_available_ports() as usize;
         if self.clients_by_allocation.len() == max_available_ports {
             tracing::warn!(target: "relay", %max_available_ports, "No more ports available");
 
-            return Err(error_response(InsufficientCapacity, &request));
+            return Err(self.make_warn_error_response(InsufficientCapacity, &request));
         }
 
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
             tracing::warn!(target: "relay", %requested_protocol, "Unsupported protocol");
 
-            return Err(error_response(BadRequest, &request));
+            return Err(self.make_warn_error_response(BadRequest, &request));
         }
 
         let (first_relay_address, maybe_second_relay_addr) = derive_relay_addresses(
@@ -478,7 +453,7 @@ where
             request.requested_address_family(),
             request.additional_address_family(),
         )
-        .map_err(|e| error_response(e, &request))?;
+        .map_err(|e| self.make_warn_error_response(e, &request))?;
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -564,10 +539,9 @@ where
         self.verify_auth(&request)?;
 
         // TODO: Verify that this is the correct error code.
-        let allocation = self
-            .allocations
-            .get_mut(&sender)
-            .ok_or(error_response(AllocationMismatch, &request))?;
+        let Some(allocation) = self.allocations.get_mut(&sender) else {
+            return Err(self.make_warn_error_response(AllocationMismatch, &request));
+        };
 
         Span::current().record("allocation", display(&allocation.port));
 
@@ -609,10 +583,9 @@ where
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request)?;
 
-        let allocation: &mut Allocation = self
-            .allocations
-            .get_mut(&sender)
-            .ok_or(error_response(AllocationMismatch, &request))?;
+        let Some(allocation) = self.allocations.get_mut(&sender) else {
+            return Err(self.make_warn_error_response(AllocationMismatch, &request));
+        };
 
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number();
@@ -626,7 +599,7 @@ where
         if !allocation.can_relay_to(peer_address) {
             tracing::warn!(target: "relay", "Allocation cannot relay to peer");
 
-            return Err(error_response(PeerAddressFamilyMismatch, &request));
+            return Err(self.make_warn_error_response(PeerAddressFamilyMismatch, &request));
         }
 
         // Ensure the same address isn't already bound to a different channel.
@@ -637,7 +610,7 @@ where
             if number != &requested_channel {
                 tracing::warn!(target: "relay", existing_channel = %number.value(), "Peer is already bound to another channel");
 
-                return Err(error_response(BadRequest, &request));
+                return Err(self.make_warn_error_response(BadRequest, &request));
             }
         }
 
@@ -649,7 +622,7 @@ where
             if channel.peer_address != peer_address {
                 tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
 
-                return Err(error_response(BadRequest, &request));
+                return Err(self.make_warn_error_response(BadRequest, &request));
             }
 
             // Binding requests for existing channels act as a refresh for the binding.
@@ -748,26 +721,28 @@ where
     ) -> Result<(), Message<Attribute>> {
         let message_integrity = request
             .message_integrity()
-            .map_err(|e| error_response(e, request))?;
-        let username = request.username().map_err(|e| error_response(e, request))?;
+            .ok_or_else(|| self.make_warn_error_response(Unauthorized, request))?;
+        let username = request
+            .username()
+            .ok_or_else(|| self.make_warn_error_response(Unauthorized, request))?;
         let nonce = request
             .nonce()
-            .map_err(|e| error_response(e, request))?
+            .ok_or_else(|| self.make_debug_error_response(Unauthorized, request))?
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
                 tracing::debug!(target: "relay", "failed to parse nonce: {e}");
 
-                error_response(Unauthorized, request)
+                self.make_warn_error_response(Unauthorized, request)
             })?;
 
         self.nonces
             .handle_nonce_used(nonce)
-            .map_err(|_| error_response(StaleNonce, request))?;
+            .map_err(|_| self.make_debug_error_response(StaleNonce, request))?;
 
         message_integrity
             .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
-            .map_err(|_| error_response(Unauthorized, request))?;
+            .map_err(|_| self.make_warn_error_response(Unauthorized, request))?;
 
         Ok(())
     }
@@ -955,6 +930,57 @@ where
 
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
+
+    fn make_debug_error_response(
+        &mut self,
+        error_code: impl Into<ErrorCode>,
+        request: &impl StunRequest,
+    ) -> Message<Attribute> {
+        let error_code = error_code.into();
+
+        tracing::debug!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
+
+        self.make_error_response(error_code, request)
+    }
+
+    fn make_warn_error_response(
+        &mut self,
+        error_code: impl Into<ErrorCode>,
+        request: &impl StunRequest,
+    ) -> Message<Attribute> {
+        let error_code = error_code.into();
+
+        tracing::warn!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
+
+        self.make_error_response(error_code, request)
+    }
+
+    fn make_error_response(
+        &mut self,
+        error_code: ErrorCode,
+        request: &impl StunRequest,
+    ) -> Message<Attribute> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+
+        // In case of a 401 or 438 response, attach a realm and nonce.
+        if error_code == ErrorCode::from(Unauthorized) || error_code == ErrorCode::from(StaleNonce)
+        {
+            let new_nonce = Uuid::from_u128(self.rng.gen());
+
+            self.add_nonce(new_nonce);
+
+            message.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
+            message.add_attribute((*FIREZONE).clone());
+        }
+
+        message.add_attribute(Attribute::from(error_code));
+
+        message
+    }
 }
 
 fn refresh_success_response(
@@ -1046,20 +1072,6 @@ impl Allocation {
     fn is_expired(&self, now: Instant) -> bool {
         self.expires_at <= now
     }
-}
-
-fn error_response(
-    error_code: impl Into<ErrorCode>,
-    request: &impl StunRequest,
-) -> Message<Attribute> {
-    let mut message = Message::new(
-        MessageClass::ErrorResponse,
-        request.method(),
-        request.transaction_id(),
-    );
-    message.add_attribute(Attribute::from(error_code.into()));
-
-    message
 }
 
 /// Derive the relay address for the client based on the request and the supported IP stack of the relay server.
@@ -1164,24 +1176,24 @@ impl_stun_request_for!(Refresh, REFRESH);
 
 /// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
 trait ProtectedRequest {
-    fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized>;
-    fn username(&self) -> Result<&Username, Unauthorized>;
-    fn nonce(&self) -> Result<&Nonce, Unauthorized>;
+    fn message_integrity(&self) -> Option<&MessageIntegrity>;
+    fn username(&self) -> Option<&Username>;
+    fn nonce(&self) -> Option<&Nonce>;
 }
 
 macro_rules! impl_protected_request_for {
     ($t:ty) => {
         impl ProtectedRequest for $t {
-            fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized> {
-                self.message_integrity().ok_or(Unauthorized)
+            fn message_integrity(&self) -> Option<&MessageIntegrity> {
+                self.message_integrity()
             }
 
-            fn username(&self) -> Result<&Username, Unauthorized> {
-                self.username().ok_or(Unauthorized)
+            fn username(&self) -> Option<&Username> {
+                self.username()
             }
 
-            fn nonce(&self) -> Result<&Nonce, Unauthorized> {
-                self.nonce().ok_or(Unauthorized)
+            fn nonce(&self) -> Option<&Nonce> {
+                self.nonce()
             }
         }
     };
