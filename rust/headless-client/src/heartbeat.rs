@@ -10,11 +10,11 @@ use tokio::time::{sleep_until, Instant};
 
 /// Logs a heartbeat to `tracing::info!`. Put this in a Tokio task and forget about it.
 pub async fn heartbeat() {
+    let start = Instant::now();
     let mut hb = Heartbeat::default();
     loop {
         sleep_until(hb.next_instant).await;
-        let system_uptime = uptime_lib::get().ok();
-        tracing::info!(?system_uptime, "Heartbeat");
+        tracing::info!(heartbeat_uptime = ?start.elapsed(), "Heartbeat");
         hb.tick();
     }
 }
