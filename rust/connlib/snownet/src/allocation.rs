@@ -9,7 +9,7 @@ use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -1122,10 +1122,19 @@ stun_codec::define_attribute_enums!(
     ]
 );
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ChannelBindings {
-    /// We use a sorted map to have fast access to the highest channel number.
-    inner: BTreeMap<u16, Channel>,
+    inner: HashMap<u16, Channel>,
+    next_channel: u16,
+}
+
+impl Default for ChannelBindings {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            next_channel: Self::FIRST_CHANNEL,
+        }
+    }
 }
 
 impl ChannelBindings {
@@ -1149,24 +1158,16 @@ impl ChannelBindings {
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
-        let mut next_channel = self.next_channel_number();
+        let number = self.next_channel_number(now)?;
 
-        let channel = loop {
-            match self.inner.get(&next_channel) {
-                Some(channel) if channel.can_rebind(now) => break next_channel,
-                None => break next_channel,
-                _ => {}
-            }
-
-            next_channel += 1;
-
-            if next_channel >= Self::LAST_CHANNEL {
-                return None;
-            }
-        };
+        if number == Self::LAST_CHANNEL {
+            self.next_channel = Self::FIRST_CHANNEL
+        } else {
+            self.next_channel = number + 1;
+        }
 
         self.inner.insert(
-            channel,
+            number,
             Channel {
                 peer,
                 bound: false,
@@ -1175,23 +1176,24 @@ impl ChannelBindings {
             },
         );
 
-        Some(channel)
+        Some(number)
     }
 
-    /// Picks the next channel number to allocate.
-    fn next_channel_number(&self) -> u16 {
-        self.inner
-            .keys()
-            .max()
-            .copied()
-            .map(|c| {
-                if c == Self::LAST_CHANNEL {
-                    Self::FIRST_CHANNEL // Wrap around if we have use all channels.
-                } else {
-                    c + 1 // Otherwise pick the next available one.
-                }
-            })
-            .unwrap_or(Self::FIRST_CHANNEL) // Use the first one if we don't have any yet.
+    /// Picks the next channel number to use.
+    fn next_channel_number(&self, now: Instant) -> Option<u16> {
+        // Cycle through all channel numbers, starting with `self.next_channel`.
+        let candidates =
+            (self.next_channel..=Self::LAST_CHANNEL).chain(Self::FIRST_CHANNEL..self.next_channel);
+
+        for number in candidates {
+            match self.inner.get(&number) {
+                Some(channel) if channel.can_rebind(now) => return Some(number),
+                None => return Some(number),
+                _ => {}
+            }
+        }
+
+        None
     }
 
     fn channels_to_refresh<'s>(
