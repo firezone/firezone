@@ -1151,7 +1151,6 @@ fn derive_relay_addresses(
     }
 }
 
-/// Private helper trait to make [`error_response`] more ergonomic to use.
 trait StunRequest {
     fn transaction_id(&self) -> TransactionId;
     fn method(&self) -> Method;
