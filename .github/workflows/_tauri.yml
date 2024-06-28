@@ -53,10 +53,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
-        with:
-          cache_backend: "github"
-          # Cache needs to be scoped per OS version
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
       - name: Install pnpm deps
