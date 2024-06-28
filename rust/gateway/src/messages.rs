@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{collections::HashSet, net::IpAddr};
 
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
@@ -122,7 +122,7 @@ pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<String>,
+    pub candidates: HashSet<String>,
 }
 
 /// A client's ice candidate message.
