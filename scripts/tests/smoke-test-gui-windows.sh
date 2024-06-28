@@ -64,7 +64,6 @@ function crash_test() {
 function get_stacktrace() {
     # Per `crash_handling.rs`
     SYMS_PATH="../target/debug/firezone-gui-client.syms"
-    cargo install --quiet --locked dump_syms minidump-stackwalk
     dump_syms ../target/debug/firezone_gui_client.pdb ../target/debug/firezone-gui-client.exe --output "$SYMS_PATH"
     ls -lash ../target/debug
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"

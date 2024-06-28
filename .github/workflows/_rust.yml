@@ -114,6 +114,8 @@ jobs:
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
         run: cargo build -p firezone-gui-client
+      - uses: taiki-e/install-action@dump_syms
+      - uses: taiki-e/install-action@minidump-stackwalk
       - name: Run smoke tests (Linux)
         if: ${{ runner.os == 'Linux' }}
         run: bash ../../scripts/tests/smoke-test-gui-linux.sh
