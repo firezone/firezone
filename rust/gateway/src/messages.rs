@@ -154,9 +154,9 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
-    use connlib_shared::messages::gateway::Filter;
-    use connlib_shared::messages::gateway::PortRange;
     use connlib_shared::messages::gateway::ResourceDescriptionDns;
+    use connlib_shared::messages::Filter;
+    use connlib_shared::messages::PortRange;
     use connlib_shared::messages::Turn;
     use phoenix_channel::PhoenixMessage;
 
@@ -639,5 +639,67 @@ mod test {
         let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
 
         assert_eq!(ingress_message, expected);
+    }
+
+    #[test]
+    fn can_deserialize_udp_filter() {
+        let msg = r#"{ "protocol": "udp", "port_range_start": 10, "port_range_end": 20 }"#;
+        let expected_filter = Filter::Udp(PortRange {
+            port_range_start: 10,
+            port_range_end: 20,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_empty_udp_filter() {
+        let msg = r#"{ "protocol": "udp" }"#;
+        let expected_filter = Filter::Udp(PortRange {
+            port_range_start: 0,
+            port_range_end: u16::MAX,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_tcp_filter() {
+        let msg = r#"{ "protocol": "tcp", "port_range_start": 10, "port_range_end": 20 }"#;
+        let expected_filter = Filter::Tcp(PortRange {
+            port_range_start: 10,
+            port_range_end: 20,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_empty_tcp_filter() {
+        let msg = r#"{ "protocol": "tcp" }"#;
+        let expected_filter = Filter::Tcp(PortRange {
+            port_range_start: 0,
+            port_range_end: u16::MAX,
+        });
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_icmp_filter() {
+        let msg = r#"{ "protocol": "icmp" }"#;
+        let expected_filter = Filter::Icmp;
+
+        let actual_filter = serde_json::from_str(msg).unwrap();
+
+        assert_eq!(expected_filter, actual_filter);
     }
 }

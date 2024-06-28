@@ -326,6 +326,36 @@ pub struct RelaysPresence {
     pub connected: Vec<Relay>,
 }
 
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PortRange {
+    // TODO: we can use a custom deserializer
+    // or maybe change the control plane to use start and end would suffice
+    #[serde(default = "max_port")]
+    pub port_range_end: u16,
+    #[serde(default = "min_port")]
+    pub port_range_start: u16,
+}
+
+// Note: these 2 functions are needed since serde doesn't yet support default_value
+// see serde-rs/serde#368
+fn min_port() -> u16 {
+    0
+}
+
+fn max_port() -> u16 {
+    u16::MAX
+}
+
+pub type Filters = Vec<Filter>;
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(tag = "protocol", rename_all = "snake_case")]
+pub enum Filter {
+    Udp(PortRange),
+    Tcp(PortRange),
+    Icmp,
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;

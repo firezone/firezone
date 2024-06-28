@@ -6,9 +6,7 @@ use ip_network::IpNetwork;
 use itertools::Itertools;
 use serde::Deserialize;
 
-use super::ResourceId;
-
-pub type Filters = Vec<Filter>;
+use super::{Filter, Filters, ResourceId};
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -61,34 +59,6 @@ pub struct ResolvedResourceDescriptionDns {
 pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Dns(TDNS),
     Cidr(ResourceDescriptionCidr),
-}
-
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(tag = "protocol", rename_all = "snake_case")]
-pub enum Filter {
-    Udp(PortRange),
-    Tcp(PortRange),
-    Icmp,
-}
-
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PortRange {
-    // TODO: we can use a custom deserializer
-    // or maybe change the control plane to use start and end would suffice
-    #[serde(default = "max_port")]
-    pub port_range_end: u16,
-    #[serde(default = "min_port")]
-    pub port_range_start: u16,
-}
-
-// Note: these 2 functions are needed since serde doesn't yet support default_value
-// see serde-rs/serde#368
-fn min_port() -> u16 {
-    0
-}
-
-fn max_port() -> u16 {
-    u16::MAX
 }
 
 impl ResourceDescription<ResourceDescriptionDns> {
@@ -151,72 +121,5 @@ impl ResourceDescription<ResolvedResourceDescriptionDns> {
             ResourceDescription::Dns(r) => r.filters.clone(),
             ResourceDescription::Cidr(r) => r.filters.clone(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn can_deserialize_udp_filter() {
-        let msg = r#"{ "protocol": "udp", "port_range_start": 10, "port_range_end": 20 }"#;
-        let expected_filter = Filter::Udp(PortRange {
-            port_range_start: 10,
-            port_range_end: 20,
-        });
-
-        let actual_filter = serde_json::from_str(msg).unwrap();
-
-        assert_eq!(expected_filter, actual_filter);
-    }
-
-    #[test]
-    fn can_deserialize_empty_udp_filter() {
-        let msg = r#"{ "protocol": "udp" }"#;
-        let expected_filter = Filter::Udp(PortRange {
-            port_range_start: 0,
-            port_range_end: u16::MAX,
-        });
-
-        let actual_filter = serde_json::from_str(msg).unwrap();
-
-        assert_eq!(expected_filter, actual_filter);
-    }
-
-    #[test]
-    fn can_deserialize_tcp_filter() {
-        let msg = r#"{ "protocol": "tcp", "port_range_start": 10, "port_range_end": 20 }"#;
-        let expected_filter = Filter::Tcp(PortRange {
-            port_range_start: 10,
-            port_range_end: 20,
-        });
-
-        let actual_filter = serde_json::from_str(msg).unwrap();
-
-        assert_eq!(expected_filter, actual_filter);
-    }
-
-    #[test]
-    fn can_deserialize_empty_tcp_filter() {
-        let msg = r#"{ "protocol": "tcp" }"#;
-        let expected_filter = Filter::Tcp(PortRange {
-            port_range_start: 0,
-            port_range_end: u16::MAX,
-        });
-
-        let actual_filter = serde_json::from_str(msg).unwrap();
-
-        assert_eq!(expected_filter, actual_filter);
-    }
-
-    #[test]
-    fn can_deserialize_icmp_filter() {
-        let msg = r#"{ "protocol": "icmp" }"#;
-        let expected_filter = Filter::Icmp;
-
-        let actual_filter = serde_json::from_str(msg).unwrap();
-
-        assert_eq!(expected_filter, actual_filter);
     }
 }
