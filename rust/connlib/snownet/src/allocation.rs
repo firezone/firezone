@@ -1250,6 +1250,9 @@ impl Channel {
     /// Per TURN spec, a client MUST wait for an additional 5 minutes before rebinding a channel.
     const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
+    /// An additional buffer to avoid race-condition in case there is a clock-drift between client and relay.
+    const CHANNEL_REBIND_BUFFER: Duration = Duration::from_secs(60);
+
     /// Check if this channel is connected to the given peer.
     ///
     /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
@@ -1259,7 +1262,10 @@ impl Channel {
 
     fn can_rebind(&self, now: Instant) -> bool {
         self.no_activity()
-            && (self.age(now) >= Self::CHANNEL_LIFETIME + Self::CHANNEL_REBIND_TIMEOUT)
+            && (self.age(now)
+                >= Self::CHANNEL_LIFETIME
+                    + Self::CHANNEL_REBIND_TIMEOUT
+                    + Self::CHANNEL_REBIND_BUFFER)
     }
 
     /// Check if we need to refresh this channel.
@@ -1358,10 +1364,7 @@ mod tests {
         assert!(maybe_channel.is_none());
 
         let channel = channel_bindings
-            .new_channel_to_peer(
-                PEER1,
-                start + Channel::CHANNEL_LIFETIME + Channel::CHANNEL_REBIND_TIMEOUT,
-            )
+            .new_channel_to_peer(PEER1, start + Duration::from_secs(60 * (10 + 5 + 1))) // Lifetime + Re-bind timeout + safety buffer
             .unwrap();
         assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
     }
@@ -1488,12 +1491,12 @@ mod tests {
     }
 
     #[test]
-    fn when_just_expires_plus_5_minutes_channel_can_be_rebound() {
+    fn when_just_expires_plus_5_minutes_plus_1_minute_channel_can_be_rebound() {
         let now = Instant::now();
         let channel = ch(PEER1, now);
 
-        let fiveteen_minutes = now + 10 * MINUTE + 5 * MINUTE;
-        let can_rebind = channel.can_rebind(fiveteen_minutes);
+        let sixteen_minutes = now + 10 * MINUTE + 5 * MINUTE + 1 * MINUTE;
+        let can_rebind = channel.can_rebind(sixteen_minutes);
 
         assert!(can_rebind)
     }
