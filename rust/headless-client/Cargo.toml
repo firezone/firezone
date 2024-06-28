@@ -39,6 +39,7 @@ mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` test
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
+libc = "0.2.150"
 nix = { version =  "0.28.0", features = ["fs", "user"] }
 resolv-conf = "0.7.0"
 rtnetlink = { workspace = true }
