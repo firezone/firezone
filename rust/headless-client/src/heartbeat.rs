@@ -5,6 +5,7 @@
 //! state, so this heartbeat allows us to estimate roughly how long each process stayed
 //! up when looking at user logs, using unlimited disk space per run of the app.
 
+use crate::uptime_lib;
 use std::time::Duration;
 use tokio::time::{sleep_until, Instant};
 

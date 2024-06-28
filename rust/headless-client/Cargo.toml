@@ -28,7 +28,6 @@ tokio = { version = "1.38.0", features = ["macros", "signal"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-uptime_lib = "0.3.0"
 url = { version = "2.3.1", default-features = false }
 uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
 
@@ -65,8 +64,8 @@ features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
 
-    # For named pipe IPC
-    "Win32_Security",
+    "Win32_Security", # For named pipe IPC
+    "Win32_System_SystemInformation", # For uptime
     "Win32_System_SystemServices",
     "Win32_System_Pipes",
 ]
