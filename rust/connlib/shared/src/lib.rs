@@ -68,16 +68,16 @@ pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) ->
     let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
     let lib_name = LIB_NAME;
-    format!("{os_type}/{os_version}{additional_info}{lib_name}/{app_version}")
+    format!("{os_type}/{os_version} {lib_name}/{app_version}{additional_info}")
 }
 
 fn additional_info() -> String {
     let info = os_info::get();
     match (info.architecture(), kernel_version()) {
-        (None, None) => " ".to_string(),
-        (None, Some(k)) => format!(" {k} "),
-        (Some(a), None) => format!(" {a} "),
-        (Some(a), Some(k)) => format!(" ({a};{k};) "),
+        (None, None) => "".to_string(),
+        (None, Some(k)) => format!(" ({k})"),
+        (Some(a), None) => format!(" ({a})"),
+        (Some(a), Some(k)) => format!(" ({a}; {k})"),
     }
 }
 
