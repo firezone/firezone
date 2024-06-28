@@ -29,6 +29,16 @@ use wintun::Adapter;
 
 // Not sure how this and `TUNNEL_NAME` differ
 const ADAPTER_NAME: &str = "Firezone";
+/// The ring buffer size used for Wintun.
+///
+/// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
+/// 0x10_0000 is 1 MiB, which performs decently on the Cloudflare speed test.
+/// At 1 Gbps that's about 8 ms, so any delay where Firezone isn't scheduled by the OS
+/// onto a core for more than 8 ms would result in packet drops.
+///
+/// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
+/// where that is configured.
+const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub(crate) struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
@@ -91,7 +101,7 @@ impl Tun {
 
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
         // 4 is a nice power of two. Wintun already queues packets for us, so we don't
         // need much capacity here.
         let (packet_tx, packet_rx) = mpsc::channel(4);
@@ -259,6 +269,8 @@ fn start_recv_thread(
                         // Use `blocking_send` so that if connlib is behind by a few packets,
                         // Wintun will queue up new packets in its ring buffer while we
                         // wait for our MPSC channel to clear.
+                        // Unfortunately we don't know if Wintun is dropping packets, since
+                        // it doesn't expose a sequence number or anything.
                         match packet_tx.blocking_send(pkt) {
                             Ok(()) => {}
                             Err(_) => {
