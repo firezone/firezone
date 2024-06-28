@@ -44,7 +44,8 @@ function Latest({
           <span className="mr-2">Download:</span>
           {arches ? (
             arches.map((arch) => (
-              <Link<string>
+              <Link
+                key={arch}
                 href={{
                   pathname: href
                     .replace(":arch", arch)
