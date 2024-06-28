@@ -18,11 +18,13 @@ swift-bridge = { workspace = true }
 connlib-client-shared = { workspace = true }
 serde_json = "1"
 tracing = { workspace = true }
-oslog = { version = "0.2.0", default-features = false }
 tracing-subscriber = "0.3"
 tracing-appender = "0.2"
 url = "2.5.0"
 tokio = { version = "1.38", default-features = false, features = ["rt"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+oslog = { version = "0.2.0", default-features = false }
 
 [lib]
 name = "connlib"
