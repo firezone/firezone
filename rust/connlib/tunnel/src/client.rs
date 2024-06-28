@@ -813,6 +813,8 @@ impl ClientState {
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
+        let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+        let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -823,21 +825,21 @@ impl ClientState {
                 snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
-                } => self
-                    .buffered_events
-                    .push_back(ClientEvent::NewIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    }),
+                } => {
+                    added_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
                     candidate,
-                } => self
-                    .buffered_events
-                    .push_back(ClientEvent::InvalidatedIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    }),
+                } => {
+                    removed_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
                     resources_changed = true;
@@ -850,6 +852,22 @@ impl ClientState {
                 .push_back(ClientEvent::ResourcesChanged {
                     resources: self.resources(),
                 });
+        }
+
+        for (conn_id, candidates) in added_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(ClientEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
+        }
+
+        for (conn_id, candidates) in removed_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(ClientEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
         }
     }
 
