@@ -74,7 +74,7 @@ mod oslog {
 
     pub fn new(subsystem: &'static str, category: &'static str) -> OsLog {
         OsLog {
-            inner: ::oslog::Oslog::new(subsystem, category),
+            inner: ::oslog::OsLog::new(subsystem, category),
         }
     }
 }
