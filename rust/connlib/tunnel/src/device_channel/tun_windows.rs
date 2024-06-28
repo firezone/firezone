@@ -38,7 +38,7 @@ const ADAPTER_NAME: &str = "Firezone";
 ///
 /// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
 /// where that is configured.
-const RING_BUFFER_SIZE: usize = 0x10_0000;
+const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub(crate) struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
