@@ -111,7 +111,6 @@ jobs:
         run: pnpm tsc
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
-        shell: powershell
       - name: Build client
         run: cargo build -p firezone-gui-client
       - uses: taiki-e/install-action@v2

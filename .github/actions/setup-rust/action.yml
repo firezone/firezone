@@ -60,6 +60,7 @@ runs:
     - name: Disable Windows Defender
       if: ${{ inputs.cache_backend == 'sccache' && runner.os == 'Windows' }}
       run: Set-MpPreference -DisableRealtimeMonitoring $true
+      shell: powershell
 
     # Common to either cache backend
     - name: Extract Rust version
