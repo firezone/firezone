@@ -9,7 +9,7 @@ use bytecodec::{DecodeExt as _, EncodeExt as _};
 use rand::random;
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -1122,19 +1122,10 @@ stun_codec::define_attribute_enums!(
     ]
 );
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct ChannelBindings {
-    inner: HashMap<u16, Channel>,
-    next_channel: u16,
-}
-
-impl Default for ChannelBindings {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-            next_channel: ChannelBindings::FIRST_CHANNEL,
-        }
-    }
+    /// We use a sorted map to have fast access to the highest channel number.
+    inner: BTreeMap<u16, Channel>,
 }
 
 impl ChannelBindings {
@@ -1158,20 +1149,18 @@ impl ChannelBindings {
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
-        if self.next_channel == Self::LAST_CHANNEL {
-            self.next_channel = Self::FIRST_CHANNEL;
-        }
+        let mut next_channel = self.next_channel_number();
 
         let channel = loop {
-            match self.inner.get(&self.next_channel) {
-                Some(channel) if channel.can_rebind(now) => break self.next_channel,
-                None => break self.next_channel,
+            match self.inner.get(&next_channel) {
+                Some(channel) if channel.can_rebind(now) => break next_channel,
+                None => break next_channel,
                 _ => {}
             }
 
-            self.next_channel += 1;
+            next_channel += 1;
 
-            if self.next_channel >= Self::LAST_CHANNEL {
+            if next_channel >= Self::LAST_CHANNEL {
                 return None;
             }
         };
@@ -1187,6 +1176,22 @@ impl ChannelBindings {
         );
 
         Some(channel)
+    }
+
+    /// Picks the next channel number to allocate.
+    fn next_channel_number(&self) -> u16 {
+        self.inner
+            .keys()
+            .max()
+            .copied()
+            .map(|c| {
+                if c == Self::LAST_CHANNEL {
+                    Self::FIRST_CHANNEL // Wrap around if we have use all channels.
+                } else {
+                    c + 1 // Otherwise pick the next available one.
+                }
+            })
+            .unwrap_or(Self::FIRST_CHANNEL) // Use the first one if we don't have any yet.
     }
 
     fn channels_to_refresh<'s>(
@@ -1228,7 +1233,6 @@ impl ChannelBindings {
 
     fn clear(&mut self) {
         self.inner.clear();
-        self.next_channel = Self::FIRST_CHANNEL;
     }
 }
 
@@ -1364,6 +1368,23 @@ mod tests {
             )
             .unwrap();
         assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+    }
+
+    #[test]
+    fn uses_unused_channels_first_before_reusing_expired_one() {
+        let mut channel_bindings = ChannelBindings::default();
+        let mut now = Instant::now();
+
+        for _ in 0..100 {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+            channel_bindings.set_confirmed(allocated_channel, now);
+        }
+
+        now += Duration::from_secs(60 * 20); // All channels are expired and could be re-bound.
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL + 100)
     }
 
     #[test]
