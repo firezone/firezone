@@ -35,7 +35,7 @@ function smoke_test() {
     done
 
     # Run the smoke test normally
-    $PWD/../target/debug/$PACKAGE -- smoke-test
+    $PWD/../target/debug/$PACKAGE smoke-test
 
     # Make sure the files were written in the right paths
     for file in "${files[@]}"
@@ -55,7 +55,7 @@ function crash_test() {
     rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    $PWD/../target/debug/$PACKAGE -- --crash && exit 1
+    $PWD/../target/debug/$PACKAGE --crash && exit 1
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"
