@@ -21,7 +21,6 @@ PACKAGE=firezone-gui-client
 export RUST_LOG=firezone_gui_client=debug,warn
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
-cargo build -p "$PACKAGE"
 # The dwp doesn't actually do anything if the exe already has all the debug info
 # Getting this to coordinate between Linux and Windows is tricky
 dump_syms ../target/debug/firezone-gui-client --output "$SYMS_PATH"
