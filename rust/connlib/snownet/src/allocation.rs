@@ -1132,7 +1132,7 @@ impl Default for ChannelBindings {
     fn default() -> Self {
         Self {
             inner: Default::default(),
-            next_channel: ChannelBindings::FIRST_CHANNEL,
+            next_channel: Self::FIRST_CHANNEL,
         }
     }
 }
@@ -1158,26 +1158,16 @@ impl ChannelBindings {
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
-        if self.next_channel == Self::LAST_CHANNEL {
-            self.next_channel = Self::FIRST_CHANNEL;
+        let number = self.next_channel_number(now)?;
+
+        if number == Self::LAST_CHANNEL {
+            self.next_channel = Self::FIRST_CHANNEL
+        } else {
+            self.next_channel = number + 1;
         }
 
-        let channel = loop {
-            match self.inner.get(&self.next_channel) {
-                Some(channel) if channel.can_rebind(now) => break self.next_channel,
-                None => break self.next_channel,
-                _ => {}
-            }
-
-            self.next_channel += 1;
-
-            if self.next_channel >= Self::LAST_CHANNEL {
-                return None;
-            }
-        };
-
         self.inner.insert(
-            channel,
+            number,
             Channel {
                 peer,
                 bound: false,
@@ -1186,7 +1176,24 @@ impl ChannelBindings {
             },
         );
 
-        Some(channel)
+        Some(number)
+    }
+
+    /// Picks the next channel number to use.
+    fn next_channel_number(&self, now: Instant) -> Option<u16> {
+        // Cycle through all channel numbers, starting with `self.next_channel`.
+        let candidates =
+            (self.next_channel..=Self::LAST_CHANNEL).chain(Self::FIRST_CHANNEL..self.next_channel);
+
+        for number in candidates {
+            match self.inner.get(&number) {
+                Some(channel) if channel.can_rebind(now) => return Some(number),
+                None => return Some(number),
+                _ => {}
+            }
+        }
+
+        None
     }
 
     fn channels_to_refresh<'s>(
@@ -1228,7 +1235,6 @@ impl ChannelBindings {
 
     fn clear(&mut self) {
         self.inner.clear();
-        self.next_channel = Self::FIRST_CHANNEL;
     }
 }
 
@@ -1348,7 +1354,7 @@ mod tests {
         let mut channel_bindings = ChannelBindings::default();
         let start = Instant::now();
 
-        for channel in ChannelBindings::FIRST_CHANNEL..ChannelBindings::LAST_CHANNEL {
+        for channel in ChannelBindings::FIRST_CHANNEL..=ChannelBindings::LAST_CHANNEL {
             let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
 
             assert_eq!(channel, allocated_channel)
@@ -1364,6 +1370,49 @@ mod tests {
             )
             .unwrap();
         assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+    }
+
+    #[test]
+    fn uses_unused_channels_first_before_reusing_expired_one() {
+        let mut channel_bindings = ChannelBindings::default();
+        let mut now = Instant::now();
+
+        for _ in 0..100 {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+            channel_bindings.set_confirmed(allocated_channel, now);
+        }
+
+        now += Duration::from_secs(60 * 20); // All channels are expired and could be re-bound.
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL + 100)
+    }
+
+    #[test]
+    fn uses_next_channel_as_long_as_its_available_before_reusing() {
+        let mut channel_bindings = ChannelBindings::default();
+        let mut now = Instant::now();
+
+        for _ in 0..=4095 {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+            channel_bindings.set_confirmed(allocated_channel, now);
+        }
+
+        now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now); // Last channel is in use
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+        channel_bindings.set_confirmed(channel, now);
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+
+        now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now); // Last channel is in use
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+
+        // We don't reuse the first channel, instead we should prefer the second channel
+        assert_ne!(channel, ChannelBindings::FIRST_CHANNEL)
     }
 
     #[test]
