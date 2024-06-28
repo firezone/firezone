@@ -250,6 +250,8 @@ where
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
             Ok(Err(error_response)) => {
+                tracing::warn!(target: "relay", %sender, method = %error_response.method(), "Failed to decode message");
+
                 self.send_message(error_response, sender);
             }
             // Parsing the bytes failed.
