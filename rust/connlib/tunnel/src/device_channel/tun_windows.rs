@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
     task::{ready, Context, Poll},
 };
-use tokio::sync::mpsc::{self, error::TrySendError};
+use tokio::sync::mpsc;
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
@@ -29,6 +29,16 @@ use wintun::Adapter;
 
 // Not sure how this and `TUNNEL_NAME` differ
 const ADAPTER_NAME: &str = "Firezone";
+/// The ring buffer size used for Wintun.
+///
+/// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
+/// 0x10_0000 is 1 MiB, which performs decently on the Cloudflare speed test.
+/// At 1 Gbps that's about 8 ms, so any delay where Firezone isn't scheduled by the OS
+/// onto a core for more than 8 ms would result in packet drops.
+///
+/// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
+/// where that is configured.
+const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub(crate) struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
@@ -91,8 +101,10 @@ impl Tun {
 
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
-        let (packet_tx, packet_rx) = mpsc::channel(5);
+        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
+        // 4 is a nice power of two. Wintun already queues packets for us, so we don't
+        // need much capacity here.
+        let (packet_tx, packet_rx) = mpsc::channel(4);
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
 
         Ok(Self {
@@ -128,6 +140,7 @@ impl Tun {
         Ok(())
     }
 
+    // Moves packets from the user towards the Internet
     pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let pkt = ready!(self.packet_rx.poll_recv(cx));
 
@@ -163,6 +176,7 @@ impl Tun {
         self.write(bytes)
     }
 
+    // Moves packets from the Internet towards the user
     #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
@@ -241,6 +255,7 @@ pub(crate) fn flush_dns() -> Result<()> {
     Ok(())
 }
 
+// Moves packets from the user towards the Internet
 fn start_recv_thread(
     packet_tx: mpsc::Sender<wintun::Packet>,
     session: Arc<wintun::Session>,
@@ -251,27 +266,31 @@ fn start_recv_thread(
             loop {
                 match session.receive_blocking() {
                     Ok(pkt) => {
-                        match packet_tx.try_send(pkt) {
+                        // Use `blocking_send` so that if connlib is behind by a few packets,
+                        // Wintun will queue up new packets in its ring buffer while we
+                        // wait for our MPSC channel to clear.
+                        // Unfortunately we don't know if Wintun is dropping packets, since
+                        // it doesn't expose a sequence number or anything.
+                        match packet_tx.blocking_send(pkt) {
                             Ok(()) => {}
-                            Err(TrySendError::Closed(_)) => {
-                                // This is redundant since we aren't using
-                                // `blocking_send` anymore but it's defense in depth.
+                            Err(_) => {
                                 tracing::info!(
-                                    "Closing worker thread because packet channel closed"
+                                    "Stopping outbound worker thread because the packet channel closed"
                                 );
                                 break;
                             }
-                            Err(TrySendError::Full(_)) => {} // Just drop the packet, it's IP
                         }
                     }
-                    Err(wintun::Error::ShuttingDown) => break,
+                    Err(wintun::Error::ShuttingDown) => {
+                        tracing::info!("Stopping outbound worker thread because Wintun is shutting down");
+                        break;
+                    }
                     Err(e) => {
                         tracing::error!("wintun::Session::receive_blocking: {e:#?}");
                         break;
                     }
                 }
             }
-            tracing::info!("recv_task exiting gracefully");
         })
 }
 

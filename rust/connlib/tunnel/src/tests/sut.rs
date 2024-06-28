@@ -54,7 +54,7 @@ pub(crate) struct TunnelTest {
     /// The DNS records created on the client as a result of received DNS responses.
     ///
     /// This contains results from both, queries to DNS resources and non-resources.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    pub(crate) client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -87,7 +87,7 @@ impl StateMachineTest for TunnelTest {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
-            .map_state(ClientState::new, debug_span!("client"));
+            .map_state(|(k, h)| ClientState::new(k, h), debug_span!("client"));
         let mut gateway = ref_state
             .gateway
             .map_state(GatewayState::new, debug_span!("gateway"));
@@ -229,6 +229,7 @@ impl StateMachineTest for TunnelTest {
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
         assert_icmp_packets_properties(state, ref_state);
         assert_dns_packets_properties(state, ref_state);
+        assert_known_hosts_are_valid(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
@@ -590,15 +591,22 @@ impl TunnelTest {
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
-            ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
-                .gateway
-                .span
-                .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
+            ClientEvent::AddedIceCandidates { candidates, .. } => {
+                self.gateway.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.gateway
+                            .state
+                            .add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            ClientEvent::RemovedIceCandidates { candidates, .. } => {
+                self.gateway.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.gateway.state.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
             ClientEvent::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
@@ -760,15 +768,22 @@ impl TunnelTest {
 
     fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
         match event {
-            GatewayEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
-                self.client
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            GatewayEvent::InvalidIceCandidate { candidate, .. } => self
-                .client
-                .span
-                .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
+            GatewayEvent::AddedIceCandidates { candidates, .. } => {
+                self.client.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.client
+                            .state
+                            .add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            GatewayEvent::RemovedIceCandidates { candidates, .. } => {
+                self.client.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.client.state.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
             GatewayEvent::RefreshDns { .. } => todo!(),
         }
     }

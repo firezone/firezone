@@ -115,7 +115,7 @@ mod tests {
     use proptest::prelude::*;
     use tracing_subscriber::util::SubscriberInitExt as _;
 
-    #[test_strategy::proptest]
+    #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
         #[strategy(udp_or_tcp_or_icmp_packet())] packet: MutableIpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
@@ -161,7 +161,7 @@ mod tests {
         }
     }
 
-    #[test_strategy::proptest]
+    #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn can_handle_multiple_packets(
         #[strategy(udp_or_tcp_or_icmp_packet())] packet1: MutableIpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst1: IpAddr,
