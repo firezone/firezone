@@ -1,6 +1,8 @@
 // Swift bridge generated code triggers this below
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
+mod make_writer;
+
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
     Error, LoginUrl, Session, Sockets,
@@ -148,7 +150,14 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Han
 
     tracing_subscriber::registry()
         .with(
-            tracing_oslog::OsLogger::new("dev.firezone.firezone", "connlib")
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_level(false)
+                .with_writer(make_writer::MakeWriter::new(
+                    "dev.firezone.firezone",
+                    "connlib",
+                ))
                 .with_filter(EnvFilter::new(log_filter.clone())),
         )
         .with(file_layer.with_filter(EnvFilter::new(log_filter)))
