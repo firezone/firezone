@@ -111,9 +111,6 @@ jobs:
         run: pnpm tsc
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
-      - name: Disable Windows Defender
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
-        if: ${{ runner.os == 'Windows' }}
         shell: powershell
       - name: Build client
         run: cargo build -p firezone-gui-client
