@@ -99,7 +99,8 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
-        runtime: true
+        with:
+          runtime: true
       - name: pnpm install
         run: |
           pnpm install
