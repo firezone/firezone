@@ -262,33 +262,33 @@ fn start_recv_thread(
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("Firezone wintun worker".into())
-        .spawn(move || {
-            loop {
-                match session.receive_blocking() {
-                    Ok(pkt) => {
-                        // Use `blocking_send` so that if connlib is behind by a few packets,
-                        // Wintun will queue up new packets in its ring buffer while we
-                        // wait for our MPSC channel to clear.
-                        // Unfortunately we don't know if Wintun is dropping packets, since
-                        // it doesn't expose a sequence number or anything.
-                        match packet_tx.blocking_send(pkt) {
-                            Ok(()) => {}
-                            Err(_) => {
-                                tracing::info!(
-                                    "Stopping outbound worker thread because the packet channel closed"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                    Err(wintun::Error::ShuttingDown) => {
-                        tracing::info!("Stopping outbound worker thread because Wintun is shutting down");
-                        break;
-                    }
-                    Err(e) => {
-                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
-                        break;
-                    }
+        .spawn(move || loop {
+            let pkt = match session.receive_blocking() {
+                Ok(pkt) => pkt,
+                Err(wintun::Error::ShuttingDown) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because Wintun is shutting down"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                    break;
+                }
+            };
+
+            // Use `blocking_send` so that if connlib is behind by a few packets,
+            // Wintun will queue up new packets in its ring buffer while we
+            // wait for our MPSC channel to clear.
+            // Unfortunately we don't know if Wintun is dropping packets, since
+            // it doesn't expose a sequence number or anything.
+            match packet_tx.blocking_send(pkt) {
+                Ok(()) => {}
+                Err(_) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because the packet channel closed"
+                    );
+                    break;
                 }
             }
         })
