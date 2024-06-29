@@ -292,6 +292,63 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
             <span
+              data-tooltip-target="ipv6-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              IPv4 and IPv6 Resources
+            </span>
+            <div
+              id="ipv6-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Connect to Resources over IPv4 or IPv6
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
+              data-tooltip-target="nat64-tooltip"
+              data-tooltip-placement="top"
+              className="underline hover:no-underline cursor-help"
+            >
+              Automatic NAT64
+            </span>
+            <div
+              id="nat64-tooltip"
+              role="tooltip"
+              className="text-wrap absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white transition-opacity duration-100 bg-neutral-900 rounded shadow-sm opacity-90 tooltip"
+            >
+              Connect to IPv6-only Resources from IPv4-only networks and
+              vice-versa
+              <div className="tooltip-arrow" data-popper-arrow></div>
+            </div>
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
+            <span
               data-tooltip-target="dns-routing-tooltip"
               data-tooltip-placement="top"
               className="underline hover:no-underline cursor-help"
