@@ -627,13 +627,9 @@ impl TunnelTest {
                     .client
                     .span
                     .in_scope(|| {
-                        self.client.state.create_or_reuse_connection(
-                            resource,
-                            gateway,
-                            site,
-                            HashSet::default(),
-                            HashSet::default(),
-                        )
+                        self.client
+                            .state
+                            .create_or_reuse_connection(resource, gateway, site)
                     })
                     .unwrap()
                     .unwrap();
@@ -683,8 +679,6 @@ impl TunnelTest {
                                     self.client.state.public_key(),
                                     self.client.tunnel_ip4,
                                     self.client.tunnel_ip6,
-                                    HashSet::default(),
-                                    HashSet::default(),
                                     new_connection
                                         .client_payload
                                         .domain

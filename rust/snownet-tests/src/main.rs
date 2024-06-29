@@ -1,6 +1,7 @@
 use std::{
+    collections::HashSet,
     future::poll_fn,
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddrV4},
     str::FromStr,
     task::{Context, Poll},
     time::Instant,
@@ -40,26 +41,35 @@ async fn main() -> Result<()> {
         .ip
         .to_std();
 
-    let stun_server = std::env::var("STUN_SERVER")
-        .ok()
-        .map(|a| a.parse::<IpAddr>())
-        .transpose()
-        .context("Failed to parse `STUN_SERVER`")?
-        .map(|ip| SocketAddr::new(ip, 3478));
-    let turn_server = std::env::var("TURN_SERVER")
+    let relay_stun_only = std::env::var("STUN_SERVER")
         .ok()
         .map(|a| a.parse::<Ipv4Addr>())
         .transpose()
-        .context("Failed to parse `TURNERVER`")?
+        .context("Failed to parse `STUN_SERVER`")?
         .map(|ip| {
             (
                 1,
+                RelaySocket::V4(SocketAddrV4::new(ip, 3478)),
+                String::new(),
+                String::new(),
+                String::new(),
+            )
+        });
+    let relay_valid_turn = std::env::var("TURN_SERVER")
+        .ok()
+        .map(|a| a.parse::<Ipv4Addr>())
+        .transpose()
+        .context("Failed to parse `TURN_SERVER`")?
+        .map(|ip| {
+            (
+                2,
                 RelaySocket::V4(SocketAddrV4::new(ip, 3478)),
                 "2000000000:client".to_owned(), // TODO: Use different credentials per role.
                 "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
                 "firezone".to_owned(),
             )
         });
+    let relays = HashSet::from_iter(relay_stun_only.into_iter().chain(relay_valid_turn));
 
     tracing::info!(%listen_addr);
 
@@ -79,14 +89,9 @@ async fn main() -> Result<()> {
     match role {
         Role::Dialer => {
             let mut pool = ClientNode::<u64, u64>::new(private_key);
+            pool.update_relays(HashSet::new(), &relays, Instant::now());
 
-            let offer = pool.new_connection(
-                1,
-                stun_server.into_iter().collect(),
-                turn_server.into_iter().collect(),
-                Instant::now(),
-                Instant::now(),
-            );
+            let offer = pool.new_connection(1, Instant::now(), Instant::now());
 
             redis_connection
                 .rpush(
@@ -164,6 +169,7 @@ async fn main() -> Result<()> {
         }
         Role::Listener => {
             let mut pool = ServerNode::<u64, u64>::new(private_key);
+            pool.update_relays(HashSet::new(), &relays, Instant::now());
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)
@@ -181,8 +187,6 @@ async fn main() -> Result<()> {
                     },
                 },
                 offer.public_key.into(),
-                stun_server.into_iter().collect(),
-                turn_server.into_iter().collect(),
                 Instant::now(),
             );
 

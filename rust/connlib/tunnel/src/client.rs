@@ -21,7 +21,7 @@ use itertools::Itertools;
 use tracing::Level;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{earliest, stun, turn};
+use crate::utils::{earliest, turn};
 use crate::{ClientEvent, ClientTunnel};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
@@ -187,16 +187,10 @@ where
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
-        relays: Vec<Relay>,
         site_id: SiteId,
     ) -> anyhow::Result<Option<Request>> {
-        self.role_state.create_or_reuse_connection(
-            resource_id,
-            gateway_id,
-            site_id,
-            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays),
-        )
+        self.role_state
+            .create_or_reuse_connection(resource_id, gateway_id, site_id)
     }
 
     pub fn received_offer_response(
@@ -522,8 +516,6 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
-        allowed_stun_servers: HashSet<SocketAddr>,
-        allowed_turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
     ) -> anyhow::Result<Option<Request>> {
         tracing::trace!("Creating or reusing connection");
 
@@ -570,8 +562,6 @@ impl ClientState {
 
         let offer = self.node.new_connection(
             gateway_id,
-            allowed_stun_servers,
-            allowed_turn_servers,
             awaiting_connection_details.last_intent_sent_at,
             Instant::now(),
         );

@@ -1,12 +1,12 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
-use crate::utils::{earliest, stun, turn};
+use crate::utils::earliest;
 use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId,
-    Interface as InterfaceConfig, Key, Offer, Relay, RelayId, ResourceId,
+    Interface as InterfaceConfig, Key, Offer, RelayId, ResourceId,
 };
 use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
@@ -47,7 +47,6 @@ where
         client: PublicKey,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        relays: Vec<Relay>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
@@ -64,8 +63,6 @@ where
             client,
             ipv4,
             ipv6,
-            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays),
             domain,
             expires_at,
             resource,
@@ -237,8 +234,6 @@ impl GatewayState {
         client: PublicKey,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
@@ -254,9 +249,7 @@ impl GatewayState {
             _ => {}
         }
 
-        let answer =
-            self.node
-                .accept_connection(client_id, offer, client, stun_servers, turn_servers, now);
+        let answer = self.node.accept_connection(client_id, offer, client, now);
 
         let mut peer = ClientOnGateway::new(client_id, ipv4, ipv6);
 

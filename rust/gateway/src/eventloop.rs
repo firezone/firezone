@@ -276,7 +276,6 @@ impl Eventloop {
             PublicKey::from(req.client.peer.public_key.0),
             req.client.peer.ipv4,
             req.client.peer.ipv6,
-            req.relays,
             req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
             req.resource.into_resolved(addresses.clone()),

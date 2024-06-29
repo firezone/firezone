@@ -273,7 +273,6 @@ where
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,
                 resource_id,
-                relays,
                 site_id,
                 ..
             }) => {
@@ -286,12 +285,10 @@ where
                     return;
                 }
 
-                match self.tunnel.create_or_reuse_connection(
-                    resource_id,
-                    gateway_id,
-                    relays,
-                    site_id,
-                ) {
+                match self
+                    .tunnel
+                    .create_or_reuse_connection(resource_id, gateway_id, site_id)
+                {
                     Ok(Some(firezone_tunnel::Request::NewConnection(connection_request))) => {
                         // TODO: keep track for the response
                         let _id = self.portal.send(
