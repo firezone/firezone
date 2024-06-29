@@ -90,8 +90,8 @@ where
         })
     }
 
-    pub fn reconnect(&mut self) -> std::io::Result<()> {
-        self.role_state.reconnect(Instant::now());
+    pub fn reset(&mut self) -> std::io::Result<()> {
+        self.role_state.reset();
         self.io.sockets_mut().rebind()?;
 
         Ok(())

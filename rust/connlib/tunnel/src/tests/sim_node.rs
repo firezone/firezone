@@ -122,7 +122,6 @@ impl SimNode<ClientId, ClientState> {
         &mut self,
         ip4_socket: Option<SocketAddrV4>,
         ip6_socket: Option<SocketAddrV6>,
-        now: Instant,
     ) {
         // 1. Remember what the current sockets were.
         self.old_sockets.extend(self.ip4_socket.map(SocketAddr::V4));
@@ -132,15 +131,7 @@ impl SimNode<ClientId, ClientState> {
         self.ip4_socket = ip4_socket;
         self.ip6_socket = ip6_socket;
 
-        // 3. Ensure our new sockets aren't present in old sockets (a client should be able to roam "back" to a previous network interface).
-        if let Some(s4) = self.ip4_socket.map(SocketAddr::V4) {
-            self.old_sockets.retain(|s| s != &s4);
-        }
-        if let Some(s6) = self.ip6_socket.map(SocketAddr::V6) {
-            self.old_sockets.retain(|s| s != &s6);
-        }
-
-        self.state.reconnect(now);
+        self.state.reset();
     }
 }
 
