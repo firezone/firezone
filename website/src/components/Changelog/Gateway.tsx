@@ -16,7 +16,7 @@ export default function Gateway() {
       <Entry version="1.1.1" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
-            Fixes a minor connectivity issue that could occure for some DNS
+            Fixes a minor connectivity issue that could occur for some DNS
             Resources.
           </li>
         </ul>
