@@ -5,20 +5,6 @@ use itertools::Itertools;
 use snownet::RelaySocket;
 use std::{collections::HashSet, net::SocketAddr, time::Instant};
 
-pub fn stun(relays: &[Relay], predicate: impl Fn(&SocketAddr) -> bool) -> HashSet<SocketAddr> {
-    relays
-        .iter()
-        .filter_map(|r| {
-            if let Relay::Stun(r) = r {
-                Some(r.addr)
-            } else {
-                None
-            }
-        })
-        .filter(predicate)
-        .collect()
-}
-
 pub fn turn(relays: &[Relay]) -> HashSet<(RelayId, RelaySocket, String, String, String)> {
     relays
         .iter()
