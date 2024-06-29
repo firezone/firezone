@@ -812,6 +812,10 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
+        self.drain_node_events();
+    }
+
+    fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
         let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
         let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
@@ -886,10 +890,11 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reconnect(&mut self, now: Instant) {
-        tracing::info!("Network change detected");
-        self.node.reconnect(now);
-        self.handle_timeout(now); // Ensure we process all events.
+    pub(crate) fn reset(&mut self) {
+        tracing::info!("Resetting network state");
+
+        self.node.reset();
+        self.drain_node_events();
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {

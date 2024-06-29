@@ -501,7 +501,19 @@ impl ReferenceStateMachine for ReferenceState {
                 state.client_cidr_resources.iter().any(|(_, r)| &r.id == id)
                     || state.client_dns_resources.contains_key(id)
             }
-            Transition::RoamClient { .. } => true,
+            Transition::RoamClient {
+                ip4_socket,
+                ip6_socket,
+            } => {
+                // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
+
+                let is_previous_ip4_socket = ip4_socket
+                    .is_some_and(|s| state.client.old_sockets.contains(&SocketAddr::V4(s)));
+                let is_previous_ip6_socket = ip6_socket
+                    .is_some_and(|s| state.client.old_sockets.contains(&SocketAddr::V6(s)));
+
+                !is_previous_ip4_socket && !is_previous_ip6_socket
+            }
         }
     }
 }

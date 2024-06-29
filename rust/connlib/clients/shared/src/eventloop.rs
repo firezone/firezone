@@ -64,7 +64,7 @@ where
                 }
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
-                    if let Err(e) = self.tunnel.reconnect() {
+                    if let Err(e) = self.tunnel.reset() {
                         tracing::warn!("Failed to reconnect tunnel: {e}");
                     }
 

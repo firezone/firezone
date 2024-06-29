@@ -143,17 +143,22 @@ where
         }
     }
 
-    pub fn reconnect(&mut self, now: Instant) {
-        for binding in self.bindings.values_mut() {
-            binding.refresh(now);
-        }
+    /// Resets this [`Node`].
+    ///
+    /// # Implementation note
+    ///
+    /// This also clears all [`Allocation`]s.
+    /// An [`Allocation`] on a TURN server is identified by the client's 3-tuple (IP, port, protocol).
+    /// Thus, clearing the [`Allocation`]'s state here without closing it means we won't be able to make a new one until:
+    /// - it times out
+    /// - we change our IP or port
+    ///
+    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
+    pub fn reset(&mut self) {
+        self.bindings.clear();
+        self.allocations.clear();
 
-        // FIXME(tech-debt): A refresh here is unnecessary.
-        // We always rebind the sockets one layer up, which changes our outgoing port and thus means we are a "new" client from TURN's perspective (TURN operates on 3-tuples).
-        // Thus, a "reset" operation that just clears the local state would be sufficient here and would likely simplify the internals of `Allocation`.
-        for allocation in self.allocations.values_mut() {
-            allocation.refresh(now);
-        }
+        self.buffered_transmits.clear();
 
         self.pending_events.clear();
 
