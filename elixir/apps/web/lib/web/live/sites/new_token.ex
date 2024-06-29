@@ -185,6 +185,7 @@ defmodule Web.Sites.NewToken do
       end
 
     [
+      {"RUST_LOG=str0m=warn,info"},
       {"FIREZONE_TOKEN", encoded_token},
       api_url_override
     ]
