@@ -973,7 +973,14 @@ where
     ) -> Message<Attribute> {
         let error_code = error_code.into();
 
-        error_level.log(request.method(), error_code.reason_phrase());
+        match error_level {
+            ResponseErrorLevel::Warn => {
+                tracing::warn!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
+            }
+            ResponseErrorLevel::Debug => {
+                tracing::debug!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
+            }
+        }
 
         let mut message = Message::new(
             MessageClass::ErrorResponse,
@@ -1003,21 +1010,6 @@ where
 enum ResponseErrorLevel {
     Warn,
     Debug,
-}
-
-impl ResponseErrorLevel {
-    fn log(&self, method: Method, reason_phrase: &str) {
-        const TARGET: &str = "relay";
-        let log_string = format!("{method} failed: {reason_phrase}");
-        match self {
-            ResponseErrorLevel::Warn => {
-                tracing::warn!(target: TARGET, log_string);
-            }
-            ResponseErrorLevel::Debug => {
-                tracing::debug!(target: TARGET, log_string);
-            }
-        }
-    }
 }
 
 fn refresh_success_response(
