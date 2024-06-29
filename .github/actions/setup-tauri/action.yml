@@ -25,17 +25,17 @@ runs:
       # This is what the Tauri CI tests use
       # <https://github.com/tauri-apps/tauri/blob/3fb414b61ad7cfce67751230826fddfb39effec5/.github/workflows/bench.yml#L74>
     - name: Install Tauri runtime deps
-      if: ${{ runner.os == 'Linux' && inputs.runtime }}
+      if: ${{ runner.os == 'Linux' && inputs.runtime == 'true' }}
       run: sudo apt-get install at-spi2-core xvfb
       shell: bash
     - uses: actions/cache@v4
-      if: ${{ runner.os == 'Windows' && inputs.runtime }}
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
         key: ${{ runner.os }}-${{ runner.arch }}-webview2-offline-installer
     - name: Download WebView2 bootstrapper
-      if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' && inputs.runtime }}
+      if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' && inputs.runtime == 'true' }}
       # This is the "Evergreen" bootstrapper from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
       # Unfortunately, this makes the test non-deterministic.
@@ -43,7 +43,7 @@ runs:
       run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2124701 -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
-      if: ${{ runner.os == 'Windows' && inputs.runtime }}
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
       # This downloads about 200 MB and takes about 5 minutes on my VM
       # So we could fault in WebView2 from the client exe without the MSI if we needed.
       # Currently the MSI does this and it's a little janky.
