@@ -2,7 +2,6 @@ use crate::allocation::{Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::stun_binding::StunBinding;
 use crate::utils::earliest;
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
@@ -88,7 +87,6 @@ pub struct Node<T, TId, RId> {
 
     next_rate_limiter_reset: Option<Instant>,
 
-    bindings: HashMap<SocketAddr, StunBinding>,
     allocations: HashMap<RId, Allocation>,
 
     connections: Connections<TId, RId>,
@@ -136,7 +134,6 @@ where
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
-            bindings: HashMap::default(),
             allocations: HashMap::default(),
             connections: Default::default(),
             stats: Default::default(),
@@ -155,7 +152,6 @@ where
     ///
     /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
     pub fn reset(&mut self) {
-        self.bindings.clear();
         self.allocations.clear();
 
         self.buffered_transmits.clear();
@@ -306,11 +302,6 @@ where
     ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
-        match self.bindings_try_handle(from, local, packet, now) {
-            ControlFlow::Continue(()) => {}
-            ControlFlow::Break(()) => return Ok(None),
-        }
-
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
@@ -418,9 +409,6 @@ where
         for (_, c) in self.connections.iter_established_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
-        for b in self.bindings.values_mut() {
-            connection_timeout = earliest(connection_timeout, b.poll_timeout());
-        }
         for a in self.allocations.values_mut() {
             connection_timeout = earliest(connection_timeout, a.poll_timeout());
         }
@@ -455,10 +443,6 @@ where
             connection.handle_timeout(id, now);
         }
 
-        for binding in self.bindings.values_mut() {
-            binding.handle_timeout(now);
-        }
-
         for allocation in self.allocations.values_mut() {
             allocation.handle_timeout(now);
         }
@@ -485,16 +469,12 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        let binding_transmits = &mut self
-            .bindings
-            .values_mut()
-            .flat_map(StunBinding::poll_transmit);
         let allocation_transmits = &mut self
             .allocations
             .values_mut()
             .flat_map(Allocation::poll_transmit);
 
-        if let Some(transmit) = binding_transmits.chain(allocation_transmits).next() {
+        if let Some(transmit) = allocation_transmits.next() {
             self.stats.stun_bytes_to_relays += transmit.payload.len();
             tracing::trace!(?transmit);
 
@@ -623,27 +603,6 @@ where
         }
 
         Ok(())
-    }
-
-    #[must_use]
-    fn bindings_try_handle(
-        &mut self,
-        from: SocketAddr,
-        local: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-    ) -> ControlFlow<()> {
-        let Some(binding) = self.bindings.get_mut(&from) else {
-            return ControlFlow::Continue(());
-        };
-
-        let handled = binding.handle_input(from, local, packet, now);
-
-        if !handled {
-            tracing::debug!("Packet was a STUN message but not accepted");
-        }
-
-        ControlFlow::Break(())
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
@@ -795,16 +754,12 @@ where
     }
 
     fn bindings_and_allocations_drain_events(&mut self) {
-        let binding_events = self
-            .bindings
-            .values_mut()
-            .flat_map(|binding| binding.poll_event());
         let allocation_events = self
             .allocations
             .values_mut()
             .flat_map(|allocation| allocation.poll_event());
 
-        for event in binding_events.chain(allocation_events) {
+        for event in allocation_events {
             match event {
                 CandidateEvent::New(candidate) => {
                     add_local_candidate_to_all(
@@ -836,14 +791,7 @@ where
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%id))]
     #[must_use]
-    pub fn new_connection(
-        &mut self,
-        id: TId,
-        stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RId, RelaySocket, String, String, String)>,
-        intent_sent_at: Instant,
-        now: Instant,
-    ) -> Offer {
+    pub fn new_connection(&mut self, id: TId, intent_sent_at: Instant, now: Instant) -> Offer {
         if self.connections.initial.remove(&id).is_some() {
             tracing::info!("Replacing existing initial connection");
         };
@@ -851,9 +799,6 @@ where
         if self.connections.established.remove(&id).is_some() {
             tracing::info!("Replacing existing established connection");
         };
-
-        self.upsert_stun_servers(&stun_servers, now);
-        self.update_relays(HashSet::default(), &turn_servers, now);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(true);
@@ -942,8 +887,6 @@ where
         id: TId,
         offer: Offer,
         remote: PublicKey,
-        stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) -> Answer {
         debug_assert!(
@@ -954,9 +897,6 @@ where
         if self.connections.established.remove(&id).is_some() {
             tracing::info!("Replacing existing established connection");
         };
-
-        self.upsert_stun_servers(&stun_servers, now);
-        self.update_relays(HashSet::default(), &turn_servers, now);
 
         let mut agent = IceAgent::new();
         agent.set_controlling(false);
@@ -997,33 +937,9 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
-    fn upsert_stun_servers(&mut self, servers: &HashSet<SocketAddr>, now: Instant) {
-        for server in servers {
-            if !self.bindings.contains_key(server) {
-                tracing::info!(address = %server, "Adding new STUN server");
-
-                self.bindings
-                    .insert(*server, StunBinding::new(*server, now));
-            }
-        }
-    }
-
     fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
         for candidate in self.host_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
-        for candidate in self
-            .bindings
-            .values()
-            .filter_map(|binding| binding.candidate())
-        {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
         }
 
         for candidate in self

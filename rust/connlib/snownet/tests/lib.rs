@@ -142,13 +142,7 @@ fn connection_times_out_after_20_seconds() {
 
     let created_at = Instant::now();
 
-    let _ = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::new(),
-        Instant::now(),
-        created_at,
-    );
+    let _ = alice.new_connection(1, Instant::now(), created_at);
     alice.handle_timeout(created_at + Duration::from_secs(20));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
@@ -215,13 +209,7 @@ fn only_generate_candidate_event_after_answer() {
 
     let mut bob = ServerNode::<u64, u64>::new(StaticSecret::random_from_rng(rand::thread_rng()));
 
-    let offer = alice.new_connection(
-        1,
-        HashSet::new(),
-        HashSet::new(),
-        Instant::now(),
-        Instant::now(),
-    );
+    let offer = alice.new_connection(1, Instant::now(), Instant::now());
 
     assert_eq!(
         alice.poll_event(),
@@ -229,14 +217,7 @@ fn only_generate_candidate_event_after_answer() {
         "no event to be emitted before accepting the answer"
     );
 
-    let answer = bob.accept_connection(
-        1,
-        offer,
-        alice.public_key(),
-        HashSet::new(),
-        HashSet::new(),
-        Instant::now(),
-    );
+    let answer = bob.accept_connection(1, offer, alice.public_key(), Instant::now());
 
     alice.accept_answer(1, bob.public_key(), answer, Instant::now());
 
@@ -269,16 +250,9 @@ fn send_offer(
     bob: &mut ServerNode<u64, u64>,
     now: Instant,
 ) -> Answer {
-    let offer = alice.new_connection(1, HashSet::new(), HashSet::new(), Instant::now(), now);
+    let offer = alice.new_connection(1, Instant::now(), now);
 
-    bob.accept_connection(
-        1,
-        offer,
-        alice.public_key(),
-        HashSet::new(),
-        HashSet::new(),
-        now,
-    )
+    bob.accept_connection(1, offer, alice.public_key(), now)
 }
 
 fn host(socket: &str) -> String {
@@ -739,24 +713,13 @@ impl<R> TestNode<R> {
 }
 
 fn handshake(client: &mut TestNode<Client>, server: &mut TestNode<Server>, clock: &Clock) {
-    let offer = client.span.in_scope(|| {
-        client.node.new_connection(
-            1,
-            HashSet::default(),
-            HashSet::default(),
-            clock.now,
-            clock.now,
-        )
-    });
+    let offer = client
+        .span
+        .in_scope(|| client.node.new_connection(1, clock.now, clock.now));
     let answer = server.span.in_scope(|| {
-        server.node.accept_connection(
-            1,
-            offer,
-            client.node.public_key(),
-            HashSet::default(),
-            HashSet::default(),
-            clock.now,
-        )
+        server
+            .node
+            .accept_connection(1, offer, client.node.public_key(), clock.now)
     });
     client.span.in_scope(|| {
         client
