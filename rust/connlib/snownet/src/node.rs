@@ -153,7 +153,7 @@ where
     /// - it times out
     /// - we change our IP or port
     ///
-    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::clear`].
+    /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
     pub fn reset(&mut self) {
         self.bindings.clear();
         self.allocations.clear();
