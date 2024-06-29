@@ -64,8 +64,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
-        with:
-          runtime: false
       - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
@@ -101,6 +99,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
+        runtime: true
       - name: pnpm install
         run: |
           pnpm install
