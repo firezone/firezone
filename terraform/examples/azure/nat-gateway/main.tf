@@ -50,7 +50,7 @@ module "azure_firezone_gateway" {
   # Override the default API URL. This should almost never be needed.
   firezone_api_url = "wss://api.firez.one"
 
-  # Gateways are very lightweight. In general it's preferrable to deploy
+  # Gateways are very lightweight. In general it's preferable to deploy
   # more smaller Gateways than fewer larger Gateways if you need to scale
   # horizontally.
   # See https://www.firezone.dev/kb/deploy/gateways#sizing-recommendations.
