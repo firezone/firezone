@@ -61,6 +61,7 @@ rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
+logging_timer = "1.1.1"
 uuid = { version = "1.7.0", features = ["v4"] }
 wintun = "0.4.0"
 
