@@ -400,7 +400,11 @@ where
     );
 
     if records.is_empty() {
-        tracing::debug!("No records for {}, returning NXDOMAIN", qname.to_vec());
+        tracing::debug!(
+            "No {:?} records for {}, returning NXDOMAIN",
+            message.qtype(),
+            qname.to_vec()
+        );
         return Some(
             msg_builder
                 .start_answer(message, Rcode::NXDOMAIN)
