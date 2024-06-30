@@ -43,8 +43,6 @@ resource "azurerm_orchestrated_virtual_machine_scale_set" "firezone" {
     #!/bin/bash
     set -e
 
-    sudo echo 'hello world' > /etc/firezone-custom-data
-
     sudo apt-get update
     sudo apt-get install -y curl uuid-runtime
 
