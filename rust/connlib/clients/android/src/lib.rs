@@ -23,8 +23,7 @@ use std::{
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt::format::Format, prelude::*, EnvFilter};
 
 mod make_writer;
 
@@ -138,6 +137,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
                 .without_time()
                 .with_level(false)
                 .with_writer(make_writer::MakeWriter::new("connlib"))
+                .event_format(Format::default().with_ansi(false))
                 .with_filter(EnvFilter::new(log_filter)),
         )
         .try_init();
