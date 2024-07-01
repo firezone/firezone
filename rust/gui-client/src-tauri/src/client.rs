@@ -228,13 +228,7 @@ pub enum Cmd {
     },
     Elevated,
     OpenDeepLink(DeepLink),
-    /// SmokeTest gets its own subcommand because elevating would start a new process and trash the exit code
-    ///
-    /// We could solve that by keeping the un-elevated process around, blocking on the elevated
-    /// child process, but then we'd always have an extra process hanging around.
-    ///
-    /// It's also invalid for release builds, because we build the exe as a GUI app,
-    /// so Windows won't give us a valid exit code, it'll just detach from the terminal instantly.
+    /// SmokeTest gets its own subcommand for historical reasons.
     SmokeTest,
 }
 
