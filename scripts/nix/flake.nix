@@ -149,7 +149,10 @@
                 ANDROID_SDK_ROOT = "${android-sdk}/share/android-sdk";
                 JAVA_HOME = "${jdk.home}";
 
-                nativeBuildInputs = [
+                RUST_ANDROID_GRADLE_CARGO_COMMAND = "${pinnedRust}/bin/cargo";
+                RUST_ANDROID_GRADLE_RUSTC_COMMAND = "${pinnedRust}/bin/rustc";
+
+                buildInputs = [
                   (pinnedRust.override
                     {
                       targets = [
