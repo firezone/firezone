@@ -143,6 +143,42 @@ jobs:
           comment:
             "Apply Run from GitHub Actions CI ${{ inputs.tag }}"
 
+  # Some renegade users are self-hosting these, so support them as best we can by making our
+  # infrastructure images available to them.
+  publish-infra-images:
+    # Only publish if our own deploy was successful
+    needs: deploy-production
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [domain, api, web, relay]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to staging registry
+        uses: ./.github/actions/gcp-docker-login
+        id: login-staging
+        with:
+          project: firezone-staging
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull and push
+        run: |
+          set -xe
+
+          SOURCE_TAG=${{ steps.login-staging.outputs.registry }}/firezone/${{ matrix.image }}:${{ inputs.tag }}
+
+          docker buildx imagetools create \
+            -t ghcr.io/firezone/${{ matrix.image }}:${{ inputs.tag }} \
+            -t ghcr.io/firezone/${{ matrix.image }}:latest \
+            $SOURCE_TAG
+
   update-vercel:
     needs: deploy-production
     runs-on: ubuntu-22.04
