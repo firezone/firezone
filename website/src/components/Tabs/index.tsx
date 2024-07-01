@@ -9,7 +9,7 @@ const customTheme: CustomFlowbiteTheme = {
     base: "flex flex-col gap-2",
     tablist: {
       base: "flex text-center",
-      styles: {
+      variant: {
         default: "flex-wrap border-b border-neutral-200",
         underline: "flex-wrap -mb-px border-b border-neutral-200",
         pills: "flex-wrap font-medium text-sm text-neutral-500 space-x-2",
@@ -18,7 +18,7 @@ const customTheme: CustomFlowbiteTheme = {
       },
       tabitem: {
         base: "flex items-center justify-center p-4 rounded-t-lg text-sm font-medium first:ml-0 disabled:cursor-not-allowed disabled:text-neutral-400",
-        styles: {
+        variant: {
           default: {
             base: "rounded-t-lg",
             active: {
@@ -53,7 +53,7 @@ const customTheme: CustomFlowbiteTheme = {
     },
     tabitemcontainer: {
       base: "",
-      styles: {
+      variant: {
         default: "",
         underline: "",
         pills: "",
@@ -68,7 +68,7 @@ function TabsGroup({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-8">
       <Flowbite theme={{ theme: customTheme }}>
-        <Tabs style="underline" className="bg-neutral-50 rounded shadow">
+        <Tabs variant="underline" className="bg-neutral-50 rounded shadow">
           {children}
         </Tabs>
       </Flowbite>
