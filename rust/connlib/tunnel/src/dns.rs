@@ -218,47 +218,37 @@ impl StubResolver {
     }
 
     // This function will panic if it's called with an invalid PTR question
-    fn get_records<N: ToName>(&mut self, question: &Question<N>) -> Vec<RecordData<DomainName>> {
+    fn get_records<N: ToName>(
+        &mut self,
+        question: &Question<N>,
+    ) -> Option<Vec<RecordData<DomainName>>> {
         match question.qtype() {
-            Rtype::A => self
-                .get_or_assign_ips(question.qname().to_name())
-                .iter()
-                .copied()
-                .filter_map(get_v4)
-                .map(domain::rdata::A::new)
-                .map(RecordData::A)
-                .collect_vec(),
+            Rtype::A => Some(
+                self.get_or_assign_ips(question.qname().to_name())
+                    .iter()
+                    .copied()
+                    .filter_map(get_v4)
+                    .map(domain::rdata::A::new)
+                    .map(RecordData::A)
+                    .collect_vec(),
+            ),
 
-            Rtype::AAAA => self
-                .get_or_assign_ips(question.qname().to_name())
-                .iter()
-                .copied()
-                .filter_map(get_v6)
-                .map(domain::rdata::Aaaa::new)
-                .map(RecordData::Aaaa)
-                .collect_vec(),
+            Rtype::AAAA => Some(
+                self.get_or_assign_ips(question.qname().to_name())
+                    .iter()
+                    .copied()
+                    .filter_map(get_v6)
+                    .map(domain::rdata::Aaaa::new)
+                    .map(RecordData::Aaaa)
+                    .collect_vec(),
+            ),
             Rtype::PTR => {
-                let Some(ip) = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                else {
-                    return Vec::new();
-                };
-                let Some(fqdn) = self.ips_to_fqdn.get(&ip) else {
-                    debug_assert!(false, "we expect this function to be called only with PTR records for resource ips");
-                    return Vec::new();
-                };
+                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
+                let fqdn = self.ips_to_fqdn.get(&ip)?;
 
-                vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
+                Some(vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))])
             }
-            _ => Vec::new(),
-        }
-    }
-
-    fn is_resource(&self, question: &Question<impl ToName>) -> bool {
-        // TODO: we can shave off time from the lookup if we keep a hashset of ips
-        match question.qtype() {
-            Rtype::PTR => reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                .is_some_and(|addr| self.fqdn_to_ips.values().flatten().contains(&addr)),
-            _ => get_description(&question.qname().to_name(), &self.dns_resources).is_some(),
+            _ => None,
         }
     }
 
@@ -290,29 +280,22 @@ impl StubResolver {
         tracing::trace!("Parsed packet as DNS query: '{question}'");
 
         if let Some(records) = self.known_hosts.get_records(&question) {
-            let response =
-                build_dns_with_answer(message, question.qname(), question.qtype(), records)?;
+            let response = build_dns_with_answer(message, question.qname(), records)?;
             return Some(ResolveStrategy::LocalResponse(build_response(
                 packet, response,
             )));
         }
 
-        if !self.is_resource(&question) {
+        let Some(resource_records) = self.get_records(&question) else {
             return Some(ResolveStrategy::ForwardQuery(DnsQuery {
                 name: ToName::to_vec(question.qname()),
                 record_type: u16::from(question.qtype()).into(),
                 query: packet,
             }));
-        }
+        };
 
-        let resource_records = self.get_records(&question);
+        let response = build_dns_with_answer(message, question.qname(), resource_records)?;
 
-        let response = build_dns_with_answer(
-            message,
-            question.qname(),
-            question.qtype(),
-            resource_records,
-        )?;
         Some(ResolveStrategy::LocalResponse(build_response(
             packet, response,
         )))
@@ -395,7 +378,6 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
 fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
-    qtype: Rtype,
     records: Vec<RecordData<DomainName>>,
 ) -> Option<Vec<u8>>
 where
@@ -408,7 +390,7 @@ where
 
     if records.is_empty() {
         tracing::debug!(
-            "No {qtype} records for {}, returning NXDOMAIN",
+            "No records for {} due to ip exhaustion, returning NXDOMAIN",
             qname.to_vec()
         );
         return Some(
