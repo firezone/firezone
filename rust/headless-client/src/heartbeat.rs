@@ -5,6 +5,7 @@
 //! state, so this heartbeat allows us to estimate roughly how long each process stayed
 //! up when looking at user logs, using unlimited disk space per run of the app.
 
+use crate::uptime;
 use std::time::Duration;
 use tokio::time::{sleep_until, Instant};
 
@@ -13,7 +14,7 @@ pub async fn heartbeat() {
     let mut hb = Heartbeat::default();
     loop {
         sleep_until(hb.next_instant).await;
-        let system_uptime = uptime_lib::get().ok();
+        let system_uptime = uptime::get();
         tracing::info!(?system_uptime, "Heartbeat");
         hb.tick();
     }
