@@ -290,7 +290,8 @@ impl StubResolver {
         tracing::trace!("Parsed packet as DNS query: '{question}'");
 
         if let Some(records) = self.known_hosts.get_records(&question) {
-            let response = build_dns_with_answer(message, question.qname(), records)?;
+            let response =
+                build_dns_with_answer(message, question.qname(), question.qtype(), records)?;
             return Some(ResolveStrategy::LocalResponse(build_response(
                 packet, response,
             )));
@@ -306,7 +307,12 @@ impl StubResolver {
 
         let resource_records = self.get_records(&question);
 
-        let response = build_dns_with_answer(message, question.qname(), resource_records)?;
+        let response = build_dns_with_answer(
+            message,
+            question.qname(),
+            question.qtype(),
+            resource_records,
+        )?;
         Some(ResolveStrategy::LocalResponse(build_response(
             packet, response,
         )))
@@ -389,6 +395,7 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
 fn build_dns_with_answer<N>(
     message: &Message<[u8]>,
     qname: &N,
+    qtype: Rtype,
     records: Vec<RecordData<DomainName>>,
 ) -> Option<Vec<u8>>
 where
@@ -400,7 +407,10 @@ where
     );
 
     if records.is_empty() {
-        tracing::debug!("No records for {}, returning NXDOMAIN", qname.to_vec());
+        tracing::debug!(
+            "No {qtype} records for {}, returning NXDOMAIN",
+            qname.to_vec()
+        );
         return Some(
             msg_builder
                 .start_answer(message, Rcode::NXDOMAIN)
