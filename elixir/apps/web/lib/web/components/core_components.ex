@@ -130,6 +130,7 @@ defmodule Web.CoreComponents do
   slot :tab, required: true, doc: "Tab content" do
     attr :id, :string, required: true, doc: "ID of the tab"
     attr :label, :any, required: true, doc: "Display label for the tab"
+    attr :icon, :string, doc: "Icon for the tab"
     attr :selected, :boolean, doc: "Whether the tab is selected"
     attr :phx_click, :any, doc: "Phoenix click event"
   end
@@ -138,9 +139,9 @@ defmodule Web.CoreComponents do
 
   def tabs(assigns) do
     ~H"""
-    <div class="mb-4">
+    <div class="mb-4 rounded shadow">
       <div
-        class="border-neutral-200 bg-neutral-50 rounded-t"
+        class="border-neutral-100 border-b-2 bg-neutral-50 rounded-t"
         id={"#{@id}-container"}
         phx-hook="Tabs"
         {@rest}
@@ -152,13 +153,18 @@ defmodule Web.CoreComponents do
           role="tablist"
         >
           <%= for tab <- @tab do %>
+            <% tab = Map.put(tab, :icon, Map.get(tab, :icon, nil)) %>
             <li class="mr-2" role="presentation">
               <button
-                class={[
-                  (Map.get(tab, :selected) && "rounded-t text-accent-600 border-accent-600") ||
-                    "text-neutral-500 hover:border-accent-200 hover:text-accent-600",
-                  "inline-block p-4 border-b-2"
-                ]}
+                class={
+                  [
+                    # ! is needed to override Flowbite's default styles
+                    (Map.get(tab, :selected) &&
+                       "!rounded-t-lg !font-medium !text-accent-600 !border-accent-600") ||
+                      "!text-neutral-500 !hover:border-accent-700 !hover:text-accent-600",
+                    "inline-block p-4 border-b-2"
+                  ]
+                }
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
                 type="button"
@@ -168,6 +174,9 @@ defmodule Web.CoreComponents do
                 phx-click={Map.get(tab, :phx_click)}
                 phx-value-id={tab.id}
               >
+                <%= if tab.icon do %>
+                  <.icon name={tab.icon} class="h-4 w-4 mr-1" />
+                <% end %>
                 <%= tab.label %>
               </button>
             </li>
@@ -177,7 +186,7 @@ defmodule Web.CoreComponents do
       <div id={@id}>
         <%= for tab <- @tab do %>
           <div
-            class="hidden rounded-b bg-neutral-50"
+            class="hidden rounded-b bg-white"
             id={tab.id}
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
@@ -417,10 +426,38 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Renders a [Font Awesome Icon](https://fontawesome.com).
+
+  Font Awesome icons come in three styles – regular, solid, and brand.
+  By default, the regular style is used, but solid and brand may
+  be applied by using the `-solid` and `-brand` suffix.
+
+  You can customize the size and colors of the icons by setting
+  width, height, and background color classes.
+
+  Icons are extracted from your `assets/vendor/fontawesome` directory and bundled
+  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
+
+  ## Examples
+
+      <.icon name="fa-x-mark-solid" />
+      <.icon name="fa-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
+  """
+  attr :name, :string, required: true
+  attr :class, :string, default: nil
+  attr :rest, :global
+
+  def icon(%{name: "fa-" <> _} = assigns) do
+    ~H"""
+    <span class={[@name, @class]} {@rest} />
+    """
+  end
+
+  @doc """
   Renders a [Hero Icon](https://heroicons.com).
 
   Hero icons come in three styles – outline, solid, and mini.
-  By default, the outline style is used, but solid an mini may
+  By default, the outline style is used, but solid and mini may
   be applied by using the `-solid` and `-mini` suffix.
 
   You can customize the size and colors of the icons by setting
@@ -434,9 +471,6 @@ defmodule Web.CoreComponents do
       <.icon name="hero-x-mark-solid" />
       <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
   """
-  attr :name, :string, required: true
-  attr :class, :string, default: nil
-  attr :rest, :global
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
@@ -462,6 +496,23 @@ defmodule Web.CoreComponents do
       >
       </path>
     </svg>
+    """
+  end
+
+  def icon(%{name: "terraform"} = assigns) do
+    ~H"""
+    <span class={"inline-flex " <> @class} @rest>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+        <g fill-rule="evenodd">
+          <path d="M77.941 44.5v36.836L46.324 62.918V26.082zm0 0" fill="#5c4ee5" />
+          <path d="M81.41 81.336l31.633-18.418V26.082L81.41 44.5zm0 0" fill="#4040b2" />
+          <path
+            d="M11.242 42.36L42.86 60.776V23.941L11.242 5.523zm0 0M77.941 85.375L46.324 66.957v36.82l31.617 18.418zm0 0"
+            fill="#5c4ee5"
+          />
+        </g>
+      </svg>
+    </span>
     """
   end
 
