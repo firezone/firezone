@@ -14,7 +14,7 @@ pub async fn heartbeat() {
     let mut hb = Heartbeat::default();
     loop {
         sleep_until(hb.next_instant).await;
-        let system_uptime = uptime_lib::get().ok();
+        let system_uptime = uptime_lib::get();
         tracing::info!(?system_uptime, "Heartbeat");
         hb.tick();
     }
