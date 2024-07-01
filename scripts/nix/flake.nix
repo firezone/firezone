@@ -39,6 +39,45 @@
           ]);
           jdk = pkgs.zulu17;
 
+          gradleLock = builtins.fromJSON (builtins.readFile ../../kotlin/android/gradle.lock);
+          patchJars = moduleFilter: artifactFilter: args: f:
+            let
+              modules =
+                pkgs.lib.filterAttrs
+                  (name: _: moduleFilter name)
+                  gradleLock;
+
+              artifacts = pkgs.lib.filterAttrs (name: _: artifactFilter name);
+
+              patch = src: pkgs.runCommand src.name args (f src);
+            in
+            pkgs.lib.mapAttrs
+              (
+                _: module:
+                  pkgs.lib.mapAttrs (_: _: patch) (artifacts module)
+              )
+              modules;
+          aapt2LinuxJars =
+            pkgs.lib.optionalAttrs pkgs.stdenv.isLinux
+              (patchJars
+                (pkgs.lib.hasPrefix "com.android.tools.build:aapt2:")    # moduleFilter
+                (pkgs.lib.hasSuffix "-linux.jar")                        # artifactFilter
+                {
+                  # args to runCommand
+                  nativeBuildInputs = [ jdk pkgs.autoPatchelfHook ];
+                  buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+                  dontAutoPatchelf = true;
+                }
+                (src: ''                                        # function to make a runCommand script
+                  cp ${src} aapt2.jar                           # src <- derivation to download source
+                  jar xf aapt2.jar aapt2
+                  chmod +x aapt2
+                  autoPatchelf aapt2
+                  jar uf aapt2.jar aapt2
+                  cp aapt2.jar $out
+                  echo $out
+                ''));
+
           libraries = with pkgs;[
             webkitgtk
             gtk3
@@ -95,33 +134,35 @@
           };
         in
         {
-          packages.firezone-android-debug = gradle2nix.builders.${system}.buildGradlePackage
-            {
-              pname = "firezone-android";
-              # mark:next-android-version
-              version = "1.1.2";
-              src = ../../kotlin/android;
-              lockFile = ../../kotlin/android/gradle.lock;
-              gradleInstallFlags = [ "--stacktrace bundleDebug" ];
+          packages.firezone-android-debug =
+            gradle2nix.builders.${system}.buildGradlePackage
+              {
+                pname = "firezone-android";
+                # mark:next-android-version
+                version = "1.1.2";
+                src = ../../kotlin/android;
+                lockFile = ../../kotlin/android/gradle.lock;
+                gradleInstallFlags = [ "--stacktrace bundleDebug" ];
 
-              NDK_HOME = "${android-sdk}/share/android-sdk/ndk/25.2.9519653";
-              ANDROID_HOME = "${android-sdk}/share/android-sdk";
-              ANDROID_SDK_ROOT = "${android-sdk}/share/android-sdk";
-              JAVA_HOME = "${jdk.home}";
+                NDK_HOME = "${android-sdk}/share/android-sdk/ndk/25.2.9519653";
+                ANDROID_HOME = "${android-sdk}/share/android-sdk";
+                ANDROID_SDK_ROOT = "${android-sdk}/share/android-sdk";
+                JAVA_HOME = "${jdk.home}";
 
-              buildInputs = [
-                (pinnedRust.override
-                  {
-                    targets = [
-                      "aarch64-linux-android"
-                      "arm-linux-androideabi"
-                      "armv7-linux-androideabi"
-                      "i686-linux-android"
-                      "x86_64-linux-android"
-                    ];
-                  })
-              ];
-            };
+                nativeBuildInputs = [
+                  (pinnedRust.override
+                    {
+                      targets = [
+                        "aarch64-linux-android"
+                        "arm-linux-androideabi"
+                        "armv7-linux-androideabi"
+                        "i686-linux-android"
+                        "x86_64-linux-android"
+                      ];
+                    })
+                ];
+                overlays = aapt2LinuxJars;
+              };
 
           devShells.default = mkShellWithRustVersion
             [
