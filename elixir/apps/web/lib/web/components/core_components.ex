@@ -426,22 +426,28 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders a [Font Awesome Icon](https://fontawesome.com).
+  Renders a [Font Awesome Icon](https://fontawesome.com) or [Hero Icon](https://heroicons.com).
 
   Font Awesome icons come in three styles – regular, solid, and brand.
   By default, the regular style is used, but solid and brand may
   be applied by using the `-solid` and `-brand` suffix.
 
+  Hero icons come in three styles – outline, solid, and mini.
+  By default, the outline style is used, but solid and mini may
+  be applied by using the `-solid` and `-mini` suffix.
+
   You can customize the size and colors of the icons by setting
   width, height, and background color classes.
 
-  Icons are extracted from your `assets/vendor/fontawesome` directory and bundled
-  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
+  Icons are extracted from your `assets/vendor` directory and bundled
+  within your compiled app.css by the plugins in your `assets/tailwind.config.js`.
 
   ## Examples
 
       <.icon name="fa-x-mark-solid" />
       <.icon name="fa-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
+      <.icon name="hero-x-mark-solid" />
+      <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
   """
   attr :name, :string, required: true
   attr :class, :string, default: nil
@@ -452,25 +458,6 @@ defmodule Web.CoreComponents do
     <span class={[@name, @class]} {@rest} />
     """
   end
-
-  @doc """
-  Renders a [Hero Icon](https://heroicons.com).
-
-  Hero icons come in three styles – outline, solid, and mini.
-  By default, the outline style is used, but solid and mini may
-  be applied by using the `-solid` and `-mini` suffix.
-
-  You can customize the size and colors of the icons by setting
-  width, height, and background color classes.
-
-  Icons are extracted from your `assets/vendor/heroicons` directory and bundled
-  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
-
-  ## Examples
-
-      <.icon name="hero-x-mark-solid" />
-      <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
-  """
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
