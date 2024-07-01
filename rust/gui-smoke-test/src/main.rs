@@ -1,4 +1,6 @@
 // Invoke with `cargo run --bin gui-smoke-test`
+//
+// Starts up the IPC service and GUI app and lets them run for a bit
 
 use anyhow::{bail, Context as _, Result};
 use std::{env, path::Path, process};
@@ -109,7 +111,7 @@ impl App {
 #[cfg(target_os = "windows")]
 impl App {
     fn gui_command(&self) -> Result<Exec> {
-        Ok(Exec::cmd("target/debug/firezone-gui-client"))
+        Ok(Exec::cmd("target/debug/firezone-gui-client").args(&["--no-deep-links", "smoke-test"]))
     }
 }
 
@@ -130,5 +132,5 @@ fn ipc_service_command() -> process::Command {
 
 #[cfg(target_os = "windows")]
 fn ipc_service_command() -> process::Command {
-    process::Command::build("target/debug/firezone-client-ipc")
+    process::Command::new("target/debug/firezone-client-ipc")
 }
