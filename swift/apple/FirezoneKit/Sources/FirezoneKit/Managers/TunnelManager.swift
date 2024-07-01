@@ -248,6 +248,7 @@ class TunnelManager {
           if session.status == .disconnected {
             // Reset resource list on disconnect
             resourceListHash = Data()
+            resourcesListCache = Data()
           }
 
           await statusChangeHandler?(session.status)
