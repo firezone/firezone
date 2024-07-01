@@ -64,6 +64,7 @@ pub(crate) struct Managed {
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: settings::AdvancedSettings,
+    reloader: logging::Reloader,
 ) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
@@ -204,6 +205,7 @@ pub(crate) fn run(
                             ctlr_tx,
                             ctlr_rx,
                             advanced_settings,
+                            reloader,
                         )
                         .await
                     });
@@ -426,6 +428,7 @@ struct Controller {
     ctlr_tx: CtlrTx,
     /// connlib session for the currently signed-in user, if there is one
     session: Option<Session>,
+    log_filter_reloader: logging::Reloader,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
     tunnel_ready: bool,
@@ -489,11 +492,15 @@ impl Controller {
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
         match req {
             Req::ApplySettings(settings) => {
+                let filter =
+                    tracing_subscriber::EnvFilter::try_new(&self.advanced_settings.log_filter)
+                        .context("Couldn't parse new log filter directives")?;
                 self.advanced_settings = settings;
-                // TODO: Update the logger here if we can. I can't remember if there
-                // was a reason why the reloading didn't work.
-                tracing::info!(
-                    "Applied new settings. Log level will take effect at next app start."
+                self.log_filter_reloader
+                    .reload(filter)
+                    .context("Couldn't reload log filter")?;
+                tracing::debug!(
+                    "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
                 );
             }
             Req::ClearLogs => logging::clear_logs_inner()
@@ -699,6 +706,7 @@ async fn run_controller(
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
+    log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let mut controller = Controller {
@@ -707,6 +715,7 @@ async fn run_controller(
         auth: client::auth::Auth::new(),
         ctlr_tx,
         session: None,
+        log_filter_reloader,
         notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
         tunnel_ready: false,
         uptime: Default::default(),
