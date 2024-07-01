@@ -4,18 +4,22 @@ defmodule Web.NavigationComponents do
   import Web.CoreComponents
 
   attr :subject, :any, required: true
+  slot :banner, required: false, doc: "Optional top banner to show"
 
   def topbar(assigns) do
     ~H"""
-    <nav class="bg-neutral-50 border-b border-neutral-200 px-4 py-2.5 fixed left-0 right-0 top-0 z-50">
-      <div class="flex flex-wrap justify-between items-center">
+    <nav class="bg-neutral-50 border-b border-neutral-200 fixed left-0 right-0 top-0 z-50">
+      <div :if={@banner} class="text-center text-sm py-2 bg-accent-100 text-accent-800">
+        <%= render_slot(@banner) %>
+      </div>
+      <div class="px-4 py-2.5 flex flex-wrap justify-between items-center">
         <div class="flex justify-start items-center">
           <button
             data-drawer-target="drawer-navigation"
             data-drawer-toggle="drawer-navigation"
             aria-controls="drawer-navigation"
             class={[
-              "p-2 mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
+              "mr-2 text-neutral-600 rounded cursor-pointer lg:hidden",
               "hover:text-neutral-900 hover:bg-neutral-100"
             ]}
           >
@@ -29,18 +33,18 @@ defmodule Web.NavigationComponents do
             </span>
           </a>
         </div>
-        <div class="flex items-center lg:order-2">
+        <div class="flex items-center order-2">
           <a
             target="_blank"
             href="https://www.firezone.dev/kb?utm_source=product"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline lg:ml-2 hidden lg:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline ml-2"
           >
             Docs
           </a>
           <a
             target="_blank"
             href="https://firezone.statuspage.io"
-            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline lg:ml-2 hidden lg:block"
+            class="mr-6 mt-1 text-neutral-700 hover:text-neutral-900 hover:underline ml-2"
           >
             Status
           </a>
@@ -100,12 +104,14 @@ defmodule Web.NavigationComponents do
     required: true,
     doc: "The items for the navigation bar should use `sidebar_item` component."
 
+  attr :banner, :boolean, required: false, default: false
+
   def sidebar(assigns) do
     ~H"""
     <aside class={~w[
         fixed top-0 left-0 z-40
         w-64 h-screen
-        pt-14 pb-8
+        #{@banner && "pt-24" || "pt-14"} pb-8
         transition-transform -translate-x-full
         bg-white border-r border-neutral-200
         lg:translate-x-0
