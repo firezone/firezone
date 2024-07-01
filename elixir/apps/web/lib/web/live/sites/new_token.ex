@@ -74,7 +74,7 @@ defmodule Web.Sites.NewToken do
           <.tabs :if={@env} id="deployment-instructions">
             <:tab
               id="systemd-instructions"
-              icon="fa-linux-brand"
+              icon="hero-command-line"
               label="systemd"
               phx_click="tab_selected"
               selected={@selected_tab == "systemd-instructions"}
@@ -98,7 +98,7 @@ defmodule Web.Sites.NewToken do
             </:tab>
             <:tab
               id="docker-instructions"
-              icon="fa-docker-brand"
+              icon="docker"
               label="Docker"
               phx_click="tab_selected"
               selected={@selected_tab == "docker-instructions"}
@@ -154,7 +154,7 @@ defmodule Web.Sites.NewToken do
             </:tab>
             <:tab
               id="binary-instructions"
-              icon="fa-terminal-solid"
+              icon="hero-wrench-screwdriver"
               label="Custom"
               phx_click="tab_selected"
               selected={@selected_tab == "binary-instructions"}

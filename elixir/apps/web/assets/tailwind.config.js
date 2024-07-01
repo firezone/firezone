@@ -86,39 +86,6 @@ module.exports = {
     plugin(({ addVariant }) => addVariant("phx-submit-loading", [".phx-submit-loading&", ".phx-submit-loading &"])),
     plugin(({ addVariant }) => addVariant("phx-change-loading", [".phx-change-loading&", ".phx-change-loading &"])),
 
-    // Embeds Font Awesome icons into your app.css bundle
-    plugin(function ({ matchComponents, theme }) {
-      let iconsDir = path.join(__dirname, "./vendor/fontawesome")
-      let values = {}
-      let icons = [
-        ["", "/regular"],
-        ["-solid", "/solid"],
-        ["-brand", "/brands"]
-      ]
-      icons.forEach(([suffix, dir]) => {
-        fs.readdirSync(path.join(iconsDir, dir)).map(file => {
-          let name = path.basename(file, ".svg") + suffix
-          values[name] = { name, fullPath: path.join(iconsDir, dir, file) }
-        })
-      })
-      matchComponents({
-        "fa": ({ name, fullPath }) => {
-          let content = fs.readFileSync(fullPath).toString().replace(/\r?\n|\r/g, "")
-          return {
-            [`--fa-${name}`]: `url('data:image/svg+xml;utf8,${content}')`,
-            "-webkit-mask": `var(--fa-${name})`,
-            "mask": `var(--fa-${name})`,
-            "background-color": "currentColor",
-            "vertical-align": "middle",
-            "display": "inline-block",
-            "width": theme("spacing.5"),
-            "height": theme("spacing.5"),
-            "mask-repeat": "no-repeat",
-          }
-        }
-      }, { values })
-    }),
-
     // Embeds Hero Icons (https://heroicons.com) into your app.css bundle
     // See your `CoreComponents.icon/1` for more information.
     //

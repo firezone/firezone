@@ -174,10 +174,12 @@ defmodule Web.CoreComponents do
                 phx-click={Map.get(tab, :phx_click)}
                 phx-value-id={tab.id}
               >
-                <%= if tab.icon do %>
-                  <.icon name={tab.icon} class="h-4 w-4 mr-1" />
-                <% end %>
-                <%= tab.label %>
+                <span class="flex items-center">
+                  <%= if tab.icon do %>
+                    <.icon name={tab.icon} class="h-4 w-4 mr-2" />
+                  <% end %>
+                  <%= tab.label %>
+                </span>
               </button>
             </li>
           <% end %>
@@ -426,11 +428,7 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders a [Font Awesome Icon](https://fontawesome.com) or [Hero Icon](https://heroicons.com).
-
-  Font Awesome icons come in three styles – regular, solid, and brand.
-  By default, the regular style is used, but solid and brand may
-  be applied by using the `-solid` and `-brand` suffix.
+  Renders a [Hero Icon](https://heroicons.com).
 
   Hero icons come in three styles – outline, solid, and mini.
   By default, the outline style is used, but solid and mini may
@@ -439,25 +437,17 @@ defmodule Web.CoreComponents do
   You can customize the size and colors of the icons by setting
   width, height, and background color classes.
 
-  Icons are extracted from your `assets/vendor` directory and bundled
-  within your compiled app.css by the plugins in your `assets/tailwind.config.js`.
+  Icons are extracted from your `assets/vendor/heroicons` directory and bundled
+  within your compiled app.css by the plugin in your `assets/tailwind.config.js`.
 
   ## Examples
 
-      <.icon name="fa-x-mark-solid" />
-      <.icon name="fa-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
       <.icon name="hero-x-mark-solid" />
       <.icon name="hero-arrow-path" class="ml-1 w-3 h-3 animate-spin" />
   """
   attr :name, :string, required: true
   attr :class, :string, default: nil
   attr :rest, :global
-
-  def icon(%{name: "fa-" <> _} = assigns) do
-    ~H"""
-    <span class={[@name, @class]} {@rest} />
-    """
-  end
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
@@ -491,13 +481,34 @@ defmodule Web.CoreComponents do
     <span class={"inline-flex " <> @class} @rest>
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
         <g fill-rule="evenodd">
-          <path d="M77.941 44.5v36.836L46.324 62.918V26.082zm0 0" fill="#5c4ee5" />
-          <path d="M81.41 81.336l31.633-18.418V26.082L81.41 44.5zm0 0" fill="#4040b2" />
+          <path d="M77.941 44.5v36.836L46.324 62.918V26.082zm0 0" fill="currentColor" />
+          <path d="M81.41 81.336l31.633-18.418V26.082L81.41 44.5zm0 0" fill="currentColor" />
           <path
             d="M11.242 42.36L42.86 60.776V23.941L11.242 5.523zm0 0M77.941 85.375L46.324 66.957v36.82l31.617 18.418zm0 0"
-            fill="#5c4ee5"
+            fill="currentColor"
           />
         </g>
+      </svg>
+    </span>
+    """
+  end
+
+  def icon(%{name: "docker"} = assigns) do
+    ~H"""
+    <span class={"inline-flex " <> @class} @rest>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756.26 596.9">
+        <defs>
+          <style>
+            .cls-1 {
+              stroke-width: 0px;
+            }
+          </style>
+        </defs>
+        <path
+          fill="currentColor"
+          class="cls-1"
+          d="M743.96,245.25c-18.54-12.48-67.26-17.81-102.68-8.27-1.91-35.28-20.1-65.01-53.38-90.95l-12.32-8.27-8.21,12.4c-16.14,24.5-22.94,57.14-20.53,86.81,1.9,18.28,8.26,38.83,20.53,53.74-46.1,26.74-88.59,20.67-276.77,20.67H.06c-.85,42.49,5.98,124.23,57.96,190.77,5.74,7.35,12.04,14.46,18.87,21.31,42.26,42.32,106.11,73.35,201.59,73.44,145.66.13,270.46-78.6,346.37-268.97,24.98.41,90.92,4.48,123.19-57.88.79-1.05,8.21-16.54,8.21-16.54l-12.3-8.27ZM189.67,206.39h-81.7v81.7h81.7v-81.7ZM295.22,206.39h-81.7v81.7h81.7v-81.7ZM400.77,206.39h-81.7v81.7h81.7v-81.7ZM506.32,206.39h-81.7v81.7h81.7v-81.7ZM84.12,206.39H2.42v81.7h81.7v-81.7ZM189.67,103.2h-81.7v81.7h81.7v-81.7ZM295.22,103.2h-81.7v81.7h81.7v-81.7ZM400.77,103.2h-81.7v81.7h81.7v-81.7ZM400.77,0h-81.7v81.7h81.7V0Z"
+        />
       </svg>
     </span>
     """
