@@ -33,7 +33,7 @@ pub mod heartbeat;
 mod ipc_service;
 pub mod known_dirs;
 mod standalone;
-mod uptime_lib;
+mod uptime;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
