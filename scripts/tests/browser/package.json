@@ -10,7 +10,7 @@
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
-    "@types/node": "^20.14.2",
+    "@types/node": "^20.14.9",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.2"
   }
