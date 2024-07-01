@@ -30,8 +30,8 @@ importers:
         specifier: ^2.49.0
         version: 2.49.0
       '@types/node':
-        specifier: 20.14.2
-        version: 20.14.2
+        specifier: 20.14.9
+        version: 20.14.9
       '@types/react':
         specifier: 18.3.3
         version: 18.3.3
@@ -446,6 +446,9 @@ packages:
 
   '@types/node@20.14.2':
     resolution: {integrity: sha512-xyu6WAMVwv6AKFLB+e/7ySZVr/0zLCzOa7rSpq6jNwpqOrUbcACDWC+53d4n2QHOnDou0fbIsg8wZu/sxrnI4Q==}
+
+  '@types/node@20.14.9':
+    resolution: {integrity: sha512-06OCtnTXtWOZBJlRApleWndH4JsRVs1pDCc8dLSQp+7PpUpX3ePdHyeNSFTeSe7FtKyQkrlPvHwJOW3SLd8Oyg==}
 
   '@types/prop-types@15.7.12':
     resolution: {integrity: sha512-5zvhXYtRNRluoE/jAp4GVsSduVUzNWKkOZrCDBWYtE7biZywwdC2AcEzg+cSMLFRfVgeAFqpfNabiPjxFddV1Q==}
@@ -2222,6 +2225,10 @@ snapshots:
   '@types/ms@0.7.34': {}
 
   '@types/node@20.14.2':
+    dependencies:
+      undici-types: 5.26.5
+
+  '@types/node@20.14.9':
     dependencies:
       undici-types: 5.26.5
 
