@@ -143,7 +143,7 @@ jobs:
           comment:
             "Apply Run from GitHub Actions CI ${{ inputs.tag }}"
 
-  # Some renegade users are self-hosting these, so support them as best we can by making our
+  # Some intrepid users are self-hosting these, so support them as best we can by making our
   # infrastructure images available to them.
   publish-infra-images:
     # Only publish if our own deploy was successful
