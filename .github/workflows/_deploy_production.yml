@@ -150,6 +150,7 @@ jobs:
     needs: deploy-production
     runs-on: ubuntu-22.04
     permissions:
+      packages: write
       id-token: write
     strategy:
       fail-fast: false
