@@ -40,7 +40,6 @@ pub struct Client {
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct RequestConnection {
-    pub relays: Vec<Relay>,
     pub resource: ResourceDescription,
     pub client: Client,
     #[serde(rename = "ref")]
