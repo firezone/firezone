@@ -85,7 +85,6 @@ impl KnownHosts {
         }
     }
 
-    // This function will panic if it's called with an invalid PTR question
     fn get_records<N: ToName>(
         &self,
         question: &Question<N>,
