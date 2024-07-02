@@ -35,18 +35,18 @@ impl App {
         let username = std::env::var("USER")?;
 
         // Create the firezone group if needed
-        process::Command::new("sudo")
-            .args([
+        Exec::cmd("sudo")
+            .args(&[
                 "groupadd", "--force", // Exit with success if the group already exists
                 FZ_GROUP,
             ])
-            .status()?
+            .join()?
             .fz_exit_ok()?;
 
         // Add ourself to the firezone group
-        process::Command::new("sudo")
-            .args(["usermod", "--append", "--groups", FZ_GROUP, &username])
-            .status()?
+        Exec::cmd("sudo")
+            .args(&["usermod", "--append", "--groups", FZ_GROUP, &username])
+            .join()?
             .fz_exit_ok()?;
 
         Ok(Self { username })
@@ -103,9 +103,7 @@ fn build_binary(name: &str) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn ipc_service_command() -> Exec {
-    let mut cmd = Exec::cmd("sudo");
-    cmd.args(&["--preserve-env", "target/debug/firezone-client-ipc"]);
-    cmd
+    Exec::cmd("sudo").args(&["--preserve-env", "target/debug/firezone-client-ipc"])
 }
 
 #[cfg(target_os = "windows")]
