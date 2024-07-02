@@ -99,7 +99,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build and push control plane images
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
@@ -293,7 +293,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build Docker images
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
