@@ -118,10 +118,9 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
                 if matches!(error.kind(), NotFound) {
                     // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
                     return Ok(());
-                } else {
-                    // But any other error like permissions errors, should bubble.
-                    return Err(error.into());
                 }
+                // But any other error like permissions errors, should bubble.
+                return Err(error.into());
             }
         };
         while let Some(entry) = dir.next_entry().await? {
@@ -209,10 +208,9 @@ fn add_dir_to_zip(
             if matches!(error.kind(), NotFound) {
                 // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
                 return Ok(());
-            } else {
-                // But any other error like permissions errors, should bubble.
-                return Err(error.into());
             }
+            // But any other error like permissions errors, should bubble.
+            return Err(error.into());
         }
     };
     for entry in dir {
