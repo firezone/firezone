@@ -458,7 +458,6 @@ A common example for these are buffers:
 When reading from a `UdpSocket`, we need to provide a `&mut [u8]` as a place for the actual bytes being received.
 Only the owner of a value can declare it mutable and thus either mutate itself or temporarily hand out mutable references to other functions.
 `UdpSocket` follows this design: It doesn't declare a buffer on its own, instead, it only requires temporary, mutable access to it when it is actually reading from the socket.
-As we will see, sans-IO driven designs heavily make use of same pattern.
 
 ### Exhaustive matching and ADTs
 
