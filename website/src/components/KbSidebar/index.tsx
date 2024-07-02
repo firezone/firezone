@@ -71,6 +71,9 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/automate/terraform/azure">
               Terraform + Azure
             </SidebarItem>
+            <SidebarItem href="/kb/automate/docker-compose">
+              Docker Compose
+            </SidebarItem>
           </SidebarCollapse>
         </SidebarItemGroup>
         <SidebarItemGroup>
