@@ -522,6 +522,14 @@ defmodule Web.Live.Actors.ShowTest do
           }
         )
 
+      oidc_identity_with_no_email =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: oidc_provider,
+          provider_identifier: "sub123"
+        )
+
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
         |> Ecto.Changeset.change(
@@ -552,6 +560,13 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert lv
              |> element("#identity-#{oidc_identity.id} button", "Send Welcome Email")
+             |> has_element?()
+
+      refute lv
+             |> element(
+               "#identity-#{oidc_identity_with_no_email.id} button",
+               "Send Welcome Email"
+             )
              |> has_element?()
     end
 
