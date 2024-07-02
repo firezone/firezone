@@ -216,45 +216,59 @@ impl StubResolver {
         ips
     }
 
+    fn get_address_records<N: ToName>(
+        &mut self,
+        question: &Question<N>,
+    ) -> Vec<RecordData<DomainName>> {
+        match question.qtype() {
+            Rtype::A => self
+                .get_or_assign_ips(question.qname().to_name())
+                .iter()
+                .copied()
+                .filter_map(get_v4)
+                .map(domain::rdata::A::new)
+                .map(RecordData::A)
+                .collect_vec(),
+            Rtype::AAAA => self
+                .get_or_assign_ips(question.qname().to_name())
+                .iter()
+                .copied()
+                .filter_map(get_v6)
+                .map(domain::rdata::Aaaa::new)
+                .map(RecordData::Aaaa)
+                .collect_vec(),
+            _ => unreachable!(),
+        }
+    }
+
     fn get_records<N: ToName>(
         &mut self,
         question: &Question<N>,
     ) -> Option<Vec<RecordData<DomainName>>> {
         match question.qtype() {
-            Rtype::A => {
-                get_description(&question.qname().to_name(), &self.dns_resources)?;
+            Rtype::A | Rtype::AAAA => {
+                if !self.is_fqdn_resource(&question.qname().to_vec()) {
+                    return None;
+                }
 
-                Some(
-                    self.get_or_assign_ips(question.qname().to_name())
-                        .iter()
-                        .copied()
-                        .filter_map(get_v4)
-                        .map(domain::rdata::A::new)
-                        .map(RecordData::A)
-                        .collect_vec(),
-                )
-            }
-            Rtype::AAAA => {
-                get_description(&question.qname().to_name(), &self.dns_resources)?;
-
-                Some(
-                    self.get_or_assign_ips(question.qname().to_name())
-                        .iter()
-                        .copied()
-                        .filter_map(get_v6)
-                        .map(domain::rdata::Aaaa::new)
-                        .map(RecordData::Aaaa)
-                        .collect_vec(),
-                )
+                Some(self.get_address_records(question))
             }
             Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
-                let fqdn = self.ips_to_fqdn.get(&ip)?;
+                let address = reverse_dns_addr(&question.qname().to_vec().to_string())?;
+                let fqdn = self.resource_address_name(&address)?;
 
                 Some(vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))])
             }
             _ => None,
         }
+    }
+
+    fn is_fqdn_resource(&self, domain_name: &DomainName) -> bool {
+        get_description(domain_name, &self.dns_resources).is_some()
+    }
+
+    fn resource_address_name(&self, address: &IpAddr) -> Option<&DomainName> {
+        self.ips_to_fqdn.get(address)
     }
 
     // TODO: we can save a few allocations here still
