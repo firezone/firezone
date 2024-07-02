@@ -474,7 +474,7 @@ export default function _Page() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="w-64 text-white tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold hover:font-bold"
+                className="w-64 text-white tracking-tight rounded duration-50 hover:ring-2 hover:ring-primary-300 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold"
               >
                 Request a demo
               </button>

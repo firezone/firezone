@@ -1,10 +1,13 @@
 import RootLayout from "@/components/RootLayout";
 import Providers from "@/components/Providers";
+import { DrawerProvider } from "@/components/Providers/DrawerProvider";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <Providers>
-      <RootLayout>{children}</RootLayout>
+      <DrawerProvider>
+        <RootLayout>{children}</RootLayout>
+      </DrawerProvider>
     </Providers>
   );
 }

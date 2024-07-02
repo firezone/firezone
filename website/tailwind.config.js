@@ -1,4 +1,4 @@
-const flowbite = require("flowbite-react/tailwind");
+import flowbite from "flowbite-react/tailwind";
 
 const firezoneColors = {
   // See our brand palette in Figma.
@@ -50,10 +50,10 @@ const firezoneColors = {
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    flowbite.content(),
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    flowbite.content(),
   ],
   theme: {
     extend: {
