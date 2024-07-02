@@ -4,9 +4,11 @@
     naersk.url = "github:nix-community/naersk";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
+    android.url = "github:tadfisher/android-nixpkgs";
+    gradle2nix.url = "github:tadfisher/gradle2nix/v2";
   };
 
-  outputs = { nixpkgs, flake-utils, rust-overlay, ... } @ inputs:
+  outputs = { nixpkgs, flake-utils, rust-overlay, android, gradle2nix, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem
       (
         system:
@@ -24,6 +26,57 @@
             export CARGO="${rust-nightly}/bin/cargo";
             exec "${pkgs.cargo-udeps}/bin/cargo-udeps" "$@"
           '';
+
+          gradle2nixBin = gradle2nix.packages.${system}.default;
+
+          android-sdk = android.sdk.${system} (sdkPkgs: with sdkPkgs; [
+            build-tools-34-0-0
+            cmdline-tools-latest
+            # emulator
+            platform-tools
+            platforms-android-34
+            ndk-25-2-9519653 # Needs to match what is defined in `kotlin/android/app/build.gradle.kts`
+          ]);
+          jdk = pkgs.zulu17;
+
+          gradleLock = builtins.fromJSON (builtins.readFile ../../kotlin/android/gradle.lock);
+          patchJars = moduleFilter: artifactFilter: args: f:
+            let
+              modules =
+                pkgs.lib.filterAttrs
+                  (name: _: moduleFilter name)
+                  gradleLock;
+
+              artifacts = pkgs.lib.filterAttrs (name: _: artifactFilter name);
+
+              patch = src: pkgs.runCommand src.name args (f src);
+            in
+            pkgs.lib.mapAttrs
+              (
+                _: module:
+                  pkgs.lib.mapAttrs (_: _: patch) (artifacts module)
+              )
+              modules;
+          aapt2LinuxJars =
+            pkgs.lib.optionalAttrs pkgs.stdenv.isLinux
+              (patchJars
+                (pkgs.lib.hasPrefix "com.android.tools.build:aapt2:")    # moduleFilter
+                (pkgs.lib.hasSuffix "-linux.jar")                        # artifactFilter
+                {
+                  # args to runCommand
+                  nativeBuildInputs = [ jdk pkgs.autoPatchelfHook ];
+                  buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+                  dontAutoPatchelf = true;
+                }
+                (src: ''                                        # function to make a runCommand script
+                  cp ${src} aapt2.jar                           # src <- derivation to download source
+                  jar xf aapt2.jar aapt2
+                  chmod +x aapt2
+                  autoPatchelf aapt2
+                  jar uf aapt2.jar aapt2
+                  cp aapt2.jar $out
+                  echo $out
+                ''));
 
           libraries = with pkgs;[
             webkitgtk
@@ -52,8 +105,18 @@
             desktop-file-utils
           ];
 
+          pinnedRust = pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml;
+
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps ];
+            packages = [
+              pkgs.cargo-tauri
+              pkgs.iptables
+              pkgs.nodePackages.pnpm
+              cargo-udeps
+              gradle2nixBin
+              android-sdk
+              jdk
+            ];
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
@@ -62,21 +125,57 @@
                 export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH
                 export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
               '';
+            env = [
+              "NDK_HOME=${android-sdk}/share/android-sdk/ndk/25.2.9519653"
+              "ANDROID_HOME=${android-sdk}/share/android-sdk"
+              "ANDROID_SDK_ROOT=${android-sdk}/share/android-sdk"
+              "JAVA_HOME=${jdk.home}"
+            ];
           };
         in
         {
-          packages.firezone-headless-client = naersk.buildPackage {
-            name = "foo";
-            src = ../../rust/headless-client;
-          };
+          packages.firezone-android-debug =
+            gradle2nix.builders.${system}.buildGradlePackage
+              {
+                pname = "firezone-android";
+                # mark:next-android-version
+                version = "1.1.2";
+                src = ../../kotlin/android;
+                lockFile = ../../kotlin/android/gradle.lock;
+                gradleInstallFlags = [ "--stacktrace bundleDebug" ];
 
-          devShells.default = mkShellWithRustVersion [
-            (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
-          ];
+                NDK_HOME = "${android-sdk}/share/android-sdk/ndk/25.2.9519653";
+                ANDROID_HOME = "${android-sdk}/share/android-sdk";
+                ANDROID_SDK_ROOT = "${android-sdk}/share/android-sdk";
+                JAVA_HOME = "${jdk.home}";
 
-          devShells.nightly = mkShellWithRustVersion [
-            (pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
-          ];
+                RUST_ANDROID_GRADLE_CARGO_COMMAND = "${pinnedRust}/bin/cargo";
+                RUST_ANDROID_GRADLE_RUSTC_COMMAND = "${pinnedRust}/bin/rustc";
+
+                buildInputs = [
+                  (pinnedRust.override
+                    {
+                      targets = [
+                        "aarch64-linux-android"
+                        "arm-linux-androideabi"
+                        "armv7-linux-androideabi"
+                        "i686-linux-android"
+                        "x86_64-linux-android"
+                      ];
+                    })
+                ];
+                overlays = aapt2LinuxJars;
+              };
+
+          devShells.default = mkShellWithRustVersion
+            [
+              pinnedRust
+            ];
+
+          devShells.nightly = mkShellWithRustVersion
+            [
+              (pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
+            ];
         }
       );
 }
