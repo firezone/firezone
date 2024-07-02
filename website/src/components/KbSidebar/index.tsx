@@ -101,6 +101,11 @@ export default function KbSidebar() {
                 </Item>
               </li>
               <li>
+                <Item nested href="/kb/authenticate/oidc/auth0">
+                  Auth0
+                </Item>
+              </li>
+              <li>
                 <Item nested href="/kb/authenticate/oidc/fusion">
                   FusionAuth
                 </Item>

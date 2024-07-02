@@ -1,0 +1,60 @@
+import Alert from "@/components/DocsAlert";
+import PlanBadge from "@/components/PlanBadge";
+import SupportOptions from "@/components/SupportOptions";
+import Image from "next/image";
+import Link from "next/link";
+
+<PlanBadge plans={["starter", "team", "enterprise"]}>
+
+# SSO with Auth0
+
+</PlanBadge>
+
+Firezone's universal OIDC connector works with [Auth0](https://auth0.com/).
+Follow this guide to set up Auth0 for use with Firezone's OIDC connector.
+
+## Step 1: Create a new Application in Auth0
+
+1. In Auth0, click on the `Applications` menu in the sidebar. Then click
+   `Applications`. TODO: Screenshot
+1. Click `Create Application`. TODO: Screenshot
+1. Set the name to `Firezone` and click `Regular Web Applications`. Click
+   `Create`. TODO: Screenshot
+1. Click `Settings`. Note the `Domain`, `Client ID`, and `Client Secret` fields.
+   These will be copy-pasted to Firezone in Step 2. TODO: Screenshot
+1. Copy the URL
+   [https://www.firezone.dev/images/save-link-as-icon.png](https://www.firezone.dev/images/save-link-as-icon.png)
+   and paste it into `Application Logo` TODO: Screenshot
+
+Open Firezone in a new tab, and keep Auth0 open.
+
+## Step 2: Create identity provider in Firezone
+
+1. In your Firezone admin portal, go to
+   `Settings -> Identity Providers -> Add Identity Provider -> OpenID Connect`.
+   TODO: Screenshot
+1. Copy the redirect URLs from Firezone to
+   `Application URIs / Allowed Callback URLs` in Auth0, with a comma separating
+   them. TODO: Screenshot
+1. In Auth0, click "Save Changes".
+1. In Firezone, set the provider's `Name` to `Auth0`.
+1. Copy-paste the `Client ID` and `Client Secret` from Auth0 to Firezone.
+1. Set the `Discovery Document URI` in Firezone to
+   `https://<domain>/.well-known/openid-configuration`, replacing `<domain>`
+   with the domain Auth0 assigned to you. TODO: Screenshot
+1. In Firezone, click `Connect Identity Provider`. Firezone will show the
+   `Details` page for the identity provider, and the `Status` will be `Active`.
+   TODO: Screenshot
+
+## Step 3: Test
+
+You should be able to authenticate users to Firezone using the new identity
+provider.
+
+<Alert color="warning">
+  Firezone **does not** automatically provision users or groups for identity
+  providers using the universal OIDC connector. You must create Actors and
+  associated Identities **before** the user will be able to sign in.
+</Alert>
+
+<SupportOptions />
