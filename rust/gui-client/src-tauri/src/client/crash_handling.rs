@@ -133,8 +133,9 @@ impl minidumper::ServerHandler for Handler {
     /// created to store it.
     #[allow(clippy::print_stderr)]
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
-        let format = time::format_description::parse(connlib_client_shared::file_logger::TIME_FORMAT)
-            .expect("static format description should always be parsable");
+        let format =
+            time::format_description::parse(connlib_client_shared::file_logger::TIME_FORMAT)
+                .expect("static format description should always be parsable");
         let date = self
             .start_time
             .format(&format)
@@ -163,6 +164,15 @@ impl minidumper::ServerHandler for Handler {
         match result {
             Ok(mut md_bin) => {
                 let _ = md_bin.file.flush();
+                // Copy the timestamped crash file to a well-known filename,
+                // this makes it easier for the smoke test to find it
+                std::fs::copy(
+                    &md_bin.path,
+                    known_dirs::logs()
+                        .expect("Should be able to find logs dir")
+                        .join("last_crash.dmp"),
+                )
+                .ok();
                 tracing::info!("wrote minidump to disk");
             }
             Err(e) => {
