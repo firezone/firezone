@@ -8,74 +8,21 @@ Rust's premise of speed and memory-safety makes it a great choice for building n
 Most parts of our Rust stack aren't particularly surprising:
 We use the `tokio` runtime for asynchronous tasks, `tungstenite` for WebSockets, `boringtun` for the WireGuard implementation, `rustls` to encrypt traffic with the API, etc.
 Yet, once you go beneath the surface of the library, you will discover something that is perhaps unusual:
-There are almost no calls to `tokio::spawn`, all communication is multiplexed via a single UdpSocket and the same APIs appear to repeat themselves across various layers: `handle_timeout`, `poll_transmit`, `handle_input`, ...
+There are almost no calls to `tokio::spawn`, all communication is multiplexed via a single UDP socket and the same APIs appear to repeat themselves across various layers: `handle_timeout`, `poll_transmit`, `handle_input`, ...
 
 These are the tell-tales of a sans-IO design.
 Instead of sending & receiving bytes via a socket in multiple places, our protocols are implemented as pure state machines.
 Even time is abstracted away:
 Every function that needs to know the current time receives an `Instant` parameter instead of calling `Instant::now` itself.
-This pattern isn't something that we invented.
-`quinn` makes use of it in its [`quinn-proto`](https://github.com/quinn-rs/quinn/tree/main/quinn-proto) crate.
-There is also [`str0m`](https://github.com/algesten/str0m), a sans-IO WebRTC implementation.
+This pattern isn't something that we invented!
+The Python world even has a dedicated [website](https://sans-io.readthedocs.io/) about it.
+In Rust, it is used by libraries such as:
+
+- [`quinn`](https://github.com/quinn-rs/quinn/tree/main/quinn-proto), an independent QUIC implementation.
+- [`quiche`](https://github.com/cloudflare/quiche/tree/master/quiche), cloudflare's QUIC implementation.
+- [`str0m`](https://github.com/algesten/str0m), a sans-IO WebRTC implementation.
 
 In this post, we'll go over what it means to build a sans-IO networking library, why we think it is a good idea and lastly, why Rust lends itself particularly well to this pattern.
-
-## Rust's features
-
-Before we dive into sans-IO itself, let's focus your attention on a few of Rust's features:
-
-* ownership
-* explicit, mutable borrowing
-* exhaustive matching
-* powerful algebraic data types, especially enums
-
-### Ownership & mutable borrowing
-
-Rust forces us to declare, which component or function in our code owns a certain value.
-A common example for these are buffers:
-When reading from a `UdpSocket`, we need to provide a `&mut [u8]` as a place for the actual bytes being received.
-Only the owner of a value can declare it mutable and thus either mutate itself or temporarily hand out mutable references to other functions.
-`UdpSocket` follows this design: It doesn't declare a buffer on its own, instead, it only requires temporary, mutable access to it when it is actually reading from the socket.
-As we will see, sans-IO driven designs heavily make use of same pattern.
-
-### Exhaustive matching and ADTs
-
-The `match` keyword provides us with a compile-time checked way of handling the different variations of a value.
-Combined with enums, this provides a powerful way of ensuring that all combinations are handled.
-Enums lend themselves especially well in modelling state that can change at runtime.
-The following code is a slightly simplified snippet from [actual production code](https://github.com/firezone/firezone/blob/79fd8f6063761e582013873ff2a49d22c2445c46/rust/connlib/snownet/src/node.rs#L1308-L1330), modelling the state of a connection:
-
-```rust
-enum Connection {
-    /// We are still running ICE to figure out, which socket to use to send data.
-    Connecting {
-        /// Socket addresses from which we might receive data (even before we are connected).
-        possible_sockets: HashSet<SocketAddr>,
-        /// Packets emitted by wireguard whilst are still running ICE.
-        ///
-        /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
-        /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        buffered: RingBuffer<Vec<u8>>,
-    },
-    /// A socket has been nominated.
-    Connected {
-        /// Our nominated socket.
-        peer_socket: PeerSocket,
-        /// Other addresses that we might see traffic from (e.g.
-        STUN messages during roaming).
-        possible_sockets: HashSet<SocketAddr>,
-    },
-    /// The connection failed in an unrecoverable way and will be GC'd.
-    Failed,
-    /// The connection is idle and will be GC'd.
-    Idle,
-}
-```
-
-The key things about the above model are the invariants around which data is available in a particular state.
-For example, buffered packets can only happen whilst we are Connecting.
-Once we are Connected, there is no more need to buffer packets.
-Similarly, once a Connection is failed, we no longer need to keep around the previously connected socket.
 
 ## Rust's async model & the "function colouring" debate
 
@@ -482,17 +429,85 @@ This reference state machine is used as the source of truth in our tests.
 We then leverage `proptest`'s support for [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html) to deterministically sample and execute thousands of scenarios on every CI run.
 The details of this go beyond the scope of this post but we are planning to publish one about that topic in particular too!
 
-## Rust's static analysis
+### Edge-cases and IO failures
 
-How do Rust’s features that we discussed above fit into this?
-A sans-IO design only has "synchronous" APIs, i.e. none of the functions on these state machines ever block on IO or time.
-They are just data structures and Rust lends itself pretty well to modelling these:
+Not only can we easily test how our code reacts at certain points in time but the lack of any IO also makes it really easy to test for IO failures and/or weird behaviours!
+
+- What happens if this packets gets dropped and we never receive a response?
+- What happens if we get a malformed response?
+- What happens if the RTT to the server is really long?
+- What happens if we don't have a functional IPv6 interface?
+- What happens if we _only_ have an IPv6 interface?
+
+By decoupling our protocol implementation from the actual IO side-effects, we are forced go back to the drawing board and design our state machine to be resilient against these problems.
+Consequently, detecting and dealing with errors simply becomes part of state machine's input handling which leads to more robust code and makes it less likely for edge-cases to only be considered as an after-thought.
+
+## Reflecting on Rust's features
+
+With an understanding of sans-IO, let's focus our attention on a few of Rust's features:
+
+* ownership
+* explicit, mutable borrowing
+* exhaustive matching
+* powerful algebraic data types, especially enums
+
+### Ownership & mutable borrowing
+
+Rust forces us to declare, which component or function in our code owns a certain value.
+A common example for these are buffers:
+When reading from a `UdpSocket`, we need to provide a `&mut [u8]` as a place for the actual bytes being received.
+Only the owner of a value can declare it mutable and thus either mutate itself or temporarily hand out mutable references to other functions.
+`UdpSocket` follows this design: It doesn't declare a buffer on its own, instead, it only requires temporary, mutable access to it when it is actually reading from the socket.
+As we will see, sans-IO driven designs heavily make use of same pattern.
+
+### Exhaustive matching and ADTs
+
+The `match` keyword provides us with a compile-time checked way of handling the different variations of a value.
+Combined with enums, this provides a powerful way of ensuring that all combinations are handled.
+Enums lend themselves especially well in modelling state that can change at runtime.
+The following code is a slightly simplified snippet from [actual production code](https://github.com/firezone/firezone/blob/79fd8f6063761e582013873ff2a49d22c2445c46/rust/connlib/snownet/src/node.rs#L1308-L1330), modelling the state of a connection:
+
+```rust
+enum Connection {
+    /// We are still running ICE to figure out, which socket to use to send data.
+    Connecting {
+        /// Socket addresses from which we might receive data (even before we are connected).
+        possible_sockets: HashSet<SocketAddr>,
+        /// Packets emitted by wireguard whilst are still running ICE.
+        ///
+        /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
+        /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
+        buffered: RingBuffer<Vec<u8>>,
+    },
+    /// A socket has been nominated.
+    Connected {
+        /// Our nominated socket.
+        peer_socket: PeerSocket,
+        /// Other addresses that we might see traffic from (e.g.
+        STUN messages during roaming).
+        possible_sockets: HashSet<SocketAddr>,
+    },
+    /// The connection failed in an unrecoverable way and will be GC'd.
+    Failed,
+    /// The connection is idle and will be GC'd.
+    Idle,
+}
+```
+
+The key things about the above model are the invariants around which data is available in a particular state.
+For example, buffered packets can only happen whilst we are Connecting.
+Once we are Connected, there is no more need to buffer packets.
+Similarly, once a Connection is failed, we no longer need to keep around the previously connected socket.
+
+### Rust + sans-IO: A match made in heaven?
+
+A sans-IO design only has synchronous APIs, i.e. none of the functions on these state machines ever block on IO or time.
+They are just data structures and we can use Rust's features to model our protocol:
 
 * We can use `&mut` very liberally to express state that changes.
 * We can use enums to express mutually-exclusive aspects.
 * We can use exhaustive pattern matching to ensure no state combination is unhandled.
 
-I would to place special emphasis on the usage of `&mut` here.
 In Rust, `async` functions are just syntax sugar for a data structure that implements `Future`.
 Spawning a `Future` into a runtime[^1] like `tokio` requires this data structure to be `'static` and therefore, it cannot contain any references, including `&mut`.
 To mutate shared state in such a scenario, you basically have two options:
@@ -503,20 +518,42 @@ To mutate shared state in such a scenario, you basically have two options:
 Both of these options have a runtime overhead:
 Locks can result in contention and sending messages through channels requires copying.
 In addition, multiple tasks running inside a runtime operate in a non-deterministic order which can easily lead to race conditions and in the worst-case, dead-locks.
-It appears that suddenly, we’ve arrived at a design that feels brittle, is prone to dead-locks and no longer employs zero-cost abstractions.
-Avoiding all of these is one of the reasons we wanted to use Rust in the first-place!
+It appears that with either of these options, we arrive at a design that feels brittle, is prone to dead-locks and no longer employs zero-cost abstractions, yet avoiding all of these is one of the reasons we wanted to use Rust in the first-place!
 
-[^1]: Technically, a thread-per-core runtime could allow non-`'static` `Future`s.
-[^2]: `boringtun` does call `Instant::now` internally and is thus unfortunately partly impure, see https://github.com/cloudflare/boringtun/issues/391.
+In the sans-IO world, these problems don't exist.
+Our protocol code doesn't spawn any tasks and thus, `&mut self` is all we need to mutate state.
+Without tasks or threads, we also don't need synchronisation primitives like `Mutex`.
+Without channels, there is no need to copy data: The state machine can simply directly reference the buffer we passed to the socket.
+
+Last but not least, we've also found that ever since we moved to sans-IO, our code became much easier to understand.
+No more tracking down of: Where is the other end of this channel? What if the channel is closed? Which other code is locking this `Mutex`?
+Instead, it is all just nested state machines and regular function calls.
+
+## The downsides
+
+There are no silver-bullets and sans-IO is no exception to this.
+Whilst writing your own eventloop gives you great control, it can also result in subtle bugs that are initially hard to find.
+
+For example, a bug in the state machine where the value returned from `poll_timeout` is not advanced can lead to a busy-looping behaviour in the eventloop.
+
+Sequential actions require more boilerplate.
+In Rust, `async` functions compile down to state machines, with each `.await` point representing a transition to a different state.
+This makes it easy for developers to write sequential code.
+Without `async`, we need to write our own state machines for expressing the various steps.
+How annoying this will be in practise depends on your problem domain.
+Modelling a request-response protocol is not very difficult as we've seen in the example of a `StunBinding`.
+
+Finally, the sans-IO design is not particularly wide-spread (yet) in the Rust community.
+As a result, there are very few libraries out there that follow it.
+Most of them will either implement blocking or non-blocking IO instead of sans-IO.
 
 ## Closing
 
-This post covered a lot of ground, let's quickly recap:
+Writing sans-IO code is unusual at first but really enjoyable once you get the hang of it.
+In part, this is because Rust provides great tools for modelling state machines.
+More so, the fact that sans-IO forces you to handle errors as you would any other input simply feels like the way networking code should be written.
 
-- TODO
+Discuss this post on [Hackernews](TODO) or [Reddit](TODO).
 
-<!--
-
-Notes: Discuss how hole-punching only works if we send from the same socket so we need multi-plexing.
-
- -->
+[^1]: Technically, a thread-per-core runtime could allow non-`'static` `Future`s.
+[^2]: `boringtun` does call `Instant::now` internally and is thus unfortunately partly impure, see https://github.com/cloudflare/boringtun/issues/391.
