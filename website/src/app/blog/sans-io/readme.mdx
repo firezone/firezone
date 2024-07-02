@@ -12,31 +12,34 @@ There are almost no calls to `tokio::spawn`, all communication is multiplexed vi
 These are the tell-tales of a sans-IO design:
 instead of sending & receiving bytes via a socket in multiple places, our protocols are implemented as pure state machines.
 Even time is abstracted away:
-Every function that needs to know the current time receives an Instant parameter instead of calling `Instant::now` itself.
+Every function that needs to know the current time receives an `Instant` parameter instead of calling `Instant::now` itself.
 This pattern isn't something that we invented.
-quinn makes use of it in its quinn-proto crate: https://github.com/quinn-rs/quinn/tree/main/quinn-proto.
-There is also str0m, a sans-IO WebRTC implementation: https://github.com/algesten/str0m.
+`quinn` makes use of it in its `quinn-prot`o crate: https://github.com/quinn-rs/quinn/tree/main/quinn-proto.
+There is also `str0m`, a sans-IO WebRTC implementation: https://github.com/algesten/str0m.
 
 In this post, we'll go over what it means to build a sans-IO networking library, why we think it is a good idea and lastly, why Rust lends itself particularly well to this pattern.
 
 ## Rust's features
 
-Before we dive into sans-IO itself, let me focus your attention on a few of Rust's features:
+Before we dive into sans-IO itself, let's focus your attention on a few of Rust's features:
 
 * ownership
-* explicit mutable borrowing
+* explicit, mutable borrowing
 * exhaustive matching
 * powerful algebraic data types, especially enums
 
 ### Ownership & mutable borrowing
 
-Rust forces us to declare, which component or function in our code owns a certain value, like a buffer.
+Rust forces us to declare, which component or function in our code owns a certain value.
+A common example for these are buffers:
+When reading from a `UdpSocket`, we need to provide a `&mut [u8]` as a place for the actual bytes being received.
 Only the owner of a value can declare it mutable and thus either mutate itself or temporarily hand out mutable references to other functions.
-As we will see, sans-IO driven designs heavily make use of this.
+`UdpSocket` follows this design: It doesn't declare a buffer on its own, instead, it only requires temporary, mutable access to it when it is actually reading from the socket.
+As we will see, sans-IO driven designs heavily make use of same pattern.
 
 ### Exhaustive matching and ADTs
 
-The match keyword provides us with a compile-time checked way of handling the different variations of a value.
+The `match` keyword provides us with a compile-time checked way of handling the different variations of a value.
 Combined with enums, this provides a powerful way of ensuring that all combinations are handled.
 Enums lend themselves especially well in modelling state that can change at runtime.
 For example, the following enum models the state of a Connection:
