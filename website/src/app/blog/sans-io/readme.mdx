@@ -76,18 +76,23 @@ For example, buffered packets can only happen whilst we are Connecting.
 Once we are Connected, there is no more need to buffer packets.
 Similarly, once a Connection is failed, we no longer need to keep around the previously connected socket.
 
-## Rust's async model & the "function colouring" problem
+## Rust's async model & the "function colouring" debate
 
-If you've been around the Rust space for a while, you will have probably heard about things like the "function colouring" problem.
-In a nutshell, it expresses: async functions can only be called from other async functions.
-As a result, an async function deep down in your stack "forces" every calling function to also become async in order to .await the inner function.
+If you've been around the Rust space for a while, you will have come across the "function colouring" debate.
+In a nutshell, it discusses the constraint that async functions can only be called from other async functions.
+The ability to suspend execution and resume later is a pretty important part of function's API contract.
+The fact that Rust enforces this at compile-time is a good thing.
+
+A result of this constraint is that an async function deep down in your stack "forces" every calling function to also become async in order to `.await` the inner function.
 This can be problematic if the code you want to call isn't actually yours but a dependency that you are pulling in.
 
+Some people see this as a problem and they would like to write code that is agnostic over the "asyncness" of their dependencies.
+This idea has merit.
 At the very bottom of each async call stack sits a Future that needs to suspend on something.
 Usually, this is some form of IO, like writing to a socket, reading from a file, waiting for time to advance, etc.
-The majority of async functions don't actually perform async work themselves.
-Instead, they depend on an async primitive like a tokio::net::UdpSocket.
-The code around those inner async functions would usually also work in a blocking context, yet the author happened to pick the async variant.
+However, the majority of async functions don't actually perform async work themselves.
+Instead, they depend on an async primitive like a `tokio::net::UdpSocket`.
+The code around those inner async functions would usually also work in a blocking context, but the author of your dependency happened to pick the async variant.
 Here is an example of that:
 
 ```rust
@@ -198,7 +203,7 @@ TODO
 
 So far, all of this seems like a very excessive overhead for sending a few UDP packets back and forth.
 Surely, the 10 line example above is preferable over this state machine!
-The example might be, but recall the original problem we were discussing: function colouring.
+The example might be, but recall the debate around function colouring.
 In a code snippet without dependencies like the above example, using `async` seems like a no brainer and really easy.
 The problem arises once you want to bring in dependencies.
 Composing your functionality (i.e. policy) on top of those dependencies imposes their decisions around async vs blocking IO on you.
