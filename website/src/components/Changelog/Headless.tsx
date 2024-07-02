@@ -7,6 +7,17 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
+      <Entry version="1.1.1" date={new Date("2024-06-29")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes an issue that could cause Resources to be unreachable a few
+            hours after roaming networks.
+          </li>
+          <li className="pl-2">
+            Reduces noise in logs for the default log level.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

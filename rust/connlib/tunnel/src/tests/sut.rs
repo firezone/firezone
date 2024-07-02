@@ -213,7 +213,12 @@ impl StateMachineTest for TunnelTest {
             Transition::RoamClient {
                 ip4_socket,
                 ip6_socket,
-            } => state.client.roam(ip4_socket, ip6_socket, state.now),
+            } => {
+                state.client.roam(ip4_socket, ip6_socket);
+
+                // In prod, we reconnect to the portal and receive a new `init` message.
+                state.client.init_relays([&state.relay], ref_state.now);
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
@@ -622,13 +627,9 @@ impl TunnelTest {
                     .client
                     .span
                     .in_scope(|| {
-                        self.client.state.create_or_reuse_connection(
-                            resource,
-                            gateway,
-                            site,
-                            HashSet::default(),
-                            HashSet::default(),
-                        )
+                        self.client
+                            .state
+                            .create_or_reuse_connection(resource, gateway, site)
                     })
                     .unwrap()
                     .unwrap();
@@ -678,8 +679,6 @@ impl TunnelTest {
                                     self.client.state.public_key(),
                                     self.client.tunnel_ip4,
                                     self.client.tunnel_ip6,
-                                    HashSet::default(),
-                                    HashSet::default(),
                                     new_connection
                                         .client_payload
                                         .domain

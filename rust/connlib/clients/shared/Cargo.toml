@@ -29,7 +29,6 @@ phoenix-channel = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }
-tracing-android = "0.2"
 
 [dev-dependencies]
 chrono = { workspace = true }
