@@ -475,9 +475,11 @@ Similarly, actually sending data over a socket takes (a little bit of) time and 
 In a sans-IO world, "sending data" in a test is as simple as taking a `Transmit` from party B and calling `handle_input` on the state of party A.
 No need to go through a network socket!
 
-TODO: Should we directly talk about property-based testing here or just hint at it and make a dedicated post about it?
-
-TODO: Write about no requirement for mocking, type parameters, trait objects etc?
+At firezone, we took this idea one step further.
+We implemented a reference state machine that describes how we want `connlib` to work.
+This reference state machine is used as the source of truth in our tests.
+We then leverage `proptest`'s support for [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html) to deterministically sample and execute thousands of scenarios on every CI run.
+The details of this go beyond the scope of this post but we are planning to publish one about that topic in particular too!
 
 ## Rust's static analysis
 
