@@ -119,8 +119,8 @@ The dependency inversion principle says that policies (what to do) should not de
 Instead, both components should depend and communicate via abstractions.
 In other words, the piece of code that decides to send a message on the network (i.e. the policy) should not depend on the code that actually sends the message (i.e. the implementation).
 This is what is "wrong" with the above example:
-We have a direct dependency on a UDP socket in the middle of our policy code, yet the policy code is usually the interesting one.
-That is the one we want to test and perhaps share with others via libraries.
+We have a direct dependency on a UDP socket in the middle of our policy code.
+Yet, the policy code the one we want to test and perhaps share with others via libraries.
 
 ## Applying dependency inversion
 
