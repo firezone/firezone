@@ -216,7 +216,6 @@ impl StubResolver {
         ips
     }
 
-    // This function will panic if it's called with an invalid PTR question
     fn get_records<N: ToName>(
         &mut self,
         question: &Question<N>,
