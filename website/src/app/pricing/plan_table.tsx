@@ -616,7 +616,7 @@ export default function PlanTable() {
             <Link href="https://app.firezone.dev/sign_up">
               <button
                 type="button"
-                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-primary-450 font-semibold hover:font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg border border-1 border-primary-450 hover:border-2"
+                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-primary-450 font-semibold tracking-tight rounded duration-50 hover:ring-2 transition transform shadow-lg border border-primary-450 hover:ring-2 hover:ring-primary-200"
               >
                 Sign up
               </button>
@@ -626,7 +626,7 @@ export default function PlanTable() {
             <Link href="https://app.firezone.dev/sign_up">
               <button
                 type="button"
-                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-primary-450 font-semibold hover:font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg border border-1 border-primary-450 hover:border-2"
+                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-primary-450 font-semibold tracking-tight rounded duration-50 hover:ring-2 transition transform shadow-lg border border-primary-450 hover:ring-2 hover:ring-primary-200"
               >
                 Sign up
               </button>
@@ -636,7 +636,7 @@ export default function PlanTable() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-white font-semibold hover:font-bold tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg bg-primary-450"
+                className="md:text-lg md:py-2.5 text-sm sm:px-5 px-2.5 py-1.5 text-white font-semibold tracking-tight rounded duration-50 hover:ring-2 hover:ring-primary-300 transition transform shadow-lg bg-primary-450"
               >
                 Contact us
               </button>

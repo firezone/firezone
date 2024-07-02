@@ -4,16 +4,17 @@ import { usePathname } from "next/navigation";
 import type { CustomFlowbiteTheme } from "flowbite-react";
 import { Sidebar as FlowbiteSidebar } from "flowbite-react";
 import Link from "next/link";
+import { useDrawer } from "@/components/Providers/DrawerProvider";
 
 const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
   root: {
-    base: "h-[calc(100vh)] left-0 top-0 z-40 sticky transition-transform -translate-x-full md:translate-x-0 bg-neutral-50 pt-16 pb-8 border-r border-neutral-200",
+    base: "h-[calc(100vh)] left-0 top-0 z-40 sticky bg-white transition-transform pt-16 pb-8",
     collapsed: {
       on: "w-16",
       off: "w-64",
     },
     inner:
-      "h-full overflow-y-auto overflow-x-hidden rounded bg-neutral-50 px-3 py-4 dark:bg-neutral-800",
+      "h-full overflow-y-auto overflow-x-hidden rounded px-3 py-4 dark:bg-neutral-800",
   },
   collapse: {
     button:
@@ -86,6 +87,16 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
   },
 };
 
+const applyTheme = (isShown: boolean) => {
+  return {
+    ...FlowbiteSidebarTheme,
+    root: {
+      ...FlowbiteSidebarTheme.root,
+      base: `${FlowbiteSidebarTheme.root?.base} ${isShown ? "translate-x-0" : "-translate-x-full"}`,
+    },
+  };
+};
+
 export function SidebarItem({
   href,
   children,
@@ -133,8 +144,14 @@ export function SidebarCollapse({
 }
 
 export function Sidebar({ children }: { children: React.ReactNode }) {
+  const { isShown } = useDrawer();
+
   return (
-    <FlowbiteSidebar theme={FlowbiteSidebarTheme} aria-label="FlowbiteSidebar">
+    <FlowbiteSidebar
+      id="sidebar"
+      theme={applyTheme(isShown)}
+      aria-label="FlowbiteSidebar"
+    >
       {children}
     </FlowbiteSidebar>
   );

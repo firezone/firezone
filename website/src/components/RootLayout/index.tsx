@@ -53,11 +53,9 @@ export default function RootLayout({
             now to get started.
           </p>
         </Banner>
-        <div className="min-h-screen h-auto antialiased">
-          <RootNavbar />
-          {children}
-          <Footer />
-        </div>
+        <RootNavbar />
+        {children}
+        <Footer />
         <Script
           strategy="lazyOnload"
           id="hs-script-loader"
