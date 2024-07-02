@@ -2,20 +2,20 @@ At firezone, we build secure remote access that scales, be it from your Android 
 After several iterations, we’ve landed on a design for our connectivity library that we are extremely happy with.
 It gives us blazingly fast and exhaustive tests, deep customisation and overall high assurance that it does what we want it to do.
 
-This library - aptly named connlib is built in Rust and the design we are talking about is known as sans-IO.
+This library - aptly named `connlib` is built in Rust and the design we are talking about is known as sans-IO.
 Rust's premise of speed and memory-safety makes it a great choice for building network services.
 Most parts of our Rust stack aren't particularly surprising:
 We use the `tokio` runtime for asynchronous tasks, `tungstenite` for WebSockets, `boringtun` for the WireGuard implementation, `rustls` to encrypt traffic with the API, etc.
 Yet, once you go beneath the surface of the library, you will discover something that is perhaps unusual:
 There are almost no calls to `tokio::spawn`, all communication is multiplexed via a single UdpSocket and the same APIs appear to repeat themselves across various layers: `handle_timeout`, `poll_transmit`, `handle_input`, ...
 
-These are the tell-tales of a sans-IO design:
-instead of sending & receiving bytes via a socket in multiple places, our protocols are implemented as pure state machines.
+These are the tell-tales of a sans-IO design.
+Instead of sending & receiving bytes via a socket in multiple places, our protocols are implemented as pure state machines.
 Even time is abstracted away:
 Every function that needs to know the current time receives an `Instant` parameter instead of calling `Instant::now` itself.
 This pattern isn't something that we invented.
-`quinn` makes use of it in its `quinn-prot`o crate: https://github.com/quinn-rs/quinn/tree/main/quinn-proto.
-There is also `str0m`, a sans-IO WebRTC implementation: https://github.com/algesten/str0m.
+`quinn` makes use of it in its [`quinn-proto`](https://github.com/quinn-rs/quinn/tree/main/quinn-proto) crate.
+There is also [`str0m`](https://github.com/algesten/str0m), a sans-IO WebRTC implementation.
 
 In this post, we'll go over what it means to build a sans-IO networking library, why we think it is a good idea and lastly, why Rust lends itself particularly well to this pattern.
 
@@ -78,9 +78,9 @@ Similarly, once a Connection is failed, we no longer need to keep around the pre
 
 ## Rust's async model & the "function colouring" debate
 
-If you've been around the Rust space for a while, you will have come across the "function colouring" debate.
-In a nutshell, it discusses the constraint that async functions can only be called from other async functions.
-The ability to suspend execution and resume later is a pretty important part of function's API contract.
+If you've been around the Rust space for a while, you will have likely come across the "function colouring" debate.
+In a nutshell, it discusses the constraint that async functions can only be called from other async functions, thus "colouring" them.
+There are various takes on this but what stands out for me is that the ability to suspend execution and resume later is a pretty important part of function's API contract.
 The fact that Rust enforces this at compile-time is a good thing.
 
 A result of this constraint is that an async function deep down in your stack "forces" every calling function to also become async in order to `.await` the inner function.
@@ -88,9 +88,9 @@ This can be problematic if the code you want to call isn't actually yours but a 
 
 Some people see this as a problem and they would like to write code that is agnostic over the "asyncness" of their dependencies.
 This idea has merit.
-At the very bottom of each async call stack sits a Future that needs to suspend on something.
+At the very bottom of each async call stack sits a `Future` that needs to suspend on something.
 Usually, this is some form of IO, like writing to a socket, reading from a file, waiting for time to advance, etc.
-However, the majority of async functions don't actually perform async work themselves.
+The majority of async functions don't actually perform async work themselves.
 Instead, they depend on an async primitive like a `tokio::net::UdpSocket`.
 The code around those inner async functions would usually also work in a blocking context, but the author of your dependency happened to pick the async variant.
 Here is an example of that:
@@ -105,10 +105,11 @@ This could be also be written using blocking IO from the standard library:
 // TODO: An example of writing a ping-pong function that uses std's Udp socket
 ```
 
-Notice how the code that decides what to send is exactly the same? The same goes for the error handling.
+Notice how the code that decides what to send is exactly the same?
+The same goes for the error handling.
 Both functions propagate the error up to the next layer.
 There are lots of opinions out there as to what the "best" way of solving this duplication is.
-sans-IO is one of them.
+Writing sans-IO code is one of them.
 
 ## Introducing sans-IO
 
@@ -120,11 +121,11 @@ Instead, both components should depend and communicate via abstractions.
 In other words, the piece of code that decides to send a message on the network (i.e. the policy) should not depend on the code that actually sends the message (i.e. the implementation).
 This is what is "wrong" with the above example:
 We have a direct dependency on a UDP socket in the middle of our policy code.
-Yet, the policy code the one we want to test and perhaps share with others via libraries.
+Yet, the policy code is the one we want to test and perhaps share with others via libraries.
 
 ## Applying dependency inversion
 
-How do we apply dependency inversion then?
+How do we apply the dependency inversion principle then?
 We introduce abstractions!
 When we call `UdpSocket::send`, what data are we actually passing?
 The payload, a `SocketAddr` and - implicitly - the socket itself.
@@ -147,7 +148,7 @@ Where does the `Transmit` go? We need to execute this `Transmit` somewhere! This
 There needs to be a component that actually causes all these side-effects.
 Recall the definition of the dependency-inversion principle: Policies should not depend on implementations, instead both should depend on abstractions.
 `Transmit` is our abstraction and we already know that we need to re-write our policy code to use it.
-The actual implementation details, i.e. our UdpSocket also needs to be made aware of our new abstraction.
+The actual implementation details, i.e. our `UdpSocket` also needs to be made aware of our new abstraction.
 Luckily, this is pretty simple.
 All we need is a function that takes a `Transmit`'s dst and payload and passes it to the UdpSocket.
 
@@ -155,6 +156,8 @@ The avid reader will have already noticed that so far, we've glanced over an imp
 What does the new code that "produces" a `Transmit` actually look like?
 We can't simply make a `Transmit` and wait for it to magically wander through our application.
 How do we connect those pieces of code together into something that actually works?
+
+TODO: Lead over to state machines and eventloops.
 
 ## Introducing state machines
 
@@ -184,7 +187,7 @@ I'll call this function `handle_timeout` right away, the details as to why will 
 ```
 
 In addition to `handle_timeout`, we will also need `handle_input`.
-`handle_input` is like the inverse to Transmit.
+`handle_input` is like the inverse to `Transmit`.
 We will use it to feed incoming data to our state machine, i.e. the result of `UdpSocket::read`.
 
 Finally, we need a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
@@ -209,6 +212,10 @@ The problem arises once you want to bring in dependencies.
 Composing your functionality (i.e. policy) on top of those dependencies imposes their decisions around async vs blocking IO on you.
 Libraries like `str0m` or `quinn-proto` which are written in the sans-IO way don't do that.
 Instead, they are pure state machines and thus the decision about async vs blocking IO or which async runtime to use is deferred to the application.
+
+## Eventloops
+
+TODO
 
 ### Easy composition
 
@@ -280,3 +287,7 @@ Avoiding all of these is one of the reasons we wanted to use Rust in the first-p
 
 [^1]: TODO Mention that it is isn’t true for single-thread runtimes but they are not common.
 [^2]: TODO: Link to issue about impure time
+
+## Closing
+
+TODO
