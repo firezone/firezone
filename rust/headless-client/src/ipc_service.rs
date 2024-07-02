@@ -93,7 +93,6 @@ fn run_debug_ipc_service() -> Result<()> {
     crate::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    rt.spawn(crate::heartbeat::heartbeat());
     let mut signals = Signals::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
@@ -316,11 +315,15 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
     let (layer, handle) = file_logger::layer(&log_dir);
-    let log_filter = get_log_filter().context("Couldn't read log filter")?;
-    let filter = EnvFilter::new(&log_filter);
+    let directives = get_log_filter().context("Couldn't read log filter")?;
+    let filter = EnvFilter::new(&directives);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
-    tracing::info!(git_version = crate::GIT_VERSION, ?log_filter);
+    tracing::info!(
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+        ?directives
+    );
     Ok(handle)
 }
 
