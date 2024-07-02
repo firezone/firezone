@@ -4,7 +4,7 @@ defmodule API.ExampleControllerTest do
   describe "echo/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/v1/echo", %{"message" => "Hello, world!"})
-      assert json_response(conn, 401) == %{"error" => "invalid_access_token"}
+      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
     end
 
     test "returns 200 OK with the request body", %{conn: conn} do

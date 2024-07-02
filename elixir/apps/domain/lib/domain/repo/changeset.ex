@@ -139,6 +139,17 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
+  def put_created_by(changset, %Domain.Auth.Subject{identity: nil}) do
+    changset
+    |> put_change(:created_by, :actor)
+  end
+
+  def put_created_by(changeset, %Domain.Auth.Subject{} = subject) do
+    changeset
+    |> put_change(:created_by, :identity)
+    |> put_change(:created_by_identity_id, subject.identity.id)
+  end
+
   # Validations
 
   def validate_list(

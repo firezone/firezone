@@ -11,9 +11,16 @@ defmodule API.Plugs.Auth do
       assign(conn, :subject, subject)
     else
       _ ->
+        # conn
+        # |> put_resp_content_type("application/json")
+        # |> send_resp(401, Jason.encode!(%{"error" => "invalid_access_token"}))
+        # |> halt()
+
+        # TODO: BRIAN - Confirm that this change won't break anything with the clients or gateways
         conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(401, Jason.encode!(%{"error" => "invalid_access_token"}))
+        |> put_status(401)
+        |> Phoenix.Controller.put_view(json: API.ErrorJSON)
+        |> Phoenix.Controller.render(:"401")
         |> halt()
     end
   end

@@ -14,6 +14,13 @@ defmodule Domain.Clients.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:api_client) do
+    [
+      manage_own_clients_permission(),
+      manage_clients_permission()
+    ]
+  end
+
   def list_permissions_for_role(:account_user) do
     [
       manage_own_clients_permission()

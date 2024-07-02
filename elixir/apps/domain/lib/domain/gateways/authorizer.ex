@@ -14,6 +14,13 @@ defmodule Domain.Gateways.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:api_client) do
+    [
+      manage_gateways_permission(),
+      connect_gateways_permission()
+    ]
+  end
+
   def list_permissions_for_role(_) do
     [
       connect_gateways_permission()

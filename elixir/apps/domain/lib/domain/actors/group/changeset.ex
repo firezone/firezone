@@ -19,8 +19,8 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_change(:created_by_actor_id, subject.actor.id)
+    |> put_created_by(subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do

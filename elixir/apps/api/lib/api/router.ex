@@ -25,6 +25,24 @@ defmodule API.Router do
     pipe_through :api
 
     post "/echo", ExampleController, :echo
+
+    resources "/resources", ResourceController, except: [:new, :edit]
+    resources "/policies", PolicyController, except: [:new, :edit]
+
+    resources "/gateway_groups", GatewayGroupController, except: [:new, :edit] do
+      resources "/gateways", GatewayController, except: [:new, :edit, :update]
+    end
+
+    resources "/actors", ActorController, except: [:new, :edit] do
+      resources "/identities", IdentityController, except: [:new, :edit, :create, :update]
+    end
+
+    resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
+      # TODO: Enable this route and finish controller
+      # resources "/memberships", ActorGroupMembershipController, except: [:new, :edit]
+    end
+
+    resources "/identity_providers", IdentityProviderController, only: [:index, :show, :delete]
   end
 
   scope "/integrations", API.Integrations do
