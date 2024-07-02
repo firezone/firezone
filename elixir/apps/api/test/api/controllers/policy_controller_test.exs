@@ -12,10 +12,10 @@ defmodule API.PolicyControllerTest do
     }
   end
 
-  describe "index" do
+  describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = post(conn, "/v1/policies")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      conn = get(conn, "/v1/policies")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all policies", %{conn: conn, account: account, actor: actor} do
@@ -42,10 +42,10 @@ defmodule API.PolicyControllerTest do
       assert is_nil(next_page)
       assert is_nil(prev_page)
 
-      data_ids = Enum.map(data, & &1["id"]) |> MapSet.new()
-      policy_ids = Enum.map(policies, & &1.id) |> MapSet.new()
+      data_ids = Enum.map(data, & &1["id"])
+      policy_ids = Enum.map(policies, & &1.id)
 
-      assert MapSet.equal?(data_ids, policy_ids)
+      assert equal_ids?(data_ids, policy_ids)
     end
 
     test "lists policies with limit", %{conn: conn, account: account, actor: actor} do
@@ -79,11 +79,11 @@ defmodule API.PolicyControllerTest do
     end
   end
 
-  describe "show" do
+  describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = Fixtures.Policies.create_policy(%{account: account})
       conn = get(conn, "/v1/policies/#{policy.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single policy", %{conn: conn, account: account, actor: actor} do
@@ -106,13 +106,24 @@ defmodule API.PolicyControllerTest do
     end
   end
 
-  describe "create" do
+  describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/v1/policies", %{})
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "returns errors on invalid attrs", %{conn: conn, actor: actor} do
+    test "returns error on empty params/body", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/policies")
+
+      assert resp = json_response(conn, 400)
+      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
+    test "returns error on invalid attrs", %{conn: conn, actor: actor} do
       attrs = %{}
 
       conn =
@@ -125,9 +136,12 @@ defmodule API.PolicyControllerTest do
 
       assert resp ==
                %{
-                 "errors" => %{
-                   "actor_group_id" => ["can't be blank"],
-                   "resource_id" => ["can't be blank"]
+                 "error" => %{
+                   "reason" => "Unprocessable Entity",
+                   "validation_errors" => %{
+                     "actor_group_id" => ["can't be blank"],
+                     "resource_id" => ["can't be blank"]
+                   }
                  }
                }
     end
@@ -155,11 +169,24 @@ defmodule API.PolicyControllerTest do
     end
   end
 
-  describe "update" do
+  describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = Fixtures.Policies.create_policy(%{account: account})
       conn = put(conn, "/v1/policies/#{policy.id}", %{})
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
+      policy = Fixtures.Policies.create_policy(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/v1/policies/#{policy.id}")
+
+      assert resp = json_response(conn, 400)
+      assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
     test "updates a policy", %{conn: conn, account: account, actor: actor} do
@@ -179,11 +206,11 @@ defmodule API.PolicyControllerTest do
     end
   end
 
-  describe "delete" do
+  describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = Fixtures.Policies.create_policy(%{account: account})
       conn = delete(conn, "/v1/policies/#{policy.id}", %{})
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a policy", %{conn: conn, account: account, actor: actor} do
@@ -204,10 +231,8 @@ defmodule API.PolicyControllerTest do
                }
              }
 
-      assert {:error, :not_found} ==
-               Policy.Query.not_deleted()
-               |> Policy.Query.by_id(policy.id)
-               |> Repo.fetch(Policy.Query)
+      assert policy = Repo.get(Policy, policy.id)
+      assert policy.deleted_at
     end
   end
 end

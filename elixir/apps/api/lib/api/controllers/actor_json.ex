@@ -1,13 +1,15 @@
 defmodule API.ActorJSON do
+  alias API.Pagination
   alias Domain.Actors
-  alias Domain.Repo.Paginator.Metadata
 
   @doc """
   Renders a list of Actors.
   """
   def index(%{actors: actors, metadata: metadata}) do
-    %{data: for(actor <- actors, do: data(actor))}
-    |> Map.put(:metadata, metadata(metadata))
+    %{
+      data: Enum.map(actors, &data/1),
+      metadata: Pagination.metadata(metadata)
+    }
   end
 
   @doc """
@@ -22,15 +24,6 @@ defmodule API.ActorJSON do
       id: actor.id,
       name: actor.name,
       type: actor.type
-    }
-  end
-
-  defp metadata(%Metadata{} = metadata) do
-    %{
-      count: metadata.count,
-      limit: metadata.limit,
-      next_page: metadata.next_page_cursor,
-      prev_page: metadata.previous_page_cursor
     }
   end
 end

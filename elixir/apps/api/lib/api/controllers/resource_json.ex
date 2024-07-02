@@ -1,13 +1,15 @@
 defmodule API.ResourceJSON do
+  alias API.Pagination
   alias Domain.Resources.Resource
-  alias Domain.Repo.Paginator.Metadata
 
   @doc """
   Renders a list of resources.
   """
   def index(%{resources: resources, metadata: metadata}) do
-    %{data: for(resource <- resources, do: data(resource))}
-    |> Map.put(:metadata, metadata(metadata))
+    %{
+      data: Enum.map(resources, &data/1),
+      metadata: Pagination.metadata(metadata)
+    }
   end
 
   @doc """
@@ -24,15 +26,6 @@ defmodule API.ResourceJSON do
       address: resource.address,
       description: resource.address_description,
       type: resource.type
-    }
-  end
-
-  defp metadata(%Metadata{} = metadata) do
-    %{
-      count: metadata.count,
-      limit: metadata.limit,
-      next_page: metadata.next_page_cursor,
-      prev_page: metadata.previous_page_cursor
     }
   end
 end

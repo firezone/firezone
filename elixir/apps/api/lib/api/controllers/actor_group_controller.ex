@@ -1,13 +1,13 @@
 defmodule API.ActorGroupController do
-  alias Domain.Actors
-  import API.ControllerHelpers
   use API, :controller
+  alias API.Pagination
+  alias Domain.Actors
 
   action_fallback API.FallbackController
 
   # List Actor Groups
   def index(conn, params) do
-    list_opts = params_to_list_opts(params)
+    list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, actor_groups, metadata} <- Actors.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, actor_groups: actor_groups, metadata: metadata)
@@ -33,6 +33,10 @@ defmodule API.ActorGroupController do
     end
   end
 
+  def create(_conn, _params) do
+    {:error, :bad_request}
+  end
+
   # Update an Actor Group
   def update(conn, %{"id" => id, "actor_group" => params}) do
     subject = conn.assigns.subject
@@ -41,6 +45,10 @@ defmodule API.ActorGroupController do
          {:ok, actor_group} <- Actors.update_group(actor_group, params, subject) do
       render(conn, :show, actor_group: actor_group)
     end
+  end
+
+  def update(_conn, _params) do
+    {:error, :bad_request}
   end
 
   # Delete an Actor Group

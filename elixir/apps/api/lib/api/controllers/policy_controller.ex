@@ -1,13 +1,13 @@
 defmodule API.PolicyController do
-  alias Domain.Policies
-  import API.ControllerHelpers
   use API, :controller
+  alias API.Pagination
+  alias Domain.Policies
 
   action_fallback API.FallbackController
 
   # List Policies
   def index(conn, params) do
-    list_opts = params_to_list_opts(params)
+    list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
@@ -31,6 +31,10 @@ defmodule API.PolicyController do
     end
   end
 
+  def create(_conn, _params) do
+    {:error, :bad_request}
+  end
+
   # Update a Policy
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
@@ -39,6 +43,10 @@ defmodule API.PolicyController do
          {:ok, policy} <- Policies.update_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
     end
+  end
+
+  def update(_conn, _params) do
+    {:error, :bad_request}
   end
 
   # Delete a Policy

@@ -1,13 +1,15 @@
 defmodule API.GatewayGroupJSON do
+  alias API.Pagination
   alias Domain.Gateways
-  alias Domain.Repo.Paginator.Metadata
 
   @doc """
   Renders a list of Sites / Gateway Groups.
   """
   def index(%{gateway_groups: gateway_groups, metadata: metadata}) do
-    %{data: for(group <- gateway_groups, do: data(group))}
-    |> Map.put(:metadata, metadata(metadata))
+    %{
+      data: Enum.map(gateway_groups, &data/1),
+      metadata: Pagination.metadata(metadata)
+    }
   end
 
   @doc """
@@ -17,19 +19,34 @@ defmodule API.GatewayGroupJSON do
     %{data: data(group)}
   end
 
+  @doc """
+  Render a Gateway Group Token
+  """
+  def token(%{gateway_token: token, encoded_token: encoded_token}) do
+    %{
+      id: token.id,
+      token: encoded_token
+    }
+  end
+
+  @doc """
+  Render a deleted Gateway Group Token
+  """
+  def deleted_token(%{gateway_token: token}) do
+    %{id: token.id}
+  end
+
+  @doc """
+  Render all deleted Gateway Group Tokens
+  """
+  def deleted_tokens(%{tokens: tokens}) do
+    %{data: for(token <- tokens, do: %{id: token.id})}
+  end
+
   defp data(%Gateways.Group{} = group) do
     %{
       id: group.id,
       name: group.name
-    }
-  end
-
-  defp metadata(%Metadata{} = metadata) do
-    %{
-      count: metadata.count,
-      limit: metadata.limit,
-      next_page: metadata.next_page_cursor,
-      prev_page: metadata.previous_page_cursor
     }
   end
 end

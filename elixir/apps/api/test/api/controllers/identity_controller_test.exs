@@ -12,10 +12,10 @@ defmodule API.IdentityControllerTest do
     }
   end
 
-  describe "index" do
+  describe "index/2" do
     test "returns error when not authorized", %{conn: conn, actor: actor} do
-      conn = post(conn, "/v1/actors/#{actor.id}/identities")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      conn = get(conn, "/v1/actors/#{actor.id}/identities")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all identities for actor", %{conn: conn, account: account, actor: actor} do
@@ -43,10 +43,10 @@ defmodule API.IdentityControllerTest do
       assert is_nil(next_page)
       assert is_nil(prev_page)
 
-      data_ids = Enum.map(data, & &1["id"]) |> MapSet.new()
-      identity_ids = Enum.map(identities, & &1.id) |> MapSet.new()
+      data_ids = Enum.map(data, & &1["id"])
+      identity_ids = Enum.map(identities, & &1.id)
 
-      assert MapSet.equal?(data_ids, identity_ids)
+      assert equal_ids?(data_ids, identity_ids)
     end
 
     test "lists resources with limit", %{conn: conn, account: account, actor: actor} do
@@ -81,11 +81,11 @@ defmodule API.IdentityControllerTest do
     end
   end
 
-  describe "show" do
+  describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
       identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
       conn = get(conn, "/v1/actors/#{actor.id}/identities/#{identity.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single resource", %{conn: conn, account: account, actor: actor} do
@@ -108,68 +108,117 @@ defmodule API.IdentityControllerTest do
     end
   end
 
-  describe "create" do
+  describe "create/2" do
     test "returns error when not authorized", %{conn: conn, actor: actor} do
       conn = post(conn, "/v1/actors/#{actor.id}/identities", %{})
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "returns errors on invalid attrs", %{conn: conn, actor: actor} do
-      assert false
-      #  attrs = %{}
+    test "returns error on empty params/body", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
 
-      #  conn =
-      #    conn
-      #    |> authorize_conn(actor)
-      #    |> put_req_header("content-type", "application/json")
-      #    |> post("/v1/actors/#{actor.id}/identities", identity: attrs)
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/actors/#{actor.id}/identities")
 
-      #  assert resp = json_response(conn, 422)
-
-      #  assert resp ==
-      #           %{
-      #             "errors" => %{
-      #               "address" => ["can't be blank"],
-      #               "connections" => ["can't be blank"],
-      #               "name" => ["can't be blank"],
-      #               "type" => ["can't be blank"]
-      #             }
-      #           }
+      assert resp = json_response(conn, 400)
+      assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
-    test "creates a resource with valid attrs", %{conn: conn, account: account, actor: actor} do
-      assert false
-      #  gateway_group = Fixtures.Gateways.create_group(%{account: account})
+    test "returns error on invalid identity provider", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
 
-      #  attrs = %{
-      #    "address" => "google.com",
-      #    "name" => "Google",
-      #    "type" => "dns",
-      #    "connections" => [
-      #      %{"gateway_group_id" => gateway_group.id}
-      #    ]
-      #  }
+      attrs = %{}
 
-      #  conn =
-      #    conn
-      #    |> authorize_conn(actor)
-      #    |> put_req_header("content-type", "application/json")
-      #    |> post("/v1/resources", resource: attrs)
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/actors/#{actor.id}/identities",
+          provider_id: "1234",
+          identity: attrs
+        )
 
-      #  assert resp = json_response(conn, 201)
+      assert resp = json_response(conn, 404)
+      assert resp == %{"error" => %{"reason" => "Not Found"}}
+    end
 
-      #  assert resp["data"]["address"] == attrs["address"]
-      #  assert resp["data"]["description"] == nil
-      #  assert resp["data"]["name"] == attrs["name"]
-      #  assert resp["data"]["type"] == attrs["type"]
+    test "returns error on invalid identity attrs", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/actors/#{actor.id}/identities",
+          provider_id: oidc_provider.id,
+          identity: attrs
+        )
+
+      assert resp = json_response(conn, 422)
+
+      assert resp ==
+               %{
+                 "error" => %{
+                   "reason" => "Unprocessable Entity",
+                   "validation_errors" => %{"provider_identifier" => ["can't be blank"]}
+                 }
+               }
+    end
+
+    test "creates a resource with valid attrs", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{"provider_identifier" => "foo@local"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/actors/#{actor.id}/identities",
+          provider_id: oidc_provider.id,
+          identity: attrs
+        )
+
+      assert resp = json_response(conn, 201)
+
+      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
+      assert resp["data"]["provider_id"] == oidc_provider.id
+      assert resp["data"]["actor_id"] == actor.id
     end
   end
 
-  describe "delete" do
+  describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
       identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
       conn = delete(conn, "/v1/actors/#{actor.id}/identities/#{identity.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a resource", %{conn: conn, account: account, actor: actor} do
@@ -190,10 +239,8 @@ defmodule API.IdentityControllerTest do
                }
              }
 
-      assert {:error, :not_found} ==
-               Identity.Query.not_deleted()
-               |> Identity.Query.by_id(identity.id)
-               |> Repo.fetch(Identity.Query)
+      assert identity = Repo.get(Identity, identity.id)
+      assert identity.deleted_at
     end
   end
 end

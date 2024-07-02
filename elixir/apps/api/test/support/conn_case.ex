@@ -56,4 +56,8 @@ defmodule API.ConnCase do
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)
   end
+
+  def equal_ids?(list1, list2) do
+    MapSet.equal?(MapSet.new(list1), MapSet.new(list2))
+  end
 end

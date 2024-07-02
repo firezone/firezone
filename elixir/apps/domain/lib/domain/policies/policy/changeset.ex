@@ -14,7 +14,6 @@ defmodule Domain.Policies.Policy.Changeset do
     |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
     |> put_change(:account_id, subject.account.id)
-    |> put_change(:created_by_actor_id, subject.actor.id)
     |> put_created_by(subject)
   end
 

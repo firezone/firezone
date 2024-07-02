@@ -1,13 +1,15 @@
 defmodule API.IdentityProviderJSON do
+  alias API.Pagination
   alias Domain.Auth.Provider
-  alias Domain.Repo.Paginator.Metadata
 
   @doc """
   Renders a list of Identity Providers.
   """
   def index(%{identity_providers: identity_providers, metadata: metadata}) do
-    %{data: for(provider <- identity_providers, do: data(provider))}
-    |> Map.put(:metadata, metadata(metadata))
+    %{
+      data: Enum.map(identity_providers, &data/1),
+      metadata: Pagination.metadata(metadata)
+    }
   end
 
   @doc """
@@ -21,15 +23,6 @@ defmodule API.IdentityProviderJSON do
     %{
       id: provider.id,
       name: provider.name
-    }
-  end
-
-  defp metadata(%Metadata{} = metadata) do
-    %{
-      count: metadata.count,
-      limit: metadata.limit,
-      next_page: metadata.next_page_cursor,
-      prev_page: metadata.previous_page_cursor
     }
   end
 end

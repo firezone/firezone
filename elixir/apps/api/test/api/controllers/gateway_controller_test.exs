@@ -1,7 +1,4 @@
 defmodule API.GatewayControllerTest do
-  alias API.Gateway
-  alias API.Gateway
-  alias API.Gateway
   use API.ConnCase, async: true
   alias Domain.Gateways.Gateway
 
@@ -17,10 +14,10 @@ defmodule API.GatewayControllerTest do
     }
   end
 
-  describe "index" do
+  describe "index/2" do
     test "returns error when not authorized", %{conn: conn, gateway_group: gateway_group} do
-      conn = post(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      conn = get(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all gateways for a gateway group", %{
@@ -54,10 +51,10 @@ defmodule API.GatewayControllerTest do
       assert is_nil(next_page)
       assert is_nil(prev_page)
 
-      data_ids = Enum.map(data, & &1["id"]) |> MapSet.new()
-      gateway_ids = Enum.map(gateways, & &1.id) |> MapSet.new()
+      data_ids = Enum.map(data, & &1["id"])
+      gateway_ids = Enum.map(gateways, & &1.id)
 
-      assert MapSet.equal?(data_ids, gateway_ids)
+      assert equal_ids?(data_ids, gateway_ids)
     end
 
     test "lists gateways with limit", %{
@@ -98,7 +95,7 @@ defmodule API.GatewayControllerTest do
     end
   end
 
-  describe "show" do
+  describe "show/2" do
     test "returns error when not authorized", %{
       conn: conn,
       account: account,
@@ -106,7 +103,7 @@ defmodule API.GatewayControllerTest do
     } do
       gateway = Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
       conn = get(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single gateway", %{
@@ -128,36 +125,14 @@ defmodule API.GatewayControllerTest do
                  "id" => gateway.id,
                  "name" => gateway.name,
                  "ipv4" => Domain.Types.IP.to_string(gateway.ipv4),
-                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6)
+                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6),
+                 "online" => false
                }
              }
     end
   end
 
-  describe "create gateway token" do
-    test "returns error when not authorized", %{conn: conn, gateway_group: gateway_group} do
-      conn = post(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
-    end
-
-    test "creates a gateway token", %{
-      conn: conn,
-      actor: actor,
-      gateway_group: gateway_group
-    } do
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/v1/gateway_groups/#{gateway_group.id}/gateways")
-
-      assert %{"data" => %{"gateway_token" => token}} = json_response(conn, 201)
-
-      assert is_binary(token)
-    end
-  end
-
-  describe "delete" do
+  describe "delete/2" do
     test "returns error when not authorized", %{
       conn: conn,
       account: account,
@@ -165,7 +140,7 @@ defmodule API.GatewayControllerTest do
     } do
       gateway = Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
       conn = delete(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a gateway", %{
@@ -187,14 +162,13 @@ defmodule API.GatewayControllerTest do
                  "id" => gateway.id,
                  "name" => gateway.name,
                  "ipv4" => Domain.Types.IP.to_string(gateway.ipv4),
-                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6)
+                 "ipv6" => Domain.Types.IP.to_string(gateway.ipv6),
+                 "online" => false
                }
              }
 
-      assert {:error, :not_found} ==
-               Gateway.Query.not_deleted()
-               |> Gateway.Query.by_id(gateway.id)
-               |> Repo.fetch(Gateway.Query)
+      assert gateway = Repo.get(Gateway, gateway.id)
+      assert gateway.deleted_at
     end
   end
 end

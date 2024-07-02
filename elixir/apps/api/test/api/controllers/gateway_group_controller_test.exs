@@ -1,6 +1,7 @@
 defmodule API.GatewayGroupControllerTest do
   use API.ConnCase, async: true
   alias Domain.Gateways.Group
+  alias Domain.Tokens.Token
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -12,10 +13,10 @@ defmodule API.GatewayGroupControllerTest do
     }
   end
 
-  describe "index" do
+  describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = post(conn, "/v1/gateway_groups")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      conn = get(conn, "/v1/gateway_groups")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all gateway groups", %{conn: conn, account: account, actor: actor} do
@@ -42,10 +43,10 @@ defmodule API.GatewayGroupControllerTest do
       assert is_nil(next_page)
       assert is_nil(prev_page)
 
-      data_ids = Enum.map(data, & &1["id"]) |> MapSet.new()
-      gateway_group_ids = Enum.map(gateway_groups, & &1.id) |> MapSet.new()
+      data_ids = Enum.map(data, & &1["id"])
+      gateway_group_ids = Enum.map(gateway_groups, & &1.id)
 
-      assert MapSet.equal?(data_ids, gateway_group_ids)
+      assert equal_ids?(data_ids, gateway_group_ids)
     end
 
     test "lists gateway groups with limit", %{conn: conn, account: account, actor: actor} do
@@ -79,11 +80,11 @@ defmodule API.GatewayGroupControllerTest do
     end
   end
 
-  describe "show" do
+  describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       gateway_group = Fixtures.Gateways.create_group(%{account: account})
       conn = get(conn, "/v1/gateway_groups/#{gateway_group.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single gateway_group", %{conn: conn, account: account, actor: actor} do
@@ -104,13 +105,24 @@ defmodule API.GatewayGroupControllerTest do
     end
   end
 
-  describe "create" do
+  describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = post(conn, "/v1/gateway_groups", %{})
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "returns errors on invalid attrs", %{conn: conn, actor: actor} do
+    test "returns error on empty params/body", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/gateway_groups")
+
+      assert resp = json_response(conn, 400)
+      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
+    test "returns error on invalid attrs", %{conn: conn, actor: actor} do
       attrs = %{"name" => String.duplicate("a", 65)}
 
       conn =
@@ -123,8 +135,9 @@ defmodule API.GatewayGroupControllerTest do
 
       assert resp ==
                %{
-                 "errors" => %{
-                   "name" => ["should be at most 64 character(s)"]
+                 "error" => %{
+                   "reason" => "Unprocessable Entity",
+                   "validation_errors" => %{"name" => ["should be at most 64 character(s)"]}
                  }
                }
     end
@@ -146,11 +159,24 @@ defmodule API.GatewayGroupControllerTest do
     end
   end
 
-  describe "update" do
+  describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       gateway_group = Fixtures.Gateways.create_group(%{account: account})
       conn = put(conn, "/v1/gateway_groups/#{gateway_group.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "returns error on empty params/body", %{conn: conn, account: account, actor: actor} do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/v1/gateway_groups/#{gateway_group.id}")
+
+      assert resp = json_response(conn, 400)
+      assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
     test "updates a gateway group", %{conn: conn, account: account, actor: actor} do
@@ -170,11 +196,11 @@ defmodule API.GatewayGroupControllerTest do
     end
   end
 
-  describe "delete" do
+  describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       gateway_group = Fixtures.Gateways.create_group(%{account: account})
       conn = delete(conn, "/v1/gateway_groups/#{gateway_group.id}", %{})
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes a gateway group", %{conn: conn, account: account, actor: actor} do
@@ -193,10 +219,90 @@ defmodule API.GatewayGroupControllerTest do
                }
              }
 
-      assert {:error, :not_found} ==
-               Group.Query.not_deleted()
-               |> Group.Query.by_id(gateway_group.id)
-               |> Repo.fetch(Group.Query)
+      assert gateway_group = Repo.get(Group, gateway_group.id)
+      assert gateway_group.deleted_at
+    end
+  end
+
+  describe "gateway group token create/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      conn = post(conn, "/v1/gateway_groups/#{gateway_group.id}/tokens")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "creates a gateway token", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/v1/gateway_groups/#{gateway_group.id}/tokens")
+
+      assert %{"id" => _id, "token" => _token} = json_response(conn, 201)
+    end
+  end
+
+  describe "delete single gateway token" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      token = Fixtures.Gateways.create_token(%{account: account, group: gateway_group})
+      conn = delete(conn, "/v1/gateway_groups/#{gateway_group.id}/tokens/#{token.id}")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "deletes gateway token", %{conn: conn, account: account, actor: actor} do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      token = Fixtures.Gateways.create_token(%{account: account, group: gateway_group})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> delete("/v1/gateway_groups/#{gateway_group.id}/tokens/#{token.id}")
+
+      assert %{"id" => _id} = json_response(conn, 200)
+
+      assert token = Repo.get(Token, token.id)
+      assert token.deleted_at
+    end
+  end
+
+  describe "delete all gateway tokens" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+      conn = delete(conn, "/v1/gateway_groups/#{gateway_group.id}/tokens")
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
+    end
+
+    test "deletes all gateway tokens", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway_group = Fixtures.Gateways.create_group(%{account: account})
+
+      tokens =
+        for _ <- 1..3,
+            do: Fixtures.Gateways.create_token(%{account: account, group: gateway_group})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/v1/gateway_groups/#{gateway_group.id}/tokens")
+
+      assert %{"data" => [%{"id" => _id1}, %{"id" => _id2}, %{"id" => _id3}]} =
+               json_response(conn, 200)
+
+      Enum.map(tokens, fn token ->
+        assert token = Repo.get(Token, token.id)
+        assert token.deleted_at
+      end)
     end
   end
 end

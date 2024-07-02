@@ -12,10 +12,10 @@ defmodule API.IdentityProviderControllerTest do
     }
   end
 
-  describe "index" do
+  describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
       conn = get(conn, "/v1/identity_providers")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all identity_providers", %{conn: conn, account: account, actor: actor} do
@@ -85,13 +85,13 @@ defmodule API.IdentityProviderControllerTest do
     end
   end
 
-  describe "show" do
+  describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       {identity_provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(%{account: account})
 
       conn = get(conn, "/v1/identity_providers/#{identity_provider.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "returns a single resource", %{conn: conn, account: account, actor: actor} do
@@ -113,13 +113,13 @@ defmodule API.IdentityProviderControllerTest do
     end
   end
 
-  describe "delete" do
+  describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       {identity_provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(%{account: account})
 
       conn = delete(conn, "/v1/identity_providers/#{identity_provider.id}")
-      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Unauthorized"}}
+      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "deletes an identity provider", %{conn: conn, account: account, actor: actor} do
@@ -139,10 +139,8 @@ defmodule API.IdentityProviderControllerTest do
                }
              }
 
-      assert {:error, :not_found} ==
-               Provider.Query.not_deleted()
-               |> Provider.Query.by_id(identity_provider.id)
-               |> Repo.fetch(Provider.Query)
+      assert identity_provider = Repo.get(Provider, identity_provider.id)
+      assert identity_provider.deleted_at
     end
   end
 end

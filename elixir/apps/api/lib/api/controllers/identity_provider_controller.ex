@@ -1,12 +1,12 @@
 defmodule API.IdentityProviderController do
   use API, :controller
-  import API.ControllerHelpers
+  alias API.Pagination
   alias Domain.Auth
 
   action_fallback API.FallbackController
 
   def index(conn, params) do
-    list_opts = params_to_list_opts(params)
+    list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, identity_providers, metadata} <-
            Auth.list_providers(conn.assigns.subject, list_opts) do

@@ -1,13 +1,13 @@
 defmodule API.ActorController do
-  alias Domain.Actors
-  import API.ControllerHelpers
   use API, :controller
+  alias API.Pagination
+  alias Domain.Actors
 
   action_fallback API.FallbackController
 
   # List Actors
   def index(conn, params) do
-    list_opts = params_to_list_opts(params)
+    list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
@@ -25,13 +25,16 @@ defmodule API.ActorController do
   def create(conn, %{"actor" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, account} <- Domain.Accounts.fetch_account_by_id(subject.account.id, subject),
-         {:ok, actor} <- Actors.create_actor(account, params, subject) do
+    with {:ok, actor} <- Actors.create_actor(subject.account, params, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v1/actors/#{actor}")
       |> render(:show, actor: actor)
     end
+  end
+
+  def create(_conn, _params) do
+    {:error, :bad_request}
   end
 
   # Update an Actor
@@ -42,6 +45,10 @@ defmodule API.ActorController do
          {:ok, actor} <- Actors.update_actor(actor, params, subject) do
       render(conn, :show, actor: actor)
     end
+  end
+
+  def update(_conn, _params) do
+    {:error, :bad_request}
   end
 
   # Delete an Actor

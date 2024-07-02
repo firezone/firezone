@@ -18,7 +18,6 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> put_change(:created_by_actor_id, subject.actor.id)
     |> put_created_by(subject)
   end
 

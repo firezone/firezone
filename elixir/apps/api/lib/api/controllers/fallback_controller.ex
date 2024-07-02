@@ -10,14 +10,14 @@ defmodule API.FallbackController do
 
   def call(conn, {:error, :unauthorized}) do
     conn
-    |> put_status(403)
+    |> put_status(:unauthorized)
     |> put_view(json: API.ErrorJSON)
-    |> render(:"403")
+    |> render(:"401")
   end
 
   def call(conn, {:error, :bad_request}) do
     conn
-    |> put_status(400)
+    |> put_status(:bad_request)
     |> put_view(json: API.ErrorJSON)
     |> render(:"400")
   end
@@ -26,6 +26,6 @@ defmodule API.FallbackController do
     conn
     |> put_status(:unprocessable_entity)
     |> put_view(json: API.ChangesetJSON)
-    |> render(:error, changeset: changeset)
+    |> render(:error, status: 422, changeset: changeset)
   end
 end

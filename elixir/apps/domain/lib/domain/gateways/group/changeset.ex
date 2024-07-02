@@ -9,7 +9,6 @@ defmodule Domain.Gateways.Group.Changeset do
     %Gateways.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)
-    |> put_change(:created_by_actor_id, subject.actor.id)
     |> put_created_by(subject)
   end
 
