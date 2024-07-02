@@ -394,19 +394,6 @@ where
         "Developer error: we should be always be able to create a MessageBuilder from a Vec",
     );
 
-    if records.is_empty() {
-        tracing::debug!(
-            "No records for {} due to ip exhaustion, returning NXDOMAIN",
-            qname.to_vec()
-        );
-        return Some(
-            msg_builder
-                .start_answer(message, Rcode::NXDOMAIN)
-                .ok()?
-                .finish(),
-        );
-    }
-
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
     answer_builder.header_mut().set_ra(true);
 
