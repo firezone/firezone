@@ -15,7 +15,7 @@ use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
 use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const DNS_TTL: u32 = 1;
@@ -576,7 +576,8 @@ mod test {
                 "address": "*.foo.com",
                 "name": "foo.com wildcard",
                 "address_description": "foo",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}],
+                "filters": []
             }"#,
         )
         .unwrap()
@@ -589,7 +590,8 @@ mod test {
                 "address": "*.bar.com",
                 "name": "bar.com wildcard",
                 "address_description": "bar",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}],
+                "filters": []
             }"#,
         )
         .unwrap()
@@ -602,7 +604,8 @@ mod test {
                 "address": "baz.com",
                 "name": "baz.com",
                 "address_description": "baz",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
+                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}],
+                "filters": []
             }"#,
         )
         .unwrap()

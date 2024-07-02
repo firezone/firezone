@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::messages::client::Site;
-use crate::messages::ResourceId;
+use crate::messages::{Filters, ResourceId};
 
 // Avoids having to map types for Windows
 type RawFd = i32;
@@ -145,6 +145,7 @@ pub struct ResourceDescriptionDns {
     pub sites: Vec<Site>,
 
     pub status: Status,
+    pub filters: Filters,
 }
 
 impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
@@ -155,12 +156,13 @@ impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescripti
             address_description: r.address_description,
             name: r.name,
             sites: r.sites,
+            filters: r.filters,
         }
     }
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -174,6 +176,8 @@ pub struct ResourceDescriptionCidr {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
+    pub filters: Filters,
+
     pub status: Status,
 }
 
@@ -185,6 +189,7 @@ impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescript
             address_description: r.address_description,
             name: r.name,
             sites: r.sites,
+            filters: r.filters,
         }
     }
 }
