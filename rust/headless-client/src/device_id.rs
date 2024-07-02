@@ -36,8 +36,8 @@ pub(crate) fn get_or_create() -> Result<DeviceId> {
         .context("Device ID path should always have a parent")?;
     // Make sure the dir exists, and fix its permissions so the GUI can write the
     // log filter file
-    fs::create_dir_all(&dir).context("Failed to create dir for firezone-id")?;
-    set_permissions(&dir).with_context(|| {
+    fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
+    set_permissions(dir).with_context(|| {
         format!(
             "Couldn't set permissions on IPC service config dir `{}`",
             dir.display()
