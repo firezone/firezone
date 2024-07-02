@@ -100,9 +100,6 @@ STUN is a binary message format and a STUN binding is a pretty simple protocol: 
 Here is how we could implement this using `tokio`'s `UdpSocket` (thank you to Cloudflare for the public STUN server):
 
 ```rust
-use sans_io_blog_example::{make_binding_request, parse_binding_response};
-use tokio::net::UdpSocket;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
@@ -122,9 +119,6 @@ async fn main() -> anyhow::Result<()> {
 This could be also be written using blocking IO from the standard library:
 
 ```rust
-use sans_io_blog_example::{make_binding_request, parse_binding_response};
-use std::net::UdpSocket;
-
 fn main() -> anyhow::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.connect("stun.cloudflare.com:3478")?;
@@ -140,7 +134,7 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-You can find both these snippets as functional programs in the following repository: https://firezone/sans-io-blog-example.
+You can find all of these snippets as working programs in the following repository: https://firezone/sans-io-blog-example.
 
 Notice how this code is virtually identical apart from the use of `async`?
 If we wanted to write a library that allows you to perform STUN, we'd have to decide on one of them or include both.
@@ -178,61 +172,131 @@ pub struct Transmit {
 }
 ```
 
-Anywhere where we'd like to send data over our `UdpSocket`, we can now emit a `Transmit` .
+Anywhere where we'd like to send data over our `UdpSocket`, we should instead emit a `Transmit`.
 But that is only one half of the solution.
 Where does the `Transmit` go? We need to execute this `Transmit` somewhere! This is the 2nd half of any sans-IO application.
-There needs to be a component that actually causes all these side-effects.
 Recall the definition of the dependency-inversion principle: Policies should not depend on implementations, instead both should depend on abstractions.
 `Transmit` is our abstraction and we already know that we need to re-write our policy code to use it.
 The actual implementation details, i.e. our `UdpSocket` also needs to be made aware of our new abstraction.
-Luckily, this is pretty simple.
-All we need is a function that takes a `Transmit`'s dst and payload and passes it to the UdpSocket.
 
-The avid reader will have already noticed that so far, we've glanced over an important detail:
-What does the new code that "produces" a `Transmit` actually look like?
-We can't simply make a `Transmit` and wait for it to magically wander through our application.
-How do we connect those pieces of code together into something that actually works?
+This is where eventloops come in.
+sans-IO code needs to be "driven", almost similarly as to how a `Future` in Rust is lazy and needs to be polled by a runtime to make progress.
 
-TODO: Lead over to state machines and eventloops.
+Eventloops are the implementation of our side-effects and will actually call `UdpSocket::send`.
+That way, the rest of the code turns into a state machine that only expresses, what should happen at a given moment.
 
-## Introducing state machines
+## The state machine
 
-If we think through our code in an abstract way, we may notice that it is actually a state machine:
+The state machine diagram for our STUN binding request looks like this:
 
-```
-// TODO: state diagram of our code
-```
+<Image
+    width={600}
+    height={400}
+    className="rounded shadow"
+    src="https://www.planttext.com/api/plantuml/svg/SoWkIImgAStDuOhMYbNGrRLJ24xDAx42aIaAHQc5fQd59LnS8345e5nGQd9gPbbgYXMC1LHIN92VLvpAXP0Apa_EJYrnJ4afueABWaq6si3b03GNQ1i0"
+    alt="A UML state diagram for a STUN binding request."
+  />
 
 Without execute the side-effect of sending a message directly, we need to rewrite our code to resemble what it actually is: A state machine.
-As we can see in our diagram, we have 3 states: `Start`, `Sent`, `Received`.
+As we can see in our diagram, we have 2 states (not counting entry and exit states): `Sent` & `Received`.
 These are mutually-exclusive so we can model them as an enum:
 
 ```rust
 enum State {
-    Start,
     Sent,
-    Received
+    Received { address: SocketAddr },
 }
 ```
 
 Now, that we've laid out our data structure, let's add some functionality to it!
-I'll call this function `handle_timeout` right away, the details as to why will follow in a bit.
 
 ```rust
-// TODO: Code block with handle_timeout function.
+struct StunBinding {
+    state: State,
+    buffered_transmits: VecDeque<Transmit>,
+}
+
+impl StunBinding {
+    fn new(server: SocketAddr) -> Self {
+        Self {
+            state: State::Sent,
+            buffered_transmits: VecDeque::from([Transmit {
+                dst: server,
+                payload: make_binding_request(),
+            }]),
+        }
+    }
+
+    fn handle_input(&mut self, packet: &[u8]) {
+        let address = parse_binding_response(packet);
+
+        self.state = State::Received { address };
+    }
+
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.buffered_transmits.pop_front()
+    }
+
+    fn public_address(&self) -> Option<SocketAddr> {
+        match self.state {
+            State::Sent => None,
+            State::Received { address } => Some(address),
+        }
+    }
+}
 ```
 
-In addition to `handle_timeout`, we will also need `handle_input`.
-`handle_input` is like the inverse to `Transmit`.
-We will use it to feed incoming data to our state machine, i.e. the result of `UdpSocket::read`.
-
-Finally, we need a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
-
-```rust
-// TODO: Code block with new and poll_transmit
-```
+The `handle_input` function is like the inverse to `Transmit`.
+We will use it to feed incoming data to our state machine, i.e. the result of `UdpSocket::recv`.
+We also added a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
 
 Putting all of this together, we now have a state machine that models the behaviour of our program without performing any IO itself.
+
+## The eventloop
+
+Without an eventloop, this state machine does nothing.
+For this example, we can get away with a pretty simple eventloop:
+
+```rust
+fn main() -> anyhow::Result<()> {
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    let server = "stun.cloudflare.com:3478"
+        .to_socket_addrs()?
+        .next()
+        .context("Failed to resolve hostname")?;
+    let mut binding = StunBinding::new(server);
+
+    let address = loop {
+        if let Some(transmit) = binding.poll_transmit() {
+            socket.send_to(&transmit.payload, transmit.dst)?;
+            continue;
+        }
+
+        let mut buf = vec![0u8; 100];
+        let num_read = socket.recv(&mut buf)?;
+
+        binding.handle_input(&buf[..num_read]);
+
+        if let Some(address) = binding.public_address() {
+            break address;
+        }
+    };
+
+    println!("Our public IP is: {address}");
+
+    Ok(())
+}
+```
+
+Notice how the eventloop is slightly more generic than the previous versions?
+The eventloop does not make any assumptions about the details of the STUN binding protocol.
+It doesn't know that it is request-response for example!
+From the eventloop's perspective, multiple message could be necessary before we can figure out our public address.
+
+UDP is an unreliable protocol, meaning our packets could get lost in transit.
+Do mitigate this, STUN mandates retransmission timers.
+
+As it turns out, adding time to this eventloop is fairly trivial.
 
 ## Abstracting time
 
