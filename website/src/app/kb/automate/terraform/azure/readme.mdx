@@ -97,9 +97,9 @@ Firezone Gateway(s) you just provisioned.
 
 ## Upgrading
 
-To upgrade the Firezone Gateway(s) to the latest version, simply update the
-`token` and issue a `terraform apply` which will trigger a redeployment of the
-Firezone Gateway(s).
+To upgrade the Firezone Gateway(s) to the latest version, simply run
+`terraform apply` again. This will trigger a redeployment of the Firezone
+Gateway(s) with the latest version by default.
 
 This will incur a few minutes of downtime as Terraform destroys the existing
 Firezone Gateway(s) and deploys new ones in their place.

@@ -48,7 +48,7 @@ module "azure_firezone_gateway" {
   # firezone_version    = "latest"
 
   # Override the default API URL. This should almost never be needed.
-  firezone_api_url = "wss://api.firez.one"
+  # firezone_api_url = "wss://api.firezone.dev"
 
   # Gateways are very lightweight. In general it's preferable to deploy
   # more smaller Gateways than fewer larger Gateways if you need to scale
@@ -104,7 +104,9 @@ resource "azurerm_public_ip" "firezone" {
   sku                 = "Standard"
 }
 
-# OPTIONAL: Create a bastion to allow SSH access to the VMs
+# OPTIONAL: Create a bastion to allow SSH access to the VMs which
+# can be helpful for debugging when setting up the Gateways.
+# After you're sure this configuration works, you can remove the bastion.
 resource "azurerm_bastion_host" "firezone" {
   name                = "firezone-bastion"
   location            = azurerm_resource_group.firezone.location
