@@ -3,7 +3,6 @@ import { useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMixpanel } from "react-mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 function _Mixpanel() {
   const pathname = usePathname();
@@ -64,11 +63,9 @@ function _Mixpanel() {
 
 export function Mixpanel() {
   return (
-    <ErrorBoundary>
-      <Suspense>
-        <_Mixpanel />
-      </Suspense>
-    </ErrorBoundary>
+    <Suspense>
+      <_Mixpanel />
+    </Suspense>
   );
 }
 
