@@ -222,25 +222,32 @@ impl StubResolver {
         question: &Question<N>,
     ) -> Option<Vec<RecordData<DomainName>>> {
         match question.qtype() {
-            Rtype::A => Some(
-                self.get_or_assign_ips(question.qname().to_name())
-                    .iter()
-                    .copied()
-                    .filter_map(get_v4)
-                    .map(domain::rdata::A::new)
-                    .map(RecordData::A)
-                    .collect_vec(),
-            ),
+            Rtype::A => {
+                get_description(&question.qname().to_name(), &self.dns_resources)?;
 
-            Rtype::AAAA => Some(
-                self.get_or_assign_ips(question.qname().to_name())
-                    .iter()
-                    .copied()
-                    .filter_map(get_v6)
-                    .map(domain::rdata::Aaaa::new)
-                    .map(RecordData::Aaaa)
-                    .collect_vec(),
-            ),
+                Some(
+                    self.get_or_assign_ips(question.qname().to_name())
+                        .iter()
+                        .copied()
+                        .filter_map(get_v4)
+                        .map(domain::rdata::A::new)
+                        .map(RecordData::A)
+                        .collect_vec(),
+                )
+            }
+            Rtype::AAAA => {
+                get_description(&question.qname().to_name(), &self.dns_resources)?;
+
+                Some(
+                    self.get_or_assign_ips(question.qname().to_name())
+                        .iter()
+                        .copied()
+                        .filter_map(get_v4)
+                        .map(domain::rdata::A::new)
+                        .map(RecordData::A)
+                        .collect_vec(),
+                )
+            }
             Rtype::PTR => {
                 let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
                 let fqdn = self.ips_to_fqdn.get(&ip)?;
