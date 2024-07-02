@@ -126,12 +126,12 @@ Yet, the policy code the one we want to test and perhaps share with others via l
 
 How do we apply dependency inversion then?
 We introduce abstractions!
-When we call UdpSocket::send, what data are we actually passing?
-The payload, a SocketAddr and - implicitly - the socket itself.
-The socket can also be identified by means of a SocketAddr:
+When we call `UdpSocket::send`, what data are we actually passing?
+The payload, a `SocketAddr` and - implicitly - the socket itself.
+The socket can also be identified by means of a `SocketAddr`:
 The one we bound to earlier in our application.
 Let's package these three things up into an abstraction.
-Meet Transmit:
+Meet `Transmit`:
 
 ```rust
 pub struct Transmit {
@@ -141,19 +141,19 @@ pub struct Transmit {
 }
 ```
 
-Anywhere where we'd like to send data over our UdpSocket, we can now emit a Transmit .
+Anywhere where we'd like to send data over our `UdpSocket`, we can now emit a `Transmit` .
 But that is only one half of the solution.
-Where does the Transmit go? We need to execute this Transmit somewhere! This is the 2nd half of any sans-IO application.
+Where does the `Transmit` go? We need to execute this `Transmit` somewhere! This is the 2nd half of any sans-IO application.
 There needs to be a component that actually causes all these side-effects.
 Recall the definition of the dependency-inversion principle: Policies should not depend on implementations, instead both should depend on abstractions.
-Transmit is our abstraction and we already know that we need to re-write our policy code to use it.
+`Transmit` is our abstraction and we already know that we need to re-write our policy code to use it.
 The actual implementation details, i.e. our UdpSocket also needs to be made aware of our new abstraction.
 Luckily, this is pretty simple.
-All we need is a function that takes a Transmit's dst and payload and passes it to the UdpSocket.
+All we need is a function that takes a `Transmit`'s dst and payload and passes it to the UdpSocket.
 
 The avid reader will have already noticed that so far, we've glanced over an important detail:
-What does the new code that "produces" a Transmit actually look like?
-We can't simply make a Transmit and wait for it to magically wander through our application.
+What does the new code that "produces" a `Transmit` actually look like?
+We can't simply make a `Transmit` and wait for it to magically wander through our application.
 How do we connect those pieces of code together into something that actually works?
 
 ## Introducing state machines
@@ -165,7 +165,7 @@ If we think through our code in an abstract way, we may notice that it is actual
 ```
 
 Without execute the side-effect of sending a message directly, we need to rewrite our code to resemble what it actually is: A state machine.
-As we can see in our diagram, we have 3 states: Start, Sent, Received.
+As we can see in our diagram, we have 3 states: `Start`, `Sent`, `Received`.
 These are mutually-exclusive so we can model them as an enum:
 
 ```rust
