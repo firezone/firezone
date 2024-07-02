@@ -464,7 +464,26 @@ defmodule Web.Live.Actors.ShowTest do
           }
         )
 
-      oidc_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      oidc_manually_provisioned_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: oidc_provider,
+          provider_identifier: Fixtures.Auth.email()
+        )
+
+      oidc_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: oidc_provider,
+          provider_state: %{
+            "userinfo" => %{"email" => Fixtures.Auth.email()}
+          }
+        )
 
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
@@ -487,7 +506,14 @@ defmodule Web.Live.Actors.ShowTest do
              |> element("#identity-#{google_identity.id} button", "Send Welcome Email")
              |> has_element?()
 
-      refute lv
+      assert lv
+             |> element(
+               "#identity-#{oidc_manually_provisioned_identity.id} button",
+               "Send Welcome Email"
+             )
+             |> has_element?()
+
+      assert lv
              |> element("#identity-#{oidc_identity.id} button", "Send Welcome Email")
              |> has_element?()
     end
