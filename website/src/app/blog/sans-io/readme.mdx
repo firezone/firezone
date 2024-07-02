@@ -417,7 +417,7 @@ As a result, we are able to easily implementation optimisations such as gatherin
 sans-IO code is essentially side-effect free and thus lends itself extremely well for (unit) tests.
 Due to sockets and time being abstracted away, it becomes a breeze to write tests that advance time by 5 minutes in an instant.
 All we need to do is pass a modified `Instant` to our function and assert, how the code behaves.
-To see a real world example of this, check out how we test that `snownet` closes idle connections after 5 minutes: https://github.com/firezone/firezone/blob/53557f46e452c0fe5195a4326873753a356c6005/rust/connlib/snownet/tests/lib.rs#L123-L127.
+To see a real world example of this, [check out](https://github.com/firezone/firezone/blob/53557f46e452c0fe5195a4326873753a356c6005/rust/connlib/snownet/tests/lib.rs#L123-L127) how we test that `snownet` closes idle connections after 5 minutes.
 
 Similarly, actually sending data over a socket takes (a little bit of) time and more importantly, requires allocation of ports etc.
 In a sans-IO world, "sending data" in a test is as simple as taking a `Transmit` from party B and calling `handle_input` on the state of party A.
