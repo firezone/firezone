@@ -27,10 +27,12 @@ use utils::turn;
 mod client;
 mod device_channel;
 mod dns;
+mod filter_engine;
 mod gateway;
 mod io;
 mod peer;
 mod peer_store;
+mod resource_routing_table;
 mod sockets;
 mod utils;
 

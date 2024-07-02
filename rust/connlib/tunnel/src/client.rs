@@ -1,4 +1,5 @@
 use crate::dns::StubResolver;
+use crate::filter_engine::FilterEngine;
 use crate::io::DnsQueryError;
 use crate::peer_store::PeerStore;
 use crate::{dns, dns::DnsQuery};
@@ -244,6 +245,12 @@ impl Request {
     }
 }
 
+#[derive(Debug)]
+struct ResourceOnClient {
+    id: ResourceId,
+    filters: FilterEngine,
+}
+
 /// A sans-IO implementation of a Client's functionality.
 ///
 /// Internally, this composes a [`snownet::ClientNode`] with firezone's policy engine around resources.
@@ -265,7 +272,8 @@ pub struct ClientState {
     sites_status: HashMap<SiteId, Status>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    // TODO: make this map to a HashSet of resource descriptions
+    cidr_resources: IpNetworkTable<ResourceOnClient>,
     /// All resources indexed by their ID.
     resource_ids: HashMap<ResourceId, ResourceDescription>,
 
@@ -766,8 +774,13 @@ impl ClientState {
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         let maybe_cidr_resource_id = self
             .cidr_resources
-            .longest_match(destination)
-            .map(|(_, res)| res.id);
+            // Docs on ip-network-table are not clear on how this works but with a binary trie we should be able to have the iterator sorted by prefix size
+            // meaning that we just filter on the condition and if the condition is O(1) the lookup is still O(n).
+            // Furthermore, not only the lookup is still O(n) but the number of operations is the number of operations for `longest_match`*k  where k is the number of operations for the filter.
+            .matches(destination)
+            // TODO: filter on port/protocol
+            .map(|(_, res)| res.id)
+            .next();
 
         let maybe_dns_resource_id = self
             .stub_resolver
@@ -920,11 +933,21 @@ impl ClientState {
                     self.stub_resolver.add_resource(dns);
                 }
                 ResourceDescription::Cidr(cidr) => {
-                    let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+                    let existing = self.cidr_resources.insert(
+                        cidr.address,
+                        ResourceOnClient {
+                            id: cidr.id,
+                            filters: todo!(),
+                        },
+                    );
 
                     match existing {
                         Some(existing) if existing.id != cidr.id => {
-                            tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
+                            let Some(existing) = self.resource_ids.get(&existing.id) else {
+                                debug_assert!(false);
+                                continue;
+                            };
+                            tracing::info!(address = %cidr.address, old = %existing.name(), new = %cidr.name, "Replacing CIDR resource");
                         }
                         Some(_) => {}
                         None => {
@@ -946,7 +969,11 @@ impl ClientState {
             self.stub_resolver.remove_resource(*id);
             self.cidr_resources.retain(|_, r| {
                 if r.id == *id {
-                    tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
+                    let Some(existing) = self.resource_ids.get(&id) else {
+                        debug_assert!(false);
+                        return false;
+                    };
+                    tracing::info!(name = %existing.name(), "Deactivating CIDR resource");
                     return false;
                 }
 
@@ -1634,6 +1661,7 @@ mod proptests {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            filters: vec![],
         };
 
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);

@@ -65,6 +65,7 @@ pub fn dns_resource_with_sites(sites: Vec<Site>) -> impl Strategy<Value = Resour
                 name,
                 sites: sites.clone(),
                 address_description,
+                filters: vec![],
             },
         )
 }
@@ -86,6 +87,7 @@ pub fn cidr_resource_with_sites(
                 name,
                 sites: sites.clone(),
                 address_description,
+                filters: vec![],
             },
         )
 }

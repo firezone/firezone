@@ -154,6 +154,13 @@ impl ResourceDescription {
             }
         }
     }
+
+    pub fn filters(&self) -> Filters {
+        match self {
+            ResourceDescription::Dns(r) => r.filters.clone(),
+            ResourceDescription::Cidr(r) => r.filters.clone(),
+        }
+    }
 }
 
 impl PartialOrd for ResourceDescription {

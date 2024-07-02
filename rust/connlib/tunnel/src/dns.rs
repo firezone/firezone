@@ -15,7 +15,7 @@ use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
 use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const DNS_TTL: u32 = 1;
