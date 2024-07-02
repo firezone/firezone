@@ -242,7 +242,6 @@ From the eventloop's perspective, multiple message could be necessary before we 
 
 UDP is an unreliable protocol, meaning our packets could get lost in transit.
 Do mitigate this, STUN mandates retransmission timers.
-
 As it turns out, adding time to this eventloop is fairly trivial.
 
 ## Abstracting time
