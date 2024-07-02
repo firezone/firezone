@@ -241,9 +241,9 @@ impl StubResolver {
                     self.get_or_assign_ips(question.qname().to_name())
                         .iter()
                         .copied()
-                        .filter_map(get_v4)
-                        .map(domain::rdata::A::new)
-                        .map(RecordData::A)
+                        .filter_map(get_v6)
+                        .map(domain::rdata::Aaaa::new)
+                        .map(RecordData::Aaaa)
                         .collect_vec(),
                 )
             }
