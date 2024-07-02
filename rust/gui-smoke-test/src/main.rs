@@ -3,23 +3,52 @@
 // Starts up the IPC service and GUI app and lets them run for a bit
 
 use anyhow::{bail, Context as _, Result};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 use subprocess::Exec;
 
 #[cfg(target_os = "linux")]
 const FZ_GROUP: &str = "firezone-client";
 
+const GUI_NAME: &str = "firezone-gui-client";
+const IPC_NAME: &str = "firezone-client-ipc";
+
+#[cfg(target_os = "linux")]
+const EXE_EXTENSION: &str = "";
+
+#[cfg(target_os = "windows")]
+const EXE_EXTENSION: &str = "exe";
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let app = App::new()?;
 
-    build_binary("firezone-gui-client")?;
-    build_binary("firezone-client-ipc")?;
+    // Run `cargo build`
+    build_binary(GUI_NAME)?;
+    build_binary(IPC_NAME)?;
 
+    dump_syms()?;
+
+    // Run normal smoke test
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
-    let mut gui = app.gui_command()?.popen()?;
+    let mut gui = app
+        .gui_command(&["--no-deep-links", "smoke-test"])? // Disable deep links because they don't work in the headless CI environment
+        .popen()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+
+    // Force the GUI to crash and then try to read the crash dump
+    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut gui = app.gui_command(&["--no-deep-links", "--crash"])?.popen()?;
+
+    // Ignore exit status here since we asked the GUI to crash on purpose
+    gui.wait()?;
+    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+
+    app.check_crash_dump()?;
 
     Ok(())
 }
@@ -27,6 +56,20 @@ fn main() -> Result<()> {
 struct App {
     #[cfg(target_os = "linux")]
     username: String,
+}
+
+impl App {
+    fn check_crash_dump(&self) -> Result<()> {
+        Exec::cmd("minidump-stackwalk")
+            .args(&[
+                OsStr::new("--symbols-path"),
+                syms_path().as_os_str(),
+                self.crash_dump_path().as_os_str(),
+            ])
+            .join()?
+            .fz_exit_ok()?;
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -53,18 +96,28 @@ impl App {
         Ok(Self { username })
     }
 
-    fn gui_command(&self) -> Result<Exec> {
-        let xvfb = Exec::cmd("xvfb-run")
-            .args(&[
-                "--auto-servernum",
-                std::path::Path::new("target/debug/firezone-gui-client")
-                    .canonicalize()?
-                    .to_str()
-                    .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
-                "--no-deep-links", // Disable deep links since the headless CI won't allow them
-                "smoke-test",
-            ])
-            .to_cmdline_lossy();
+    fn crash_dump_path(&self) -> PathBuf {
+        Path::new("/home")
+            .join(&self.username)
+            .join(".cache")
+            .join("dev.firezone.client")
+            .join("data")
+            .join("logs")
+            .join("last_crash.dmp")
+    }
+
+    // `args` can't just be appended because of the `xvfb-run` wrapper
+    fn gui_command(&self, args: &[&str]) -> Result<Exec> {
+        let args: Vec<_> = [
+            "--auto-servernum",
+            std::path::Path::new(gui_path())
+                .canonicalize()?
+                .to_str()
+                .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
+        ]
+        .into_iter()
+        .chain(args.into_iter());
+        let xvfb = Exec::cmd("xvfb-run").args(&args).to_cmdline_lossy();
 
         tracing::debug!(?xvfb);
 
@@ -89,8 +142,14 @@ impl App {
         Ok(Self {})
     }
 
-    fn gui_command(&self) -> Result<Exec> {
-        Ok(Exec::cmd("target/debug/firezone-gui-client").args(&["--no-deep-links", "smoke-test"]))
+    fn crash_dump_path(&self) -> PathBuf {
+        Path::new("C:/Users/user/AppData/Local/dev.firezone.client/data/logs")
+            .join("last_crash.dmp")
+    }
+
+    // Strange signature needed to match Linux
+    fn gui_command(&self, args: &[&str]) -> Result<Exec> {
+        Ok(Exec::cmd(gui_path()).args(args))
     }
 }
 
@@ -102,14 +161,40 @@ fn build_binary(name: &str) -> Result<()> {
     Ok(())
 }
 
+// Get debug symbols from the exe / pdb
+fn dump_syms() -> Result<()> {
+    Exec::cmd("dump_syms")
+        .args(&[
+            debug_db_path().as_os_str(),
+            gui_path().as_os_str(),
+            OsStr::new("--output"),
+            syms_path().as_os_str(),
+        ])
+        .join()?
+        .fz_exit_ok()?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn debug_db_path() -> PathBuf {
+    Path::new("target").join("debug").join(GUI_NAME)
+}
+
+#[cfg(target_os = "windows")]
+fn debug_db_path() -> PathBuf {
+    Path::new("target")
+        .join("debug")
+        .join("firezone_gui_client.pdb")
+}
+
 #[cfg(target_os = "linux")]
 fn ipc_service_command() -> Exec {
-    Exec::cmd("sudo").args(&["--preserve-env", "target/debug/firezone-client-ipc"])
+    Exec::cmd("sudo").args(&["--preserve-env", ipc_path()])
 }
 
 #[cfg(target_os = "windows")]
 fn ipc_service_command() -> Exec {
-    Exec::cmd("target/debug/firezone-client-ipc")
+    Exec::cmd(ipc_path())
 }
 
 // `ExitStatus::exit_ok` is nightly, so we add an equivalent here
@@ -124,4 +209,24 @@ impl ExitStatusExt for subprocess::ExitStatus {
         }
         Ok(())
     }
+}
+
+#[cfg(target_os = "windows")]
+
+fn gui_path() -> PathBuf {
+    Path::new("target")
+        .join("debug")
+        .join(GUI_NAME)
+        .with_extension(EXE_EXTENSION)
+}
+
+fn ipc_path() -> PathBuf {
+    Path::new("target")
+        .join("debug")
+        .join(IPC_NAME)
+        .with_extension(EXE_EXTENSION)
+}
+
+fn syms_path() -> PathBuf {
+    gui_path().with_extension("syms")
 }
