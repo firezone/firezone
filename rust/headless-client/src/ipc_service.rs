@@ -51,6 +51,7 @@ enum Cmd {
     Install,
     Run,
     RunDebug,
+    RunSmokeTest,
 }
 
 impl Default for Cmd {
@@ -84,6 +85,7 @@ pub fn run_only_ipc_service() -> Result<()> {
         Cmd::Install => platform::install_ipc_service(),
         Cmd::Run => platform::run_ipc_service(cli.common),
         Cmd::RunDebug => run_debug_ipc_service(),
+        Cmd::RunSmokeTest => run_smoke_test(),
     }
 }
 
@@ -110,6 +112,23 @@ fn run_debug_ipc_service() -> Result<()> {
             future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
         }
     })
+}
+
+fn run_smoke_test() -> Result<()> {
+    crate::setup_stdout_logging()?;
+    let rt = tokio::runtime::Runtime::new()?;
+    let _guard = rt.enter();
+
+    // Couldn't get the loop to work here yet, so SIGHUP is not implemented
+    rt.block_on(async {
+        if let Ok(result) = tokio::time::timeout(Duration::from_secs(12), ipc_listen()).await {
+            Err(result.unwrap_err())
+        } else {
+            tracing::info!("IPC service smoke test timed out as expected");
+            Ok(())
+        }
+    })?;
+    Ok(())
 }
 
 async fn ipc_listen() -> Result<std::convert::Infallible> {

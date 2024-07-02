@@ -8,6 +8,7 @@ members = [
   "connlib/snownet",
   "gateway",
   "firezone-cli-utils",
+  "gui-smoke-test",
   "headless-client",
   "snownet-tests",
   "phoenix-channel",

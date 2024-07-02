@@ -1,0 +1,11 @@
+[package]
+name = "gui-smoke-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "1.0" }
+libc = "0.2.155"
+subprocess = "0.2.9"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
