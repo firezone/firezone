@@ -99,11 +99,7 @@ impl App {
     fn crash_dump_path(&self) -> PathBuf {
         Path::new("/home")
             .join(&self.username)
-            .join(".cache")
-            .join("dev.firezone.client")
-            .join("data")
-            .join("logs")
-            .join("last_crash.dmp")
+            .join(".cache/dev.firezone.client/data/logs/last_crash.dmp")
     }
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
@@ -144,7 +140,9 @@ impl App {
     }
 
     fn crash_dump_path(&self) -> PathBuf {
-        Path::new("C:/Users/user/AppData/Local/dev.firezone.client/data/logs")
+        let app_data = std::env::var("LOCALAPPDATA").expect("$LOCALAPPDATA should be set");
+        PathBuf::from(app_data)
+            .join("dev.firezone.client/data/logs")
             .join("last_crash.dmp")
     }
 
