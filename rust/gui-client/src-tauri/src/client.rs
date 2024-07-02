@@ -1,6 +1,5 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
-use connlib_client_shared::file_logger;
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -96,8 +95,11 @@ pub(crate) fn run() -> Result<()> {
 
             let settings = settings::load_advanced_settings().unwrap_or_default();
             // Don't fix the log filter for smoke tests
-            let _logger = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings);
+            let logging::Handles {
+                logger: _logger,
+                reloader,
+            } = start_logging(&settings.log_filter)?;
+            let result = gui::run(cli, settings, reloader);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -118,8 +120,11 @@ pub(crate) fn run() -> Result<()> {
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
-    let _logger = start_logging(&settings.log_filter)?;
-    let result = gui::run(cli, settings);
+    let logging::Handles {
+        logger: _logger,
+        reloader,
+    } = start_logging(&settings.log_filter)?;
+    let result = gui::run(cli, settings, reloader);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
@@ -150,11 +155,11 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Starts logging
 ///
 /// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<file_logger::Handle> {
+fn start_logging(directives: &str) -> Result<logging::Handles> {
     let logging_handles = logging::setup(directives)?;
     tracing::info!(?GIT_VERSION, "`gui-client` started logging");
 
-    Ok(logging_handles.logger)
+    Ok(logging_handles)
 }
 
 /// The debug / test flags like `crash_on_purpose` and `test_update_notification`
