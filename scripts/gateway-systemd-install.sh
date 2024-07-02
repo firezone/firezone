@@ -105,7 +105,7 @@ ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A 
 ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
 ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
 
-# Enable packet forwarding
+# Enable packet forwarding for IPv4 and IPv6
 sysctl -w net.ipv4.ip_forward=1
 sysctl -w net.ipv4.conf.all.src_valid_mark=1
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
