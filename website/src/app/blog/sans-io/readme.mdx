@@ -42,7 +42,7 @@ As we will see, sans-IO driven designs heavily make use of same pattern.
 The `match` keyword provides us with a compile-time checked way of handling the different variations of a value.
 Combined with enums, this provides a powerful way of ensuring that all combinations are handled.
 Enums lend themselves especially well in modelling state that can change at runtime.
-For example, the following enum models the state of a Connection:
+The following code is a slightly simplified snippet from [actual production code](https://github.com/firezone/firezone/blob/79fd8f6063761e582013873ff2a49d22c2445c46/rust/connlib/snownet/src/node.rs#L1308-L1330), modelling the state of a connection:
 
 ```rust
 enum Connection {
