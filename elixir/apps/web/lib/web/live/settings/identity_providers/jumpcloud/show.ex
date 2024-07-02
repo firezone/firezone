@@ -233,7 +233,6 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
 
   def jumpcloud_sync_status(assigns) do
     ~H"""
-
     """
   end
 

@@ -22,6 +22,59 @@ export default function Page() {
         </p>
         <div className="mt-14 grid divide-y">
           <SummaryCard
+            title="June 2024 update"
+            date="June 21, 2024"
+            href="/blog/jun-2024-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <div className="mb-2">
+              <div className="mb-2">In this update:</div>
+              <ul className="space-y-2 list-inside list-disc ml-4">
+                <li>
+                  <strong>New feature:</strong> Conditional access policies
+                </li>
+                <li>
+                  <strong>New feature:</strong> Directory sync support for
+                  JumpCloud
+                </li>
+                <li>
+                  <strong>Blog post:</strong>{" "}
+                  <Link
+                    href="/blog/using-tauri"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    Using Tauri to build a cross-platform security app
+                  </Link>
+                </li>
+                <li>
+                  <strong>Blog post:</strong>{" "}
+                  <Link
+                    href="/blog/improving-reliability-for-dns-resources"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    Improving reliability for DNS Resources
+                  </Link>
+                </li>
+                <li>
+                  New{" "}
+                  <Link href="/support" className="text-accent-500 underline">
+                    support
+                  </Link>{" "}
+                  page for getting help with Firezone.
+                </li>
+                <li>
+                  New{" "}
+                  <Link href="/changelog" className="text-accent-500 underline">
+                    changelog
+                  </Link>{" "}
+                  page with release notes for every component we ship.
+                </li>
+              </ul>
+            </div>
+          </SummaryCard>
+          <SummaryCard
             title="Improving reliability for DNS Resources"
             date="June 20, 2024"
             href="/blog/improving-reliability-for-dns-resources"
@@ -71,11 +124,11 @@ export default function Page() {
             href="/blog/may-2024-update"
             authorName="Jamil Bou Kheir"
             authorAvatarSrc={gravatar("jamil@firezone.dev")}
-            type="Learn"
+            type="Announcement"
           >
             <div className="mb-2">
-              In this update:
-              <ul className="list-inside list-disc ml-4">
+              <div className="mb-2">In this update:</div>
+              <ul className="space-y-2 list-inside list-disc ml-4">
                 <li>
                   <strong>New feature:</strong> Traffic restrictions
                 </li>

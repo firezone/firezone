@@ -95,8 +95,6 @@ jobs:
           ONLY_ACTIVE_ARCH: no
           # Needed because `productbuild` doesn't support picking this up automatically like Xcode does
           INSTALLER_CODE_SIGN_IDENTITY: "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
-          # mark:next-apple-version
-          FIREZONE_PACKAGE_VERSION: 1.1.0
         run: |
           # Use the same Xcode version as development
           sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app

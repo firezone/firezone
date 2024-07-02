@@ -144,7 +144,11 @@ defmodule Domain.Accounts do
   defp account_topic(account_id), do: "accounts:#{account_id}"
 
   def subscribe_to_events_in_account(account_or_id) do
-    PubSub.subscribe(account_topic(account_or_id))
+    account_or_id |> account_topic() |> PubSub.subscribe()
+  end
+
+  def unsubscribe_from_events_in_account(account_or_id) do
+    account_or_id |> account_topic() |> PubSub.unsubscribe()
   end
 
   defp broadcast_config_update_to_account(%Account{} = account) do

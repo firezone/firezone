@@ -1,18 +1,18 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
-use crate::utils::{earliest, stun, turn};
+use crate::utils::earliest;
 use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId,
-    Interface as InterfaceConfig, Key, Offer, Relay, RelayId, ResourceId,
+    Interface as InterfaceConfig, Key, Offer, RelayId, ResourceId,
 };
 use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
@@ -47,7 +47,6 @@ where
         client: PublicKey,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        relays: Vec<Relay>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
@@ -64,8 +63,6 @@ where
             client,
             ipv4,
             ipv6,
-            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays),
             domain,
             expires_at,
             resource,
@@ -200,7 +197,7 @@ impl GatewayState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         tracing::Span::current().record("src", tracing::field::display(packet.source()));
@@ -214,10 +211,8 @@ impl GatewayState {
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "Invalid packet: {e}"))
             .ok()?;
-
-        tracing::trace!("Decapsulated packet");
 
         Some(packet.into_immutable())
     }
@@ -239,8 +234,6 @@ impl GatewayState {
         client: PublicKey,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        stun_servers: HashSet<SocketAddr>,
-        turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
@@ -256,9 +249,7 @@ impl GatewayState {
             _ => {}
         }
 
-        let answer =
-            self.node
-                .accept_connection(client_id, offer, client, stun_servers, turn_servers, now);
+        let answer = self.node.accept_connection(client_id, offer, client, now);
 
         let mut peer = ClientOnGateway::new(client_id, ipv4, ipv6);
 
@@ -353,33 +344,50 @@ impl GatewayState {
             Some(_) => {}
         }
 
+        let mut added_ice_candidates = HashMap::<ClientId, HashSet<String>>::default();
+        let mut removed_ice_candidates = HashMap::<ClientId, HashSet<String>>::default();
+
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.peers.remove(&id);
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
                 } => {
-                    self.buffered_events
-                        .push_back(GatewayEvent::NewIceCandidate {
-                            conn_id: connection,
-                            candidate,
-                        });
+                    added_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
                     candidate,
                 } => {
-                    self.buffered_events
-                        .push_back(GatewayEvent::InvalidIceCandidate {
-                            conn_id: connection,
-                            candidate,
-                        });
+                    removed_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
                 }
-                _ => {}
+                snownet::Event::ConnectionEstablished(_) => {}
             }
+        }
+
+        for (conn_id, candidates) in added_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(GatewayEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
+        }
+
+        for (conn_id, candidates) in removed_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(GatewayEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
         }
     }
 

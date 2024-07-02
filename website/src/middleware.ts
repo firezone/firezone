@@ -50,6 +50,20 @@ const versionedRedirects = [
   },
 ];
 
+export const config = {
+  matcher: [
+    "/dl/firezone-client-gui-windows/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/aarch64",
+    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/aarch64",
+    "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/armv7",
+    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/aarch64",
+    "/dl/firezone-gateway/(\\d+).(\\d+).(\\d+)/armv7",
+  ],
+};
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 

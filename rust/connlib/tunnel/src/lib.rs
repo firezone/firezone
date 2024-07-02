@@ -12,7 +12,7 @@ use connlib_shared::{
 };
 use io::Io;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
     time::Instant,
@@ -77,11 +77,12 @@ where
         private_key: StaticSecret,
         sockets: Sockets,
         callbacks: CB,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(sockets)?,
             callbacks,
-            role_state: ClientState::new(private_key),
+            role_state: ClientState::new(private_key, known_hosts),
             write_buf: Box::new([0u8; MTU + 16 + 20]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -89,8 +90,8 @@ where
         })
     }
 
-    pub fn reconnect(&mut self) -> std::io::Result<()> {
-        self.role_state.reconnect(Instant::now());
+    pub fn reset(&mut self) -> std::io::Result<()> {
+        self.role_state.reset();
         self.io.sockets_mut().rebind()?;
 
         Ok(())
@@ -263,20 +264,19 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidatedIceCandidate {
+    RemovedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     ConnectionIntent {
         resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
     },
-    // FIXME: Refactor this to "request-access" or something similar.
-    RefreshResources {
+    SendProxyIps {
         connections: Vec<ReuseConnection>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
@@ -296,13 +296,13 @@ pub enum ClientEvent {
 
 #[derive(Debug, Clone)]
 pub enum GatewayEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidIceCandidate {
+    RemovedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     RefreshDns {
         name: DomainName,

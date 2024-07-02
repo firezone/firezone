@@ -131,6 +131,7 @@ defmodule API.Gateway.Channel do
       :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
       resource = Resources.fetch_resource_by_id!(resource_id)
+      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
@@ -227,11 +228,17 @@ defmodule API.Gateway.Channel do
 
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
+      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
       {:ok, relays} = select_relays(socket)
-      :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
+      :ok =
+        Enum.each(relays, fn relay ->
+          :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
+          :ok = Domain.Relays.subscribe_to_relay_presence(relay)
+        end)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
       ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
@@ -273,9 +280,16 @@ defmodule API.Gateway.Channel do
         attributes: %{
           relay_id: relay_id
         } do
+        :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
+
         relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
         {:ok, relays} = select_relays(socket)
-        :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+
+        :ok =
+          Enum.each(relays, fn relay ->
+            :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
+            :ok = Domain.Relays.subscribe_to_relay_presence(relay)
+          end)
 
         push(socket, "relays_presence", %{
           disconnected_ids: [relay_id],

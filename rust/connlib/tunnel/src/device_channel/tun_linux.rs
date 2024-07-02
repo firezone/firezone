@@ -1,16 +1,12 @@
 use super::utils;
 use crate::device_channel::ioctl;
-use connlib_shared::{
-    messages::Interface as InterfaceConfig, tun_device_manager::platform::IFACE_NAME, Callbacks,
-    Error, Result,
-};
+use connlib_shared::{tun_device_manager::platform::IFACE_NAME, Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
     S_IFCHR,
 };
 use std::collections::HashSet;
-use std::net::IpAddr;
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
@@ -54,13 +50,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<Self> {
-        tracing::debug!(?dns_config);
-
+    pub fn new() -> Result<Self> {
         create_tun_device()?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -78,8 +68,6 @@ impl Tun {
         }
 
         set_non_blocking(fd)?;
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         Ok(Self {
             fd: AsyncFd::new(fd)?,

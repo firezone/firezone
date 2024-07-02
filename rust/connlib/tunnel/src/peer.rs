@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
-use bimap::BiMap;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
 use connlib_shared::messages::{
@@ -16,7 +15,6 @@ use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
-use crate::client::IpProvider;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
@@ -110,8 +108,6 @@ impl AllowRules {
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
     pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
-
-    pub translations: BiMap<IpAddr, IpAddr>,
 }
 
 impl GatewayOnClient {
@@ -135,31 +131,7 @@ impl GatewayOnClient {
             allowed_ips.insert(*ip, resource.clone());
         }
 
-        GatewayOnClient {
-            id,
-            allowed_ips,
-            translations: Default::default(),
-        }
-    }
-
-    #[tracing::instrument(name = "translation", level = "debug", skip_all, fields(gateway = %self.id))]
-    pub fn get_or_assign_translation(
-        &mut self,
-        real_ip: &IpAddr,
-        ip_provider: &mut IpProvider,
-    ) -> Option<IpAddr> {
-        if let Some(proxy_ip) = self.translations.get_by_right(real_ip) {
-            tracing::debug!("Existing translation: {real_ip} -> {proxy_ip}");
-
-            return Some(*proxy_ip);
-        }
-
-        let proxy_ip = ip_provider.get_proxy_ip_for(real_ip)?;
-
-        tracing::debug!("New translation: {real_ip} -> {proxy_ip}");
-
-        self.translations.insert(proxy_ip, *real_ip);
-        Some(proxy_ip)
+        GatewayOnClient { id, allowed_ips }
     }
 }
 
@@ -252,13 +224,7 @@ impl ClientOnGateway {
 
             self.permanent_translations.insert(
                 *proxy_ip,
-                TranslationState {
-                    resolved_ip: real_ip,
-                    resource_id,
-                    name: name.clone(),
-                    last_response: now,
-                    slated_for_refresh: false,
-                },
+                TranslationState::new(resource_id, name.clone(), real_ip, now),
             );
         }
     }
@@ -307,22 +273,23 @@ impl ClientOnGateway {
         let expired_translations = self
             .permanent_translations
             .iter()
-            .filter(|(_, state)| state.slated_for_refresh);
+            .filter(|(_, state)| state.is_expired(now));
+
         let mut for_refresh = HashSet::new();
+
         for (proxy_ip, expired_state) in expired_translations {
+            let domain = &expired_state.name;
+            let resource_id = expired_state.resource_id;
+            let resolved_ip = expired_state.resolved_ip;
+
+            // Only refresh DNS for a domain if all of the resolved IPs stop responding in order to not kill existing connections.
             if self
                 .permanent_translations
                 .values()
-                .filter_map(|state| {
-                    (state.resource_id == expired_state.resource_id
-                        && state.name == expired_state.name)
-                        .then_some((state.last_response, state.slated_for_refresh))
-                })
-                .all(|(last_seen, slated_for_refresh)| {
-                    slated_for_refresh || now.duration_since(last_seen) > Duration::from_secs(30)
-                })
+                .filter(|state| state.resource_id == resource_id && state.name == domain)
+                .all(|state| state.no_incoming_in_120s(now))
             {
-                tracing::debug!(domain = %expired_state.name, conn_id = %self.id, %expired_state.resource_id, %expired_state.resolved_ip, %proxy_ip , "Refreshing DNS");
+                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
 
                 for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
             }
@@ -335,6 +302,7 @@ impl ClientOnGateway {
                 resource_id,
             });
         }
+
         self.nat_table.handle_timeout(now);
     }
 
@@ -417,15 +385,13 @@ impl ClientOnGateway {
             self.nat_table
                 .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
 
-        if now.duration_since(state.last_response) >= Duration::from_secs(30) {
-            state.slated_for_refresh = true;
-        }
-
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, real_ip)
             .ok_or(connlib_shared::Error::FailedTranslation)?;
         packet.set_source_protocol(source_protocol.value());
         packet.update_checksum();
+
+        state.on_outgoing_traffic(now);
 
         Ok(packet)
     }
@@ -459,13 +425,11 @@ impl ClientOnGateway {
         let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
             return Ok(None);
         };
-        let state = self
-            .permanent_translations
-            .get_mut(&ip)
-            .expect("inconsistent state");
 
-        state.last_response = now;
-        state.slated_for_refresh = false;
+        self.permanent_translations
+            .get_mut(&ip)
+            .expect("inconsistent state")
+            .on_incoming_traffic(now);
 
         packet.set_destination_protocol(proto.value());
         packet.update_checksum();
@@ -480,7 +444,6 @@ impl ClientOnGateway {
         if !self.allowed_ips().contains(&packet.source()) {
             return Err(connlib_shared::Error::UnallowedPacket {
                 src: packet.source(),
-                allowed_ips: HashSet::from(self.allowed_ips()),
             });
         }
 
@@ -511,43 +474,15 @@ impl ClientOnGateway {
 }
 
 impl GatewayOnClient {
-    /// Transform a packet that arrived via the network for the TUN device.
-    pub(crate) fn transform_network_to_tun<'a>(
-        &mut self,
-        mut pkt: MutableIpPacket<'a>,
-    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
-        let addr = pkt.source();
-        let src = *self.translations.get_by_right(&addr).unwrap_or(&addr);
-
-        if self.allowed_ips.longest_match(src).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket {
-                src,
-
-                allowed_ips: self
-                    .allowed_ips
-                    .iter()
-                    .map(|(ip, _)| ip.network_address())
-                    .collect(),
-            });
+    pub(crate) fn ensure_allowed_src(
+        &self,
+        pkt: &MutableIpPacket,
+    ) -> Result<(), connlib_shared::Error> {
+        if self.allowed_ips.longest_match(pkt.source()).is_none() {
+            return Err(connlib_shared::Error::UnallowedPacket { src: pkt.source() });
         }
 
-        pkt.set_src(src);
-        pkt.update_checksum();
-
-        Ok(pkt)
-    }
-
-    /// Transform a packet that arrvied on the TUN device for the network.
-    pub(crate) fn transform_tun_to_network<'a>(
-        &mut self,
-        mut packet: MutableIpPacket<'a>,
-    ) -> MutableIpPacket<'a> {
-        if let Some(translated_ip) = self.translations.get_by_left(&packet.destination()) {
-            packet.set_dst(*translated_ip);
-            packet.update_checksum();
-        }
-
-        packet
+        Ok(())
     }
 
     pub fn id(&self) -> GatewayId {
@@ -572,9 +507,85 @@ struct TranslationState {
     name: DomainName,
     /// The IP we have resolved for the domain.
     resolved_ip: IpAddr,
-    /// When we've last seen a packet from the resolved IP.
-    last_response: Instant,
-    slated_for_refresh: bool,
+
+    /// When we've last received a packet from the resolved IP.
+    last_incoming: Option<Instant>,
+    /// When we've sent the first packet to the resolved IP.
+    first_outgoing: Option<Instant>,
+    /// When we've last sent a packet to the resolved IP.
+    last_outgoing: Option<Instant>,
+    /// When was this translation created
+    created_at: Instant,
+    /// When we first detected that we aren't getting any responses from this IP.
+    ///
+    /// This is set upon outgoing traffic if we haven't received inbound traffic for a while.
+    /// We don't want to immediately trigger a refresh in that case because protocols like TCP and ICMP have responses.
+    /// Thus, a DNS refresh is triggered after a grace-period of 1s after the packet that detected the missing responses.
+    ack_grace_period_started_at: Option<Instant>,
+}
+
+impl TranslationState {
+    const USED_WINDOW: Duration = Duration::from_secs(10);
+
+    fn new(resource_id: ResourceId, name: DomainName, resolved_ip: IpAddr, now: Instant) -> Self {
+        Self {
+            resource_id,
+            name,
+            resolved_ip,
+            created_at: now,
+            last_incoming: None,
+            first_outgoing: None,
+            last_outgoing: None,
+            ack_grace_period_started_at: None,
+        }
+    }
+
+    fn is_expired(&self, now: Instant) -> bool {
+        // Note: we don't need to check that it's used here because the ack grace period already implies it
+        self.ack_grace_period_expired(now) && self.no_incoming_in_120s(now)
+    }
+
+    fn ack_grace_period_expired(&self, now: Instant) -> bool {
+        self.ack_grace_period_started_at
+            .is_some_and(|missing_responses_detected_at| {
+                now.duration_since(missing_responses_detected_at) >= Duration::from_secs(1)
+            })
+    }
+
+    fn no_incoming_in_120s(&self, now: Instant) -> bool {
+        const CONNTRACK_UDP_STREAM_TIMEOUT: Duration = Duration::from_secs(120);
+
+        if let Some(last_incoming) = self.last_incoming {
+            now.duration_since(last_incoming) >= CONNTRACK_UDP_STREAM_TIMEOUT
+        } else {
+            now.duration_since(self.created_at) >= CONNTRACK_UDP_STREAM_TIMEOUT
+        }
+    }
+
+    fn on_incoming_traffic(&mut self, now: Instant) {
+        self.last_incoming = Some(now);
+        self.ack_grace_period_started_at = None;
+    }
+
+    fn on_outgoing_traffic(&mut self, now: Instant) {
+        // We need this because it means that if a packet arrives at some point less than 120s but more than 110s
+        // we still start the grace period so that the connection expires at some point after 120s
+        let with_this_packet_the_connection_will_be_considered_used_when_it_expires =
+            self.no_incoming_in_120s(now + Self::USED_WINDOW);
+        if self.ack_grace_period_started_at.is_none()
+            && with_this_packet_the_connection_will_be_considered_used_when_it_expires
+        {
+            self.ack_grace_period_started_at = Some(now);
+        }
+
+        self.last_outgoing = Some(now);
+
+        if self.first_outgoing.is_some() {
+            return;
+        }
+
+        self.first_outgoing = Some(now);
+    }
 }
 
 /// The state of one client on a gateway.
@@ -592,8 +603,8 @@ pub struct ClientOnGateway {
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{Ipv4Addr, Ipv6Addr},
-        time::Duration,
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        time::{Duration, Instant},
     };
 
     use chrono::Utc;
@@ -603,7 +614,7 @@ mod tests {
     };
     use ip_network::Ipv4Network;
 
-    use super::ClientOnGateway;
+    use super::{ClientOnGateway, TranslationState};
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -672,6 +683,273 @@ mod tests {
             peer.ensure_allowed_dst(&udp_packet),
             Err(connlib_shared::Error::InvalidDst)
         ));
+    }
+
+    #[test]
+    fn initial_translation_state_is_not_expired() {
+        let now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_is_not_used_but_expired_after_120s() {
+        let mut now = Instant::now();
+        let state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(121);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_is_used_and_expired_after_120s_with_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_is_used_and_expired_after_121s_with_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(121);
+        state.on_outgoing_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
+    }
+    #[test]
+    fn translation_state_is_not_expired_with_incoming_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_incoming_and_outgoing_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(200);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(1);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_still_has_grace_period_after_incoming_traffic() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(200);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_still_expires_after_grace_period_after_incoming_traffic_resetted_it() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(200);
+        state.on_incoming_traffic(now);
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_first_packet_after_silence() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_expires_after_silence_even_with_multiple_packets() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_doesnt_expire_before_expected_period() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(110);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_expire_after_expected_period() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(110);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn incoming_traffic_prevents_expiration() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_secs(120);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(500);
+        state.on_incoming_traffic(now);
+        now += Duration::from_secs(5);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_doesnt_expire_with_packet_that_didnt_had_time_to_be_responded() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_millis(119990);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_millis(20);
+
+        assert!(!state.is_expired(now));
+    }
+
+    #[test]
+    fn translation_state_expires_with_packet_that_had_time_to_be_responded() {
+        let mut now = Instant::now();
+        let mut state = TranslationState::new(
+            ResourceId::random(),
+            "example.com".parse().unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            now,
+        );
+
+        now += Duration::from_millis(119990);
+        state.on_outgoing_traffic(now);
+        now += Duration::from_secs(1);
+
+        assert!(state.is_expired(now));
     }
 
     fn source_v4_addr() -> Ipv4Addr {

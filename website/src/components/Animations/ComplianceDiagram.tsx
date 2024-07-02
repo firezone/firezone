@@ -1,5 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
+import { isSafari } from "react-device-detect";
 
 export default function ComplianceDiagram() {
   return (
@@ -389,7 +390,7 @@ export default function ComplianceDiagram() {
         </g>
         <motion.g
           filter="url(#filter2_d_1082_965)"
-          initial={{ opacity: 0 }}
+          initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.2 }}
           viewport={{ once: true }}
@@ -422,7 +423,7 @@ export default function ComplianceDiagram() {
         </motion.g>
         <motion.g
           filter="url(#filter3_d_1082_965)"
-          initial={{ opacity: 0 }}
+          initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.4 }}
           viewport={{ once: true }}
@@ -455,7 +456,7 @@ export default function ComplianceDiagram() {
         </motion.g>
         <motion.g
           filter="url(#filter4_d_1082_965)"
-          initial={{ opacity: 0 }}
+          initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.6 }}
           viewport={{ once: true }}
@@ -488,7 +489,7 @@ export default function ComplianceDiagram() {
         </motion.g>
         <motion.g
           filter="url(#filter5_d_1082_965)"
-          initial={{ opacity: 0 }}
+          initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.8 }}
           viewport={{ once: true }}
@@ -521,7 +522,7 @@ export default function ComplianceDiagram() {
         </motion.g>
         <motion.g
           filter="url(#filter6_d_1082_965)"
-          initial={{ opacity: 0 }}
+          initial={isSafari ? { opacity: 1 } : { opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 1 }}
           viewport={{ once: true }}

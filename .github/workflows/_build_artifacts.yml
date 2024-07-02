@@ -99,7 +99,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build and push control plane images
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
@@ -153,9 +153,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            version: 1.1.0
+            release_name: headless-client-1.1.2
             # mark:next-headless-version
-            release_name: headless-client-1.1.0
+            version: 1.1.2
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -163,9 +163,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            version: 1.1.1
+            release_name: gateway-1.1.3
             # mark:next-gateway-version
-            release_name: gateway-1.1.1
+            version: 1.1.3
           - package: snownet-tests
             artifact: snownet-tests
             image_name: snownet-tests
@@ -202,9 +202,7 @@ jobs:
             PROFILE=""
           fi
 
-          # Override version by setting it inside cross container if it's provided
-          ${{ matrix.name.version && format('CROSS_CONTAINER_OPTS="--env FIREZONE_PACKAGE_VERSION={0}"', matrix.name.version) }} \
-            cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
+          cross build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }}
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
@@ -295,7 +293,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build Docker images
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -350,7 +348,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.1.1
+            version: 1.1.3
           - name: client
             # mark:next-client-version
             version: 1.0.6

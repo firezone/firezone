@@ -36,6 +36,7 @@ module "vpc" {
   enable_ipv6                                    = true
   public_subnet_assign_ipv6_address_on_creation  = true
   private_subnet_assign_ipv6_address_on_creation = true
+  private_subnet_enable_dns64                    = false # DNS64 without a NAT64 gateway breaks IPv4-only resources
 
   public_subnet_ipv6_prefixes  = [0, 1]
   private_subnet_ipv6_prefixes = [2, 3]
@@ -159,7 +160,7 @@ module "aws_gateway" {
   image_repo              = module.google-artifact-registry.repo
   image                   = "gateway"
   image_tag               = var.image_tag
-  observability_log_level = "phoenix_channel=debug,firezone_gateway=debug,boringtun=debug,snownet=debug,str0m=info,connlib_gateway_shared=debug,firezone_tunnel=debug,connlib_shared=debug,warn"
+  observability_log_level = "wire::api=trace,phoenix_channel=debug,firezone_gateway=debug,boringtun=debug,snownet=debug,str0m=info,connlib_gateway_shared=debug,firezone_tunnel=debug,connlib_shared=debug,warn"
   application_name        = "gateway"
   application_version     = replace(var.image_tag, ".", "-")
   api_url                 = "wss://api.${local.tld}"

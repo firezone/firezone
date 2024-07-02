@@ -7,5 +7,7 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
+  const sha = process.env.FIREZONE_DEPLOYED_SHA;
+
   return <Changelog />;
 }

@@ -1,7 +1,5 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
-use connlib_client_shared::file_logger;
-use firezone_headless_client::FIREZONE_GROUP;
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -31,7 +29,7 @@ use settings::AdvancedSettings;
 /// * `g` doesn't mean anything
 /// * `ed5437c88` is the Git commit hash
 /// * `-modified` is present if the working dir has any changes from that commit number
-pub const GIT_VERSION: &str = git_version::git_version!(
+const GIT_VERSION: &str = git_version::git_version!(
     args = ["--always", "--dirty=-modified", "--tags"],
     fallback = "unknown"
 );
@@ -74,7 +72,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
-                    show_error_dialog(&error)?;
+                    gui::show_error_dialog(&error)?;
                     Err(error.into())
                 }
             }
@@ -97,8 +95,11 @@ pub(crate) fn run() -> Result<()> {
 
             let settings = settings::load_advanced_settings().unwrap_or_default();
             // Don't fix the log filter for smoke tests
-            let _logger = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings);
+            let logging::Handles {
+                logger: _logger,
+                reloader,
+            } = start_logging(&settings.log_filter)?;
+            let result = gui::run(cli, settings, reloader);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -119,13 +120,16 @@ pub(crate) fn run() -> Result<()> {
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
-    let _logger = start_logging(&settings.log_filter)?;
-    let result = gui::run(cli, settings);
+    let logging::Handles {
+        logger: _logger,
+        reloader,
+    } = start_logging(&settings.log_filter)?;
+    let result = gui::run(cli, settings, reloader);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(?error, error_msg = %error);
-        show_error_dialog(error)?;
+        gui::show_error_dialog(error)?;
     }
 
     Ok(result?)
@@ -151,35 +155,16 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Starts logging
 ///
 /// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<file_logger::Handle> {
+fn start_logging(directives: &str) -> Result<logging::Handles> {
     let logging_handles = logging::setup(directives)?;
-    tracing::info!(?GIT_VERSION, "`gui-client` started logging");
+    tracing::info!(
+        ?directives,
+        ?GIT_VERSION,
+        system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
+        "`gui-client` started logging"
+    );
 
-    Ok(logging_handles.logger)
-}
-
-#[instrument(skip_all)]
-fn show_error_dialog(error: &gui::Error) -> Result<()> {
-    // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
-    // This message gets shown to users in the GUI and could be localized, unlike
-    // messages in the log which only need to be used for `git grep`.
-    let user_friendly_error_msg = match error {
-        // TODO: Update this URL
-        gui::Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
-        gui::Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
-        gui::Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
-        gui::Error::Logging(_) => "Logging error".to_string(),
-        gui::Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
-        gui::Error::Other(error) => error.to_string(),
-    };
-    tracing::error!(?user_friendly_error_msg);
-
-    native_dialog::MessageDialog::new()
-        .set_title("Firezone Error")
-        .set_text(&user_friendly_error_msg)
-        .set_type(native_dialog::MessageType::Error)
-        .show_alert()?;
-    Ok(())
+    Ok(logging_handles)
 }
 
 /// The debug / test flags like `crash_on_purpose` and `test_update_notification`

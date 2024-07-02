@@ -15,6 +15,7 @@ pnet_packet = { version = "0.34" }
 hickory-proto = { workspace = true }
 thiserror = "1"
 proptest = { version = "1.4.0", optional = true }
+tracing = "0.1"
 
 [dev-dependencies]
 test-strategy = "0.3.1"
