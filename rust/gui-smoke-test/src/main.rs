@@ -108,15 +108,16 @@ impl App {
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
+        let gui_path = gui_path().canonicalize()?;
         let args: Vec<_> = [
             "--auto-servernum",
-            std::path::Path::new(gui_path())
-                .canonicalize()?
+            gui_path
                 .to_str()
                 .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
         ]
         .into_iter()
-        .chain(args.into_iter());
+        .chain(args.iter().copied())
+        .collect();
         let xvfb = Exec::cmd("xvfb-run").args(&args).to_cmdline_lossy();
 
         tracing::debug!(?xvfb);
@@ -189,7 +190,7 @@ fn debug_db_path() -> PathBuf {
 
 #[cfg(target_os = "linux")]
 fn ipc_service_command() -> Exec {
-    Exec::cmd("sudo").args(&["--preserve-env", ipc_path()])
+    Exec::cmd("sudo").args(&[OsStr::new("--preserve-env"), ipc_path().as_os_str()])
 }
 
 #[cfg(target_os = "windows")]
@@ -210,8 +211,6 @@ impl ExitStatusExt for subprocess::ExitStatus {
         Ok(())
     }
 }
-
-#[cfg(target_os = "windows")]
 
 fn gui_path() -> PathBuf {
     Path::new("target")
