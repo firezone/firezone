@@ -2,8 +2,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import ActionLink from "@/components/ActionLink";
-import DocsSidebarToggle from "./DocsSidebarToggle";
-import KbSidebarToggle from "./KbSidebarToggle";
 import {
   Navbar,
   NavbarBrand,
