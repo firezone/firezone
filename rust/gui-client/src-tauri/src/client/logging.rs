@@ -111,7 +111,13 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
     let mut result = Ok(());
 
     for log_path in log_paths()?.into_iter().map(|x| x.src) {
-        let mut dir = tokio::fs::read_dir(log_path).await?;
+        let mut dir = match tokio::fs::read_dir(log_path).await {
+            Ok(x) => x,
+            Err(error) => match error.kind() {
+                std::io::ErrorKind::NotFound => return Ok(()), // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                _ => Err(error)?, // But any other error like permissions errors, should bubble.
+            },
+        };
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
             if let Err(error) = tokio::fs::remove_file(&path).await {
@@ -191,7 +197,14 @@ fn add_dir_to_zip(
     dst_stem: &Path,
 ) -> Result<()> {
     let options = zip::write::SimpleFileOptions::default();
-    for entry in fs::read_dir(src_dir).context("Failed to `read_dir` log dir")? {
+    let dir = match fs::read_dir(src_dir) {
+        Ok(x) => x,
+        Err(error) => match error.kind() {
+            std::io::ErrorKind::NotFound => return Ok(()), // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
+            _ => Err(error)?, // But any other error like permissions errors, should bubble.
+        },
+    };
+    for entry in dir {
         let entry = entry.context("Got bad entry from `read_dir`")?;
         let Some(path) = dst_stem
             .join(entry.file_name())
