@@ -483,8 +483,8 @@ The details of this go beyond the scope of this post but we are planning to publ
 
 ## Rust's static analysis
 
-How do Rust’s features that we discussed above fit into this? A sans-IO design only has "synchronous" APIs, i.e.
-none of the functions on these state machines ever block on IO or time.
+How do Rust’s features that we discussed above fit into this?
+A sans-IO design only has "synchronous" APIs, i.e. none of the functions on these state machines ever block on IO or time.
 They are just data structures and Rust lends itself pretty well to modelling these:
 
 * We can use `&mut` very liberally to express state that changes.
@@ -505,12 +505,14 @@ In addition, multiple tasks running inside a runtime operate in a non-determinis
 It appears that suddenly, we’ve arrived at a design that feels brittle, is prone to dead-locks and no longer employs zero-cost abstractions.
 Avoiding all of these is one of the reasons we wanted to use Rust in the first-place!
 
-[^1]: TODO Mention that it is isn’t true for single-thread runtimes but they are not common.
+[^1]: Technically, a thread-per-core runtime could allow non-`'static` `Future`s.
 [^2]: `boringtun` does call `Instant::now` internally and is thus unfortunately partly impure, see https://github.com/cloudflare/boringtun/issues/391.
 
 ## Closing
 
-TODO
+This post covered a lot of ground, let's quickly recap:
+
+- TODO
 
 <!--
 
