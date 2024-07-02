@@ -252,11 +252,8 @@ For example, has it been more than 5s since we sent our request?
 Another common one is keep-alive messages: Has it been more than 30s since we sent our last keep-alive?
 
 In all these cases, we don't actually need to know the current _wallclock_ time.
-All we need is a `Duration` to a previous point in time.
-
-Rust provides us with a very convenient abstraction here: `Instant`.
+All we need is a `Duration` to a previous point in time. Rust provides us with a very convenient abstraction here: `Instant`.
 `Instant` doesn't expose the current time, but it allows us to measure the `Duration` between two `Instant`s.
-
 We can extend our state machine with two APIs that are generic enough to cover all our time-based needs: `poll_timeout` and `handle_timeout`:
 
 ```rust
@@ -372,7 +369,7 @@ Libraries like `str0m` or `quinn-proto` which are written in the sans-IO way don
 Instead, they are pure state machines and thus the decision about async vs blocking IO or which async runtime to use is deferred to the application.
 
 Freedom to use either blocking or non-blocking IO isn't the only benefit to this.
-sans-IO design also compose very well, tend to have very flexible APIs, are easy to test and play well with Rust's static analysis.
+sans-IO design also compose very well, tend to have very flexible APIs, are easy to test and play well with Rust's features.
 
 ### Easy composition
 
@@ -381,17 +378,18 @@ The main functions exposed to the eventloop are: `handle_timeout`, `handle_input
 None of these are specific to the domain of STUN!
 Most network protocols can be implemented with these or some variation of them.
 As a result, it is very easy to compose these state machines together: Want to query 5 STUN servers for your public IP? No problem.
+Just make 5 `StunBinding`s and call them in order[^3].
 
-In the case of firezone, you can see this in the example of `snownet`, a library that combines ICE & wireguard and thereby exposes "magic" IP tunnels that work in any network setup to the rest of the application.
+In the case of firezone, you can see this in the example of [`snownet`](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet), a library that combines ICE & wireguard and thereby exposes "magic" IP tunnels that work in any network setup to the rest of the application.
 
 `snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an (almost[^2]) sans-IO wireguard implementation.
 We don’t need the majority of the WebRTC stack though.
-The only thing we are interested in is the `IceAgent` which implements the ICE RFC: [8845](https://github.com/cloudflare/boringtun/issues/391).
-ICE implements a clever algorithm that ensures two agents, deployed into arbitrary network environments find the most optimal communication path to each other.
+The only thing we are interested in is the `IceAgent` which implements [RFC 8845](https://github.com/cloudflare/boringtun/issues/391).
+ICE uses a clever algorithm that ensures two agents, deployed into arbitrary network environments find the most optimal communication path to each other.
 The result of ICE is a pair of socket addresses that we then use to perform a wireguard handshake.
 Because `str0m` is built in a sans-IO fashion, only using the `IceAgent` part of it is shockingly trivial:
 you simply only import that part of the library and compose its state machine into your existing code.
-In `snownet`, a [connection](https://github.com/firezone/firezone/blob/a5b7507932e9d27e3fc9ed5be7428b9937f2f828/rust/connlib/snownet/src/node.rs#L1289-L1306) simply houses an `IceAgent` and a wireguard tunnel, dispatching incoming messages to the appropriate one.
+In `snownet`, a [connection](https://github.com/firezone/firezone/blob/a5b7507932e9d27e3fc9ed5be7428b9937f2f828/rust/connlib/snownet/src/node.rs#L1289-L1306) simply houses an `IceAgent` and a wireguard tunnel, dispatching incoming messages to either one or the other.
 
 ### Flexible APIs
 
@@ -424,8 +422,9 @@ No need to go through a network socket!
 At firezone, we took this idea one step further.
 We implemented a reference state machine that describes how we want `connlib` to work.
 This reference state machine is used as the source of truth in our tests.
-We then leverage `proptest`'s support for [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html) to deterministically sample and execute thousands of scenarios on every CI run.
+We then leverage `proptest`'s support for [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html) to deterministically sample and execute thousands of scenarios on every CI run and compare the reference state machine with `connlib`'s actual state.
 The details of this go beyond the scope of this post but we are planning to publish one about that topic in particular too!
+The key take-away here is that a sans-IO design enables these kind of tests.
 
 ### Edge-cases and IO failures
 
@@ -554,3 +553,4 @@ Discuss this post on [Hackernews](TODO) or [Reddit](TODO).
 
 [^1]: Technically, a thread-per-core runtime could allow non-`'static` `Future`s.
 [^2]: `boringtun` does call `Instant::now` internally and is thus unfortunately partly impure, see https://github.com/cloudflare/boringtun/issues/391.
+[^3]: Be sure to implement proper multiplexing of STUN messages at this point. Hint: Use the `TransactionId` and/or the server's address.
