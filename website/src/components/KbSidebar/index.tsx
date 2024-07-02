@@ -158,6 +158,5 @@ export default function KbSidebar() {
         </SidebarItemGroup>
       </SidebarItems>
     </Sidebar>
->>>>>>> main
   );
 }
