@@ -37,7 +37,7 @@ jobs:
       - uses: lycheeverse/lychee-action@v1.10.0
         with:
           fail: true
-          args: --offline --verbose --no-progress **/*.md
+          args: --offline --verbose --no-progress **/*.md **/*.mdx
 
   global-linter:
     runs-on: ubuntu-22.04
