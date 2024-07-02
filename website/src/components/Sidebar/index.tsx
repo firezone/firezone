@@ -7,7 +7,7 @@ import Link from "next/link";
 
 const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
   root: {
-    base: "h-[calc(100vh)] pt-14 pb-8",
+    base: "h-[calc(100vh)] left-0 top-0 z-40 sticky transition-transform -translate-x-full md:translate-x-0 bg-neutral-50 pt-16 pb-8 border-r border-neutral-200",
     collapsed: {
       on: "w-16",
       off: "w-64",

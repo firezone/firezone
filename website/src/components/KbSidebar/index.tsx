@@ -15,8 +15,10 @@ export default function KbSidebar() {
           <SidebarItem>
             <KbSearch />
           </SidebarItem>
+        </SidebarItemGroup>
+        <SidebarItemGroup>
           <SidebarItem href="/kb">Overview</SidebarItem>
-          <SidebarItem href="/kb/quickstart">Quickstart</SidebarItem>
+          <SidebarItem href="/kb/quickstart">Quickstart guide</SidebarItem>
         </SidebarItemGroup>
         <SidebarItemGroup>
           <SidebarCollapse prefix="/kb/deploy" label="Deploy">
@@ -34,7 +36,7 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/authenticate">Overview</SidebarItem>
             <SidebarItem href="/kb/authenticate/email">Email (OTP)</SidebarItem>
             <SidebarItem href="/kb/authenticate/google">
-              SSO with Google Workspace
+              SSO with Google
             </SidebarItem>
             <SidebarItem href="/kb/authenticate/entra">
               SSO with Entra ID
