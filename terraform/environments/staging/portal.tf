@@ -106,6 +106,12 @@ provider "postgresql" {
   sslmode   = "disable"
 }
 
+resource "postgresql_extension" "pg_audit" {
+  database = google_sql_database.firezone.name
+
+  name = "pgaudit"
+}
+
 resource "postgresql_grant" "grant_select_on_all_tables_schema_to_iam_users" {
   for_each = toset(local.project_owners)
 
