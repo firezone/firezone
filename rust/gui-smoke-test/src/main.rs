@@ -3,7 +3,6 @@
 // Starts up the IPC service and GUI app and lets them run for a bit
 
 use anyhow::{bail, Context as _, Result};
-use std::{env, path::Path, process};
 use subprocess::Exec;
 
 #[cfg(target_os = "linux")]
@@ -16,12 +15,11 @@ fn main() -> Result<()> {
     build_binary("firezone-gui-client")?;
     build_binary("firezone-client-ipc")?;
 
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").spawn()?;
-
+    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command()?.popen()?;
 
-    gui.wait()?;
-    ipc_service.wait()?;
+    gui.wait()?.fz_exit_ok().context("GUI process")?;
+    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
     Ok(())
 }
 
@@ -34,7 +32,7 @@ struct App {
 impl App {
     fn new() -> Result<Self> {
         // Needed to manipulate the group membership inside CI
-        let username = env::var("USER")?;
+        let username = std::env::var("USER")?;
 
         // Create the firezone group if needed
         process::Command::new("sudo")
@@ -53,36 +51,12 @@ impl App {
 
         Ok(Self { username })
     }
-}
 
-#[cfg(target_os = "windows")]
-impl App {
-    fn new() -> Result<Self> {
-        Ok(Self {})
-    }
-}
-
-// `ExitStatus::exit_ok` is nightly, so we add an equivalent here
-trait ExitStatusExt {
-    fn fz_exit_ok(&self) -> Result<()>;
-}
-
-impl ExitStatusExt for process::ExitStatus {
-    fn fz_exit_ok(&self) -> Result<()> {
-        if !self.success() {
-            bail!("Subprocess should exit with success");
-        }
-        Ok(())
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl App {
     fn gui_command(&self) -> Result<Exec> {
         let xvfb = Exec::cmd("xvfb-run")
             .args(&[
                 "--auto-servernum",
-                Path::new("target/debug/firezone-gui-client")
+                std::path::Path::new("target/debug/firezone-gui-client")
                     .canonicalize()?
                     .to_str()
                     .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
@@ -110,27 +84,45 @@ impl App {
 
 #[cfg(target_os = "windows")]
 impl App {
+    fn new() -> Result<Self> {
+        Ok(Self {})
+    }
+
     fn gui_command(&self) -> Result<Exec> {
         Ok(Exec::cmd("target/debug/firezone-gui-client").args(&["--no-deep-links", "smoke-test"]))
     }
 }
 
 fn build_binary(name: &str) -> Result<()> {
-    process::Command::new("cargo")
-        .args(["build", "--bin", name])
-        .status()?
+    Exec::cmd("cargo")
+        .args(&["build", "--bin", name])
+        .join()?
         .fz_exit_ok()?;
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
-fn ipc_service_command() -> process::Command {
-    let mut cmd = process::Command::new("sudo");
-    cmd.args(["--preserve-env", "target/debug/firezone-client-ipc"]);
+fn ipc_service_command() -> Exec {
+    let mut cmd = Exec::cmd("sudo");
+    cmd.args(&["--preserve-env", "target/debug/firezone-client-ipc"]);
     cmd
 }
 
 #[cfg(target_os = "windows")]
-fn ipc_service_command() -> process::Command {
-    process::Command::new("target/debug/firezone-client-ipc")
+fn ipc_service_command() -> Exec {
+    Exec::cmd("target/debug/firezone-client-ipc")
+}
+
+// `ExitStatus::exit_ok` is nightly, so we add an equivalent here
+trait ExitStatusExt {
+    fn fz_exit_ok(&self) -> Result<()>;
+}
+
+impl ExitStatusExt for subprocess::ExitStatus {
+    fn fz_exit_ok(&self) -> Result<()> {
+        if !self.success() {
+            bail!("Subprocess should exit with success");
+        }
+        Ok(())
+    }
 }
