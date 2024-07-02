@@ -4,38 +4,13 @@ import Link from "next/link";
 import ActionLink from "@/components/ActionLink";
 import DocsSidebarToggle from "./DocsSidebarToggle";
 import KbSidebarToggle from "./KbSidebarToggle";
-import { Navbar } from "flowbite-react";
+import { Navbar, Dropdown } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import { RequestDemoButton, SignUpButton } from "@/components/Buttons";
-import { useEffect } from "react";
-import { initFlowbite, Dropdown } from "flowbite";
 import { HiChevronDown } from "react-icons/hi2";
 
 export default function RootNavbar() {
   const p = usePathname() || "";
-  let productDropdown: any = null;
-
-  useEffect(() => {
-    if (!productDropdown) {
-      productDropdown = new Dropdown(
-        document.getElementById("product-dropdown-menu"),
-        document.getElementById("product-dropdown-link")
-      );
-    }
-    // Manually init flowbite's data-toggle listeners since we're using custom components
-    initFlowbite();
-  }, []);
-
-  const hideDropdown = () => {
-    if (!productDropdown) {
-      productDropdown = new Dropdown(
-        document.getElementById("product-dropdown-menu"),
-        document.getElementById("product-dropdown-link")
-      );
-    }
-
-    productDropdown.hide();
-  };
 
   return (
     <header>
@@ -90,7 +65,6 @@ export default function RootNavbar() {
               <ul className="py-2" aria-labelledby="product-dropdown-link">
                 <li>
                   <Link
-                    onClick={hideDropdown}
                     href="/kb/user-guides"
                     className={
                       (p == "/kb/user-guides"
@@ -104,7 +78,6 @@ export default function RootNavbar() {
                 </li>
                 <li>
                   <Link
-                    onClick={hideDropdown}
                     href="/contact/sales"
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
@@ -113,7 +86,6 @@ export default function RootNavbar() {
                 </li>
                 <li>
                   <Link
-                    onClick={hideDropdown}
                     href="https://github.com/firezone/firezone"
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
@@ -122,7 +94,6 @@ export default function RootNavbar() {
                 </li>
                 <li>
                   <Link
-                    onClick={hideDropdown}
                     href="https://github.com/orgs/firezone/projects/9"
                     className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
                   >
@@ -131,7 +102,6 @@ export default function RootNavbar() {
                 </li>
                 <li>
                   <Link
-                    onClick={hideDropdown}
                     href="/product/newsletter"
                     className={
                       (p.startsWith("/product/newsletter")
