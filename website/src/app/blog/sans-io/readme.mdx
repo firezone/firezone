@@ -300,12 +300,124 @@ As it turns out, adding time to this eventloop is fairly trivial.
 
 ## Abstracting time
 
-TODO
+What do we mean when we talk about abstracting time?
+In most cases, especially in network protocols, access to the current time is needed to check whether some amount of time has passed.
+For example, has it been more than 5s since we sent our request?
+Another common one is keep-alive messages: Has it been more than 30s since we sent our last keep-alive?
+
+In all these cases, we don't actually need to know the current _wallclock_ time.
+All we need is a `Duration` to a previous point in time.
+
+Rust provides us with a very convenient abstraction here: `Instant`.
+`Instant` doesn't expose the current time, but it allows us to measure the `Duration` between two `Instant`s.
+
+We can extend our state machine with two APIs that are generic enough to cover all our time-based needs: `poll_timeout` and `handle_timeout`:
+
+```rust
+impl StunBinding {
+    // ...
+
+    /// Notifies `StunBinding` that time has advanced to `now`.
+    fn handle_timeout(&mut self, now: Instant) {}
+
+    /// Returns the timestamp when we next expect `handle_timeout` to be called.
+    fn poll_timeout(&self) -> Option<Instant> {
+        None
+    }
+
+    // ...
+}
+```
+
+Similar to `handle_input` and `poll_timeout`, these APIs are the abstraction between our protocol code and the eventloop:
+
+- `poll_timeout`: Used by the eventloop to schedule a timer for a wake-up.
+- `handle_timeout`: Used by the eventloop to notify the state machine that a timer has expired.
+
+For demonstration purposes, let's say we want to send a new binding request every 5s after we have received the last one.
+Here is how one could implement this:
+
+```rust
+impl StunBinding {
+    // ...
+
+    /// Notifies `StunBinding` that time has advanced to `now`.
+    fn handle_timeout(&mut self, now: Instant) {
+        let last_received_at = match self.state {
+            State::Sent => return,
+            State::Received { at, .. } => at,
+        };
+
+        if now.duration_since(last_received_at) < Duration::from_secs(5) {
+            return;
+        }
+
+        self.buffered_transmits.push_front(Transmit {
+            dst: self.server,
+            payload: make_binding_request(),
+        });
+        self.state = State::Sent;
+    }
+
+    /// Returns the timestamp when we next expect `handle_timeout` to be called.
+    fn poll_timeout(&self) -> Option<Instant> {
+        match self.state {
+            State::Sent => None,
+            State::Received { at, .. } => Some(at + Duration::from_secs(5)),
+        }
+    }
+
+    // ...
+}
+```
+
+The only other changes I've made are adding an `at` field to the `State::Received` variant that gets set to the current time upon `handle_input`:
+
+```rust
+impl StunBinding {
+    fn handle_input(&mut self, packet: &[u8], now: Instant) {
+        let address = parse_binding_response(packet);
+
+        self.state = State::Received { address, at: now };
+    }
+}
+```
+
+The eventloop also changed slightly.
+Instead of exiting once we know our public IP, we'll now loop until the user quits the program:
+
+```rust
+    loop {
+        if let Some(transmit) = binding.poll_transmit() {
+            socket.send_to(&transmit.payload, transmit.dst).await?;
+            continue;
+        }
+
+        let mut buf = vec![0u8; 100];
+
+        tokio::select! {
+            Some(time) = &mut timer => {
+                binding.handle_timeout(time);
+            },
+            res = socket.recv(&mut buf) => {
+                let num_read = res?;
+                binding.handle_input(&buf[..num_read], Instant::now());
+
+            }
+        }
+
+        timer.reset_to(binding.poll_timeout());
+
+        if let Some(address) = binding.public_address() {
+            println!("Our public IP is: {address}");
+        }
+    }
+```
 
 ## The premise of sans-IO
 
 So far, all of this seems like a very excessive overhead for sending a few UDP packets back and forth.
-Surely, the 10 line example above is preferable over this state machine!
+Surely, the 10 line example above is preferable over this state machine and the eventloop!
 The example might be, but recall the debate around function colouring.
 In a code snippet without dependencies like the above example, using `async` seems like a no brainer and really easy.
 The problem arises once you want to bring in dependencies.
@@ -313,23 +425,27 @@ Composing your functionality (i.e. policy) on top of those dependencies imposes 
 Libraries like `str0m` or `quinn-proto` which are written in the sans-IO way don't do that.
 Instead, they are pure state machines and thus the decision about async vs blocking IO or which async runtime to use is deferred to the application.
 
-## Eventloops
-
-TODO
+Freedom to use either blocking or non-blocking IO isn't the only benefit to this.
+sans-IO design also compose very well, tend to have very flexible APIs, are easy to test and play well with Rust's static analysis.
 
 ### Easy composition
 
-sans-IO code also composes extremely well.
-Each "layer" depends on the same abstractions: `handle_timeout`, `handle_input`, `poll_transmit` & `poll_timeout`.
+Take another look at the API of `StunBinding`.
+The main functions exposed to the eventloop are: `handle_timeout`, `handle_input`, `poll_transmit` & `poll_timeout`.
+None of these are specific to the domain of STUN!
+Most network protocols can be implemented with these or some variation of them.
+As a result, it is very easy to compose these state machines together: Want to query 5 STUN servers for your public IP? No problem.
+
 In the case of firezone, you can see this in the example of `snownet`, a library that combines ICE & wireguard and thereby exposes "magic" IP tunnels that work in any network setup to the rest of the application.
 
 `snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an (almost[^2]) sans-IO wireguard implementation.
 We don’t need the majority of the WebRTC stack though.
-The only thing we are interested in is the `IceAgent` which implements the ICE RFC (TODO link).
+The only thing we are interested in is the `IceAgent` which implements the ICE RFC: [8845](https://github.com/cloudflare/boringtun/issues/391).
 ICE implements a clever algorithm that ensures two agents, deployed into arbitrary network environments find the most optimal communication path to each other.
 The result of ICE is a pair of socket addresses that we then use to perform a wireguard handshake.
 Because `str0m` is built in a sans-IO fashion, only using the `IceAgent` part of it is shockingly trivial:
-you simply only import that part of the dependency.
+you simply only import that part of the library and compose its state machine into your existing code.
+In `snownet`, a [connection](https://github.com/firezone/firezone/blob/a5b7507932e9d27e3fc9ed5be7428b9937f2f828/rust/connlib/snownet/src/node.rs#L1289-L1306) simply houses an `IceAgent` and a wireguard tunnel, dispatching incoming messages to the appropriate one.
 
 ### Flexible APIs
 
@@ -337,14 +453,16 @@ sans-IO code needs to be "driven" by an eventloop of some sorts because it "just
 The eventloop is responsible for "querying" the state (like `poll_transmit`), executing it and also passing new input to the state machine (`handle_timeout` and `handle_input`).
 To some people, this may appear as unnecessary boilerplate but it comes with a great benefit: flexibility.
 
-* Want to make use of `sendmmsg` to reduce the number of syscalls when sending packets? Not a problem.
-* TODO: More examples
+* Want to make use of `sendmmsg` to reduce the number of syscalls when sending packets? No problem.
+* Want to multiplex multiple protocols over a single socket? No problem.
 
-Instead of seeing it as a burden to having to type some lines of code, we can see this as an opportunity to be able to tune our code to exactly what we want it to do.
-This also makes maintenance easier for library authors: They can focus on implementing the core functionality of the library instead of how people want to use it.
+Writing the eventloop yourself is an opportunity to be able to tune our code to exactly what we want it to do.
+This also makes maintenance easier for library authors: They can focus on correctly implementing protocol functionality instead of having debates around async runtimes or exposing APIs to set socket options.
+
 A good example here is `str0m`’s stance on the gathering of candidates:
 This is an IO concern and up to the application on how to achieve it.
-`str0m` only provides an API to add such a candidate to the current state.
+`str0m` only provides an API to add such an ICE candidate to the current state.
+As a result, we are able to easily implementation optimisations such as gathering TURN candidates prior to any connection being made, thus reducing firezone's connection-setup latency.
 
 ### Testing at the speed of light
 
@@ -386,7 +504,7 @@ It appears that suddenly, we’ve arrived at a design that feels brittle, is pro
 Avoiding all of these is one of the reasons we wanted to use Rust in the first-place!
 
 [^1]: TODO Mention that it is isn’t true for single-thread runtimes but they are not common.
-[^2]: TODO: Link to issue about impure time
+[^2]: `boringtun` does call `Instant::now` internally and is thus unfortunately partly impure, see https://github.com/cloudflare/boringtun/issues/391.
 
 ## Closing
 
