@@ -1,8 +1,12 @@
 "use client";
 import { motion } from "framer-motion";
+import { isSafari } from "react-device-detect";
+import Image from "next/image";
 
 export default function SpeedChart() {
-  return (
+  return isSafari ? (
+    <Image src="/images/scale.png" width="656" height="464" alt="Speed Chart" />
+  ) : (
     <svg viewBox="0 0 656 464" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="656" height="464" rx="6" fill="#FCFCFC" />
       <path

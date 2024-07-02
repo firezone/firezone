@@ -3,9 +3,10 @@
 
 use crate::client::gui::{self, ControllerRequest, Managed};
 use anyhow::{Context, Result};
+use atomicwrites::{AtomicFile, OverwriteBehavior};
 use firezone_headless_client::known_dirs;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Duration};
+use std::{io::Write, path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
 use url::Url;
 
@@ -114,6 +115,18 @@ pub(crate) async fn save(settings: &AdvancedSettings) -> Result<()> {
         .context("settings path should have a parent")?;
     tokio::fs::create_dir_all(dir).await?;
     tokio::fs::write(&path, serde_json::to_string(settings)?).await?;
+    // Don't create the dir for the log filter file, that's the IPC service's job.
+    // If it isn't there for some reason yet, just log an error and move on.
+    let log_filter_path = known_dirs::ipc_log_filter().context("`ipc_log_filter` failed")?;
+    let f = AtomicFile::new(&log_filter_path, OverwriteBehavior::AllowOverwrite);
+    // Note: Blocking file write in async function
+    if let Err(error) = f.write(|f| f.write_all(settings.log_filter.as_bytes())) {
+        tracing::error!(
+            ?error,
+            ?log_filter_path,
+            "Couldn't write log filter file for IPC service"
+        );
+    }
     tracing::debug!(?path, "Saved settings");
     Ok(())
 }

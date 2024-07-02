@@ -1,52 +1,54 @@
 //! CLI subcommands used to test features / dependencies before integrating
 //! them with the GUI, or to exercise features programmatically.
 
-use crate::client;
 use anyhow::Result;
+use tracing::subscriber::set_global_default;
+use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer, Registry};
 
 #[derive(clap::Subcommand)]
-pub enum Cmd {
-    CheckForUpdates,
-    Crash,
-    DnsChanges,
-    Hostname,
-    NetworkChanges,
+pub(crate) enum Cmd {
+    SetAutostart(SetAutostartArgs),
+    TrayMenu,
+}
+
+#[derive(clap::Parser)]
+pub(crate) struct SetAutostartArgs {
+    #[clap(action=clap::ArgAction::Set)]
+    enabled: bool,
 }
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
-        Cmd::CheckForUpdates => check_for_updates()?,
-        Cmd::Crash => crash()?,
-        Cmd::DnsChanges => client::network_changes::run_dns_debug()?,
-        Cmd::Hostname => hostname(),
-        Cmd::NetworkChanges => client::network_changes::run_debug()?,
-    };
-
-    Ok(())
+        Cmd::SetAutostart(SetAutostartArgs { enabled }) => set_autostart(enabled),
+        Cmd::TrayMenu => tray_menu(),
+    }
 }
 
-fn check_for_updates() -> Result<()> {
-    firezone_headless_client::debug_command_setup()?;
-
+fn set_autostart(enabled: bool) -> Result<()> {
+    firezone_headless_client::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let version = rt.block_on(client::updates::check())?;
-    tracing::info!("{:?}", version);
-
+    rt.block_on(crate::client::gui::set_autostart(enabled))?;
     Ok(())
 }
 
-fn crash() -> Result<()> {
-    // `_` doesn't seem to work here, the log files end up empty
-    let _handles = client::logging::setup("debug")?;
-    tracing::info!("started log (DebugCrash)");
+fn tray_menu() -> Result<()> {
+    let filter = EnvFilter::new("debug");
+    let layer = fmt::layer().with_filter(filter);
+    let subscriber = Registry::default().with(layer);
+    set_global_default(subscriber)?;
 
-    panic!("purposely panicking to see if it shows up in logs");
-}
-
-#[allow(clippy::print_stdout)]
-fn hostname() {
-    println!(
-        "{:?}",
-        hostname::get().ok().and_then(|x| x.into_string().ok())
-    );
+    let menu = crate::client::gui::system_tray_menu::debug();
+    let tray = tauri::SystemTray::new().with_menu(menu);
+    let app = tauri::Builder::default()
+        .system_tray(tray)
+        .on_system_tray_event(|_app, _event| {
+            tracing::info!("System tray event");
+        })
+        .setup(move |_app| {
+            tracing::info!("Entered Tauri's `setup`");
+            Ok(())
+        });
+    let app = app.build(tauri::generate_context!())?;
+    app.run(|_app_handle, _event| {});
+    Ok(())
 }

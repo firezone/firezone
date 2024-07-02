@@ -35,26 +35,6 @@ export const metadata: Metadata = {
     "Firezone is a fast, flexible VPN replacement built on WireGuard® that eliminates tedious configuration and integrates with your identity provider.",
 };
 
-function ActionButtons() {
-  return (
-    <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-      <button
-        type="button"
-        className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
-      >
-        <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-      </button>
-      <button
-        type="button"
-        className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
-      >
-        <Link href="/contact/sales">Request demo</Link>
-        <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-      </button>
-    </div>
-  );
-}
-
 export default function Page() {
   return (
     <>
@@ -79,7 +59,21 @@ export default function Page() {
             </h3>
           </div>
           <div className="mb-12 flex flex-col px-4 justify-center items-center">
-            <ActionButtons />
+            <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
+              <button
+                type="button"
+                className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-200 duration-50 transform transition"
+              >
+                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+              </button>
+              <button
+                type="button"
+                className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-300 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-center">
             <video
@@ -196,8 +190,10 @@ export default function Page() {
             Connections are always end-to-end encrypted with keys that rotate
             daily, and are directly established between your Users and Gateways,
             so we can never see your data. Firezone's advanced Policy Engine
-            logs who accessed what and when, so you can easily demonstrate
-            compliance with internal and external security audits.
+            logs who accessed what and when and can be configured to allow
+            access only from certain countries, IPs, and timeframes, so you can
+            easily demonstrate compliance with internal and external security
+            audits.
           </p>
         </div>
 
@@ -327,8 +323,8 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col p-4">
+            <div className="mb-12 grid grid-cols-2 gap-4">
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/user-guides/macos-client">
                   <span className="inline-block pt-4 w-full text-center">
@@ -372,74 +368,80 @@ export default function Page() {
                 </AppleIcon>
               </div>
             </div>
-            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
-              Clients are available for every major platform, require no
-              configuration, and stay connected even when switching WiFi
-              networks.
-            </p>
-            <p className="mt-4">
-              <ActionLink
-                className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="/kb/user-guides"
-              >
-                Download Client apps
-              </ActionLink>
-            </p>
-          </div>
-          <div className="p-4">
-            <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
-              <div className="mx-8 md:mx-16 flex justify-start">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/docker.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-end">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/terraform.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-start">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/kubernetes.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-end">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/pulumi.svg"
-                />
-              </div>
+            <div className="mt-auto">
+              <p className="text-md md:text-xl tracking-tight md:text-justify">
+                Clients are available for every major platform, require no
+                configuration, and stay connected even when switching WiFi
+                networks.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  href="/kb/user-guides"
+                >
+                  Download Client apps
+                </ActionLink>
+              </p>
             </div>
-            <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
-              <code>
-                <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
-                <strong>firezone-gateway</strong>
-              </code>
-            </pre>
-            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
-              Gateways are lightweight Linux binaries you deploy anywhere you
-              need access. Just configure a token with your preferred
-              orchestration tool and you're done.
-            </p>
-            <p className="mt-4">
-              <ActionLink
-                className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="/kb/deploy/gateways"
-              >
-                Deploy your first Gateway
-              </ActionLink>
-            </p>
+          </div>
+          <div className="flex flex-col p-4">
+            <div className="mb-12">
+              <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/docker.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/terraform.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/kubernetes.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/pulumi.svg"
+                  />
+                </div>
+              </div>
+              <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
+                <code>
+                  <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
+                  <strong>firezone-gateway</strong>
+                </code>
+              </pre>
+            </div>
+            <div className="mt-auto">
+              <p className="text-md md:text-xl tracking-tight md:text-justify">
+                Gateways are lightweight Linux binaries you deploy anywhere you
+                need access. Just configure a token with your preferred
+                orchestration tool and you're done.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  href="/kb/deploy/gateways"
+                >
+                  Deploy your first Gateway
+                </ActionLink>
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -705,7 +707,21 @@ export default function Page() {
           <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
             Give your team secure access to company resources in minutes.
           </h4>
-          <ActionButtons />
+          <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
+            <button
+              type="button"
+              className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+            >
+              <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+            </button>
+            <button
+              type="button"
+              className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+            >
+              <Link href="/contact/sales">Book a demo</Link>
+              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+            </button>
+          </div>
         </div>
       </section>
     </>

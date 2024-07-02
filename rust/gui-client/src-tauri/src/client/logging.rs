@@ -20,8 +20,10 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Re
 #[must_use]
 pub(crate) struct Handles {
     pub logger: file_logger::Handle,
-    pub _reloader: reload::Handle<EnvFilter, Registry>,
+    pub reloader: Reloader,
 }
+
+pub(crate) type Reloader = reload::Handle<EnvFilter, Registry>;
 
 struct LogPath {
     /// Where to find the logs on disk
@@ -56,10 +58,9 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
-    let (filter_2, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
-    let subscriber = Registry::default()
-        .with(layer.with_filter(filter_2))
-        .with(fmt::layer().with_filter(EnvFilter::try_new(directives)?));
+    let layer = layer.and_then(fmt::layer());
+    let (filter, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
+    let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::warn!(
@@ -69,20 +70,23 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
     }
     LogTracer::init()?;
     tracing::debug!(?log_path, "Log path");
-    Ok(Handles {
-        logger,
-        _reloader: reloader,
-    })
+    Ok(Handles { logger, reloader })
 }
 
 #[tauri::command]
 pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    clear_logs_inner().await.map_err(|e| e.to_string())
+    if let Err(error) = clear_logs_inner().await {
+        // Log the error ourselves since Tauri will only log it to the JS console
+        tracing::error!(?error, "Error while clearing logs");
+        Err(error.to_string())
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
 pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
-    export_logs_inner(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
+    show_export_dialog(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -100,19 +104,33 @@ pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
 ///
 /// This includes the current log file, so we won't write any more logs to disk
 /// until the file rolls over or the app restarts.
+///
+/// If we get an error while removing a file, we still try to remove all other
+/// files, then we return the most recent error.
 pub(crate) async fn clear_logs_inner() -> Result<()> {
+    let mut result = Ok(());
+
     for log_path in log_paths()?.into_iter().map(|x| x.src) {
         let mut dir = tokio::fs::read_dir(log_path).await?;
         while let Some(entry) = dir.next_entry().await? {
-            tokio::fs::remove_file(entry.path()).await?;
+            let path = entry.path();
+            if let Err(error) = tokio::fs::remove_file(&path).await {
+                tracing::error!(
+                    ?error,
+                    path = path.display().to_string(),
+                    "Error while removing log file"
+                );
+                // We'll return the most recent error, it loses some information but it's better than nothing.
+                result = Err(error);
+            }
         }
     }
 
-    Ok(())
+    Ok(result?)
 }
 
 /// Pops up the "Save File" dialog
-pub(crate) fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
+fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
@@ -144,15 +162,18 @@ pub(crate) fn export_logs_inner(ctlr_tx: CtlrTx) -> Result<()> {
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     tracing::info!("Exporting logs to {path:?}");
+    // Use a temp path so that if the export fails we don't end up with half a zip file
+    let temp_path = path.with_extension(".zip-partial");
 
     // TODO: Consider https://github.com/Majored/rs-async-zip/issues instead of `spawn_blocking`
     spawn_blocking(move || {
-        let f = fs::File::create(path).context("Failed to create zip file")?;
+        let f = fs::File::create(&temp_path).context("Failed to create zip file")?;
         let mut zip = zip::ZipWriter::new(f);
         for log_path in log_paths().context("Can't compute log paths")? {
             add_dir_to_zip(&mut zip, &log_path.src, &stem.join(log_path.dst))?;
         }
         zip.finish().context("Failed to finish zip file")?;
+        fs::rename(&temp_path, &path)?;
         Ok::<_, anyhow::Error>(())
     })
     .await

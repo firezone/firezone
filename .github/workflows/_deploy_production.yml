@@ -66,8 +66,12 @@ jobs:
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
           export_environment_variables: true
           create_credentials_file: true
-      - name: Copy Google Cloud Storage binaries to "latest" version
-        if: ${{ contains(fromJSON('["client", "relay", "gateway"]'), matrix.image) }}
+      - name: Copy Google Cloud Storage binaries to "edge" version
+        # TODO: Add relay here when we deploy Relay from prod artifacts instead of Docker
+        # To do that properly we need to:
+        #   - Update publish.yml to publish versioned Relays too (and start versioning Relay changes)
+        #   - Add arm64 and armv7l architectures to the Relay builds (we only build for amd64 currently because that's all we need to)
+        if: ${{ matrix.image == 'gateway' || matrix.image == 'client' }}
         run: |
           set -xe
 
@@ -76,19 +80,19 @@ jobs:
           for arch in "${ARCHITECTURES[@]}"; do
             # Copy sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/latest/${arch}.sha256sum.txt
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/edge/${arch}.sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}.sha256sum.txt
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}.sha256sum.txt
 
             # Copy binaries
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch} \
-              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/latest/${arch}
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/edge/${arch}
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch} \
-              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ inputs.tag }}/${arch}
+              gs://firezone-staging-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ matrix.image }}/${{ github.sha }}/${arch}
           done
 
   deploy-production:
@@ -150,7 +154,7 @@ jobs:
     steps:
       - name: Update FIREZONE_DEPLOYED_SHA
         run: |
-          curl -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
+          curl --fail -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${VERCEL_ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
             -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" -H "Content-Type: application/json" \
             -d '{
               "comment": "latest deployed SHA for control plane",

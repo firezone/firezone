@@ -141,6 +141,7 @@ variable "token" {
   description = "Portal token to use for authentication."
   type        = string
   default     = null
+  sensitive   = true
 }
 
 variable "vpc_security_group_ids" {

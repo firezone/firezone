@@ -88,6 +88,8 @@ defmodule Domain.Auth.Identity.Query do
         (is_nil(identities.last_seen_at) and
            identities.provider_identifier == ^email)
     )
+    |> order_by([identities: identities], desc_nulls_last: identities.last_seen_at)
+    |> limit(1)
   end
 
   def by_id_or_provider_identifier(queryable, id_or_provider_identifier) do

@@ -18,20 +18,28 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
         linkProperties: LinkProperties,
     ) {
         Log.d("NetworkMonitor", "OnLinkPropertiesChanged: $network: $linkProperties")
-        if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
-            tunnelService.tunnelState = TunnelService.Companion.State.UP
-            tunnelService.updateStatusNotification(TunnelStatusNotification.Connected)
+
+        // Acquire mutex lock
+        if (tunnelService.lock.tryLock()) {
+            if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
+                tunnelService.tunnelState = TunnelService.Companion.State.UP
+                tunnelService.updateStatusNotification(TunnelStatusNotification.Connected)
+            }
+
+            if (lastDns != linkProperties.dnsServers) {
+                lastDns = linkProperties.dnsServers
+                ConnlibSession.setDns(tunnelService.connlibSessionPtr!!, Gson().toJson(linkProperties.dnsServers))
+            }
+
+            if (lastNetwork != network) {
+                lastNetwork = network
+                ConnlibSession.reconnect(tunnelService.connlibSessionPtr!!)
+            }
+
+            // Release mutex lock
+            tunnelService.lock.unlock()
         }
 
-        if (lastDns != linkProperties.dnsServers) {
-            lastDns = linkProperties.dnsServers
-            ConnlibSession.setDns(tunnelService.connlibSessionPtr!!, Gson().toJson(linkProperties.dnsServers))
-        }
-
-        if (lastNetwork != network) {
-            lastNetwork = network
-            ConnlibSession.reconnect(tunnelService.connlibSessionPtr!!)
-        }
         super.onLinkPropertiesChanged(network, linkProperties)
     }
 }

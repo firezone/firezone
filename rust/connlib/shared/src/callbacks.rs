@@ -73,10 +73,10 @@ pub enum ResourceDescription {
 }
 
 impl ResourceDescription {
-    pub fn address_description(&self) -> &str {
+    pub fn address_description(&self) -> Option<&str> {
         match self {
-            ResourceDescription::Dns(r) => &r.address_description,
-            ResourceDescription::Cidr(r) => &r.address_description,
+            ResourceDescription::Dns(r) => r.address_description.as_deref(),
+            ResourceDescription::Cidr(r) => r.address_description.as_deref(),
         }
     }
 
@@ -141,7 +141,7 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    pub address_description: String,
+    pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
     pub status: Status,
@@ -171,7 +171,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
-    pub address_description: String,
+    pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
     pub status: Status,

@@ -350,7 +350,7 @@ defmodule Web.CoreComponents do
     <p
       class={[
         "w-full flex gap-3 text-sm leading-6",
-        "text-rose-600 phx-no-feedback:hidden",
+        "text-rose-600",
         (@inline && "ml-3") || "mt-3"
       ]}
       {@rest}
@@ -380,7 +380,7 @@ defmodule Web.CoreComponents do
     <p
       :if={@error}
       data-validation-error-for={"#{@form.id}[#{@field}]"}
-      class="mt-3 mb-3 flex gap-3 text-m leading-6 text-rose-600 phx-no-feedback:hidden"
+      class="mt-3 mb-3 flex gap-3 text-m leading-6 text-rose-600"
       {@rest}
     >
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />

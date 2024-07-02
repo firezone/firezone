@@ -2,6 +2,7 @@ defmodule Web.Mailer do
   use Supervisor
   alias Swoosh.Mailer
   alias Swoosh.Email
+  alias Web.Mailer.RateLimiter
   require Logger
 
   def start_link(arg) do
@@ -14,6 +15,20 @@ defmodule Web.Mailer do
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def deliver_with_rate_limit(email, config \\ []) do
+    {key, config} = Keyword.pop(config, :rate_limit_key, {email.to, email.subject})
+    {rate_limit, config} = Keyword.pop(config, :rate_limit, 10)
+    {rate_limit_interval, config} = Keyword.pop(config, :rate_limit_interval, :timer.minutes(2))
+
+    RateLimiter.rate_limit(key, rate_limit, rate_limit_interval, fn ->
+      deliver(email, config)
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """

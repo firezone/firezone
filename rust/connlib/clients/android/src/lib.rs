@@ -4,12 +4,13 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, Error,
-    LoginUrl, LoginUrlError, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
+    Error, LoginUrl, LoginUrlError, Session, Sockets,
 };
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
+    sys::jlong,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
@@ -24,6 +25,8 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+
+mod make_writer;
 
 /// The Android client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Android clients
@@ -107,22 +110,6 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-#[cfg(target_os = "android")]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
-{
-    tracing_android::layer("connlib").unwrap()
-}
-
-#[cfg(not(target_os = "android"))]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber,
-{
-    tracing_subscriber::layer::Identity::new()
-}
-
 fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
@@ -145,7 +132,14 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 
     let _ = tracing_subscriber::registry()
         .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
-        .with(android_layer().with_filter(EnvFilter::new(log_filter)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_level(false)
+                .with_writer(make_writer::MakeWriter::new("connlib"))
+                .with_filter(EnvFilter::new(log_filter)),
+        )
         .try_init();
 
     handle
@@ -346,14 +340,14 @@ fn connect(
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
 
-    let callback_handler = CallbackHandler {
+    let callbacks = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
         handle,
     };
 
     let (private_key, public_key) = keypair();
-    let login = LoginUrl::client(
+    let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
         device_id,
@@ -368,7 +362,7 @@ fn connect(
         .build()?;
 
     let sockets = Sockets::with_protect({
-        let callbacks = callback_handler.clone();
+        let callbacks = callbacks.clone();
         move |fd| {
             callbacks
                 .protect_file_descriptor(fd)
@@ -376,15 +370,16 @@ fn connect(
         }
     });
 
-    let session = Session::connect(
-        login,
+    let args = ConnectArgs {
+        url,
         sockets,
         private_key,
-        Some(os_version),
-        callback_handler,
-        Some(MAX_PARTITION_TIME),
-        runtime.handle().clone(),
-    );
+        os_version_override: Some(os_version),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        callbacks,
+        max_partition_time: Some(MAX_PARTITION_TIME),
+    };
+    let session = Session::connect(args, runtime.handle().clone());
 
     Ok(SessionWrapper {
         inner: session,
@@ -436,6 +431,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
         None => return std::ptr::null(),
     };
 
+    // Note: this pointer will probably be casted into a jlong after it is received by android.
+    // jlong is 64bits so the worst case scenario it will be padded, in that case, when casting it back to a pointer we expect `as` to select only the relevant bytes
     Box::into_raw(Box::new(session))
 }
 
@@ -447,14 +444,15 @@ pub struct SessionWrapper {
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut SessionWrapper,
+    session_ptr: jlong,
 ) {
+    let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).inner.disconnect();
     });
@@ -466,13 +464,14 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 /// <https://github.com/firezone/firezone/issues/4350>
 ///
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
     dns_list: JString,
 ) {
     let dns = String::from(
@@ -484,18 +483,20 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
             .expect("Invalid string returned from android client"),
     );
     let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
-    let session = &*session;
+    let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_dns(dns);
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
     _: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
 ) {
-    (*session).inner.reconnect();
+    let session = &*(session_ptr as *const SessionWrapper);
+    session.inner.reconnect();
 }

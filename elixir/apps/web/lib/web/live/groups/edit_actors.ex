@@ -205,13 +205,9 @@ defmodule Web.Groups.EditActors do
   end
 
   defp actor_name(socket, id) do
-    Enum.find_value(
-      socket.assigns.actors,
-      fn actor ->
-        actor.id == id
-      end,
-      & &1.name
-    )
+    Enum.find_value(socket.assigns.actors, fn actor ->
+      if actor.id == id, do: actor.name
+    end)
   end
 
   defp member?(current_member_ids, actor, added, removed) do

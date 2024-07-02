@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate cloud-init
         run: |
+          sudo apt-get update
           sudo apt-get install -y cloud-init
           sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/relay/templates/cloud-init.yaml
           sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/elixir/templates/cloud-init.yaml

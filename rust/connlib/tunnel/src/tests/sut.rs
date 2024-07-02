@@ -21,7 +21,6 @@ use hickory_proto::{
     serialize::binary::BinDecodable as _,
 };
 use hickory_resolver::lookup::Lookup;
-use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
@@ -55,7 +54,7 @@ pub(crate) struct TunnelTest {
     /// The DNS records created on the client as a result of received DNS responses.
     ///
     /// This contains results from both, queries to DNS resources and non-resources.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    pub(crate) client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -88,7 +87,7 @@ impl StateMachineTest for TunnelTest {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
-            .map_state(ClientState::new, debug_span!("client"));
+            .map_state(|(k, h)| ClientState::new(k, h), debug_span!("client"));
         let mut gateway = ref_state
             .gateway
             .map_state(GatewayState::new, debug_span!("gateway"));
@@ -147,11 +146,12 @@ impl StateMachineTest for TunnelTest {
         // Act: Apply the transition
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client.add_resource(ResourceDescription::Cidr(r));
+                state.client.add_resource(ResourceDescription::Cidr(r))
             }
             Transition::AddDnsResource { resource, .. } => state
                 .client
                 .add_resource(ResourceDescription::Dns(resource)),
+            Transition::RemoveResource(id) => state.client.remove_resource(id),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -210,6 +210,15 @@ impl StateMachineTest for TunnelTest {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.client.update_upstream_dns(servers);
             }
+            Transition::RoamClient {
+                ip4_socket,
+                ip6_socket,
+            } => {
+                state.client.roam(ip4_socket, ip6_socket);
+
+                // In prod, we reconnect to the portal and receive a new `init` message.
+                state.client.init_relays([&state.relay], ref_state.now);
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
@@ -225,6 +234,7 @@ impl StateMachineTest for TunnelTest {
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
         assert_icmp_packets_properties(state, ref_state);
         assert_dns_packets_properties(state, ref_state);
+        assert_known_hosts_are_valid(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
             ref_state.expected_dns_servers(),
@@ -503,6 +513,11 @@ impl TunnelTest {
     ) -> ControlFlow<()> {
         let mut buffer = [0u8; 2000];
 
+        if self.client.old_sockets.contains(&dst) {
+            tracing::debug!("Dropping packet to {dst} because the client roamed away from this network interface");
+            return ControlFlow::Break(());
+        }
+
         if !self.client.wants(dst) {
             return ControlFlow::Continue(());
         }
@@ -581,15 +596,22 @@ impl TunnelTest {
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
-            ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
-                .gateway
-                .span
-                .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
+            ClientEvent::AddedIceCandidates { candidates, .. } => {
+                self.gateway.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.gateway
+                            .state
+                            .add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            ClientEvent::RemovedIceCandidates { candidates, .. } => {
+                self.gateway.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.gateway.state.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
             ClientEvent::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
@@ -605,14 +627,11 @@ impl TunnelTest {
                     .client
                     .span
                     .in_scope(|| {
-                        self.client.state.create_or_reuse_connection(
-                            resource,
-                            gateway,
-                            site,
-                            HashSet::default(),
-                            HashSet::default(),
-                        )
+                        self.client
+                            .state
+                            .create_or_reuse_connection(resource, gateway, site)
                     })
+                    .unwrap()
                     .unwrap();
 
                 let resource_id = request.resource_id();
@@ -621,8 +640,8 @@ impl TunnelTest {
                 let resolved_ips = request
                     .domain_name()
                     .into_iter()
-                    .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
-                    .flat_map(|ips| ips.into_iter().map(IpNetwork::from))
+                    .flat_map(|domain| global_dns_records.get(&domain).cloned())
+                    .flatten()
                     .collect();
 
                 let resource = map_client_resource_to_gateway_resource(
@@ -634,7 +653,7 @@ impl TunnelTest {
 
                 match request {
                     Request::NewConnection(new_connection) => {
-                        let connection_accepted = self
+                        let answer = self
                             .gateway
                             .span
                             .in_scope(|| {
@@ -660,9 +679,10 @@ impl TunnelTest {
                                     self.client.state.public_key(),
                                     self.client.tunnel_ip4,
                                     self.client.tunnel_ip6,
-                                    HashSet::default(),
-                                    HashSet::default(),
-                                    new_connection.client_payload.domain,
+                                    new_connection
+                                        .client_payload
+                                        .domain
+                                        .map(|r| (r.name, r.proxy_ips)),
                                     None, // TODO: How to generate expiry?
                                     resource,
                                     self.now,
@@ -676,41 +696,65 @@ impl TunnelTest {
                                 self.client.state.accept_answer(
                                     snownet::Answer {
                                         credentials: snownet::Credentials {
-                                            username: connection_accepted.ice_parameters.username,
-                                            password: connection_accepted.ice_parameters.password,
+                                            username: answer.username,
+                                            password: answer.password,
                                         },
                                     },
                                     resource_id,
                                     self.gateway.state.public_key(),
-                                    connection_accepted.domain_response,
                                     self.now,
                                 )
                             })
                             .unwrap();
                     }
                     Request::ReuseConnection(reuse_connection) => {
-                        if let Some(domain_response) = self.gateway.span.in_scope(|| {
+                        self.gateway
+                            .span
+                            .in_scope(|| {
+                                self.gateway.state.allow_access(
+                                    resource,
+                                    self.client.id,
+                                    None,
+                                    reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
+                                    self.now,
+                                )
+                            })
+                            .unwrap();
+                    }
+                };
+            }
+
+            ClientEvent::SendProxyIps { connections } => {
+                for reuse_connection in connections {
+                    let resolved_ips = reuse_connection
+                        .payload
+                        .as_ref()
+                        .map(|r| r.name.clone())
+                        .into_iter()
+                        .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
+                        .flatten()
+                        .collect();
+
+                    let resource = map_client_resource_to_gateway_resource(
+                        client_cidr_resources,
+                        client_dns_resource,
+                        resolved_ips,
+                        reuse_connection.resource_id,
+                    );
+
+                    self.gateway
+                        .span
+                        .in_scope(|| {
                             self.gateway.state.allow_access(
                                 resource,
                                 self.client.id,
                                 None,
-                                reuse_connection.payload,
+                                reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
+                                self.now,
                             )
-                        }) {
-                            self.client
-                                .span
-                                .in_scope(|| {
-                                    self.client
-                                        .state
-                                        .received_domain_parameters(resource_id, domain_response)
-                                })
-                                .unwrap();
-                        };
-                    }
-                };
-            }
-            ClientEvent::RefreshResources { .. } => {
-                tracing::warn!("Unimplemented");
+                        })
+                        .unwrap();
+                }
             }
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
@@ -723,15 +767,23 @@ impl TunnelTest {
 
     fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
         match event {
-            GatewayEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
-                self.client
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            GatewayEvent::InvalidIceCandidate { candidate, .. } => self
-                .client
-                .span
-                .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
+            GatewayEvent::AddedIceCandidates { candidates, .. } => {
+                self.client.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.client
+                            .state
+                            .add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            GatewayEvent::RemovedIceCandidates { candidates, .. } => {
+                self.client.span.in_scope(|| {
+                    for candidate in candidates {
+                        self.client.state.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
+            GatewayEvent::RefreshDns { .. } => todo!(),
         }
     }
 
@@ -814,17 +866,17 @@ impl TunnelTest {
     // - hickory error?
     // - TTL?
     fn on_forwarded_dns_query(&mut self, query: DnsQuery<'static>, ref_state: &ReferenceState) {
-        let resolved_ips = &ref_state
+        let all_ips = &ref_state
             .global_dns_records
             .get(&query.name)
-            .expect("Deferred DNS query to be for known domain");
+            .expect("Forwarded DNS query to be for known domain");
 
         let name = domain_to_hickory_name(query.name.clone());
-        let record_type = query.record_type;
+        let requested_type = query.record_type;
 
-        let record_data = resolved_ips
+        let record_data = all_ips
             .iter()
-            .filter_map(|ip| match (record_type, ip) {
+            .filter_map(|ip| match (requested_type, ip) {
                 (RecordType::A, IpAddr::V4(v4)) => Some(RData::A((*v4).into())),
                 (RecordType::AAAA, IpAddr::V6(v6)) => Some(RData::AAAA((*v6).into())),
                 (RecordType::A, IpAddr::V6(_)) | (RecordType::AAAA, IpAddr::V4(_)) => None,
@@ -836,7 +888,7 @@ impl TunnelTest {
         self.client.state.on_dns_result(
             query,
             Ok(Ok(Ok(Lookup::new_with_max_ttl(
-                Query::query(name, record_type),
+                Query::query(name, requested_type),
                 record_data,
             )))),
         );
@@ -846,7 +898,7 @@ impl TunnelTest {
 fn map_client_resource_to_gateway_resource(
     client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
     client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
-    resolved_ips: Vec<IpNetwork>,
+    resolved_ips: Vec<IpAddr>,
     resource_id: ResourceId,
 ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
     let cidr_resource = client_cidr_resources.iter().find_map(|(_, r)| {

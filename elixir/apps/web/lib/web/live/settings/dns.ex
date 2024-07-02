@@ -40,7 +40,7 @@ defmodule Web.Settings.DNS do
         All other queries will use the resolver below if configured.
         If no resolver is configured, the client's default system resolver will be used.
         <p class="mt-3">
-          <.website_link href="/kb/deploy/dns">
+          <.website_link path="/kb/deploy/dns">
             Read more about configuring DNS in Firezone.
           </.website_link>
         </p>

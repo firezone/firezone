@@ -688,6 +688,18 @@ IO.puts("")
     admin_subject
   )
 
+{:ok, address_description_null_resource} =
+  Resources.create_resource(
+    %{
+      type: :dns,
+      name: "Google",
+      address: "*.google.com",
+      connections: [%{gateway_group_id: gateway_group.id}],
+      filters: []
+    },
+    admin_subject
+  )
+
 {:ok, dns_gitlab_resource} =
   Resources.create_resource(
     %{
@@ -754,6 +766,7 @@ IO.puts("")
 
 IO.puts("Created resources:")
 IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
+IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{firez_one.address} - DNS - gateways: #{gateway_name}")
 IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
@@ -809,6 +822,16 @@ IO.puts("")
       name: "All Access To ip6only.me",
       actor_group_id: synced_group.id,
       resource_id: ip6only.id
+    },
+    admin_subject
+  )
+
+{:ok, _} =
+  Policies.create_policy(
+    %{
+      name: "All access to Google",
+      actor_group_id: everyone_group.id,
+      resource_id: address_description_null_resource.id
     },
     admin_subject
   )

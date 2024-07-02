@@ -13,4 +13,4 @@ mod imp;
 #[allow(clippy::unnecessary_wraps)]
 mod imp;
 
-pub(crate) use imp::{check_internet, run_debug, run_dns_debug, DnsListener, Worker};
+pub(crate) use imp::{check_internet, DnsListener, Worker};

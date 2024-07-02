@@ -5,14 +5,6 @@ use anyhow::Result;
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {}
 
-pub(crate) fn run_debug() -> Result<()> {
-    unimplemented!()
-}
-
-pub(crate) fn run_dns_debug() -> Result<()> {
-    unimplemented!()
-}
-
 pub(crate) fn check_internet() -> Result<bool> {
     tracing::error!("This is not the real macOS client, so `network_changes` is not implemented");
     Ok(true)

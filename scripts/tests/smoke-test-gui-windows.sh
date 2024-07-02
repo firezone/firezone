@@ -3,7 +3,7 @@
 # Read it before running on a dev system.
 # This script must run from an elevated shell so that Firezone won't try to elevate.
 
-source "./scripts/tests/lib.sh"
+set -euox pipefail
 
 # This prevents a `shellcheck` lint warning about using an unset CamelCase var
 if [[ -z "$ProgramData" ]]; then
@@ -12,15 +12,18 @@ if [[ -z "$ProgramData" ]]; then
 fi
 
 BUNDLE_ID="dev.firezone.client"
-DEVICE_ID_PATH="$ProgramData/$BUNDLE_ID/config/firezone-id.json"
 DUMP_PATH="$LOCALAPPDATA/$BUNDLE_ID/data/logs/last_crash.dmp"
+IPC_LOGS_PATH="$ProgramData/$BUNDLE_ID/data/logs"
 PACKAGE=firezone-gui-client
 
+# Make the IPC log dir so that the zip export doesn't bail out
+mkdir -p "$IPC_LOGS_PATH"
+
 function smoke_test() {
+    # This array used to have more items
+    # TODO: Smoke-test the IPC service
     files=(
         "$LOCALAPPDATA/$BUNDLE_ID/config/advanced_settings.json"
-        "$LOCALAPPDATA/$BUNDLE_ID/data/wintun.dll"
-        "$DEVICE_ID_PATH"
     )
 
     # Make sure the files we want to check don't exist on the system yet
@@ -32,27 +35,13 @@ function smoke_test() {
     done
 
     # Run the smoke test normally
-    cargo run --bin "$PACKAGE" -- smoke-test
-
-    # Note the device ID
-    DEVICE_ID_1=$(cat "$DEVICE_ID_PATH")
-
-    # Run the test again and make sure the device ID is not changed
-    cargo run --bin "$PACKAGE" -- smoke-test
-    DEVICE_ID_2=$(cat "$DEVICE_ID_PATH")
-
-    if [ "$DEVICE_ID_1" != "$DEVICE_ID_2" ]
-    then
-        echo "The device ID should not change if the file is intact between runs"
-        exit 1
-    fi
+    $PWD/../target/debug/$PACKAGE smoke-test
 
     # Make sure the files were written in the right paths
     for file in "${files[@]}"
     do
         stat "$file"
     done
-    stat "$LOCALAPPDATA/$BUNDLE_ID/data/logs/"connlib*log
 
     # Clean up so the test can be cycled
     for file in "${files[@]}"
@@ -66,7 +55,7 @@ function crash_test() {
     rm -f "$DUMP_PATH"
 
     # Fail if it returns success, this is supposed to crash
-    cargo run --bin "$PACKAGE" -- --crash && exit 1
+    $PWD/../target/debug/$PACKAGE --crash && exit 1
 
     # Fail if the crash file wasn't written
     stat "$DUMP_PATH"
@@ -75,7 +64,6 @@ function crash_test() {
 function get_stacktrace() {
     # Per `crash_handling.rs`
     SYMS_PATH="../target/debug/firezone-gui-client.syms"
-    cargo install --quiet --locked dump_syms minidump-stackwalk
     dump_syms ../target/debug/firezone_gui_client.pdb ../target/debug/firezone-gui-client.exe --output "$SYMS_PATH"
     ls -lash ../target/debug
     minidump-stackwalk --symbols-path "$SYMS_PATH" "$DUMP_PATH"

@@ -70,7 +70,7 @@ on:
 
 jobs:
   integration-tests:
-    name: ${{ matrix.test }}
+    name: ${{ matrix.test.name }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -104,27 +104,28 @@ jobs:
           - {ref_name: main, test: direct-browser-relay-restart}
           - {ref_name: main, test: relayed-browser-relay-restart}
 
-        test: [
-          direct-browser-relay-restart,
-          direct-curl-api-down,
-          direct-curl-api-relay-down,
-          direct-curl-api-restart,
-          direct-dns-api-down,
-          direct-dns-relay-down,
-          direct-dns,
-          direct-download-roaming-network,
-          dns-failsafe, # Uses the default DNS control method
-          dns-nm,
-          relay-graceful-shutdown,
-          relayed-browser-relay-restart,
-          relayed-curl-api-down,
-          relayed-curl-api-restart,
-          relayed-curl-relay-restart,
-          relayed-dns-api-down,
-          relayed-dns-relay-restart,
-          relayed-dns,
-          systemd/dns-systemd-resolved,
-        ]
+        test:
+          - name: direct-browser-relay-restart
+          - name: direct-curl-api-down
+          - name: direct-curl-api-relay-down
+          - name: direct-curl-api-restart
+          - name: direct-dns-api-down
+          - name: direct-dns-relay-down
+          - name: direct-dns
+          - name: direct-download-roaming-network
+            # Too noisy can cause flaky tests due to the amount of data
+            rust_log: debug
+          - name: dns-failsafe # Uses the default DNS control method
+          - name: dns-nm
+          - name: relay-graceful-shutdown
+          - name: relayed-browser-relay-restart
+          - name: relayed-curl-api-down
+          - name: relayed-curl-api-restart
+          - name: relayed-curl-relay-restart
+          - name: relayed-dns-api-down
+          - name: relayed-dns-relay-restart
+          - name: relayed-dns
+          - name: systemd/dns-systemd-resolved
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/gcp-docker-login
@@ -135,6 +136,12 @@ jobs:
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
+          set -xe
+
+          if [[ ! -z "${{ matrix.test.rust_log }}" ]]; then
+            export RUST_LOG="${{ matrix.test.rust_log }}"
+          fi
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
@@ -143,7 +150,7 @@ jobs:
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
 
-      - run: ./scripts/tests/${{ matrix.test }}.sh
+      - run: ./scripts/tests/${{ matrix.test.name }}.sh
 
       - name: Show Client logs
         if: "!cancelled()"

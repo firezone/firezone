@@ -13,19 +13,86 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <section>
-      <div className="py-8 px-4 mx-auto max-w-md md:max-w-screen-md lg:py-16 lg:px-6">
-        <div className="mx-auto max-w-screen-sm text-center lg:mb-16 mb-8">
-          <h1 className="justify-center mb-4 text-3xl lg:text-6xl tracking-tight font-extrabold text-neutral-900 ">
-            Blog
-          </h1>
-          <p className="text-neutral-900 text-lg sm:text-xl ">
-            Announcements, insights, and more from the Firezone team.
-          </p>
-        </div>
-        <div className="grid divide-y">
+      <div className="py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
+        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight mt-8">
+          Blog
+        </h1>
+        <p className="text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
+          Announcements, insights, and more from the Firezone team.
+        </p>
+        <div className="mt-14 grid divide-y">
+          <SummaryCard
+            title="June 2024 update"
+            date="June 21, 2024"
+            href="/blog/jun-2024-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <div className="mb-2">
+              <div className="mb-2">In this update:</div>
+              <ul className="space-y-2 list-inside list-disc ml-4">
+                <li>
+                  <strong>New feature:</strong> Conditional access policies
+                </li>
+                <li>
+                  <strong>New feature:</strong> Directory sync support for
+                  JumpCloud
+                </li>
+                <li>
+                  <strong>Blog post:</strong>{" "}
+                  <Link
+                    href="/blog/using-tauri"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    Using Tauri to build a cross-platform security app
+                  </Link>
+                </li>
+                <li>
+                  <strong>Blog post:</strong>{" "}
+                  <Link
+                    href="/blog/improving-reliability-for-dns-resources"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    Improving reliability for DNS Resources
+                  </Link>
+                </li>
+                <li>
+                  New{" "}
+                  <Link href="/support" className="text-accent-500 underline">
+                    support
+                  </Link>{" "}
+                  page for getting help with Firezone.
+                </li>
+                <li>
+                  New{" "}
+                  <Link href="/changelog" className="text-accent-500 underline">
+                    changelog
+                  </Link>{" "}
+                  page with release notes for every component we ship.
+                </li>
+              </ul>
+            </div>
+          </SummaryCard>
+          <SummaryCard
+            title="Improving reliability for DNS Resources"
+            date="June 20, 2024"
+            href="/blog/improving-reliability-for-dns-resources"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <p className="mb-2">
+              We're making some changes to the way DNS Resources are routed in
+              Firezone. These changes will be coming in Client and Gateway
+              versions 1.1 and later. Continue reading to understand how these
+              changes will affect your network and what you need to do to take
+              advantage of them.
+            </p>
+          </SummaryCard>
           <SummaryCard
             title="Using Tauri to build a cross-platform security app"
-            date="Jun 11, 2024"
+            date="June 11, 2024"
             href="/blog/using-tauri"
             authorName="ReactorScram"
             authorAvatarSrc="/images/avatars/reactorscram.png"
@@ -37,7 +104,7 @@ export default function Page() {
             </p>
           </SummaryCard>
           <SummaryCard
-            title="How DNS Works in Firezone"
+            title="How DNS works in Firezone"
             date="May 8, 2024"
             href="/blog/how-dns-works-in-firezone"
             authorName="Gabriel Steinberg"
@@ -52,16 +119,16 @@ export default function Page() {
             </p>
           </SummaryCard>
           <SummaryCard
-            title="May 2024 Update"
+            title="May 2024 update"
             date="May 1, 2024"
             href="/blog/may-2024-update"
             authorName="Jamil Bou Kheir"
             authorAvatarSrc={gravatar("jamil@firezone.dev")}
-            type="Learn"
+            type="Announcement"
           >
             <div className="mb-2">
-              In this update:
-              <ul className="list-inside list-disc ml-4">
+              <div className="mb-2">In this update:</div>
+              <ul className="space-y-2 list-inside list-disc ml-4">
                 <li>
                   <strong>New feature:</strong> Traffic restrictions
                 </li>
@@ -79,7 +146,7 @@ export default function Page() {
             </div>
           </SummaryCard>
           <SummaryCard
-            title="April 2024 Update: GA"
+            title="April 2024 update: GA"
             date="April 1, 2024"
             href="/blog/apr-2024-update"
             authorName="Jamil Bou Kheir"
@@ -114,7 +181,7 @@ export default function Page() {
             </ul>
           </SummaryCard>
           <SummaryCard
-            title="March 2024 Update"
+            title="March 2024 update"
             date="March 1, 2024"
             href="/blog/mar-2024-update"
             authorName="Jamil Bou Kheir"
@@ -138,7 +205,7 @@ export default function Page() {
             </ul>
           </SummaryCard>
           <SummaryCard
-            title="Jaunary 2024 Update"
+            title="January 2024 update"
             date="January 1, 2024"
             href="/blog/jan-2024-update"
             authorName="Jamil Bou Kheir"

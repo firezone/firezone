@@ -77,26 +77,12 @@ impl Device {
         Ok(())
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        // On Android / Linux we recreate the tunnel every time we re-configure it
-        self.tun = Some(Tun::new(config, dns_config.clone(), callbacks)?);
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
-
-        Ok(())
-    }
-
-    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
+    #[cfg(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "windows",
+        target_os = "linux"
+    ))]
     pub(crate) fn set_config(
         &mut self,
         config: &Interface,
@@ -133,7 +119,7 @@ impl Device {
             return Poll::Pending;
         };
 
-        let n = std::task::ready!(tun.poll_read(buf, cx))?;
+        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -142,14 +128,14 @@ impl Device {
             )));
         }
 
-        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",
             )
         })?;
 
-        tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
     }
@@ -167,7 +153,7 @@ impl Device {
             return Poll::Pending;
         };
 
-        let n = std::task::ready!(tun.poll_read(buf, cx))?;
+        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -176,14 +162,14 @@ impl Device {
             )));
         }
 
-        let packet = MutableIpPacket::new(&mut buf[..n]).ok_or_else(|| {
+        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",
             )
         })?;
 
-        tracing::trace!(target: "wire", from = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
     }
@@ -205,7 +191,7 @@ impl Device {
     }
 
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
-        tracing::trace!(target: "wire", to = "device", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
             IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),

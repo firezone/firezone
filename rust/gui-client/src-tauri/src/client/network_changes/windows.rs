@@ -65,7 +65,7 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use tokio::{runtime::Runtime, sync::mpsc};
+use tokio::sync::mpsc;
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -91,58 +91,6 @@ pub(crate) enum Error {
     Listening(windows::core::Error),
     #[error("Couldn't stop listening to network events: {0}")]
     Unadvise(windows::core::Error),
-}
-
-/// Debug subcommand to test network connectivity events
-pub(crate) fn run_debug() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
-    // Returns Err before COM is initialized
-    assert!(get_apartment_type().is_err());
-
-    let mut com_worker = Worker::new()?;
-
-    // We have to initialize COM again for the main thread. This doesn't
-    // seem to be a problem in the main app since Tauri initializes COM for itself.
-    let _guard = ComGuard::new();
-
-    assert_eq!(
-        get_apartment_type(),
-        Ok((Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE))
-    );
-
-    let rt = Runtime::new()?;
-
-    tracing::info!("Listening for network events...");
-
-    rt.block_on(async move {
-        loop {
-            tokio::select! {
-                _r = tokio::signal::ctrl_c() => break,
-                () = com_worker.notified() => {},
-            };
-            // Make sure whatever Tokio thread we're on is associated with COM
-            // somehow.
-            assert_eq!(
-                get_apartment_type()?,
-                (Com::APTTYPE_MTA, Com::APTTYPEQUALIFIER_NONE)
-            );
-
-            tracing::info!(have_internet = %check_internet()?);
-        }
-        Ok::<_, anyhow::Error>(())
-    })?;
-
-    Ok(())
-}
-
-/// Runs a debug subcommand that listens to the registry for DNS changes
-///
-/// This actually listens to the entire IPv4 key, so it will have lots of false positives,
-/// including when connlib changes anything on the Firezone tunnel.
-/// It will often fire multiple events in quick succession.
-pub(crate) fn run_dns_debug() -> Result<()> {
-    async_dns::run_debug()
 }
 
 /// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
@@ -393,17 +341,6 @@ impl Drop for Callback {
     }
 }
 
-/// Checks what COM apartment the current thread is in. For debugging only.
-fn get_apartment_type() -> WinResult<(Com::APTTYPE, Com::APTTYPEQUALIFIER)> {
-    let mut apt_type = Com::APTTYPE_CURRENT;
-    let mut apt_qualifier = Com::APTTYPEQUALIFIER_NONE;
-
-    // SAFETY: We just created the variables, and they're out parameters,
-    // so Windows shouldn't store the pointers.
-    unsafe { Com::CoGetApartmentType(&mut apt_type, &mut apt_qualifier) }?;
-    Ok((apt_type, apt_qualifier))
-}
-
 mod async_dns {
     use anyhow::{Context, Result};
     use std::{ffi::c_void, net::IpAddr, ops::Deref, path::Path};
@@ -440,28 +377,6 @@ mod async_dns {
             hklm.open_subkey_with_flags(path_4, flags)?,
             hklm.open_subkey_with_flags(path_6, flags)?,
         ))
-    }
-
-    pub(crate) fn run_debug() -> Result<()> {
-        tracing_subscriber::fmt::init();
-        let rt = tokio::runtime::Runtime::new()?;
-
-        let mut listener = CombinedListener::new()?;
-
-        rt.block_on(async move {
-            loop {
-                let resolvers = tokio::select! {
-                    _r = tokio::signal::ctrl_c() => break,
-                    r = listener.notified() => r?,
-                };
-
-                tracing::info!(?resolvers);
-            }
-
-            Ok::<_, anyhow::Error>(())
-        })?;
-
-        Ok(())
     }
 
     pub(crate) struct CombinedListener {

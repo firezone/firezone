@@ -444,6 +444,43 @@ defmodule Web.Live.Actors.ShowTest do
       end)
     end
 
+    test "rate limits welcome emails", %{
+      account: account,
+      actor: actor,
+      provider: provider,
+      identity: admin_identity,
+      conn: conn
+    } do
+      email_identity =
+        Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+        |> Ecto.Changeset.change(
+          created_by: :identity,
+          created_by_identity_id: admin_identity.id
+        )
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(admin_identity)
+        |> live(~p"/#{account}/actors/#{actor}")
+
+      for _ <- 1..3 do
+        assert lv
+               |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
+               |> render_click()
+               |> Floki.find(".flash-info")
+               |> element_to_text() =~
+                 "Welcome email sent to #{email_identity.provider_identifier}"
+      end
+
+      assert lv
+             |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
+             |> render_click()
+             |> Floki.find(".flash-error")
+             |> element_to_text() =~
+               "You sent too many welcome emails to this address. Please try again later."
+    end
+
     test "shows email button for identities with email", %{
       account: account,
       actor: actor,

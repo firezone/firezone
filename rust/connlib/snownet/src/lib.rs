@@ -7,12 +7,11 @@ mod index;
 mod node;
 mod ringbuffer;
 mod stats;
-mod stun_binding;
 mod utils;
 
 pub use allocation::RelaySocket;
 pub use node::{
     Answer, Client, ClientNode, Credentials, Error, Event, Node, Offer, Server, ServerNode,
-    Transmit,
+    Transmit, HANDSHAKE_TIMEOUT,
 };
 pub use stats::{ConnectionStats, NodeStats};

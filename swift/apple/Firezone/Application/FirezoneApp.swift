@@ -36,7 +36,10 @@ struct FirezoneApp: App {
       "Welcome to Firezone",
       id: AppViewModel.WindowDefinition.main.identifier
     ) {
-      AppView(model: appViewModel)
+      if let menuBar = appDelegate.menuBar {
+        // menuBar will be initialized by this point
+        AppView(model: appViewModel).environmentObject(menuBar)
+      }
     }
     .handlesExternalEvents(
       matching: [AppViewModel.WindowDefinition.main.externalEventMatchString]
@@ -58,7 +61,7 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var menuBar: MenuBar?
+    var menuBar: MenuBar?
     public var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {

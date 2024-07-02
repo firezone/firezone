@@ -2,25 +2,14 @@ use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
 use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{
+    ipc::{self, Error},
+    IpcClientMsg, IpcServerMsg,
+};
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::{net::IpAddr, sync::Arc};
 use tokio::sync::Notify;
-use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
-
-#[cfg(target_os = "linux")]
-#[path = "ipc/linux.rs"]
-mod platform;
-
-// Stub only
-#[cfg(target_os = "macos")]
-#[path = "ipc/macos.rs"]
-mod platform;
-
-#[cfg(target_os = "windows")]
-#[path = "ipc/windows.rs"]
-mod platform;
 
 #[derive(Clone)]
 pub(crate) struct CallbackHandler {
@@ -57,7 +46,7 @@ impl CallbackHandler {
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: FramedWrite<tokio::io::WriteHalf<platform::IpcStream>, LengthDelimitedCodec>,
+    tx: ipc::ClientWrite,
 }
 
 impl Client {
@@ -72,11 +61,7 @@ impl Client {
 
     pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
-            .send(
-                serde_json::to_string(msg)
-                    .context("Couldn't encode IPC message as JSON")?
-                    .into(),
-            )
+            .send(msg)
             .await
             .context("Couldn't send IPC message")?;
         Ok(())
@@ -87,20 +72,16 @@ impl Client {
         token: SecretString,
         callback_handler: CallbackHandler,
         tokio_handle: tokio::runtime::Handle,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         tracing::info!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let stream = platform::connect_to_service().await?;
-        let (rx, tx) = tokio::io::split(stream);
-        // Receives messages from the IPC service
-        let mut rx = FramedRead::new(rx, LengthDelimitedCodec::new());
-        let tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
+        let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
 
         let task = tokio_handle.spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {
-                match serde_json::from_slice::<IpcServerMsg>(&msg)? {
+                match msg {
                     IpcServerMsg::Ok => {}
                     IpcServerMsg::OnDisconnect {
                         error_msg,
@@ -121,7 +102,8 @@ impl Client {
                 token,
             })
             .await
-            .context("Couldn't send Connect message")?;
+            .context("Couldn't send Connect message")
+            .map_err(Error::Other)?;
         Ok(client)
     }
 

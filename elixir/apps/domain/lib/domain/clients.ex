@@ -275,8 +275,16 @@ defmodule Domain.Clients do
     PubSub.subscribe(account_presence_topic(account_or_id))
   end
 
+  def unsubscribe_from_clients_presence_in_account(account_or_id) do
+    PubSub.unsubscribe(account_presence_topic(account_or_id))
+  end
+
   def subscribe_to_clients_presence_for_actor(actor_or_id) do
     PubSub.subscribe(actor_presence_topic(actor_or_id))
+  end
+
+  def unsubscribe_from_clients_presence_for_actor(actor_or_id) do
+    PubSub.unsubscribe(actor_presence_topic(actor_or_id))
   end
 
   def broadcast_to_account_clients(account_or_id, payload) do

@@ -109,7 +109,7 @@ defmodule Web.SignIn do
         <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
-            <.website_link href="/kb/user-guides">Read the docs.</.website_link>
+            <.website_link path="/kb/user-guides">Read the docs.</.website_link>
           </p>
           <p class="py-2">
             Looking for a different account?
@@ -155,7 +155,7 @@ defmodule Web.SignIn do
   end
 
   def providers_group_form(%{adapter: "userpass"} = assigns) do
-    provider_identifier = live_flash(assigns.flash, :userpass_provider_identifier)
+    provider_identifier = Phoenix.Flash.get(assigns.flash, :userpass_provider_identifier)
     form = to_form(%{"provider_identifier" => provider_identifier}, as: "userpass")
     assigns = Map.put(assigns, :userpass_form, form)
 
@@ -195,7 +195,7 @@ defmodule Web.SignIn do
   end
 
   def providers_group_form(%{adapter: "email"} = assigns) do
-    provider_identifier = live_flash(assigns.flash, :email_provider_identifier)
+    provider_identifier = Phoenix.Flash.get(assigns.flash, :email_provider_identifier)
     form = to_form(%{"provider_identifier" => provider_identifier}, as: "email")
     assigns = Map.put(assigns, :email_form, form)
 

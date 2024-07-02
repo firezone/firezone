@@ -22,7 +22,7 @@ pub struct ResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    pub address_description: String,
+    pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
 }
@@ -52,7 +52,7 @@ pub struct ResourceDescriptionCidr {
     /// Used only for display.
     pub name: String,
 
-    pub address_description: String,
+    pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
 }

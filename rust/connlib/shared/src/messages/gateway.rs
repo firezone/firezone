@@ -1,6 +1,9 @@
 //! Gateway related messages that are needed within connlib
 
+use std::net::IpAddr;
+
 use ip_network::IpNetwork;
+use itertools::Itertools;
 use serde::Deserialize;
 
 use super::ResourceId;
@@ -48,7 +51,7 @@ pub struct ResolvedResourceDescriptionDns {
     /// Used only for display.
     pub name: String,
 
-    pub addresses: Vec<IpNetwork>,
+    pub addresses: Vec<IpAddr>,
 
     pub filters: Filters,
 }
@@ -91,7 +94,7 @@ fn max_port() -> u16 {
 impl ResourceDescription<ResourceDescriptionDns> {
     pub fn into_resolved(
         self,
-        addresses: Vec<IpNetwork>,
+        addresses: Vec<IpAddr>,
     ) -> ResourceDescription<ResolvedResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(ResourceDescriptionDns {
@@ -104,6 +107,7 @@ impl ResourceDescription<ResourceDescriptionDns> {
                 domain: address,
                 name,
                 addresses,
+
                 filters,
             }),
             ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
@@ -130,7 +134,7 @@ impl ResourceDescription<ResourceDescriptionDns> {
 impl ResourceDescription<ResolvedResourceDescriptionDns> {
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
-            ResourceDescription::Dns(r) => r.addresses.clone(),
+            ResourceDescription::Dns(r) => r.addresses.iter().copied().map_into().collect_vec(),
             ResourceDescription::Cidr(r) => vec![r.address],
         }
     }

@@ -1,6 +1,6 @@
 //! Error module.
 use base64::DecodeError;
-use std::{collections::HashSet, net::IpAddr};
+use std::net::IpAddr;
 use thiserror::Error;
 
 /// Unified Result type to use across connlib.
@@ -50,15 +50,18 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Received connection details that might be stale
-    #[error("Unexpected connection details")]
-    UnexpectedConnectionDetails,
     /// Invalid destination for packet
     #[error("Invalid dest address")]
     InvalidDst,
-    /// Connection is still being established, retry later
-    #[error("Pending connection")]
-    PendingConnection,
+    /// Exhausted nat table
+    #[error("exhausted nat")]
+    ExhaustedNat,
+    #[error(transparent)]
+    UnsupportedProtocol(ip_packet::UnsupportedProtocol),
+    // TODO: we might want to log some extra parameters on these failed translations
+    /// Packet translation failed
+    #[error("failed packet translation")]
+    FailedTranslation,
     #[cfg(target_os = "windows")]
     #[error("Windows error: {0}")]
     WindowsError(#[from] windows::core::Error),
@@ -76,11 +79,8 @@ pub enum ConnlibError {
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
 
-    #[error("source: {src}; allowed_ips: {allowed_ips:?}")]
-    UnallowedPacket {
-        src: IpAddr,
-        allowed_ips: HashSet<IpAddr>,
-    },
+    #[error("Packet not allowed; source = {src}")]
+    UnallowedPacket { src: IpAddr },
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]

@@ -8,11 +8,11 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
-    Callbacks, Result,
+    Callbacks, DomainName, Result,
 };
 use io::Io;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
     time::Instant,
@@ -38,7 +38,6 @@ mod utils;
 mod tests;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-
 const MTU: usize = 1280;
 
 const REALM: &str = "firezone";
@@ -61,15 +60,13 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     /// Handles all side-effects.
     io: Io,
 
-    // TODO: could we make these buffers smaller? Since all the valid packets will be at most
-    // MTU + Wireguard Header + optionally Data Channel + UDP header + IPV4/IPV6 header (1280 + 32 + 4 + 8 + 40 = 1364)
-    // or STUN control messages which afaik are smaller than that
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
     // We need an extra 16 bytes on top of the MTU for write_buf since boringtun copies the extra AEAD tag before decrypting it
-    write_buf: Box<[u8; MTU + 16]>,
-    device_read_buf: Box<[u8; MTU]>,
+    write_buf: Box<[u8; MTU + 16 + 20]>,
+    // We have 20 extra bytes to be able to convert between ipv4 and ipv6
+    device_read_buf: Box<[u8; MTU + 20]>,
 }
 
 impl<CB> ClientTunnel<CB>
@@ -80,20 +77,21 @@ where
         private_key: StaticSecret,
         sockets: Sockets,
         callbacks: CB,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(sockets)?,
             callbacks,
-            role_state: ClientState::new(private_key),
-            write_buf: Box::new([0u8; MTU + 16]),
+            role_state: ClientState::new(private_key, known_hosts),
+            write_buf: Box::new([0u8; MTU + 16 + 20]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MTU]),
+            device_read_buf: Box::new([0u8; MTU + 20]),
         })
     }
 
-    pub fn reconnect(&mut self) -> std::io::Result<()> {
-        self.role_state.reconnect(Instant::now());
+    pub fn reset(&mut self) -> std::io::Result<()> {
+        self.role_state.reset();
         self.io.sockets_mut().rebind()?;
 
         Ok(())
@@ -187,10 +185,10 @@ where
             io: Io::new(sockets)?,
             callbacks,
             role_state: GatewayState::new(private_key),
-            write_buf: Box::new([0u8; MTU + 16]),
+            write_buf: Box::new([0u8; MTU + 20 + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; MTU]),
+            device_read_buf: Box::new([0u8; MTU + 20]),
         })
     }
 
@@ -266,19 +264,19 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidatedIceCandidate {
+    RemovedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     ConnectionIntent {
         resource: ResourceId,
         connected_gateway_ids: HashSet<GatewayId>,
     },
-    RefreshResources {
+    SendProxyIps {
         connections: Vec<ReuseConnection>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
@@ -298,12 +296,17 @@ pub enum ClientEvent {
 
 #[derive(Debug, Clone)]
 pub enum GatewayEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidIceCandidate {
+    RemovedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
+    },
+    RefreshDns {
+        name: DomainName,
+        conn_id: ClientId,
+        resource_id: ResourceId,
     },
 }

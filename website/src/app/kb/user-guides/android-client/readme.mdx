@@ -14,8 +14,43 @@ Google Play Store.
 
 ## Installation
 
-[Download the Firezone app](https://play.google.com/store/apps/details?id=dev.firezone.android)
-from the Google Play Store.
+1. [Download the Firezone app](https://play.google.com/store/apps/details?id=dev.firezone.android)
+   from the Google Play Store.
+1. Run the app. The welcome screen will show "Enable VPN Permission" and the
+   Firezone logo.
+1. Tap `Request Permission`. Android will show a dialog saying,
+   `Connection request`.
+1. Tap `OK`. Firezone will switch to the `Signed Out` screen.
+
+## Usage
+
+### Signing in
+
+1. Tap `Sign In`. Firezone will open a sign-in page in your web browser.
+1. Select your account and sign in. Firezone will show your username and
+   Resources.
+
+### Accessing a Resource
+
+When Firezone is signed in, web browsers and other programs will automatically
+use it to securely connect to Resources.
+
+To copy-paste the address of a Resource:
+
+1. Tap on the Resource.
+1. Tap on the address, e.g. `example.com`. Firezone will copy the address to the
+   clipboard.
+1. Open your web browser, such as Google Chrome.
+1. Paste the link you copied from Firezone.
+1. Tap the enter or arrow icon on your keyboard to navigate to the link.
+
+### Signing out
+
+1. Open the Firezone app
+1. Tap `Sign Out` in the bottom-right corner.
+
+When you're signed out, you can't access private Resources, and the device will
+use its normal DNS and Internet behavior.
 
 ## Upgrading
 
@@ -23,5 +58,42 @@ Updates for the Android client are handled through the Google Play Store.
 Consult the
 [Play Store documentation](https://support.google.com/googleplay/answer/113412?hl=en)
 for more information on how to update apps on your device.
+
+## Diagnostic logs
+
+Firezone writes log files to the device's memory. These logs stay on the device
+and are not transmitted anywhere. If you find a bug, you can send us a `.zip`
+archive of your logs to help us fix the bug.
+
+To export or clear your logs:
+
+1. Open the Firezone app.
+1. Tap `Settings` in the bottom-left corner.
+1. Tap `Logs` in the bottom-right corner.
+1. Tap `EXPORT LOGS` or `CLEAR LOG DIRECTORY`.
+
+## Uninstalling
+
+1. Go to the device's home screen.
+1. Swipe up to open the app drawer.
+1. Long-press the Firezone app icon. A menu will appear.
+1. Tap `App info` in the menu. This will show the app info screen for Firezone.
+1. Tap `Uninstall`. Android will show a dialog asking,
+   `Do you want to uninstall this app?`.
+1. Tap `OK`.
+
+## Troubleshooting
+
+We will add troubleshooting steps here in the future.
+
+## Known issues
+
+- ChromeOS devices using the Android 9 compatibility layer don't work with
+  Firezone. Android 11 and newer do work.
+  [#3620](https://github.com/firezone/firezone/issues/3620)
+- Some apps do not use Firezone's SplitDNS and so cannot access DNS Resources.
+  [#4834](https://github.com/firezone/firezone/issues/4834)
+- Disconnecting the VPN from the System Settings does not work
+  [#5413](https://github.com/firezone/firezone/issues/5413)
 
 <SupportOptions />

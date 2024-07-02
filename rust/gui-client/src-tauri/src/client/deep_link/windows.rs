@@ -68,18 +68,19 @@ impl Server {
 
 /// Open a deep link by sending it to the already-running instance of the app
 pub async fn open(url: &url::Url) -> Result<()> {
+    let path = pipe_path();
     let mut client = named_pipe::ClientOptions::new()
-        .open(pipe_path())
-        .context("Couldn't connect to named pipe server")?;
+        .open(&path)
+        .with_context(|| format!("Couldn't connect to named pipe server at `{path}`"))?;
     client
         .write_all(url.as_str().as_bytes())
         .await
-        .context("Couldn't write bytes to named pipe server")?;
+        .with_context(|| format!("Couldn't write bytes to named pipe server at `{path}`"))?;
     Ok(())
 }
 
 fn pipe_path() -> String {
-    firezone_headless_client::windows::named_pipe_path(&format!("{BUNDLE_ID}.deep_link"))
+    firezone_headless_client::ipc::platform::named_pipe_path(&format!("{BUNDLE_ID}.deep_link"))
 }
 
 /// Registers the current exe as the handler for our deep link scheme.

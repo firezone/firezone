@@ -1,6 +1,7 @@
+use crate::MTU;
 use connlib_shared::{
     windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    Callbacks, Result, DEFAULT_MTU,
+    Callbacks, Result,
 };
 use ip_network::IpNetwork;
 use std::{
@@ -24,27 +25,54 @@ use windows::Win32::{
     },
     Networking::WinSock::{AF_INET, AF_INET6},
 };
+use wintun::Adapter;
 
-// TODO: Double-check that all these get dropped gracefully on disconnect
-pub struct Tun {
+// Not sure how this and `TUNNEL_NAME` differ
+const ADAPTER_NAME: &str = "Firezone";
+/// The ring buffer size used for Wintun.
+///
+/// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
+/// 0x10_0000 is 1 MiB, which performs decently on the Cloudflare speed test.
+/// At 1 Gbps that's about 8 ms, so any delay where Firezone isn't scheduled by the OS
+/// onto a core for more than 8 ms would result in packet drops.
+///
+/// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
+/// where that is configured.
+const RING_BUFFER_SIZE: u32 = 0x10_0000;
+
+pub(crate) struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
     packet_rx: mpsc::Receiver<wintun::Packet>,
-    _recv_thread: std::thread::JoinHandle<()>,
+    recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
     routes: HashSet<IpNetwork>,
 }
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        if let Err(e) = self.session.shutdown() {
-            tracing::error!("wintun::Session::shutdown: {e:#?}");
+        tracing::debug!(
+            channel_capacity = self.packet_rx.capacity(),
+            "Shutting down packet channel..."
+        );
+        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
+        if let Err(error) = self.session.shutdown() {
+            tracing::error!(?error, "wintun::Session::shutdown");
+        }
+        if let Err(error) = self
+            .recv_thread
+            .take()
+            .expect("`recv_thread` should always be `Some` until `Tun` drops")
+            .join()
+        {
+            tracing::error!(?error, "`Tun::recv_thread` panicked");
         }
     }
 }
 
 impl Tun {
+    #[tracing::instrument(level = "debug")]
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
@@ -52,20 +80,12 @@ impl Tun {
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
         let path = connlib_shared::windows::wintun_dll_path()?;
         let wintun = unsafe { wintun::load_from_path(path) }?;
-        let uuid =
-            uuid::Uuid::from_str(TUNNEL_UUID).expect("static UUID should always parse correctly");
-        let adapter =
-            match wintun::Adapter::create(&wintun, "Firezone", TUNNEL_NAME, Some(uuid.as_u128())) {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!(
-                        "wintun::Adapter::create failed, probably need admin powers: {}",
-                        e
-                    );
-                    return Err(e.into());
-                }
-            };
 
+        // Create wintun adapter
+        let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
+            .expect("static UUID should always parse correctly")
+            .as_u128();
+        let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
 
         // Remove any routes that were previously associated with us
@@ -79,17 +99,17 @@ impl Tun {
             .stdout(Stdio::null())
             .status()?;
 
-        set_iface_config(adapter.get_luid(), DEFAULT_MTU)?;
+        set_iface_config(adapter.get_luid(), MTU as u32)?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
-
-        let (packet_tx, packet_rx) = mpsc::channel(5);
-
+        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
+        // 4 is a nice power of two. Wintun already queues packets for us, so we don't
+        // need much capacity here.
+        let (packet_tx, packet_rx) = mpsc::channel(4);
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
 
         Ok(Self {
             iface_idx,
-            _recv_thread: recv_thread,
+            recv_thread: Some(recv_thread),
             packet_rx,
             session: Arc::clone(&session),
             routes: HashSet::new(),
@@ -120,6 +140,7 @@ impl Tun {
         Ok(())
     }
 
+    // Moves packets from the user towards the Internet
     pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let pkt = ready!(self.packet_rx.poll_recv(cx));
 
@@ -155,6 +176,7 @@ impl Tun {
         self.write(bytes)
     }
 
+    // Moves packets from the Internet towards the user
     #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
@@ -233,29 +255,42 @@ pub(crate) fn flush_dns() -> Result<()> {
     Ok(())
 }
 
+// Moves packets from the user towards the Internet
 fn start_recv_thread(
     packet_tx: mpsc::Sender<wintun::Packet>,
     session: Arc<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("Firezone wintun worker".into())
-        .spawn(move || {
-            loop {
-                match session.receive_blocking() {
-                    Ok(pkt) => {
-                        if packet_tx.blocking_send(pkt).is_err() {
-                            // Most likely the receiver was dropped and we're closing down the connlib session.
-                            break;
-                        }
-                    }
-                    Err(wintun::Error::ShuttingDown) => break,
-                    Err(e) => {
-                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
-                        break;
-                    }
+        .spawn(move || loop {
+            let pkt = match session.receive_blocking() {
+                Ok(pkt) => pkt,
+                Err(wintun::Error::ShuttingDown) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because Wintun is shutting down"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                    break;
+                }
+            };
+
+            // Use `blocking_send` so that if connlib is behind by a few packets,
+            // Wintun will queue up new packets in its ring buffer while we
+            // wait for our MPSC channel to clear.
+            // Unfortunately we don't know if Wintun is dropping packets, since
+            // it doesn't expose a sequence number or anything.
+            match packet_tx.blocking_send(pkt) {
+                Ok(()) => {}
+                Err(_) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because the packet channel closed"
+                    );
+                    break;
                 }
             }
-            tracing::debug!("recv_task exiting gracefully");
         })
 }
 
@@ -311,4 +346,16 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     }
     Ok(())
+}
+
+mod tests {
+    /// Checks for regressions in issue #4765, un-initializing Wintun
+    #[test]
+    #[ignore = "Needs admin privileges"]
+    fn resource_management() {
+        // Each cycle takes about half a second, so this will need over a minute to run.
+        for _ in 0..150 {
+            let _tun = super::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+        }
+    }
 }

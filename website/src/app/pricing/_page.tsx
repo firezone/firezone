@@ -16,7 +16,7 @@ export default function _Page() {
       <section className="bg-neutral-100">
         <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
           <div className="mx-auto max-w-screen-md sm:text-center">
-            <h1 className="text-center justify-center mb-4 text-3xl font-extrabold leading-none tracking-tight text-neutral-900 sm:text-6xl">
+            <h1 className="text-center justify-center mb-4 text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold leading-none tracking-tight text-neutral-900">
               Plans & Pricing
             </h1>
             <h2 className="text-center justify-center mb-8 tracking-tight text-neutral-900 md:mb-12 sm:text-2xl text-xl">
@@ -173,6 +173,12 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                 <span className="leading-tight text-neutral-900 ">
+                  Conditional access policies
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <span className="leading-tight text-neutral-900 ">
                   Customize your account slug
                 </span>
               </li>
@@ -226,7 +232,7 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
-                  Directory sync for Google, Entra ID, and Okta
+                  Directory sync for Google, Entra ID, Okta, and JumpCloud
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -468,7 +474,7 @@ export default function _Page() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="w-64 text-white tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold hover:font-bold"
+                className="w-64 text-white tracking-tight rounded duration-50 hover:ring-2 hover:ring-primary-300 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold"
               >
                 Request a demo
               </button>

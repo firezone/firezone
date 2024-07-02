@@ -5,42 +5,59 @@ use crate::messages::{
 use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
-use connlib_shared::messages::RelaysPresence;
-use connlib_shared::{
-    messages::{GatewayResponse, ResourceAccepted},
-    DomainName,
+use connlib_shared::messages::{
+    ClientId, ConnectionAccepted, Interface, RelaysPresence, ResourceAccepted, ResourceId,
 };
+use connlib_shared::{messages::GatewayResponse, DomainName};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use either::Either;
 use firezone_tunnel::GatewayTunnel;
+use futures::channel::mpsc;
 use futures_bounded::Timeout;
-use ip_network::IpNetwork;
 use phoenix_channel::PhoenixChannel;
 use std::collections::HashSet;
 use std::convert::Infallible;
+use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
+/// How long we allow a DNS resolution via `libc::get_addr_info`.
+const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
+
+// DNS resolution happens as part of every connection setup.
+// For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.
+static_assertions::const_assert!(
+    DNS_RESOLUTION_TIMEOUT.as_secs() < snownet::HANDSHAKE_TIMEOUT.as_secs()
+);
+
+#[derive(Debug, Clone)]
+enum ResolveTrigger {
+    RequestConnection(RequestConnection),
+    AllowAccess(AllowAccess),
+    Refresh(DomainName, ClientId, ResourceId),
+}
+
 pub struct Eventloop {
     tunnel: GatewayTunnel<CallbackHandler>,
     portal: PhoenixChannel<(), IngressMessages, ()>,
+    tun_device_channel: mpsc::Sender<Interface>,
 
-    resolve_tasks:
-        futures_bounded::FuturesTupleSet<Vec<IpNetwork>, Either<RequestConnection, AllowAccess>>,
+    resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
 }
 
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel<CallbackHandler>,
         portal: PhoenixChannel<(), IngressMessages, ()>,
+        tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
         Self {
             tunnel,
             portal,
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(Duration::from_secs(60), 100),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 100),
+            tun_device_channel,
         }
     }
 }
@@ -61,12 +78,16 @@ impl Eventloop {
             }
 
             match self.resolve_tasks.poll_unpin(cx) {
-                Poll::Ready((result, Either::Left(req))) => {
+                Poll::Ready((result, ResolveTrigger::RequestConnection(req))) => {
                     self.accept_connection(result, req);
                     continue;
                 }
-                Poll::Ready((result, Either::Right(req))) => {
+                Poll::Ready((result, ResolveTrigger::AllowAccess(req))) => {
                     self.allow_access(result, req);
+                    continue;
+                }
+                Poll::Ready((result, ResolveTrigger::Refresh(name, conn_id, resource_id))) => {
+                    self.refresh_translation(result, conn_id, resource_id, name);
                     continue;
                 }
                 Poll::Pending => {}
@@ -86,29 +107,45 @@ impl Eventloop {
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) {
         match event {
-            firezone_tunnel::GatewayEvent::NewIceCandidate {
+            firezone_tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
-                candidate,
+                candidates,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
-            firezone_tunnel::GatewayEvent::InvalidIceCandidate {
+            firezone_tunnel::GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
-                candidate,
+                candidates,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
+            }
+            firezone_tunnel::GatewayEvent::RefreshDns {
+                name,
+                conn_id,
+                resource_id,
+            } => {
+                if self
+                    .resolve_tasks
+                    .try_push(
+                        resolve(Some(name.clone())),
+                        ResolveTrigger::Refresh(name, conn_id, resource_id),
+                    )
+                    .is_err()
+                {
+                    tracing::warn!("Too many dns resolution requests, dropping existing one");
+                };
             }
         }
     }
@@ -122,8 +159,8 @@ impl Eventloop {
                 if self
                     .resolve_tasks
                     .try_push(
-                        resolve(req.client.payload.domain.clone()),
-                        Either::Left(req),
+                        resolve(req.client.payload.domain.as_ref().map(|r| r.name())),
+                        ResolveTrigger::RequestConnection(req),
                     )
                     .is_err()
                 {
@@ -136,7 +173,10 @@ impl Eventloop {
             } => {
                 if self
                     .resolve_tasks
-                    .try_push(resolve(req.payload.clone()), Either::Right(req))
+                    .try_push(
+                        resolve(req.payload.as_ref().map(|r| r.name())),
+                        ResolveTrigger::AllowAccess(req),
+                    )
                     .is_err()
                 {
                     tracing::warn!("Too many allow access requests, dropping existing one");
@@ -187,10 +227,20 @@ impl Eventloop {
                 .tunnel
                 .update_relays(HashSet::from_iter(disconnected_ids), connected),
             phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::Init(_),
+                msg: IngressMessages::Init(init),
                 ..
             } => {
-                // TODO: Handle `init` message during operation.
+                if let Err(e) = self.tunnel.set_interface(&init.interface) {
+                    tracing::warn!("Failed to set interface: {e}");
+                };
+                self.tunnel.update_relays(HashSet::default(), init.relays);
+
+                // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
+                // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
+                // That requires more refactoring of other platforms, so for now, we need to rely on the `Tunnel` interface and cause the side-effect separately via the `TunDeviceManager`.
+                if let Err(e) = self.tun_device_channel.try_send(init.interface) {
+                    tracing::warn!("Failed to set interface: {e}");
+                }
             }
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::ResourceUpdated(resource_description),
@@ -212,7 +262,7 @@ impl Eventloop {
 
     pub fn accept_connection(
         &mut self,
-        result: Result<Vec<IpNetwork>, Timeout>,
+        result: Result<Vec<IpAddr>, Timeout>,
         req: RequestConnection,
     ) {
         let addresses = result
@@ -226,17 +276,24 @@ impl Eventloop {
             PublicKey::from(req.client.peer.public_key.0),
             req.client.peer.ipv4,
             req.client.peer.ipv6,
-            req.relays,
-            req.client.payload.domain,
+            req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
-            req.resource.into_resolved(addresses),
+            req.resource.into_resolved(addresses.clone()),
         ) {
             Ok(accepted) => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::ConnectionReady(ConnectionReady {
                         reference: req.reference,
-                        gateway_payload: GatewayResponse::ConnectionAccepted(accepted),
+                        gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
+                            ice_parameters: accepted,
+                            domain_response: req.client.payload.domain.map(|r| {
+                                connlib_shared::messages::DomainResponse {
+                                    domain: r.name(),
+                                    address: addresses,
+                                }
+                            }),
+                        }),
                     }),
                 );
 
@@ -251,33 +308,52 @@ impl Eventloop {
         }
     }
 
-    pub fn allow_access(&mut self, result: Result<Vec<IpNetwork>, Timeout>, req: AllowAccess) {
+    pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
             .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
-        let maybe_domain_response = self.tunnel.allow_access(
-            req.resource.into_resolved(addresses),
-            req.client_id,
-            req.expires_at,
+        if let (Ok(()), Some(resolve_request)) = (
+            self.tunnel.allow_access(
+                req.resource.into_resolved(addresses.clone()),
+                req.client_id,
+                req.expires_at,
+                req.payload.as_ref().map(|r| r.as_tuple()),
+            ),
             req.payload,
-        );
-
-        if let Some(domain_response) = maybe_domain_response {
+        ) {
             self.portal.send(
                 PHOENIX_TOPIC,
                 EgressMessages::ConnectionReady(ConnectionReady {
                     reference: req.reference,
                     gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted {
-                        domain_response,
+                        domain_response: connlib_shared::messages::DomainResponse {
+                            domain: resolve_request.name(),
+                            address: addresses,
+                        },
                     }),
                 }),
             );
         }
     }
+
+    pub fn refresh_translation(
+        &mut self,
+        result: Result<Vec<IpAddr>, Timeout>,
+        conn_id: ClientId,
+        resource_id: ResourceId,
+        name: DomainName,
+    ) {
+        let addresses = result
+            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {e}"))
+            .unwrap_or_default();
+
+        self.tunnel
+            .refresh_translation(conn_id, resource_id, name, addresses);
+    }
 }
 
-async fn resolve(domain: Option<DomainName>) -> Vec<IpNetwork> {
+async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
     let Some(domain) = domain.clone() else {
         return vec![];
     };
@@ -300,12 +376,12 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpNetwork> {
 }
 
 #[cfg(target_os = "windows")]
-fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpNetwork>> {
+fn resolve_addresses(_: &str) -> std::io::Result<Vec<IpAddr>> {
     unimplemented!()
 }
 
 #[cfg(not(target_os = "windows"))]
-fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
+fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpAddr>> {
     use libc::{AF_INET, AF_INET6};
     let addr_v4: std::io::Result<Vec<_>> = resolve_address_family(addr, AF_INET)
         .map_err(|e| e.into())
@@ -316,11 +392,11 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpNetwork>> {
     match (addr_v4, addr_v6) {
         (Ok(v4), Ok(v6)) => Ok(v6
             .iter()
-            .map(|a| a.sockaddr.ip().into())
-            .chain(v4.iter().map(|a| a.sockaddr.ip().into()))
+            .map(|a| a.sockaddr.ip())
+            .chain(v4.iter().map(|a| a.sockaddr.ip()))
             .collect()),
-        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip().into()).collect()),
-        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip().into()).collect()),
+        (Ok(v4), Err(_)) => Ok(v4.iter().map(|a| a.sockaddr.ip()).collect()),
+        (Err(_), Ok(v6)) => Ok(v6.iter().map(|a| a.sockaddr.ip()).collect()),
         (Err(e), Err(_)) => Err(e),
     }
 }

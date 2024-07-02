@@ -22,7 +22,6 @@ pub struct ConfigUpdate {
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ConnectionDetails {
-    pub relays: Vec<Relay>,
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_remote_ip: IpAddr,
@@ -62,7 +61,7 @@ pub struct GatewaysIceCandidates {
     /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: Vec<String>,
+    pub candidates: HashSet<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -105,7 +104,7 @@ mod test {
     use chrono::DateTime;
     use connlib_shared::messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site},
-        DnsServer, IpDnsServer, Stun, Turn,
+        DnsServer, IpDnsServer, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
 
@@ -118,10 +117,10 @@ mod test {
             "client",
             EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                 gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
-                candidates: vec![
+                candidates: HashSet::from([
                     "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
                         .to_owned(),
-                ],
+                ]),
             }),
             Some(OutboundRequestId::for_test(6)),
         );
@@ -235,7 +234,17 @@ mod test {
                         id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
-                        address_description: "cidr resource".to_string(),
+                        address_description: Some("cidr resource".to_string()),
+                        sites: vec![Site {
+                            name: "test".to_string(),
+                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
+                        }],
+                    }),
+                    ResourceDescription::Cidr(ResourceDescriptionCidr {
+                        id: "73037362-715d-4a83-a749-f18eadd970e7".parse().unwrap(),
+                        address: "172.173.0.0/16".parse().unwrap(),
+                        name: "172.173.0.0/16".to_string(),
+                        address_description: None,
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -245,7 +254,17 @@ mod test {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
-                        address_description: "dns resource".to_string(),
+                        address_description: Some("dns resource".to_string()),
+                        sites: vec![Site {
+                            name: "test".to_string(),
+                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
+                        }],
+                    }),
+                    ResourceDescription::Dns(ResourceDescriptionDns {
+                        id: "03000143-e25e-45c7-aafb-144990e57dce".parse().unwrap(),
+                        address: "github.mycorp.com".to_string(),
+                        name: "github.mycorp.com".to_string(),
+                        address_description: None,
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -274,12 +293,27 @@ mod test {
                         "type": "cidr"
                     },
                     {
+                        "address": "172.173.0.0/16",
+                        "id": "73037362-715d-4a83-a749-f18eadd970e7",
+                        "name": "172.173.0.0/16",
+                        "address_description": null,
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "cidr"
+                    },
+                    {
                         "address": "gitlab.mycorp.com",
                         "id": "03000143-e25e-45c7-aafb-144990e57dcd",
                         "ipv4": "100.126.44.50",
                         "ipv6": "fd00:2021:1111::e:7758",
                         "name": "gitlab.mycorp.com",
                         "address_description": "dns resource",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    },
+                    {
+                        "address": "github.mycorp.com",
+                        "id": "03000143-e25e-45c7-aafb-144990e57dce",
+                        "name": "github.mycorp.com",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                         "type": "dns"
                     }
@@ -308,7 +342,7 @@ mod test {
                         id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
                         address: "172.172.0.0/16".parse().unwrap(),
                         name: "172.172.0.0/16".to_string(),
-                        address_description: "cidr resource".to_string(),
+                        address_description: Some("cidr resource".to_string()),
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -318,7 +352,7 @@ mod test {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
                         address: "gitlab.mycorp.com".to_string(),
                         name: "gitlab.mycorp.com".to_string(),
-                        address_description: "dns resource".to_string(),
+                        address_description: Some("dns resource".to_string()),
                         sites: vec![Site {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
@@ -539,30 +573,6 @@ mod test {
                 gateway_remote_ip: "172.28.0.1".parse().unwrap(),
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
                 site_id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                relays: vec![
-                    Relay::Stun(Stun {
-                        id: "c9cb8892-e355-41e6-a882-b6d6c38beb66".parse().unwrap(),
-                        addr: "189.172.73.111:3478".parse().unwrap(),
-                    }),
-                    Relay::Turn(Turn {
-                        id: "6a7f3ba9-d9c4-4633-81ab-311276993fbd".parse().unwrap(),
-                        expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
-                        addr: "189.172.73.111:3478".parse().unwrap(),
-                        username: "1686629954:C7I74wXYFdFugMYM".to_string(),
-                        password: "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98".to_string(),
-                    }),
-                    Relay::Stun(Stun {
-                        id: "1ea93681-aeda-467f-9dca-219c06c18c3d".parse().unwrap(),
-                        addr: "[::1]:3478".parse().unwrap(),
-                    }),
-                    Relay::Turn(Turn {
-                        id: "94209389-e18d-4453-a00d-2583ba857592".parse().unwrap(),
-                        expires_at: DateTime::from_timestamp(1686629954, 0).unwrap(),
-                        addr: "[::1]:3478".parse().unwrap(),
-                        username: "1686629954:dpHxHfNfOhxPLfMG".to_string(),
-                        password: "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY".to_string(),
-                    }),
-                ],
             }),
             None,
         );
@@ -576,34 +586,7 @@ mod test {
                         "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
                         "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
                         "gateway_remote_ip": "172.28.0.1",
-                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4",
-                        "relays": [
-                            {
-                                "id": "c9cb8892-e355-41e6-a882-b6d6c38beb66",
-                                "type":"stun",
-                                "addr": "189.172.73.111:3478"
-                            },
-                            {
-                                "id": "6a7f3ba9-d9c4-4633-81ab-311276993fbd",
-                                "expires_at": 1686629954,
-                                "password": "OXXRDJ7lJN1cm+4+2BWgL87CxDrvpVrn5j3fnJHye98",
-                                "type": "turn",
-                                "addr": "189.172.73.111:3478",
-                                "username":"1686629954:C7I74wXYFdFugMYM"
-                            },
-                            {
-                                "id": "1ea93681-aeda-467f-9dca-219c06c18c3d",
-                                "type": "stun",
-                                "addr": "[::1]:3478"
-                            },
-                            {
-                                "id": "94209389-e18d-4453-a00d-2583ba857592",
-                                "expires_at": 1686629954,
-                                "password": "8Wtb+3YGxO6ia23JUeSEfZ2yFD6RhGLkbgZwqjebyKY",
-                                "type": "turn",
-                                "addr": "[::1]:3478",
-                                "username": "1686629954:dpHxHfNfOhxPLfMG"
-                            }]
+                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"
                     },
                     "status":"ok"
                 }

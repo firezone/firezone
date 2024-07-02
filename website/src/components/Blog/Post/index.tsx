@@ -3,7 +3,6 @@ import Image from "next/image";
 export default function Post({
   authorName,
   authorTitle,
-  authorEmail,
   authorAvatarSrc,
   title,
   date,
@@ -11,7 +10,6 @@ export default function Post({
 }: {
   authorName: string;
   authorTitle: string;
-  authorEmail: string;
   authorAvatarSrc: string;
   title: string;
   date: string;

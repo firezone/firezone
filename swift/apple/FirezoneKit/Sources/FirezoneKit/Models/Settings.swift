@@ -59,7 +59,7 @@ struct Settings: Equatable {
         authBaseURL: "https://app.firez.one",
         apiURL: "wss://api.firez.one",
         logFilter:
-          "firezone_tunnel=trace,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
+          "firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
       )
     #else
       Settings(

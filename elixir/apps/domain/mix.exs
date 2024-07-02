@@ -56,7 +56,7 @@ defmodule Domain.MixProject do
       # Auth-related deps
       {:plug_crypto, "~> 2.0"},
       {:openid_connect,
-       github: "firezone/openid_connect", ref: "dee689382699fce7a6ca70084ccbc8bc351d3246"},
+       github: "firezone/openid_connect", ref: "e4d9dca8ae43c765c00a7d3dfa12d6f24f5b3418"},
       {:argon2_elixir, "~> 4.0"},
       {:workos, git: "https://github.com/firezone/workos-elixir.git", branch: "main"},
 
@@ -69,7 +69,7 @@ defmodule Domain.MixProject do
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
-      {:logger_json, "~> 6.0.0-rc.3"},
+      {:logger_json, "~> 6.0"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},
