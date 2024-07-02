@@ -113,6 +113,12 @@ fn run_debug_ipc_service() -> Result<()> {
     })
 }
 
+#[cfg(not(debug_assertions))]
+fn run_smoke_test() -> Result<()> {
+    anyhow::bail!("Smoke test is not built for release binaries.");
+}
+
+#[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
@@ -121,11 +127,11 @@ fn run_smoke_test() -> Result<()> {
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         if let Ok(result) = tokio::time::timeout(Duration::from_secs(12), ipc_listen()).await {
-            Err(result.unwrap_err())
-        } else {
-            tracing::info!("IPC service smoke test timed out as expected");
-            Ok(())
+            return Err(result.unwrap_err());
         }
+        tracing::info!("IPC service smoke test timed out as expected");
+        anyhow::ensure!(tokio::fs::try_exists(crate::device_id::path()?).await?);
+        Ok(())
     })?;
     Ok(())
 }
