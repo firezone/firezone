@@ -316,7 +316,7 @@ defmodule Web.Sites.NewToken do
 
   defp manual_command_env(env) do
     """
-    RUST_LOG=str0m=warn,info 
+    RUST_LOG=str0m=warn,info
     #{Enum.map_join(env, "\n", fn {key, value} -> "#{key}=#{value}" end)}
     """
   end
