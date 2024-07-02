@@ -29,11 +29,10 @@ use platform::Signals;
 pub(crate) mod device_id;
 // Pub because the GUI reads the system resolvers
 pub mod dns_control;
-pub mod heartbeat;
 mod ipc_service;
 pub mod known_dirs;
 mod standalone;
-mod uptime;
+pub mod uptime;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]

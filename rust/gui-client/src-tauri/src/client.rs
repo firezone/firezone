@@ -29,7 +29,7 @@ use settings::AdvancedSettings;
 /// * `g` doesn't mean anything
 /// * `ed5437c88` is the Git commit hash
 /// * `-modified` is present if the working dir has any changes from that commit number
-pub const GIT_VERSION: &str = git_version::git_version!(
+const GIT_VERSION: &str = git_version::git_version!(
     args = ["--always", "--dirty=-modified", "--tags"],
     fallback = "unknown"
 );
@@ -157,7 +157,12 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Don't drop the log handle or logging will stop.
 fn start_logging(directives: &str) -> Result<logging::Handles> {
     let logging_handles = logging::setup(directives)?;
-    tracing::info!(?GIT_VERSION, "`gui-client` started logging");
+    tracing::info!(
+        ?directives,
+        ?GIT_VERSION,
+        system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
+        "`gui-client` started logging"
+    );
 
     Ok(logging_handles)
 }

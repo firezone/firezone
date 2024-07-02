@@ -76,7 +76,6 @@ fn fallible_windows_service_run(
     tracing::info!(?arguments, "fallible_windows_service_run");
 
     let rt = tokio::runtime::Runtime::new()?;
-    rt.spawn(crate::heartbeat::heartbeat());
 
     let ipc_task = rt.spawn(super::ipc_listen());
     let ipc_task_ah = ipc_task.abort_handle();
