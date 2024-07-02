@@ -6,7 +6,8 @@ use connlib_client_shared::file_logger;
 use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
-    fs, io,
+    fs,
+    io::{self, ErrorKind::NotFound},
     path::{Path, PathBuf},
     result::Result as StdResult,
 };
@@ -113,10 +114,15 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
     for log_path in log_paths()?.into_iter().map(|x| x.src) {
         let mut dir = match tokio::fs::read_dir(log_path).await {
             Ok(x) => x,
-            Err(error) => match error.kind() {
-                std::io::ErrorKind::NotFound => return Ok(()), // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
-                _ => Err(error)?, // But any other error like permissions errors, should bubble.
-            },
+            Err(error) => {
+                if matches!(error.kind(), NotFound) {
+                    // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                    return Ok(());
+                } else {
+                    // But any other error like permissions errors, should bubble.
+                    return Err(error.into());
+                }
+            }
         };
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
@@ -199,10 +205,15 @@ fn add_dir_to_zip(
     let options = zip::write::SimpleFileOptions::default();
     let dir = match fs::read_dir(src_dir) {
         Ok(x) => x,
-        Err(error) => match error.kind() {
-            std::io::ErrorKind::NotFound => return Ok(()), // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
-            _ => Err(error)?, // But any other error like permissions errors, should bubble.
-        },
+        Err(error) => {
+            if matches!(error.kind(), NotFound) {
+                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
+                return Ok(());
+            } else {
+                // But any other error like permissions errors, should bubble.
+                return Err(error.into());
+            }
+        }
     };
     for entry in dir {
         let entry = entry.context("Got bad entry from `read_dir`")?;
