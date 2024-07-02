@@ -93,21 +93,57 @@ Usually, this is some form of IO, like writing to a socket, reading from a file,
 The majority of async functions don't actually perform async work themselves.
 Instead, they depend on an async primitive like a `tokio::net::UdpSocket`.
 The code around those inner async functions would usually also work in a blocking context, but the author of your dependency happened to pick the async variant.
-Here is an example of that:
+
+Firezone's connectivity library `connlib` uses ICE and as part of that, we utilise STUN to discover our server-reflexive candidate, i.e. our public address.
+STUN is a binary message format and a STUN binding is a pretty simple protocol: Send a UDP packet to server, server notes the IP + port it sees as the sending socket and send a UDP packet back containing that address.
+
+Here is how we could implement this using `tokio`'s `UdpSocket` (thank you to Cloudflare for the public STUN server):
 
 ```rust
-// TODO: An example of writing a ping-pong function that uses tokio's Udp socket
+use sans_io_blog_example::{make_binding_request, parse_binding_response};
+use tokio::net::UdpSocket;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let socket = UdpSocket::bind("0.0.0.0:0").await?;
+    socket.connect("stun.cloudflare.com:3478").await?;
+    socket.send(&make_binding_request()).await?;
+
+    let mut buf = vec![0u8; 100];
+    let num_read = socket.recv(&mut buf).await?;
+    let address = parse_binding_response(&buf[..num_read]);
+
+    println!("Our public IP is: {address}");
+
+    Ok(())
+}
 ```
 
 This could be also be written using blocking IO from the standard library:
 
 ```rust
-// TODO: An example of writing a ping-pong function that uses std's Udp socket
+use sans_io_blog_example::{make_binding_request, parse_binding_response};
+use std::net::UdpSocket;
+
+fn main() -> anyhow::Result<()> {
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    socket.connect("stun.cloudflare.com:3478")?;
+    socket.send(&make_binding_request())?;
+
+    let mut buf = vec![0u8; 100];
+    let num_read = socket.recv(&mut buf)?;
+    let address = parse_binding_response(&buf[..num_read]);
+
+    println!("Our public IP is: {address}");
+
+    Ok(())
+}
 ```
 
-Notice how the code that decides what to send is exactly the same?
-The same goes for the error handling.
-Both functions propagate the error up to the next layer.
+You can find both these snippets as functional programs in the following repository: https://firezone/sans-io-blog-example.
+
+Notice how this code is virtually identical apart from the use of `async`?
+If we wanted to write a library that allows you to perform STUN, we'd have to decide on one of them or include both.
 There are lots of opinions out there as to what the "best" way of solving this duplication is.
 Writing sans-IO code is one of them.
 
@@ -291,3 +327,9 @@ Avoiding all of these is one of the reasons we wanted to use Rust in the first-p
 ## Closing
 
 TODO
+
+<!--
+
+Notes: Discuss how hole-punching only works if we send from the same socket so we need multi-plexing.
+
+ -->
