@@ -23,7 +23,9 @@ impl Server {
     /// Create a new deep link server to make sure we're the only instance
     ///
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-    pub(crate) fn new() -> Result<Self, super::Error> {
+    /// On Windows this uses async because of #5143 and #5566.
+    #[allow(clippy::unused_async)]
+    pub(crate) async fn new() -> Result<Self, super::Error> {
         let path = sock_path()?;
         let dir = path
             .parent()
