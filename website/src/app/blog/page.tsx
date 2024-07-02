@@ -21,6 +21,18 @@ export default function Page() {
           Announcements, insights, and more from the Firezone team.
         </p>
         <div className="mt-14 grid divide-y">
+        <SummaryCard
+            title="sans-IO: The secret to effective Rust for network services"
+            date="July 2, 2024"
+            href="/blog/sans-io"
+            authorName="Thomas Eizinger"
+            authorAvatarSrc={gravatar("thomas@firezone.dev")}
+            type="Announcement"
+          >
+            <p className="mb-2">
+              TOOD
+            </p>
+          </SummaryCard>
           <SummaryCard
             title="June 2024 update"
             date="June 21, 2024"
