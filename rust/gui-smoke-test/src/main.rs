@@ -190,7 +190,7 @@ fn debug_db_path() -> PathBuf {
 fn ipc_service_command() -> Exec {
     Exec::cmd("sudo").args(&[
         "--preserve-env",
-        "runuser",
+        "runuser", // The `runuser` looks redundant but CI will complain if we use `sudo` directly, not sure why
         "-u",
         "root",
         "--group",
