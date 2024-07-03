@@ -43,7 +43,7 @@ module "google-cloud-project" {
   id                 = "firezone-prod"
   name               = "Production Environment"
   organization_id    = "335836213177"
-  billing_account_id = "01DFC9-3D6951-579BE1"
+  billing_account_id = "0199BA-489CDD-F385C8"
 
   auto_create_network = false
 }
