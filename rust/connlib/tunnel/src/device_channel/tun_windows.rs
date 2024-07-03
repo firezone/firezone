@@ -134,8 +134,6 @@ impl Tun {
             self.remove_route(*old_route)?;
         }
 
-        // TODO: Might be calling this more often than it needs
-        flush_dns().expect("Should be able to flush Windows' DNS cache");
         self.routes = new_routes;
         Ok(())
     }
@@ -198,6 +196,7 @@ impl Tun {
 
     // It's okay if this blocks until the route is added in the OS.
     fn add_route(&self, route: IpNetwork) -> Result<()> {
+        tracing::debug!(?route, "add_route");
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -214,6 +213,7 @@ impl Tun {
 
     // It's okay if this blocks until the route is removed in the OS.
     fn remove_route(&self, route: IpNetwork) -> Result<()> {
+        tracing::debug!(?route, "remove_route");
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -243,16 +243,6 @@ impl Tun {
 
         row
     }
-}
-
-/// Flush Windows' system-wide DNS cache
-pub(crate) fn flush_dns() -> Result<()> {
-    tracing::info!("Flushing Windows DNS cache");
-    Command::new("powershell")
-        .creation_flags(CREATE_NO_WINDOW)
-        .args(["-Command", "Clear-DnsClientCache"])
-        .status()?;
-    Ok(())
 }
 
 // Moves packets from the user towards the Internet

@@ -63,6 +63,19 @@ impl DnsController {
         }
         .context("Failed to control DNS")
     }
+
+    /// Flush systemd-resolved's system-wide DNS cache
+    ///
+    /// Does nothing if we're using other DNS control methods or none at all
+    pub(crate) fn flush_dns(&self) -> Result<()> {
+        // Flushing is only implemented for systemd-resolved
+        if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
+            tracing::debug!("Flushing systemd-resolved DNS cache...");
+            Command::new("resolvectl").arg("flush-caches").status()?;
+            tracing::debug!("Flushed DNS.");
+        }
+        Ok(())
+    }
 }
 
 /// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
