@@ -459,8 +459,8 @@ that work in any network setup to the rest of the application.
 `snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an
 (almost[^2]) sans-IO wireguard implementation. We don’t need the majority of the
 WebRTC stack though. The only thing we are interested in is the `IceAgent` which
-implements [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445). ICE
-uses a clever algorithm that ensures two agents, deployed into arbitrary network
+implements [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445). ICE uses a
+clever algorithm that ensures two agents, deployed into arbitrary network
 environments find the most optimal communication path to each other. The result
 of ICE is a pair of socket addresses that we then use to perform a wireguard
 handshake. Because `str0m` is built in a sans-IO fashion, only using the
@@ -489,12 +489,18 @@ exactly what we want it to do. This also makes maintenance easier for library
 authors: They can focus on correctly implementing protocol functionality instead
 of having debates around async runtimes or exposing APIs to set socket options.
 
-A good example here is `str0m`’s stance on the gathering of candidates: This is
-an IO concern and up to the application on how to achieve it. `str0m` only
-provides an API to add such an ICE candidate to the current state. As a result,
-we are able to easily implementation optimisations such as gathering TURN
-candidates prior to any connection being made, thus reducing firezone's
-connection-setup latency.
+A good example here is `str0m`’s stance on enumerating network interfaces: This
+is an IO concern and up to the application on how to achieve it. `str0m` only
+provides an API to add the socket addresses as ICE candidate to the current
+state. As a result, we are able to easily implement optimisations such as
+gathering TURN candidates prior to any connection being made, thus reducing
+firezone's connection-setup latency.
+
+<Alert color="info">
+  In ICE, both parties gather candidates (sockets) and then test connectivity
+  between them. See https://datatracker.ietf.org/doc/html/rfc8445#section-5.1.1
+  for details.
+</Alert>
 
 ### Testing at the speed of light
 
@@ -679,7 +685,8 @@ state machines. More so, the fact that sans-IO forces you to handle errors as
 you would any other input simply feels like the way networking code should be
 written.
 
-Many thanks to [@algesten](https://github.com/algesten) for providing feedback on drafts of this post.
+Many thanks to [@algesten](https://github.com/algesten) for providing feedback
+on drafts of this post.
 
 Discuss this post on [Hackernews](TODO) or [Reddit](TODO).
 
