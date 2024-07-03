@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Alert from "@/components/DocsAlert";
 
 At firezone, we build secure remote access that scales, be it from your Android phone, MacOS computer or Linux server.
 At the core of these apps sits a connectivity library - aptly named `connlib` - that manages network connections and wireguard tunnels to secure your traffic.
@@ -86,7 +87,9 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-You can find all of these snippets as working programs in the following repository: https://github.com/firezone/sans-io-blog-example.
+<Alert color="info">
+  You can find all of these snippets as working programs in the following repository: https://github.com/firezone/sans-io-blog-example.
+</Alert>
 
 Notice how this code is virtually identical apart from the use of `async`?
 If we wanted to write a library that allows you to perform STUN, we'd have to decide on one of them or include both.
