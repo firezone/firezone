@@ -183,6 +183,7 @@ impl StunBinding {
     }
 
     fn handle_input(&mut self, packet: &[u8]) {
+        // Error handling is left as an exercise to the reader ...
         let address = parse_binding_response(packet);
 
         self.state = State::Received { address };
