@@ -200,6 +200,32 @@ impl StubResolver {
         });
     }
 
+    fn get_or_assign_a_records(
+        &mut self,
+        fqdn: DomainName,
+    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+        self.get_or_assign_ips(fqdn)
+            .iter()
+            .copied()
+            .filter_map(get_v4)
+            .map(domain::rdata::A::new)
+            .map(AllRecordData::A)
+            .collect_vec()
+    }
+
+    fn get_or_assign_aaaa_records(
+        &mut self,
+        fqdn: DomainName,
+    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+        self.get_or_assign_ips(fqdn)
+            .iter()
+            .copied()
+            .filter_map(get_v6)
+            .map(domain::rdata::Aaaa::new)
+            .map(AllRecordData::Aaaa)
+            .collect_vec()
+    }
+
     fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
         let ips = self
             .fqdn_to_ips
@@ -217,32 +243,6 @@ impl StubResolver {
         }
 
         ips
-    }
-
-    fn get_or_create_resource_records(
-        &mut self,
-        qtype: Rtype,
-        domain: DomainName,
-    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        match qtype {
-            Rtype::A => self
-                .get_or_assign_ips(domain)
-                .iter()
-                .copied()
-                .filter_map(get_v4)
-                .map(domain::rdata::A::new)
-                .map(AllRecordData::A)
-                .collect_vec(),
-            Rtype::AAAA => self
-                .get_or_assign_ips(domain)
-                .iter()
-                .copied()
-                .filter_map(get_v6)
-                .map(domain::rdata::Aaaa::new)
-                .map(AllRecordData::Aaaa)
-                .collect_vec(),
-            _ => unreachable!(),
-        }
     }
 
     fn is_fqdn_resource(&self, domain_name: &DomainName) -> bool {
@@ -295,8 +295,11 @@ impl StubResolver {
         }
 
         let resource_records = match qtype {
-            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&domain) => {
-                self.get_or_create_resource_records(qtype, domain.clone())
+            Rtype::A if self.is_fqdn_resource(&domain) => {
+                self.get_or_assign_a_records(domain.clone())
+            }
+            Rtype::AAAA if self.is_fqdn_resource(&domain) => {
+                self.get_or_assign_aaaa_records(domain.clone())
             }
             Rtype::PTR => {
                 let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
