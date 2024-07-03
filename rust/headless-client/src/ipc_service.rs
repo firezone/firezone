@@ -118,6 +118,9 @@ fn run_smoke_test() -> Result<()> {
     anyhow::bail!("Smoke test is not built for release binaries.");
 }
 
+/// Listen for exactly one connection from a GUI, then exit
+///
+/// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
@@ -126,28 +129,21 @@ fn run_smoke_test() -> Result<()> {
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        if let Ok(result) = tokio::time::timeout(Duration::from_secs(12), ipc_listen()).await {
-            return Err(result.unwrap_err());
-        }
-        tracing::info!("IPC service smoke test timed out as expected");
-        anyhow::ensure!(tokio::fs::try_exists(crate::device_id::path()?).await?);
-        Ok(())
-    })?;
-    Ok(())
+        device_id::get_or_create().context("Failed to read / create device ID")?;
+        let mut server = IpcServer::new(ServiceId::Prod).await?;
+        Handler::new(&mut server).await?.run().await;
+        Ok::<_, anyhow::Error>(())
+    })
 }
 
+// Keep this synced with `run_smoke_test`
 async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     loop {
-        dns_control::deactivate()?;
-        let (rx, tx) = server
-            .next_client_split()
-            .await
-            .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(rx, tx)?.run().await;
+        Handler::new(&mut server).await?.run().await;
     }
 }
 
@@ -169,7 +165,12 @@ enum Event {
 }
 
 impl Handler {
-    fn new(ipc_rx: ipc::ServerRead, ipc_tx: ipc::ServerWrite) -> Result<Self> {
+    async fn new(server: &mut IpcServer) -> Result<Self> {
+        dns_control::deactivate()?;
+        let (ipc_rx, ipc_tx) = server
+            .next_client_split()
+            .await
+            .context("Failed to wait for incoming IPC connection from a GUI")?;
         let (cb_tx, cb_rx) = mpsc::channel(10);
         let tun_device = tun_device_manager::TunDeviceManager::new()?;
 
