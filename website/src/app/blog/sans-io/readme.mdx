@@ -152,7 +152,7 @@ The state machine diagram for our STUN binding request looks like this:
     alt="A UML state diagram for a STUN binding request."
   />
 
-Without execute the side-effect of sending a message directly, we need to rewrite our code to resemble what it actually is: A state machine.
+Without execute the side-effect of sending a message directly, we need to rewrite our code to resemble what it actually is: This state machine.
 As we can see in our diagram, we have 2 states (not counting entry and exit states): `Sent` & `Received`.
 These are mutually-exclusive so we can model them as an enum:
 
