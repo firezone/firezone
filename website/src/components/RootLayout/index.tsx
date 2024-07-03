@@ -14,7 +14,7 @@ const source_sans_3 = Source_Sans_3({
 });
 import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Mixpanel, GoogleAds, LinkedInInsights } from "@/components/Analytics";
+import Analytics from "@/components/Analytics";
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",
@@ -32,7 +32,6 @@ export default function RootLayout({
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
       />
-      <Mixpanel />
       <body className={"text-neutral-900 " + source_sans_3.className}>
         <Banner active={false}>
           <p className="mx-auto text-center">
@@ -63,8 +62,7 @@ export default function RootLayout({
           defer
           src="//js.hs-scripts.com/23723443.js"
         />
-        <GoogleAds />
-        <LinkedInInsights />
+        <Analytics />
       </body>
     </html>
   );

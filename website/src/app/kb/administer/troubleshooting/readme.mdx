@@ -13,7 +13,25 @@ If you're trying to deploy a new Gateway and it's not connecting, try running
 some of the troubleshooting commands below to diagnose the issue.
 
 <TabsGroup>
-<TabsItem title="Docker" active>
+<TabsItem title="Terraform" active>
+
+If you deployed the Gateway using one of our [Terraform examples](/kb/automate),
+the Gateways are configured using the systemd deployment method.
+
+Obtain a shell on the affected Gateway and check the status of the service:
+
+```bash
+sudo systemctl status firezone-gateway
+```
+
+Check the logs with:
+
+```bash
+sudo journalctl -u firezone-gateway.service
+```
+
+</TabsItem>
+<TabsItem title="Docker">
 
 Check that the container is running:
 
