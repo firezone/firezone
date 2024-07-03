@@ -2,7 +2,6 @@ use crate::client::IpProvider;
 use connlib_shared::messages::client::ResourceDescriptionDns;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
-use domain::base::iana::rtype;
 use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
@@ -250,8 +249,13 @@ impl StubResolver {
         get_description(domain_name, &self.dns_resources).is_some()
     }
 
-    fn resource_address_name(&self, address: &IpAddr) -> Option<&DomainName> {
-        self.ips_to_fqdn.get(address)
+    fn resource_address_name_by_reservse_dns(
+        &self,
+        reverse_dns_name: &DomainName,
+    ) -> Option<DomainName> {
+        let address = reverse_dns_addr(&reverse_dns_name.to_string())?;
+
+        self.ips_to_fqdn.get(&address).cloned()
     }
 
     // TODO: we can save a few allocations here still
@@ -291,10 +295,9 @@ impl StubResolver {
 
         let resource_records = match question.qtype() {
             Rtype::PTR => {
-                let address = reverse_dns_addr(&domain.to_string())?;
-                let fqdn = self.resource_address_name(&address)?;
+                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
 
-                vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
+                vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             rtype @ (Rtype::A | Rtype::AAAA) if self.is_fqdn_resource(&domain) => {
                 self.get_or_create_resource_records(rtype, domain.clone())
