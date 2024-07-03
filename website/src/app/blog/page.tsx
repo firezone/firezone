@@ -27,7 +27,7 @@ export default function Page() {
             href="/blog/sans-io"
             authorName="Thomas Eizinger"
             authorAvatarSrc={gravatar("thomas@firezone.dev")}
-            type="Announcement"
+            type="Learn"
           >
             <p className="mb-2">
               Firezone's data plane extensively uses the sans-IO design pattern.

@@ -1,10 +1,10 @@
 import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 
-At firezone, we build secure remote access that scales, be it from your Android
+At Firezone, we build secure remote access that scales, be it from your Android
 phone, MacOS computer or Linux server. At the core of these apps sits a
-connectivity library - aptly named `connlib` - that manages network connections
-and wireguard tunnels to secure your traffic. After several iterations, we’ve
+connectivity library - aptly named [`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib) - that manages network connections
+and WireGuard tunnels to secure your traffic. After several iterations, we’ve
 landed on a design that we are extremely happy with. It gives us blazingly fast
 and exhaustive tests, deep customisation and overall high assurance that it does
 what we want it to do.
@@ -18,11 +18,11 @@ traffic with the API, etc. Yet, once you go beneath the surface of the library,
 you will discover something that is perhaps unusual: There are almost no calls
 to `tokio::spawn`, all communication is multiplexed via a single UDP socket and
 the same APIs appear to repeat themselves across various layers:
-`handle_timeout`, `poll_transmit`, `handle_input`, ...
+`handle_timeout`, `poll_transmit`, `handle_input`, and so on.
 
-These are the tell-tales of a sans-IO design. Instead of sending & receiving
+These are the tell-tale signs of a sans-IO design. Instead of sending and receiving
 bytes via a socket in multiple places, our protocols are implemented as pure
-state machines. Even time is abstracted away: Every function that needs to know
+state machines. Even time is abstracted away: every function that needs to know
 the current time receives an `Instant` parameter instead of calling
 `Instant::now` itself. This pattern isn't something that we invented! The Python
 world even has a dedicated [website](https://sans-io.readthedocs.io/) about it.
@@ -165,7 +165,7 @@ emit a `Transmit`. But that is only one half of the solution. Where does the
 half of any sans-IO application. Recall the definition of the
 dependency-inversion principle: Policies should not depend on implementations,
 instead both should depend on abstractions. `Transmit` is our abstraction and we
-already know that we need to re-write our policy code to use it. The actual
+already know that we need to rewrite our policy code to use it. The actual
 implementation details, i.e. our `UdpSocket` also needs to be made aware of our
 new abstraction.
 
@@ -182,13 +182,14 @@ that only expresses, what should happen at a given moment.
 The state machine diagram for our STUN binding request looks like this:
 
 <Image
-  width={500}
+  height={800}
+  width={800}
   className="rounded shadow mx-auto"
   src="/images/blog/sans-io/stun-binding-state-machine1.svg"
   alt="A UML state diagram for a STUN binding request."
 />
 
-Without execute the side-effect of sending a message directly, we need to
+Without executing the side-effect of sending a message directly, we need to
 rewrite our code to resemble what it actually is: This state machine. As we can
 see in our diagram, we have 2 states (not counting entry and exit states):
 `Sent` & `Received`. These are mutually-exclusive so we can model them as an
@@ -289,7 +290,7 @@ binding protocol. It doesn't know that it is request-response for example! From
 the eventloop's perspective, multiple message could be necessary before we can
 figure out our public address.
 
-UDP is an unreliable protocol, meaning our packets could get lost in transit. Do
+UDP is an unreliable protocol, meaning our packets could get lost in transit. To
 mitigate this, STUN mandates retransmission timers. As it turns out, adding time
 to this eventloop is fairly trivial.
 
@@ -385,7 +386,8 @@ impl StunBinding {
 This is an updated version of our state diagram:
 
 <Image
-  width={500}
+  height={800}
+  width={800}
   className="rounded shadow mx-auto"
   src="/images/blog/sans-io/stun-binding-state-machine2.svg"
   alt="A UML state diagram for a STUN binding request that is being refreshed every 5s."
@@ -428,7 +430,7 @@ So far, all of this seems like a very excessive overhead for sending a few UDP
 packets back and forth. Surely, the 10 line example introduced at the start is
 preferable over this state machine and the eventloop! The example might be, but
 recall the debate around function colouring. In a code snippet without
-dependencies like the above example, using `async` seems like a no brainer and
+dependencies like the above example, using `async` seems like a no-brainer and
 really easy. The problem arises once you want to bring in dependencies.
 Composing your functionality (i.e. policy) on top of those dependencies imposes
 their decisions around async vs blocking IO on you. Libraries like `str0m` or
@@ -444,25 +446,25 @@ additional benefits one by one.
 ### Easy composition
 
 Take another look at the API of `StunBinding`. The main functions exposed to the
-eventloop are: `handle_timeout`, `handle_input`, `poll_transmit` &
+eventloop are: `handle_timeout`, `handle_input`, `poll_transmit` and
 `poll_timeout`. None of these are specific to the domain of STUN! Most network
 protocols can be implemented with these or some variation of them. As a result,
-it is very easy to compose these state machines together: Want to query 5 STUN
+it is very easy to compose these state machines together: want to query 5 STUN
 servers for your public IP? No problem. Just make 5 `StunBinding`s and call them
 in order[^3].
 
-In the case of firezone, you can see this in the example of
+In the case of Firezone, you can see this in the example of
 [`snownet`](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet),
-a library that combines ICE & wireguard and thereby exposes "magic" IP tunnels
+a library that combines ICE and WireGuard and thereby exposes "magic" IP tunnels
 that work in any network setup to the rest of the application.
 
 `snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an
-(almost[^2]) sans-IO wireguard implementation. We don’t need the majority of the
+(almost[^2]) sans-IO WireGuard implementation. We don’t need the majority of the
 WebRTC stack though. The only thing we are interested in is the `IceAgent` which
 implements [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445). ICE uses a
 clever algorithm that ensures two agents, deployed into arbitrary network
 environments find the most optimal communication path to each other. The result
-of ICE is a pair of socket addresses that we then use to perform a wireguard
+of ICE is a pair of socket addresses that we then use to perform a WireGuard
 handshake. Because `str0m` is built in a sans-IO fashion, only using the
 `IceAgent` part of it is shockingly trivial: you simply only import that part of
 the library and compose its state machine into your existing code. In `snownet`,
@@ -494,7 +496,7 @@ is an IO concern and up to the application on how to achieve it. `str0m` only
 provides an API to add the socket addresses as ICE candidate to the current
 state. As a result, we are able to easily implement optimisations such as
 gathering TURN candidates prior to any connection being made, thus reducing
-firezone's connection-setup latency.
+Firezone's connection-setup latency.
 
 <Alert color="info">
   In ICE, both parties gather candidates (sockets) and then test connectivity
@@ -517,15 +519,14 @@ more importantly, requires allocation of ports etc. In a sans-IO world, "sending
 data" in a test is as simple as taking a `Transmit` from party B and calling
 `handle_input` on the state of party A. No need to go through a network socket!
 
-At firezone, we took this idea one step further. We implemented a reference
+At Firezone, we took this idea one step further. We implemented a reference
 state machine that describes how we want `connlib` to work. This reference state
 machine is used as the source of truth in our tests. We then leverage
 `proptest`'s support for
 [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html)
 to deterministically sample and execute thousands of scenarios on every CI run
 and compare the reference state machine with `connlib`'s actual state. The
-details of this go beyond the scope of this post but we are planning to publish
-one about that topic in particular too! The key take-away here is that a sans-IO
+details of this go beyond the scope of this post, so stay tuned for a followup about that topic in particular too! The key take-away here is that a sans-IO
 design enables these kind of tests.
 
 ### Edge-cases and IO failures
@@ -581,10 +582,10 @@ any references, including `&mut`. To mutate state that isn't local to the
 Both of these options have a runtime overhead: Locks can result in contention
 and sending messages through channels requires copying. In addition, multiple
 tasks running inside a runtime operate in a non-deterministic order which can
-easily lead to race conditions and in the worst-case, dead-locks. It appears
+easily lead to race conditions and in the worst case, deadlocks. It appears
 that with either of these options, we arrive at a design that feels brittle, is
-prone to dead-locks and no longer employs zero-cost abstractions, yet avoiding
-all of these is one of the reasons we wanted to use Rust in the first-place!
+prone to deadlocks and no longer employs zero-cost abstractions, yet avoiding
+all of these is one of the reasons we wanted to use Rust in the first place!
 
 In the sans-IO world, these problems don't exist. Our protocol code doesn't
 spawn any tasks and thus, `&mut self` is all we need to mutate state. Without
